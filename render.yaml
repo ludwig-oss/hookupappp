@@ -1,0 +1,15 @@
+# Render.com one-click deploy. Connect this repo and Render will use this.
+services:
+  - type: web
+    name: aswp
+    env: node
+    buildCommand: npm run install:all && npm run build
+    startCommand: NODE_ENV=production node server/dist/index.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: JWT_SECRET
+        generateValue: true
+      - key: FRONTEND_URL
+        sync: false
+    healthCheckPath: /api/health

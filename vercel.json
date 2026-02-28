@@ -1,0 +1,6 @@
+{
+  "buildCommand": "npm run install:all && cd client && npm run build:skip-typecheck",
+  "outputDirectory": "client/dist",
+  "framework": null,
+  "installCommand": "npm install"
+}

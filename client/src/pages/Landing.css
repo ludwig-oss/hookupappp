@@ -1,0 +1,300 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800&display=swap');
+
+.landing-page {
+  min-height: 100vh;
+  position: relative;
+  overflow: hidden;
+  font-family: 'Outfit', 'Segoe UI', sans-serif;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Revolving romance background – 3D ring of frames */
+.landing-bg-carousel {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  perspective: 1200px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.landing-bg-ring {
+  position: absolute;
+  width: 100px;
+  height: 100px;
+  transform-style: preserve-3d;
+  animation: carouselRotate 35s linear infinite;
+}
+
+.landing-bg-frame {
+  position: absolute;
+  width: 240px;
+  height: 320px;
+  left: 50%;
+  top: 50%;
+  margin-left: -120px;
+  margin-top: -160px;
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+  opacity: 0.88;
+  transform-style: preserve-3d;
+  transform: rotateY(var(--angle, 0deg)) translateZ(380px) rotateY(calc(-1 * var(--angle, 0deg))) rotateX(8deg);
+}
+
+.landing-bg-frame img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+@keyframes carouselRotate {
+  from { transform: rotateY(0deg); }
+  to { transform: rotateY(360deg); }
+}
+
+.landing-bg-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  background: linear-gradient(
+    180deg,
+    rgba(10, 5, 20, 0.75) 0%,
+    rgba(20, 8, 30, 0.6) 40%,
+    rgba(15, 5, 25, 0.85) 100%
+  );
+  pointer-events: none;
+}
+
+/* Cupid – flying angel baby with bow and arrow */
+.landing-cupid {
+  position: fixed;
+  top: 12%;
+  right: 10%;
+  z-index: 2;
+  width: 140px;
+  height: 160px;
+  pointer-events: none;
+  animation: cupidFloat 6s ease-in-out infinite;
+}
+
+.cupid-svg {
+  width: 100%;
+  height: 100%;
+  filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.3));
+}
+
+@keyframes cupidFloat {
+  0%, 100% { transform: translateY(0) rotate(-3deg); }
+  50% { transform: translateY(-15px) rotate(2deg); }
+}
+
+/* Floating hearts */
+.landing-hearts {
+  position: fixed;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.landing-heart {
+  position: absolute;
+  font-size: 18px;
+  color: rgba(255, 105, 180, 0.5);
+  animation: heartFloat 8s ease-in-out infinite;
+  left: calc(10% + (var(--i) * 8%) * 1%);
+  top: 100%;
+  animation-delay: calc(var(--i) * -0.7s);
+}
+
+@keyframes heartFloat {
+  0% {
+    transform: translateY(0) scale(0.8);
+    opacity: 0;
+  }
+  10% {
+    opacity: 0.6;
+  }
+  90% {
+    opacity: 0.4;
+  }
+  100% {
+    transform: translateY(-100vh) scale(1.2);
+    opacity: 0;
+  }
+}
+
+/* Nav */
+.landing-nav {
+  position: relative;
+  z-index: 10;
+  width: 100%;
+  max-width: 1200px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px;
+}
+
+.landing-logo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 24px;
+  font-weight: 800;
+  color: #fff;
+  text-decoration: none;
+  letter-spacing: -0.02em;
+}
+
+.landing-logo:hover {
+  color: #ffb3c6;
+}
+
+.landing-logo-icon {
+  font-size: 28px;
+}
+
+.landing-nav-links {
+  display: flex;
+  align-items: center;
+  gap: 28px;
+}
+
+.landing-nav-links a {
+  color: rgba(255, 255, 255, 0.9);
+  text-decoration: none;
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.landing-nav-links a:hover {
+  color: #ff8fab;
+}
+
+.landing-nav-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.landing-btn {
+  display: inline-block;
+  padding: 10px 20px;
+  border-radius: 24px;
+  font-size: 15px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.landing-btn-ghost {
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.landing-btn-ghost:hover {
+  background: rgba(255, 255, 255, 0.25);
+  color: #fff;
+  transform: translateY(-1px);
+}
+
+/* Hero */
+.landing-hero {
+  position: relative;
+  z-index: 10;
+  text-align: center;
+  padding: 40px 24px 60px;
+}
+
+.landing-tagline {
+  font-size: clamp(48px, 10vw, 72px);
+  font-weight: 800;
+  color: #fff;
+  margin: 0 0 12px;
+  letter-spacing: -0.03em;
+  line-height: 1.05;
+  text-shadow: 0 4px 30px rgba(0, 0, 0, 0.4);
+}
+
+.landing-sub {
+  font-size: 20px;
+  color: rgba(255, 255, 255, 0.85);
+  margin: 0 0 36px;
+  font-weight: 500;
+}
+
+.landing-cta {
+  display: inline-block;
+  padding: 18px 48px;
+  font-size: 18px;
+  font-weight: 700;
+  color: #fff;
+  text-decoration: none;
+  border-radius: 28px;
+  background: linear-gradient(135deg, #ff6b9d 0%, #c44569 50%, #a83a5a 100%);
+  box-shadow: 0 8px 32px rgba(255, 107, 157, 0.45);
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.landing-cta:hover {
+  transform: translateY(-3px) scale(1.02);
+  box-shadow: 0 12px 40px rgba(255, 107, 157, 0.55);
+  color: #fff;
+}
+
+/* Bottom legal */
+.landing-legal {
+  position: relative;
+  z-index: 10;
+  padding: 16px;
+  font-size: 13px;
+}
+
+.landing-legal a {
+  color: rgba(255, 255, 255, 0.7);
+  text-decoration: none;
+}
+
+.landing-legal a:hover {
+  color: #ff8fab;
+  text-decoration: underline;
+}
+
+.landing-legal-sep {
+  margin: 0 10px;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .landing-nav-links {
+    display: none;
+  }
+
+  .landing-cupid {
+    width: 90px;
+    height: 100px;
+    top: 8%;
+    right: 5%;
+  }
+
+  .landing-tagline {
+    font-size: 40px;
+  }
+
+  .landing-sub {
+    font-size: 16px;
+  }
+
+  .landing-cta {
+    padding: 16px 36px;
+    font-size: 16px;
+  }
+}

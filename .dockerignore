@@ -1,0 +1,13 @@
+node_modules
+.git
+.env
+*.log
+.DS_Store
+server/data
+server/server/data
+deploy
+aswp-deploy.zip
+.vscode
+.idea
+client/node_modules
+server/node_modules

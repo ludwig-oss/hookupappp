@@ -1,0 +1,21 @@
+# Netlify deploy – web + mobile. Backend runs on Render; replace BACKEND_URL below with your Render API URL.
+
+[build]
+  base = "/"
+  command = "npm run install:all && cd client && npm run build:skip-typecheck"
+  publish = "client/dist"
+  environment = { NODE_VERSION = "20" }
+
+# API proxy: replace YOUR-BACKEND-URL with your Render (or other) backend URL, e.g. https://aswp-api.onrender.com
+[[redirects]]
+  from = "/api/*"
+  to = "https://YOUR-BACKEND-URL/api/:splat"
+  status = 200
+  force = true
+
+# SPA: serve index.html for all other routes (web + phone)
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+  force = true

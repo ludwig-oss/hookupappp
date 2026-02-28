@@ -1,0 +1,88 @@
+.checkout-container {
+  min-height: 100vh;
+  background: linear-gradient(135deg, #ff6b9d 0%, #c44569 50%, #8b5a9f 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.checkout-card {
+  background: white;
+  border-radius: 20px;
+  padding: 40px;
+  max-width: 500px;
+  width: 100%;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+  position: relative;
+}
+
+.checkout-card .back-link {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  color: #c44569;
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 500;
+}
+.checkout-card .back-link:hover {
+  color: #ff6b9d;
+  text-decoration: underline;
+}
+
+.checkout-form h2 {
+  margin: 0 0 24px 0;
+  color: #1f2937;
+  font-size: 28px;
+}
+
+.booking-summary {
+  background: #f9fafb;
+  padding: 20px;
+  border-radius: 12px;
+  margin-bottom: 24px;
+}
+
+.booking-summary h3 {
+  margin: 0 0 12px 0;
+  font-size: 18px;
+  color: #1f2937;
+}
+
+.booking-summary p {
+  margin: 8px 0;
+  color: #6b7280;
+}
+
+.payment-section {
+  margin-bottom: 24px;
+}
+
+.pay-button {
+  width: 100%;
+  padding: 14px 24px;
+  background: linear-gradient(135deg, #ff6b9d 0%, #c44569 100%);
+  color: white;
+  border: none;
+  border-radius: 12px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.pay-button:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(255, 107, 157, 0.4);
+}
+
+.pay-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+
+
+
+

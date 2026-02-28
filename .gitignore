@@ -1,0 +1,21 @@
+node_modules/
+dist/
+build/
+.env
+*.log
+.DS_Store
+deploy/
+aswp-deploy.zip
+# All runtime data – fresh deploys start with no users/posts/etc.
+server/data/
+server/server/data/
+.vscode/
+.idea/
+
+
+
+
+
+
+
+

@@ -1,0 +1,658 @@
+import { useState, useEffect, useContext, useRef } from 'react';
+import { AuthContext } from '../../context/AuthContext';
+import { connectionsAPI, NearbyUser, VenueCount, Buzz } from '../../api/connections';
+import './Widget.css';
+
+const NEARBY_DISCOVERY_RADIUS_M = 50;
+
+const VENUE_RADIUS_OPTIONS = [
+  { value: 500, label: '500 m' },
+  { value: 1000, label: '1 km' },
+  { value: 2000, label: '2 km' },
+  { value: 5000, label: '5 km' },
+];
+
+export interface PlaceCountOnly {
+  venue: string;
+  venueType: string;
+  location: { lat: number; lon: number };
+  count: number;
+}
+
+const PLACE_TYPES = [
+  { value: 'bar', label: 'Bar' },
+  { value: 'supermarket', label: 'Supermarket' },
+  { value: 'mall', label: 'Mall' },
+  { value: 'park', label: 'Park' },
+  { value: 'amusement_park', label: 'Amusement park' },
+  { value: 'cinema', label: 'Cinema' },
+  { value: 'club', label: 'Club / Nightclub' },
+  { value: 'cafe', label: 'Café' },
+  { value: 'restaurant', label: 'Restaurant' },
+  { value: 'gym', label: 'Gym / Fitness' },
+  { value: 'museum', label: 'Museum / Gallery' },
+  { value: 'library', label: 'Library' },
+  { value: 'theatre', label: 'Theatre' },
+  { value: 'shopping', label: 'Shopping (any)' },
+];
+
+const ConnectionsWidget = () => {
+  const { user } = useContext(AuthContext);
+  const [view, setView] = useState<'main' | 'venues' | 'nearby' | 'buzzes' | 'search_places'>('main');
+  const [venues, setVenues] = useState<VenueCount[]>([]);
+  const [nearbyUsers, setNearbyUsers] = useState<NearbyUser[]>([]);
+  const [buzzes, setBuzzes] = useState<{ received: Buzz[]; sent: Buzz[] }>({ received: [], sent: [] });
+  const [location, setLocation] = useState<{ lat: number; lon: number; accuracy?: number } | null>(null);
+  const [placeLabel, setPlaceLabel] = useState<string | null>(null);
+  const [venueRadius, setVenueRadius] = useState(1000);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [comfortingMessage, setComfortingMessage] = useState<string | null>(null);
+  const locationIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const [searchPlaceQuery, setSearchPlaceQuery] = useState('');
+  const [searchPlaceType, setSearchPlaceType] = useState('bar');
+  const [searchPlaceResults, setSearchPlaceResults] = useState<PlaceCountOnly[]>([]);
+  const [searchPlaceLocationName, setSearchPlaceLocationName] = useState<string | null>(null);
+  const [searchPlaceMostConcentrated, setSearchPlaceMostConcentrated] = useState<PlaceCountOnly | null>(null);
+  const [searchPlacesLoading, setSearchPlacesLoading] = useState(false);
+
+  useEffect(() => {
+    if (user?.id) {
+      requestLocation();
+      loadBuzzes();
+    }
+    return () => {
+      if (locationIntervalRef.current) {
+        clearInterval(locationIntervalRef.current);
+      }
+    };
+  }, [user]);
+
+  useEffect(() => {
+    if (location && user?.id) {
+      // Update location every 30 seconds
+      updateLocation();
+      locationIntervalRef.current = setInterval(() => {
+        updateLocation();
+      }, 30000);
+    }
+    return () => {
+      if (locationIntervalRef.current) {
+        clearInterval(locationIntervalRef.current);
+      }
+    };
+  }, [location, user]);
+
+  const fetchPlaceLabel = async (lat: number, lon: number) => {
+    try {
+      const { city, country, displayName } = await connectionsAPI.reverseGeocode(lat, lon);
+      if (city && country) setPlaceLabel(`${city}, ${country}`);
+      else if (displayName) setPlaceLabel(displayName);
+      else setPlaceLabel(null);
+    } catch {
+      setPlaceLabel(null);
+    }
+  };
+
+  const loadNearbyWithCoords = async (lat: number, lon: number) => {
+    if (!user?.id) return;
+    setLoading(true);
+    setError('');
+    try {
+      const response = await connectionsAPI.getNearby({
+        lat,
+        lon,
+        radius: NEARBY_DISCOVERY_RADIUS_M,
+        userId: user.id,
+      });
+      setNearbyUsers(response.users);
+      setView('nearby');
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Failed to load nearby');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const requestLocation = () => {
+    setError('');
+    if (!navigator?.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const lat = position.coords.latitude;
+        const lon = position.coords.longitude;
+        const newLocation = { lat, lon, accuracy: position.coords.accuracy };
+        setLocation(newLocation);
+        setError('');
+        fetchPlaceLabel(lat, lon);
+        loadNearbyWithCoords(lat, lon);
+      },
+      () => setError('Location needed to see who\'s nearby. Allow it when your browser asks.'),
+      { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 }
+    );
+    navigator.geolocation.watchPosition(
+      (position) => {
+        setLocation({
+          lat: position.coords.latitude,
+          lon: position.coords.longitude,
+          accuracy: position.coords.accuracy,
+        });
+        fetchPlaceLabel(position.coords.latitude, position.coords.longitude);
+      },
+      () => {},
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 5000 }
+    );
+  };
+
+  const updateLocation = async () => {
+    if (!location || !user?.id) return;
+    try {
+      await connectionsAPI.updateLocation({
+        lat: location.lat,
+        lon: location.lon,
+        accuracy: location.accuracy,
+        userId: user.id,
+      });
+    } catch (err) {
+      console.error('Failed to update location:', err);
+    }
+  };
+
+  const loadVenues = async () => {
+    if (!location || !user?.id) return;
+    setLoading(true);
+    setError('');
+    try {
+      const response = await connectionsAPI.getVenues({
+        lat: location.lat,
+        lon: location.lon,
+        radius: venueRadius,
+        userId: user.id,
+      });
+      setVenues(response.venues);
+      setView('venues');
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Failed to load venues');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadNearby = async () => {
+    if (!location || !user?.id) return;
+    setLoading(true);
+    setError('');
+    try {
+      const response = await connectionsAPI.getNearby({
+        lat: location.lat,
+        lon: location.lon,
+        radius: NEARBY_DISCOVERY_RADIUS_M,
+        userId: user.id,
+      });
+      setNearbyUsers(response.users);
+      setView('nearby');
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Failed to load nearby users');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadBuzzes = async () => {
+    if (!user?.id) return;
+    try {
+      const response = await connectionsAPI.getMyBuzzes(user.id);
+      setBuzzes(response);
+    } catch (err) {
+      console.error('Failed to load buzzes:', err);
+    }
+  };
+
+  const searchPlaces = async () => {
+    const q = searchPlaceQuery.trim();
+    if (!q || !user?.id) return;
+    setSearchPlacesLoading(true);
+    setError('');
+    setSearchPlaceResults([]);
+    setSearchPlaceLocationName(null);
+    setSearchPlaceMostConcentrated(null);
+    try {
+      const response = await connectionsAPI.searchPlaces({ q, type: searchPlaceType });
+      setSearchPlaceResults(response.places || []);
+      setSearchPlaceLocationName(response.locationName || null);
+      setSearchPlaceMostConcentrated(response.mostConcentrated ?? null);
+      if (response.message) setError(response.message);
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Search failed');
+    } finally {
+      setSearchPlacesLoading(false);
+    }
+  };
+
+  const handleSendBuzz = async (toUserId: string) => {
+    if (!location || !user?.id) return;
+    setLoading(true);
+    setError('');
+    try {
+      await connectionsAPI.sendBuzz({
+        toUserId,
+        location: {
+          lat: location.lat,
+          lon: location.lon,
+        },
+        userId: user.id,
+      });
+      await loadBuzzes();
+      setComfortingMessage("Interest sent! They can respond with Yes, No, or Talk later.");
+      setTimeout(() => setComfortingMessage(null), 4000);
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Failed to send buzz');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRespondBuzz = async (buzzId: string, response: 'accepted' | 'rejected' | 'talk_later') => {
+    setLoading(true);
+    setError('');
+    try {
+      const result = await connectionsAPI.respondBuzz({ buzzId, response });
+      if (response === 'rejected' && result.comfortingMessage) {
+        setComfortingMessage(result.comfortingMessage);
+        setTimeout(() => setComfortingMessage(null), 8000);
+      }
+      if (response === 'accepted' || response === 'talk_later') {
+        setComfortingMessage(response === 'talk_later'
+          ? "They're in your Communications. Chat when you're both ready!"
+          : "They're in your Communications. You can start chatting now!");
+        setTimeout(() => setComfortingMessage(null), 5000);
+      }
+      await loadBuzzes();
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Failed to respond');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="widget">
+      <h2 className="widget-title">
+        <span>🔗</span> Connections
+      </h2>
+
+      {error && <div className="error-message">{error}</div>}
+      {comfortingMessage && (
+        <div className="comforting-message" style={{
+          padding: '12px',
+          background: 'rgba(255, 0, 255, 0.2)',
+          border: '2px solid #ff00ff',
+          borderRadius: '8px',
+          marginBottom: '12px',
+          color: '#ff00ff',
+          fontSize: '14px',
+          fontFamily: 'Orbitron, monospace',
+          boxShadow: '0 0 15px rgba(255, 0, 255, 0.3)',
+        }}>
+          {comfortingMessage}
+        </div>
+      )}
+
+      {view === 'main' && (
+        <div className="improvement-content">
+          {placeLabel && (
+            <p style={{ marginBottom: '12px', color: '#00d4ff', fontFamily: 'Orbitron, monospace', fontSize: '13px', textShadow: '0 0 8px rgba(0, 212, 255, 0.5)' }}>
+              📍 {placeLabel}
+            </p>
+          )}
+          <p style={{ marginBottom: '14px', color: '#9ca3af', fontFamily: 'Orbitron, monospace', fontSize: '12px' }}>
+            When you’re near someone (within 50 m), you’ll see them here. Tap to send interest.
+          </p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <button
+              onClick={location ? loadNearby : requestLocation}
+              className="select-user-btn"
+              disabled={loading}
+              style={{
+                background: 'rgba(0, 212, 255, 0.15)',
+                border: '2px solid #00d4ff',
+                color: '#00d4ff',
+                fontFamily: 'Orbitron, monospace',
+                fontWeight: 'bold',
+                boxShadow: '0 0 15px rgba(0, 212, 255, 0.3)',
+              }}
+            >
+              {loading ? 'Loading...' : location ? `👥 See who's nearby (${NEARBY_DISCOVERY_RADIUS_M} m)` : "👥 See who's nearby"}
+            </button>
+            <div>
+              <label style={{ fontSize: '10px', color: '#9ca3af', fontFamily: 'Orbitron, monospace', display: 'block', marginBottom: '4px' }}>Venues radius</label>
+              <select
+                value={venueRadius}
+                onChange={(e) => setVenueRadius(Number(e.target.value))}
+                style={{
+                  width: '100%',
+                  padding: '8px',
+                  background: 'rgba(0,0,0,0.5)',
+                  border: '2px solid rgba(0, 212, 255, 0.5)',
+                  borderRadius: '6px',
+                  color: '#00d4ff',
+                  fontFamily: 'Orbitron, monospace',
+                  fontSize: '12px',
+                }}
+              >
+                {VENUE_RADIUS_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+            </div>
+            <button onClick={loadVenues} className="select-user-btn" disabled={loading || !location} style={{
+              background: 'rgba(0, 0, 0, 0.4)',
+              border: '2px solid #00d4ff',
+              color: '#00d4ff',
+              fontFamily: 'Orbitron, monospace',
+              fontWeight: 'bold',
+              boxShadow: '0 0 15px rgba(0, 212, 255, 0.3)',
+            }}>
+              {loading ? 'Loading...' : `📍 Real venues (${venueRadius >= 1000 ? venueRadius / 1000 + ' km' : venueRadius + ' m'})`}
+            </button>
+            <button onClick={() => setView('search_places')} className="select-user-btn" style={{
+              background: 'rgba(0, 0, 0, 0.4)',
+              border: '2px solid #00d4ff',
+              color: '#00d4ff',
+              fontFamily: 'Orbitron, monospace',
+              fontWeight: 'bold',
+              boxShadow: '0 0 15px rgba(0, 212, 255, 0.3)',
+            }}>
+              🔍 Search places (see count of your preferences)
+            </button>
+            <button onClick={() => { setView('buzzes'); loadBuzzes(); }} className="select-user-btn" style={{
+              background: 'rgba(0, 0, 0, 0.4)',
+              border: '2px solid #ff00ff',
+              color: '#ff00ff',
+              fontFamily: 'Orbitron, monospace',
+              fontWeight: 'bold',
+              boxShadow: '0 0 15px rgba(255, 0, 255, 0.3)',
+            }}>
+              🔔 My Buzzes ({buzzes.received.length + buzzes.sent.length})
+            </button>
+          </div>
+        </div>
+      )}
+
+      {view === 'search_places' && (
+        <div className="improvement-content">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+            <button onClick={() => { setView('main'); setSearchPlaceResults([]); setSearchPlaceMostConcentrated(null); setError(''); }} className="back-btn" style={{
+              background: 'rgba(0, 0, 0, 0.4)', border: '2px solid #00d4ff', color: '#00d4ff',
+              fontFamily: 'Orbitron, monospace', padding: '8px 16px', borderRadius: '6px',
+            }}>← Back</button>
+            <h3 style={{ margin: 0, fontSize: '16px', color: '#00d4ff', fontFamily: 'Orbitron, monospace' }}>Search real places</h3>
+          </div>
+          <p style={{ marginBottom: '12px', color: '#9ca3af', fontSize: '12px', fontFamily: 'Orbitron, monospace' }}>
+            Enter a city or location (e.g. Berlin, London). Choose type. See how many of your preferences are at each real place.
+          </p>
+          <input
+            type="text"
+            placeholder="e.g. Berlin, Central Park, London"
+            value={searchPlaceQuery}
+            onChange={(e) => setSearchPlaceQuery(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && searchPlaces()}
+            style={{
+              width: '100%', padding: '12px', marginBottom: '10px',
+              background: 'rgba(0,0,0,0.5)', border: '2px solid rgba(0, 212, 255, 0.5)', borderRadius: '8px',
+              color: '#fff', fontFamily: 'Orbitron, monospace', fontSize: '14px',
+            }}
+          />
+          <select
+            value={searchPlaceType}
+            onChange={(e) => setSearchPlaceType(e.target.value)}
+            style={{
+              width: '100%', padding: '10px', marginBottom: '12px',
+              background: 'rgba(0,0,0,0.5)', border: '2px solid rgba(0, 212, 255, 0.5)', borderRadius: '8px',
+              color: '#00d4ff', fontFamily: 'Orbitron, monospace', fontSize: '13px',
+            }}
+          >
+            {PLACE_TYPES.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+          <button onClick={searchPlaces} disabled={searchPlacesLoading || !searchPlaceQuery.trim()} className="select-user-btn" style={{
+            width: '100%', marginBottom: '16px',
+            background: 'rgba(0, 212, 255, 0.2)', border: '2px solid #00d4ff', color: '#00d4ff',
+            fontFamily: 'Orbitron, monospace', fontWeight: 'bold',
+          }}>
+            {searchPlacesLoading ? 'Searching...' : 'Search'}
+          </button>
+          {searchPlaceLocationName && (
+            <p style={{ marginBottom: '12px', color: '#00d4ff', fontSize: '12px', fontFamily: 'Orbitron, monospace' }}>
+              Location: {searchPlaceLocationName}
+            </p>
+          )}
+          {searchPlaceMostConcentrated && (
+            <div style={{
+              marginBottom: '14px', padding: '14px', borderRadius: '12px',
+              background: 'linear-gradient(135deg, rgba(255, 0, 255, 0.2), rgba(0, 212, 255, 0.15))',
+              border: '2px solid rgba(255, 0, 255, 0.6)',
+              boxShadow: '0 0 20px rgba(255, 0, 255, 0.25)',
+            }}>
+              <div style={{ fontSize: '11px', color: '#ff00ff', fontFamily: 'Orbitron, monospace', marginBottom: '6px', textTransform: 'uppercase' }}>
+                Hottest spot — most of your preferences here
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '15px', fontWeight: 'bold', color: '#fff', fontFamily: 'Orbitron, monospace' }}>{searchPlaceMostConcentrated.venue}</span>
+                <span style={{ fontSize: '22px', fontWeight: 'bold', color: '#ff00ff' }}>{searchPlaceMostConcentrated.count}</span>
+              </div>
+            </div>
+          )}
+          {searchPlaceResults.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '360px', overflowY: 'auto' }}>
+              {searchPlaceResults.map((place, idx) => (
+                <div
+                  key={idx}
+                  style={{
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                    padding: '14px', border: '2px solid rgba(0, 212, 255, 0.3)', borderRadius: '10px',
+                    background: 'rgba(0, 0, 0, 0.4)',
+                  }}
+                >
+                  <span style={{ fontSize: '14px', color: '#fff', fontFamily: 'Orbitron, monospace' }}>{place.venue}</span>
+                  <span style={{ fontSize: '20px', fontWeight: 'bold', color: '#ff00ff', minWidth: '32px', textAlign: 'right' }}>{place.count}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {searchPlaceResults.length === 0 && searchPlaceLocationName && !searchPlacesLoading && (
+            <p style={{ color: '#9ca3af', fontSize: '12px', fontFamily: 'Orbitron, monospace' }}>No {searchPlaceType.replace('_', ' ')}s found in this area, or no app users there yet.</p>
+          )}
+        </div>
+      )}
+
+      {view === 'venues' && (
+        <div className="improvement-content">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+            <button onClick={() => setView('main')} className="back-btn" style={{
+              background: 'rgba(0, 0, 0, 0.4)',
+              border: '2px solid #00d4ff',
+              color: '#00d4ff',
+              fontFamily: 'Orbitron, monospace',
+              padding: '8px 16px',
+              borderRadius: '6px',
+            }}>← Back</button>
+            <h3 style={{ margin: 0, fontSize: '18px', color: '#00d4ff', fontFamily: 'Orbitron, monospace', textShadow: '0 0 10px rgba(0, 212, 255, 0.5)' }}>Real venues nearby</h3>
+          </div>
+          {venues.length === 0 ? (
+            <p style={{ textAlign: 'center', color: '#9ca3af', padding: '20px', fontFamily: 'Orbitron, monospace' }}>
+              No venues in this radius. Try a larger radius or another location (worldwide).
+            </p>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', maxHeight: '400px', overflowY: 'auto' }}>
+              {venues.map((venue, idx) => (
+                <div
+                  key={idx}
+                  style={{
+                    padding: '16px',
+                    border: '2px solid rgba(0, 212, 255, 0.3)',
+                    borderRadius: '12px',
+                    background: 'rgba(0, 0, 0, 0.4)',
+                    boxShadow: '0 0 15px rgba(0, 212, 255, 0.2)',
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                    <h4 style={{ margin: 0, fontSize: '16px', color: '#fff', fontFamily: 'Orbitron, monospace' }}>{venue.venue}</h4>
+                    <span style={{ fontSize: '18px', fontWeight: 'bold', color: '#ff00ff', textShadow: '0 0 10px rgba(255, 0, 255, 0.6)' }}>
+                      {venue.count}
+                    </span>
+                  </div>
+                  <p style={{ margin: 0, fontSize: '12px', color: '#9ca3af', fontFamily: 'Orbitron, monospace' }}>
+                    {venue.venueType} • {venue.count} {venue.count === 1 ? 'person' : 'people'} from the app nearby
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {view === 'nearby' && (
+        <div className="improvement-content">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+            <button onClick={() => setView('main')} className="back-btn" style={{
+              background: 'rgba(0, 0, 0, 0.4)',
+              border: '2px solid #00d4ff',
+              color: '#00d4ff',
+              fontFamily: 'Orbitron, monospace',
+              padding: '8px 16px',
+              borderRadius: '6px',
+            }}>← Back</button>
+            <h3 style={{ margin: 0, fontSize: '18px', color: '#00d4ff', fontFamily: 'Orbitron, monospace', textShadow: '0 0 10px rgba(0, 212, 255, 0.5)' }}>Within 50 m</h3>
+          </div>
+          {nearbyUsers.length === 0 ? (
+            <p style={{ textAlign: 'center', color: '#9ca3af', padding: '20px', fontFamily: 'Orbitron, monospace' }}>
+              No one in range right now. Keep location on to appear for others.
+            </p>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', maxHeight: '400px', overflowY: 'auto' }}>
+              {nearbyUsers.map((nearbyUser) => {
+                const alreadyBuzzed = buzzes.sent.some(b => b.toUserId === nearbyUser.id && b.status === 'pending');
+                const receivedBuzz = buzzes.received.find(b => b.fromUserId === nearbyUser.id);
+                
+                return (
+                  <div
+                    key={nearbyUser.id}
+                    style={{
+                      padding: '12px',
+                      border: '2px solid rgba(0, 212, 255, 0.3)',
+                      borderRadius: '12px',
+                      display: 'flex',
+                      gap: '12px',
+                      alignItems: 'center',
+                      background: 'rgba(0, 0, 0, 0.4)',
+                      boxShadow: '0 0 15px rgba(0, 212, 255, 0.2)',
+                    }}
+                  >
+                    <div className="user-avatar" style={{ width: '56px', height: '56px', flexShrink: 0, borderRadius: '50%', overflow: 'hidden', border: '2px solid rgba(255, 0, 255, 0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', background: 'rgba(255, 0, 255, 0.1)' }}>
+                      {nearbyUser.profilePicture ? (
+                        <img src={nearbyUser.profilePicture} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      ) : (
+                        <span style={{ fontSize: '24px', color: '#ff00ff' }}>?</span>
+                      )}
+                      {nearbyUser.isOnline && (
+                        <div style={{
+                          position: 'absolute',
+                          bottom: 0,
+                          right: 0,
+                          width: '12px',
+                          height: '12px',
+                          background: '#10b981',
+                          border: '2px solid #0a0a1a',
+                          borderRadius: '50%',
+                          boxShadow: '0 0 10px rgba(16, 185, 129, 0.6)',
+                        }} />
+                      )}
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }} />
+                    {receivedBuzz ? (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                        <button onClick={() => handleRespondBuzz(receivedBuzz.id, 'accepted')} className="send-btn" disabled={loading} style={{ background: 'rgba(16, 185, 129, 0.2)', border: '2px solid #10b981', color: '#10b981', fontSize: '11px', padding: '6px 10px', fontFamily: 'Orbitron, monospace', fontWeight: 'bold' }}>Yes</button>
+                        <button onClick={() => handleRespondBuzz(receivedBuzz.id, 'rejected')} className="send-btn" disabled={loading} style={{ background: 'rgba(239, 68, 68, 0.2)', border: '2px solid #ef4444', color: '#ef4444', fontSize: '11px', padding: '6px 10px', fontFamily: 'Orbitron, monospace', fontWeight: 'bold' }}>No</button>
+                        <button onClick={() => handleRespondBuzz(receivedBuzz.id, 'talk_later')} className="send-btn" disabled={loading} style={{ background: 'rgba(245, 158, 11, 0.2)', border: '2px solid #f59e0b', color: '#f59e0b', fontSize: '11px', padding: '6px 10px', fontFamily: 'Orbitron, monospace', fontWeight: 'bold' }}>Talk later</button>
+                      </div>
+                    ) : alreadyBuzzed ? (
+                      <span style={{ fontSize: '12px', color: '#9ca3af', fontFamily: 'Orbitron, monospace' }}>Sent</span>
+                    ) : (
+                      <button onClick={() => handleSendBuzz(nearbyUser.id)} className="send-btn" disabled={loading} style={{ background: 'rgba(0, 0, 0, 0.4)', border: '2px solid #ff00ff', color: '#ff00ff', fontSize: '12px', padding: '8px 14px', fontFamily: 'Orbitron, monospace', fontWeight: 'bold', boxShadow: '0 0 10px rgba(255, 0, 255, 0.3)' }}>Show interest</button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {view === 'buzzes' && (
+        <div className="improvement-content">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+            <button onClick={() => setView('main')} className="back-btn">← Back</button>
+            <h3 style={{ margin: 0, fontSize: '18px' }}>My Buzzes</h3>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            {buzzes.received.length > 0 && (
+              <div>
+                <h4 style={{ fontSize: '14px', marginBottom: '8px', color: '#00d4ff', fontFamily: 'Orbitron, monospace' }}>Received ({buzzes.received.length})</h4>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  {buzzes.received.map((buzz) => (
+                    <div key={buzz.id} style={{ padding: '12px', border: '2px solid rgba(0, 212, 255, 0.3)', borderRadius: '12px', background: 'rgba(0, 0, 0, 0.4)', display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                      <div style={{ width: '48px', height: '48px', borderRadius: '50%', overflow: 'hidden', border: '2px solid rgba(255, 0, 255, 0.5)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(255, 0, 255, 0.1)' }}>
+                        {buzz.fromUserProfilePicture ? (
+                          <img src={buzz.fromUserProfilePicture} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        ) : (
+                          <span style={{ fontSize: '20px', color: '#ff00ff' }}>?</span>
+                        )}
+                      </div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                        <button onClick={() => handleRespondBuzz(buzz.id, 'accepted')} className="send-btn" disabled={loading} style={{ background: 'rgba(16, 185, 129, 0.2)', border: '2px solid #10b981', color: '#10b981', fontSize: '11px', padding: '6px 10px', fontFamily: 'Orbitron, monospace', fontWeight: 'bold' }}>Yes</button>
+                        <button onClick={() => handleRespondBuzz(buzz.id, 'rejected')} className="send-btn" disabled={loading} style={{ background: 'rgba(239, 68, 68, 0.2)', border: '2px solid #ef4444', color: '#ef4444', fontSize: '11px', padding: '6px 10px', fontFamily: 'Orbitron, monospace', fontWeight: 'bold' }}>No</button>
+                        <button onClick={() => handleRespondBuzz(buzz.id, 'talk_later')} className="send-btn" disabled={loading} style={{ background: 'rgba(245, 158, 11, 0.2)', border: '2px solid #f59e0b', color: '#f59e0b', fontSize: '11px', padding: '6px 10px', fontFamily: 'Orbitron, monospace', fontWeight: 'bold' }}>Talk later</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {buzzes.sent.length > 0 && (
+              <div>
+                <h4 style={{ fontSize: '14px', marginBottom: '8px', color: '#ff00ff', fontFamily: 'Orbitron, monospace' }}>Sent ({buzzes.sent.length})</h4>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {buzzes.sent.map((buzz) => (
+                    <div key={buzz.id} style={{ padding: '12px', border: '2px solid rgba(255, 0, 255, 0.3)', borderRadius: '8px', background: 'rgba(0, 0, 0, 0.4)', boxShadow: '0 0 15px rgba(255, 0, 255, 0.2)' }}>
+                      <p style={{ margin: 0, fontSize: '12px', color: '#fff', fontFamily: 'Orbitron, monospace' }}>
+                        Status: <span style={{
+                          color: buzz.status === 'accepted' || buzz.status === 'talk_later' ? '#10b981' : buzz.status === 'rejected' ? '#ef4444' : '#ff00ff',
+                          textShadow: buzz.status === 'accepted' || buzz.status === 'talk_later' ? '0 0 10px rgba(16, 185, 129, 0.6)' : buzz.status === 'rejected' ? '0 0 10px rgba(239, 68, 68, 0.6)' : '0 0 10px rgba(255, 0, 255, 0.6)',
+                        }}>
+                          {buzz.status === 'talk_later' ? 'Talk later' : buzz.status}
+                        </span>
+                      </p>
+                      {buzz.status === 'rejected' && buzz.comfortingMessageForSender && (
+                        <p style={{ margin: '8px 0 0', fontSize: '12px', color: '#ff00ff', fontFamily: 'Orbitron, monospace', fontStyle: 'italic' }}>{buzz.comfortingMessageForSender}</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {buzzes.received.length === 0 && buzzes.sent.length === 0 && (
+              <p style={{ textAlign: 'center', color: '#9ca3af', padding: '20px', fontFamily: 'Orbitron, monospace' }}>
+                No buzzes yet. Start buzzing nearby users!
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default ConnectionsWidget;

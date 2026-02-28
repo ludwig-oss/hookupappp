@@ -1,0 +1,146 @@
+.photo-verification-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10001;
+  padding: 16px;
+  box-sizing: border-box;
+}
+
+.photo-verification-modal {
+  background: linear-gradient(160deg, #1a0a14 0%, #0d1a1a 100%);
+  border: 2px solid rgba(0, 212, 255, 0.5);
+  border-radius: 16px;
+  max-width: 420px;
+  width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+  padding: 24px;
+  position: relative;
+  color: #e8e0e8;
+  box-shadow: 0 0 30px rgba(0, 212, 255, 0.2);
+}
+
+.photo-verification-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(0, 212, 255, 0.5);
+  color: #e8e0e8;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  font-size: 22px;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.photo-verification-title {
+  margin: 0 0 8px;
+  font-size: 1.25rem;
+  color: #00d4ff;
+}
+
+.photo-verification-subtitle {
+  margin: 0 0 16px;
+  font-size: 0.9rem;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.photo-verification-error {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  background: rgba(239, 68, 68, 0.2);
+  border: 1px solid rgba(239, 68, 68, 0.5);
+  border-radius: 8px;
+  color: #fca5a5;
+  font-size: 0.9rem;
+}
+
+.photo-verification-loading {
+  color: #9ca3af;
+  margin: 24px 0;
+}
+
+.photo-verification-video-wrap {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 4/3;
+  background: #000;
+  border-radius: 12px;
+  overflow: hidden;
+  margin-bottom: 12px;
+  border: 2px solid rgba(0, 212, 255, 0.3);
+}
+
+.photo-verification-video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scaleX(-1);
+}
+
+.photo-verification-step-badge {
+  position: absolute;
+  bottom: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 6px 12px;
+  background: rgba(0, 0, 0, 0.75);
+  border: 1px solid rgba(0, 212, 255, 0.6);
+  border-radius: 8px;
+  color: #00d4ff;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.photo-verification-instruction {
+  margin: 0 0 16px;
+  font-size: 0.9rem;
+  color: rgba(255, 255, 255, 0.9);
+  text-align: center;
+}
+
+.photo-verification-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: center;
+  margin-bottom: 16px;
+}
+
+.photo-verification-btn {
+  padding: 12px 24px;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 0.95rem;
+  cursor: pointer;
+  border: 2px solid transparent;
+}
+
+.photo-verification-btn.primary {
+  background: linear-gradient(135deg, #059669, #10b981);
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.photo-verification-btn.primary:hover:not(:disabled) {
+  box-shadow: 0 0 20px rgba(16, 185, 129, 0.5);
+}
+
+.photo-verification-btn.secondary {
+  background: transparent;
+  border-color: rgba(0, 212, 255, 0.5);
+  color: #00d4ff;
+}
+
+.photo-verification-privacy {
+  margin: 0;
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.5);
+}

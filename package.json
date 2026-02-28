@@ -1,0 +1,28 @@
+{
+  "name": "auth-web-app",
+  "version": "1.0.0",
+  "description": "Full-stack web application with authentication",
+  "scripts": {
+    "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
+    "dev:server": "cd server && npm run dev",
+    "dev:client": "cd client && npm run dev",
+    "install:all": "npm install && cd server && npm install && cd ../client && npm install",
+    "build": "npm run build:client && npm run build:server",
+    "build:client": "cd client && npm run build",
+    "build:server": "cd server && npm run build",
+    "start": "cd server && node dist/index.js",
+    "pack": "node scripts/pack.js",
+    "pack:full": "npm run build && node scripts/pack.js"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
+
+
+
+
+
+
+
+

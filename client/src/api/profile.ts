@@ -1,6 +1,7 @@
 import axios from 'axios';
+import { API_BASE } from './config';
 
-const API_URL = '/api/profile';
+const API_URL = API_BASE + '/api/profile';
 
 function getAuthHeaders(): Record<string, string> {
   const token = typeof localStorage !== 'undefined' ? localStorage.getItem('token') : null;

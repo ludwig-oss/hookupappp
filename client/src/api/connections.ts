@@ -1,6 +1,7 @@
 import axios from 'axios';
+import { API_BASE } from './config';
 
-const API_URL = '/api/connections';
+const API_URL = API_BASE + '/api/connections';
 
 export type BuzzStatus = 'pending' | 'accepted' | 'rejected' | 'talk_later';
 

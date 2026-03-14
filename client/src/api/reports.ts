@@ -1,6 +1,7 @@
 import axios from 'axios';
+import { API_BASE } from './config';
 
-const API_URL = '/api/reports';
+const API_URL = API_BASE + '/api/reports';
 
 export type ReportCategory = 'harassment' | 'fake' | 'inappropriate' | 'spam' | 'scam' | 'underage' | 'violence' | 'other';
 

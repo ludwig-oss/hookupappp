@@ -1,6 +1,7 @@
 import axios from 'axios';
+import { API_BASE } from './config';
 
-const API_URL = '/api/chat-engagement';
+const API_URL = API_BASE + '/api/chat-engagement';
 
 export interface ProofOfLove {
   id: string;

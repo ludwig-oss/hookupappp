@@ -1,6 +1,7 @@
 import axios from 'axios';
+import { API_BASE } from './config';
 
-const API_URL = '/api/premium';
+const API_URL = API_BASE + '/api/premium';
 
 export type PremiumPlanType = 'monthly' | 'yearly' | 'lifetime';
 

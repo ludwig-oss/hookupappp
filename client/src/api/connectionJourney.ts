@@ -1,6 +1,7 @@
 import axios from 'axios';
+import { API_BASE } from './config';
 
-const API_URL = '/api/connection-journey';
+const API_URL = API_BASE + '/api/connection-journey';
 
 export interface ConnectionJourneyStepInfo {
   id: string;

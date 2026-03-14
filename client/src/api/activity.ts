@@ -1,6 +1,7 @@
 import axios from 'axios';
+import { API_BASE } from './config';
 
-const API_URL = '/api/activity';
+const API_URL = API_BASE + '/api/activity';
 
 export interface Interest {
   id: string;

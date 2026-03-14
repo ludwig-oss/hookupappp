@@ -1,6 +1,7 @@
 import axios from 'axios';
+import { API_BASE } from './config';
 
-const API_URL = '/api/nearby';
+const API_URL = API_BASE + '/api/nearby';
 
 export interface NearbyUser {
   id: string;

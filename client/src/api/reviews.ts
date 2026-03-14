@@ -1,6 +1,7 @@
 import axios from 'axios';
+import { API_BASE } from './config';
 
-const API_URL = '/api/reviews';
+const API_URL = API_BASE + '/api/reviews';
 
 export const REVIEW_ATTRIBUTE_LABELS: Record<string, string> = {
   personality: 'Personality',

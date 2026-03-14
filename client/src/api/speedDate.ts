@@ -1,6 +1,7 @@
 import axios from 'axios';
+import { API_BASE } from './config';
 
-const API_URL = '/api/speed-date';
+const API_URL = API_BASE + '/api/speed-date';
 
 export interface SpeedDateSchedule {
   day1Type: 'chat' | 'video';

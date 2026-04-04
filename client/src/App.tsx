@@ -22,6 +22,15 @@ import { profileAPI } from './api/profile';
 import { settingsAPI } from './api/settings';
 import { setStoredLanguage } from './i18n/languageStorage';
 
+function isPlainObject(v: unknown): v is Record<string, any> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+
+function isValidUserShape(v: unknown): v is { id: string; profileSetupComplete?: boolean } {
+  if (!isPlainObject(v)) return false;
+  return typeof v.id === 'string' && v.id.length > 0;
+}
+
 function App() {
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -35,7 +44,14 @@ function App() {
         axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
       }
       if (token && userData) {
-        setUser(JSON.parse(userData));
+        const parsed = JSON.parse(userData);
+        if (isValidUserShape(parsed)) {
+          setUser(parsed);
+        } else {
+          localStorage.removeItem('token');
+          localStorage.removeItem('user');
+          delete axios.defaults.headers.common['Authorization'];
+        }
       }
     } catch {
       localStorage.removeItem('token');
@@ -55,6 +71,15 @@ function App() {
       settingsAPI.getSettings().catch(() => null),
     ])
       .then(([fullProfile, settingsRes]) => {
+        if (!isValidUserShape(fullProfile)) {
+          // If the API returned HTML/string/invalid data, avoid crashing the app.
+          localStorage.removeItem('token');
+          localStorage.removeItem('user');
+          delete axios.defaults.headers.common['Authorization'];
+          setUser(null);
+          hasRefreshedProfile.current = false;
+          return;
+        }
         setUser(fullProfile);
         localStorage.setItem('user', JSON.stringify(fullProfile));
         if (settingsRes?.settings?.localization?.language) {
@@ -65,6 +90,9 @@ function App() {
   }, [loading, user?.id]);
 
   const login = (userData: any, token: string) => {
+    if (!isValidUserShape(userData) || typeof token !== 'string' || !token) {
+      return;
+    }
     setUser(userData);
     localStorage.setItem('token', token);
     localStorage.setItem('user', JSON.stringify(userData));

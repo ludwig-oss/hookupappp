@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { API_BASE } from './config';
+import { DEFAULT_IMPROVEMENT_CATEGORIES } from '../constants/improvementCategories';
 
 const API_URL = API_BASE + '/api/improvement';
 
@@ -88,10 +89,18 @@ export interface GuideRequest {
 
 export const improvementAPI = {
   getCategories: async (): Promise<{ categories: ImprovementCategory[] }> => {
-    const response = await axios.get(`${API_URL}/categories`, {
-      timeout: 10000, // 10 second timeout
-    });
-    return response.data;
+    try {
+      const response = await axios.get(`${API_URL}/categories`, {
+        timeout: 10000,
+      });
+      const list = response.data?.categories;
+      if (Array.isArray(list) && list.length > 0) {
+        return { categories: list };
+      }
+    } catch {
+      // Vercel / missing VITE_API_URL / CORS / backend down — use bundled list (same ids as server)
+    }
+    return { categories: DEFAULT_IMPROVEMENT_CATEGORIES };
   },
 
   applyAsGuide: async (data: {

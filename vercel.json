@@ -2,5 +2,9 @@
   "buildCommand": "npm run install:all && cd client && npm run build:skip-typecheck",
   "outputDirectory": "client/dist",
   "framework": null,
-  "installCommand": "npm install"
+  "installCommand": "npm install",
+  "rewrites": [
+    { "source": "/api/:path*", "destination": "/api/p/:path*" },
+    { "source": "/(.*)", "destination": "/index.html" }
+  ]
 }

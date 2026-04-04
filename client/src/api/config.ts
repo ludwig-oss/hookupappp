@@ -1,5 +1,16 @@
 /**
- * When the app is on Vercel, set VITE_API_URL to your backend URL (e.g. Render).
- * Leave empty for local dev (Vite proxy forwards /api to backend).
+ * Local dev: leave empty — Vite proxy forwards /api to the server.
+ * Vercel: leave empty if you set BACKEND_URL (API is proxied via /api → serverless).
+ * Or set VITE_API_URL to call the backend directly (must match CORS on the server).
  */
-export const API_BASE = import.meta.env.VITE_API_URL ?? '';
+function normalizeApiBase(raw: string | undefined): string {
+  const s = (raw ?? '').trim();
+  if (!s) return '';
+  return s.replace(/\/+$/, '');
+}
+
+// On Vercel, same-origin `/api/...` is rewritten to `api/p/*` and proxied to BACKEND_URL.
+// For local dev, Vite will forward `/api` to your backend.
+export const API_BASE = import.meta.env.PROD
+  ? normalizeApiBase(import.meta.env.VITE_API_URL) || ''
+  : '';

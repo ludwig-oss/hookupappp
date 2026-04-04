@@ -14,6 +14,9 @@
     "pack": "node scripts/pack.js",
     "pack:full": "npm run build && node scripts/pack.js"
   },
+  "dependencies": {
+    "@vercel/node": "^3.2.29"
+  },
   "devDependencies": {
     "concurrently": "^8.2.2"
   }

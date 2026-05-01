@@ -1,9 +1,10 @@
 {
   "version": 2,
-  "buildCommand": "npm run install:all && cd client && npm run build:skip-typecheck",
-  "outputDirectory": "client/dist",
   "framework": null,
-  "installCommand": "npm install",
+  "builds": [
+    { "src": "api/p/[...path].js", "use": "@vercel/node" },
+    { "src": "client/package.json", "use": "@vercel/static-build", "config": { "distDir": "dist" } }
+  ],
   "routes": [
     { "src": "/api/(.*)", "dest": "/api/p/$1" },
     { "handle": "filesystem" },

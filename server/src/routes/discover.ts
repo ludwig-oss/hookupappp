@@ -21,16 +21,18 @@ router.get('/cities', getAllCities);
 router.get('/city', searchByCity);
 router.get('/places', searchPlaces);
 
-// Protected routes (email verification required for matching / interests)
+// Authenticated routes (signup onboarding can set preferences before email/phone verification)
 router.use(authenticateToken);
+router.post('/preference', setPreference);
+router.get('/preference', getMyPreference);
+
+// Email verification required for matching, interests, and place-based discovery
 router.use(requireEmailVerified);
 
 router.get('/matches', getMatches);
 router.post('/interest', showInterest);
 router.get('/interests', getMyInterests);
 router.post('/interest/respond', respondInterest);
-router.post('/preference', setPreference);
-router.get('/preference', getMyPreference);
 router.get('/places/:placeId/users', getPlaceUsers);
 
 export default router;

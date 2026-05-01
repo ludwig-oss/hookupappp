@@ -213,7 +213,7 @@ const SignupWithImprovement = () => {
           </div>
         )}
 
-        {step === 1 ? (
+        {step === 1 && (
           <form onSubmit={handleStep1Submit} className="auth-form">
             <div className="form-group">
               <label htmlFor="name">Full Name</label>
@@ -313,7 +313,9 @@ const SignupWithImprovement = () => {
               Continue
             </button>
           </form>
-        ) : (
+        )}
+
+        {step === 2 && (
           <form onSubmit={handleStep2Submit} className="auth-form">
             {loadingCategories ? (
               <div style={{

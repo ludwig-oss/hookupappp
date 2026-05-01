@@ -9,7 +9,7 @@ function normalizeApiBase(raw: string | undefined): string {
   return s.replace(/\/+$/, '');
 }
 
-// On Vercel, same-origin `/api/...` is handled by `api/[...path].js` and proxied to BACKEND_URL.
+// On Vercel, same-origin `/api/...` is proxied by root `middleware.js` to BACKEND_URL.
 // For local dev, Vite will forward `/api` to your backend.
 export const API_BASE = import.meta.env.PROD
   ? normalizeApiBase(import.meta.env.VITE_API_URL) || ''

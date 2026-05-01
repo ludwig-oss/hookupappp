@@ -272,8 +272,18 @@ const SettingsWidgetFull = () => {
     try {
       await settingsAPI.updateSettings({ [section]: data });
       await loadSettings();
-      setSuccess('Settings saved successfully!');
-      setTimeout(() => setSuccess(''), 3000);
+      if (section === 'notifications' && data.push === true) {
+        const { subscribeUserToWebPush } = await import('../../lib/pushNotifications');
+        const ok = await subscribeUserToWebPush();
+        if (!ok) {
+          setSuccess('Settings saved. If you want phone notifications, allow notifications when the browser asks.');
+        } else {
+          setSuccess('Settings saved — this device is subscribed for push.');
+        }
+      } else {
+        setSuccess('Settings saved successfully!');
+      }
+      setTimeout(() => setSuccess(''), 4000);
     } catch (err: any) {
       setError(err.response?.data?.error || 'Failed to save settings');
     } finally {
@@ -690,6 +700,25 @@ const SettingsWidgetFull = () => {
               <input type="checkbox" checked={settings.notifications.push} onChange={(e) => handleSaveSettings('notifications', { ...settings.notifications, push: e.target.checked })} style={{ width: '20px', height: '20px', cursor: 'pointer' }} />
               <span style={{ fontWeight: 600 }}>Push Notifications</span>
             </label>
+            <button
+              type="button"
+              className="back-btn"
+              style={{ marginTop: '10px', marginLeft: '28px' }}
+              onClick={async () => {
+                setLoading(true);
+                setError('');
+                try {
+                  const { subscribeUserToWebPush } = await import('../../lib/pushNotifications');
+                  const ok = await subscribeUserToWebPush();
+                  setSuccess(ok ? 'This device can receive phone-style notifications.' : 'Could not enable push — allow notifications in the browser and ensure the server has VAPID keys set.');
+                  setTimeout(() => setSuccess(''), 5000);
+                } finally {
+                  setLoading(false);
+                }
+              }}
+            >
+              Register this phone / browser for alerts
+            </button>
           </div>
 
           <div className="form-group" style={{ marginBottom: '20px' }}>
@@ -718,6 +747,36 @@ const SettingsWidgetFull = () => {
               <input type="checkbox" checked={settings.notifications.likes} onChange={(e) => handleSaveSettings('notifications', { ...settings.notifications, likes: e.target.checked })} style={{ width: '20px', height: '20px', cursor: 'pointer' }} />
               <span style={{ fontWeight: 600 }}>Likes</span>
             </label>
+          </div>
+
+          <div className="form-group" style={{ marginBottom: '20px' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={settings.notifications.interestAlerts !== false}
+                onChange={(e) => handleSaveSettings('notifications', { ...settings.notifications, interestAlerts: e.target.checked })}
+                style={{ width: '20px', height: '20px', cursor: 'pointer' }}
+              />
+              <span style={{ fontWeight: 600 }}>Interest requests (Discover)</span>
+            </label>
+            <p style={{ margin: '6px 0 0 28px', fontSize: '12px', color: '#6b7280' }}>
+              Notify when someone sends you an interest. They have 24 hours to wait for your reply before it expires.
+            </p>
+          </div>
+
+          <div className="form-group" style={{ marginBottom: '20px' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={settings.notifications.interestVibrate !== false}
+                onChange={(e) => handleSaveSettings('notifications', { ...settings.notifications, interestVibrate: e.target.checked })}
+                style={{ width: '20px', height: '20px', cursor: 'pointer' }}
+              />
+              <span style={{ fontWeight: 600 }}>Vibrate for interest alerts</span>
+            </label>
+            <p style={{ margin: '6px 0 0 28px', fontSize: '12px', color: '#6b7280' }}>
+              Short vibration pattern on supported phones when an interest push arrives (only if push notifications are on).
+            </p>
           </div>
 
           <div className="form-group" style={{ marginBottom: '20px' }}>

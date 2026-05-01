@@ -10,9 +10,10 @@ import {
   getPlacesNearby,
   addPlace,
 } from '../models/discover.js';
-import { notifyNewMatch } from '../realtime/notifications.js';
+import { notifyNewMatch, notifyNewInterest } from '../realtime/notifications.js';
 import { sendPushToUser } from '../realtime/push.js';
 import { getAllUsers, getUserById } from '../models/user.js';
+import { getUserSettings } from '../models/settings.js';
 import { maskUserForViewer } from '../lib/celebMask.js';
 
 export async function getAllCities(req: Request, res: Response) {
@@ -149,6 +150,30 @@ export async function showInterest(req: Request, res: Response) {
       placeType,
     });
 
+    notifyNewInterest(toUserId, { fromUserId: userId, interestId: interest.id });
+
+    try {
+      const toSettings = await getUserSettings(toUserId);
+      const fromUser = await getUserById(userId);
+      if (toSettings.notifications.push && toSettings.notifications.interestAlerts) {
+        const vibrateOn = toSettings.notifications.interestVibrate !== false;
+        await sendPushToUser(toUserId, {
+          title: 'Someone is interested in you',
+          body: fromUser
+            ? `${fromUser.name} sent you an interest — you have 24 hours to respond`
+            : 'Open the app to accept or decline (24 hours)',
+          data: {
+            type: 'new_interest',
+            interestId: interest.id,
+            fromUserId: userId,
+            vibrate: vibrateOn ? '1' : '0',
+          },
+        });
+      }
+    } catch {
+      /* push optional */
+    }
+
     res.json({ interest });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -195,7 +220,7 @@ export async function respondInterest(req: Request, res: Response) {
     const interest = await respondToInterest(interestId, userId, response, message);
 
     if (!interest) {
-      return res.status(404).json({ error: 'Interest not found' });
+      return res.status(404).json({ error: 'Interest not found, already handled, or expired (24h)' });
     }
 
     if (response === 'accepted') {

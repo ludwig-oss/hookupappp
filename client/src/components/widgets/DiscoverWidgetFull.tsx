@@ -480,7 +480,13 @@ const DiscoverWidgetFull = () => {
             {interests.received.length > 0 ? (
               <div className="buzz-list">
                 {interests.received.map((interest) => {
-                  const expiresIn = Math.max(0, Math.floor((new Date(interest.expiresAt).getTime() - Date.now()) / (1000 * 60 * 60)));
+                  const msLeft = Math.max(0, new Date(interest.expiresAt).getTime() - Date.now());
+                  const timeLeftLabel =
+                    msLeft <= 0
+                      ? 'Expired'
+                      : msLeft < 60 * 60 * 1000
+                        ? `${Math.max(1, Math.ceil(msLeft / 60000))} min left`
+                        : `${Math.floor(msLeft / 3600000)}h ${Math.floor((msLeft % 3600000) / 60000)}m left (24h max)`;
                   return (
                     <div key={interest.id} className="buzz-item">
                       <div style={{ flex: 1 }}>
@@ -488,7 +494,7 @@ const DiscoverWidgetFull = () => {
                           Someone showed interest in you {interest.city ? `in ${interest.city}` : ''}
                         </p>
                         <p style={{ margin: '4px 0 0', color: '#9ca3af', fontSize: '12px' }}>
-                          Expires in {expiresIn} hours
+                          {timeLeftLabel} — accept or decline or it disappears
                         </p>
                       </div>
                       <div className="buzz-actions">

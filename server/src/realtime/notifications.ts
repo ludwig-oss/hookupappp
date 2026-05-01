@@ -58,6 +58,14 @@ export function notifyNewMatch(recipientUserId: string, payload: { fromUserId: s
   list.forEach((res) => sendEvent(res, 'new_match', data));
 }
 
+/** Someone sent an interest request (Discover). Recipient has 24h to respond. */
+export function notifyNewInterest(recipientUserId: string, payload: { fromUserId: string; interestId: string }): void {
+  const list = connections.get(recipientUserId);
+  if (!list?.length) return;
+  const data = { type: 'new_interest', ...payload };
+  list.forEach((res) => sendEvent(res, 'new_interest', data));
+}
+
 /** Send a keep-alive comment so the connection is not dropped by proxies. */
 export function keepAlive(): void {
   connections.forEach((list) => {

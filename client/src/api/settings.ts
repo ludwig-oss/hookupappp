@@ -11,6 +11,8 @@ export interface UserSettings {
     messages: boolean;
     matches: boolean;
     likes: boolean;
+    interestAlerts?: boolean;
+    interestVibrate?: boolean;
     sound: boolean;
     quietHours: { enabled: boolean; start: string; end: string };
   };

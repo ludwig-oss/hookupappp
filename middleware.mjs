@@ -1,6 +1,6 @@
 /**
- * Edge middleware: proxy /api/* → BACKEND_URL before static SPA rewrites.
- * Set BACKEND_URL in Vercel (e.g. https://your-app.onrender.com, no trailing slash).
+ * Edge middleware: proxy /api/* → BACKEND_URL before SPA rewrites.
+ * Use .mjs because repo root package.json is not "type":"module".
  */
 export const config = {
   matcher: '/api/:path*',

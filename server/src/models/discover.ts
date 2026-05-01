@@ -104,7 +104,7 @@ export async function createInterest(interest: Omit<Interest, 'id' | 'createdAt'
     id: Date.now().toString(),
     status: 'pending',
     createdAt: new Date(),
-    expiresAt: new Date(Date.now() + 48 * 60 * 60 * 1000), // 48 hours
+    expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 hours to accept or decline
   };
   interests.push(newInterest);
   await writeInterests(interests);
@@ -132,9 +132,16 @@ export async function getInterestsForUser(userId: string): Promise<{ sent: Inter
 
 export async function respondToInterest(interestId: string, userId: string, response: 'accepted' | 'rejected', message?: string): Promise<Interest | null> {
   const interests = await readInterests();
+  const now = new Date();
   const interest = interests.find(i => i.id === interestId && i.toUserId === userId);
   
   if (!interest || interest.status !== 'pending') {
+    return null;
+  }
+
+  if (new Date(interest.expiresAt) < now) {
+    interest.status = 'expired';
+    await writeInterests(interests);
     return null;
   }
   

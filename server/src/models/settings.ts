@@ -9,6 +9,10 @@ export interface UserSettings {
     messages: boolean;
     matches: boolean;
     likes: boolean;
+    /** Interest requests (someone tapped interest in Discover). */
+    interestAlerts: boolean;
+    /** Vibration pattern for interest push (user can turn off). */
+    interestVibrate: boolean;
     sound: boolean;
     quietHours: { enabled: boolean; start: string; end: string };
   };
@@ -79,6 +83,8 @@ const defaultSettings: Omit<UserSettings, 'userId'> = {
     messages: true,
     matches: true,
     likes: true,
+    interestAlerts: true,
+    interestVibrate: true,
     sound: true,
     quietHours: { enabled: false, start: '22:00', end: '08:00' },
   },
@@ -133,6 +139,9 @@ export async function getUserSettings(userId: string): Promise<UserSettings> {
     if (userSettings.privacy && (userSettings.privacy as any).showProfilePicture === undefined) {
       (userSettings.privacy as any).showProfilePicture = true;
     }
+    const n = userSettings.notifications;
+    if (n.interestAlerts === undefined) n.interestAlerts = defaultSettings.notifications.interestAlerts;
+    if (n.interestVibrate === undefined) n.interestVibrate = defaultSettings.notifications.interestVibrate;
     return userSettings;
   }
   

@@ -1,10 +1,19 @@
 import express from 'express';
 import jwt from 'jsonwebtoken';
 import { subscribe } from '../realtime/notifications.js';
-import { addPushSubscription } from '../realtime/push.js';
+import { addPushSubscription, isPushConfigured } from '../realtime/push.js';
 import { authenticateToken } from '../middleware/auth.js';
 
 const router = express.Router();
+
+/** Public VAPID key for Web Push subscription in the browser (no auth). */
+router.get('/vapid-public', (_req, res) => {
+  const publicKey = process.env.VAPID_PUBLIC_KEY;
+  if (!publicKey || !isPushConfigured()) {
+    return res.status(503).json({ error: 'Web Push is not configured on this server (set VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY).' });
+  }
+  res.json({ publicKey });
+});
 
 function getJwtSecret(): string {
   const secret = process.env.JWT_SECRET;

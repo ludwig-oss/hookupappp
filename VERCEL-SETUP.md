@@ -41,10 +41,12 @@ Use the **exact** URL from GitHub: repo page → green **Code** → copy **HTTPS
 1. Go to [vercel.com](https://vercel.com) and sign in with **GitHub**.
 2. **Add New** → **Project** → import the **same GitHub repo**.
 3. Vercel will use the repo root and `vercel.json`. Do **not** set Root to `client`.
-4. **Environment Variables** (before deploying):
-   - **Name:** `VITE_API_URL`  
-   - **Value:** your Render backend URL from Step 2 (e.g. `https://aswp-xxxx.onrender.com`)  
-   - No trailing slash.
+4. **Environment Variables** (before deploying) — pick **one** approach:
+   - **Recommended (signup & API work without CORS issues):**  
+     - **Name:** `BACKEND_URL`  
+     - **Value:** your Render URL (e.g. `https://aswp-xxxx.onrender.com`) — **no trailing slash**  
+     - Leave `VITE_API_URL` **unset** so the browser uses same-origin `/api/...` and Vercel proxies to Render.
+   - **Alternative:** set **only** `VITE_API_URL` to the same Render URL (browser calls Render directly; you **must** set `FRONTEND_URL` on Render for CORS).
 5. Click **Deploy**. Wait for the build to finish.
 6. Copy your **frontend URL** (e.g. `https://aswp.vercel.app`).
 
@@ -67,7 +69,7 @@ Use the **exact** URL from GitHub: repo page → green **Code** → copy **HTTPS
 
 ## If something breaks
 
-- **“Network Error” or API fails:** Check **VITE_API_URL** on Vercel = exact Render URL (https, no slash at end). Check **FRONTEND_URL** on Render = exact Vercel URL.
+- **“Network Error” or API fails:** Set **`BACKEND_URL`** on Vercel to your Render URL (no trailing slash), or set **VITE_API_URL** and **FRONTEND_URL** on Render. If signup returns HTML errors, ensure you redeployed after the API proxy `vercel.json` change.
 - **CORS error:** Backend must have **FRONTEND_URL** set to your Vercel domain.
 - **Build fails on Vercel:** Ensure repo has `vercel.json` at root and `package.json` at root. No need for `next.config.js` (this is Vite).
 
@@ -77,7 +79,7 @@ Use the **exact** URL from GitHub: repo page → green **Code** → copy **HTTPS
 
 | Where   | What to set        | Example                          |
 |--------|--------------------|-----------------------------------|
-| Vercel | `VITE_API_URL`     | `https://aswp-xxxx.onrender.com` |
+| Vercel | `BACKEND_URL` (recommended) or `VITE_API_URL` | `https://aswp-xxxx.onrender.com` |
 | Render | `FRONTEND_URL`     | `https://aswp.vercel.app`       |
 | Render | `JWT_SECRET`       | long random string               |
 | Render | `NODE_ENV`         | `production`                     |

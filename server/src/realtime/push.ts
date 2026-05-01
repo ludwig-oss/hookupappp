@@ -73,11 +73,12 @@ export async function sendPushToUser(
   const mailto = process.env.VAPID_MAILTO || 'mailto:support@example.com';
   webPush.default.setVapidDetails(mailto, vapidPublic, vapidPrivate);
 
-  const payloadStr = JSON.stringify({
+  const payloadObj: Record<string, string> = {
     title: payload.title,
-    body: payload.body,
-    ...payload.data,
-  });
+    ...(payload.body != null && payload.body !== '' ? { body: payload.body } : {}),
+    ...(payload.data || {}),
+  };
+  const payloadStr = JSON.stringify(payloadObj);
 
   for (const sub of list) {
     try {

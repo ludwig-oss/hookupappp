@@ -1,2 +1,0 @@
-# SPA: serve index.html for all routes so Netlify doesn't show "Page not found"
-/*    /index.html   200

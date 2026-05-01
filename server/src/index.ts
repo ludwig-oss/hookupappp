@@ -61,10 +61,35 @@ if (isProduction && !process.env.JWT_SECRET) {
   process.exit(1);
 }
 
-app.use(cors({
-  origin: isProduction && frontendUrl ? frontendUrl : true,
-  credentials: true,
-}));
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      if (!isProduction) {
+        callback(null, true);
+        return;
+      }
+      if (!origin) {
+        callback(null, true);
+        return;
+      }
+      try {
+        const host = new URL(origin).hostname;
+        if (frontendUrl && origin === frontendUrl) {
+          callback(null, true);
+          return;
+        }
+        if (host === 'localhost' || host.endsWith('.vercel.app')) {
+          callback(null, true);
+          return;
+        }
+        callback(new Error('Not allowed by CORS'));
+      } catch {
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
+    credentials: true,
+  })
+);
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 

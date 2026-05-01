@@ -124,7 +124,14 @@ const SignupWithImprovement = () => {
         setStep(3);
       }
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Signup failed. Please try again.');
+      const d = err.response?.data;
+      const msg =
+        typeof d === 'string'
+          ? d
+          : d && typeof d === 'object'
+            ? String(d.error || d.message || '')
+            : String(err.message || '');
+      setError(msg || 'Signup failed. Please try again.');
     } finally {
       setLoading(false);
     }

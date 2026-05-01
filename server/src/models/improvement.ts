@@ -300,10 +300,19 @@ export async function getGuidesByCategory(category: string): Promise<Guide[]> {
   return guides.filter(g => g.categories.includes(category) && g.isActive);
 }
 
+/** Case-insensitive region match; empty guide region or Global counts as worldwide. */
+export function matchesRegionFilter(guideRegion: string | undefined | null, filter: string | undefined | null): boolean {
+  const f = (filter || '').trim().toLowerCase();
+  if (!f) return true;
+  const g = (guideRegion || '').trim().toLowerCase();
+  if (!g || g === 'global') return true;
+  return g === f || g.includes(f) || f.includes(g);
+}
+
 export async function getGuidesByCategoryAndRegion(category: string, region?: string): Promise<Guide[]> {
   const guides = await readGuides();
   return guides
-    .filter(g => g.categories.includes(category) && g.isActive && (!region || g.region === region))
+    .filter(g => g.categories.includes(category) && g.isActive && matchesRegionFilter(g.region, region))
     .sort((a, b) => b.rating - a.rating);
 }
 
@@ -312,7 +321,7 @@ export async function getGuidesRecommended(categoryIds: string[], region?: strin
   const guides = await readGuides();
   const set = new Set(categoryIds);
   return guides
-    .filter(g => g.isActive && g.categories.some(c => set.has(c)) && (!region || g.region === region))
+    .filter(g => g.isActive && g.categories.some(c => set.has(c)) && matchesRegionFilter(g.region, region))
     .sort((a, b) => b.rating - a.rating);
 }
 

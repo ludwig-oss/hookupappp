@@ -14,6 +14,7 @@ import {
   getGuidesRecommended,
   getGuidesByProblemSearch,
   getAllGuides,
+  matchesRegionFilter,
   addAvailability,
   getAvailability,
   createBooking,
@@ -244,7 +245,7 @@ export const searchGuidesByProblem = async (req: Request, res: Response) => {
     if (!q) return res.status(400).json({ error: 'Search query q is required' });
 
     const guides = await getGuidesByProblemSearch(q);
-    const filtered = region ? guides.filter(g => g.region === region) : guides;
+    const filtered = region ? guides.filter(g => matchesRegionFilter(g.region, region)) : guides;
     const guidesWithUsers = await Promise.all(
       filtered.map(async (guide) => {
         const u = await getUserById(guide.userId);

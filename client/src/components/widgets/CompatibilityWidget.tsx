@@ -31,9 +31,20 @@ function getProofHint(categoryId: string): string {
   return hints[categoryId] || 'Provide proof of expertise (e.g. credentials, social proof, or photos if applicable) and that it\'s really you.';
 }
 
+type GuideSeekStep = 'choose' | 'region' | 'ready' | 'skipped';
+
+function clipText(text: string, max: number): string {
+  const t = (text || '').trim();
+  if (t.length <= max) return t;
+  return `${t.slice(0, max - 1)}…`;
+}
+
 export default function CompatibilityWidget() {
   const { user } = useContext(AuthContext);
   const [view, setView] = useState<'main' | 'recommended' | 'search' | 'guides' | 'request' | 'send_proof' | 'booking' | 'expert_apply' | 'expert_dashboard'>('main');
+  /** Wizard: want a guide → region → browse areas & pick an expert */
+  const [guideSeekStep, setGuideSeekStep] = useState<GuideSeekStep>('choose');
+  const [clientRegion, setClientRegion] = useState('');
   const [expertTab, setExpertTab] = useState<'requests' | 'upcoming' | 'previous' | 'availability'>('requests');
   const [myApplication, setMyApplication] = useState<GuideApplication | null>(null);
   const [myGuide, setMyGuide] = useState<Guide | null>(null);
@@ -106,11 +117,18 @@ export default function CompatibilityWidget() {
     }
   };
 
-  const loadRecommended = async () => {
+  const loadRecommended = async (regionFilter?: string | null) => {
     if (!user?.id) return;
     setLoading(true);
     try {
-      const res = await improvementAPI.getRecommendedGuides(user.id);
+      let region: string | undefined;
+      if (regionFilter !== undefined) {
+        region = regionFilter?.trim() ? regionFilter.trim() : undefined;
+      } else {
+        region =
+          guideSeekStep === 'ready' && clientRegion.trim() ? clientRegion.trim() : undefined;
+      }
+      const res = await improvementAPI.getRecommendedGuides(user.id, region);
       setRecommendedGuides(res.guides || []);
     } catch {
       setRecommendedGuides([]);
@@ -133,7 +151,9 @@ export default function CompatibilityWidget() {
     setLoading(true);
     setError('');
     try {
-      const res = await improvementAPI.searchGuidesByProblem(q);
+      const region =
+        guideSeekStep === 'ready' && clientRegion.trim() ? clientRegion.trim() : undefined;
+      const res = await improvementAPI.searchGuidesByProblem(q, region);
       setSearchGuides(res.guides || []);
       setView('search');
     } catch {
@@ -148,7 +168,9 @@ export default function CompatibilityWidget() {
     setSelectedCategory(catId);
     setLoading(true);
     try {
-      const res = await improvementAPI.getGuidesForCategory(catId);
+      const region =
+        guideSeekStep === 'ready' && clientRegion.trim() ? clientRegion.trim() : undefined;
+      const res = await improvementAPI.getGuidesForCategory(catId, region);
       setGuides(res.guides || []);
       setView('guides');
     } catch {
@@ -373,6 +395,10 @@ export default function CompatibilityWidget() {
         const needSendProof = accepted && accepted.paymentStatus !== 'sent_pending_confirmation' && accepted.paymentStatus !== 'confirmed';
         const waitingConfirmation = accepted && accepted.paymentStatus === 'sent_pending_confirmation';
         const confirmed = accepted && accepted.paymentStatus === 'confirmed';
+        const expertiseLabels = (guide.categories || [])
+          .map((id) => categories.find((c) => c.id === id)?.name)
+          .filter(Boolean)
+          .slice(0, 6);
         return (
           <div key={guide.id} style={cardStyle()}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
@@ -391,6 +417,40 @@ export default function CompatibilityWidget() {
                 <div style={{ fontSize: '11px', color: '#9ca3af' }}>
                   🌐 {guide.region} &nbsp; ⭐ {typeof guide.rating === 'number' ? guide.rating.toFixed(1) : '0'} &nbsp; {guide.totalSessions || 0} sessions &nbsp; €{guide.sessionPriceEur ?? SESSION_PRICE_EUR}/session
                 </div>
+                {expertiseLabels.length > 0 && (
+                  <div style={{ marginTop: '6px', display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                    {expertiseLabels.map((name) => (
+                      <span
+                        key={`${guide.id}-${name}`}
+                        style={{
+                          fontSize: '10px',
+                          padding: '2px 8px',
+                          borderRadius: '999px',
+                          border: '1px solid rgba(0, 212, 255, 0.45)',
+                          color: '#a5f3fc',
+                        }}
+                      >
+                        {name}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                {(guide.experience || guide.qualifications) && (
+                  <div style={{ marginTop: '8px', fontSize: '11px', color: '#d1d5db', lineHeight: 1.45 }}>
+                    {guide.experience ? (
+                      <div>
+                        <span style={{ color: '#00d4ff' }}>Experience: </span>
+                        {clipText(guide.experience, 160)}
+                      </div>
+                    ) : null}
+                    {guide.qualifications ? (
+                      <div style={{ marginTop: '4px' }}>
+                        <span style={{ color: '#00d4ff' }}>Credentials: </span>
+                        {clipText(guide.qualifications, 160)}
+                      </div>
+                    ) : null}
+                  </div>
+                )}
               </div>
               <div>
                 {pending && <span style={{ fontSize: '12px', color: '#fbbf24' }}>Pending</span>}
@@ -464,8 +524,180 @@ export default function CompatibilityWidget() {
         IMPROVE YOURSELF — EXPERT HELPERS
       </div>
       <div className="compat-status" style={{ marginBottom: '16px', fontSize: '12px', color: '#9ca3af' }}>
-        Best-rated experts by region. Connect with helpers in the areas you chose at signup, or search for your problem.
+        {guideSeekStep === 'ready'
+          ? `Experts matched for ${clientRegion.trim() || 'your region'}. Pick a focus area, then choose a guide by name and expertise.`
+          : guideSeekStep === 'skipped'
+            ? 'Browse by area or search. Experts worldwide — filter by category or problem.'
+            : 'Start by telling us if you want a personal guide, then your region, then the areas you want to improve.'}
       </div>
+
+      {guideSeekStep === 'choose' && (
+        <div
+          style={{
+            marginBottom: '16px',
+            padding: '16px',
+            borderRadius: '12px',
+            border: '2px solid rgba(0, 212, 255, 0.45)',
+            background: 'rgba(0, 0, 0, 0.35)',
+          }}
+        >
+          <div style={{ color: '#00d4ff', fontFamily: 'Orbitron, monospace', fontSize: '13px', marginBottom: '8px' }}>
+            Step 1 — Looking for a guide?
+          </div>
+          <p style={{ fontSize: '13px', color: '#e5e7eb', marginBottom: '14px', lineHeight: 1.5 }}>
+            If you want hands-on help, we’ll ask your country or region next, then the topics you want to work on. Verified
+            experts who cover those areas will appear for you to choose from.
+          </p>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
+            <button
+              type="button"
+              onClick={() => setGuideSeekStep('region')}
+              style={{
+                padding: '12px 18px',
+                background: 'rgba(255, 0, 255, 0.22)',
+                border: '2px solid #ff00ff',
+                borderRadius: '8px',
+                color: '#ff00ff',
+                fontFamily: 'Orbitron, monospace',
+                fontWeight: 'bold',
+                cursor: 'pointer',
+              }}
+            >
+              Yes — find a guide
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setGuideSeekStep('skipped');
+                setClientRegion('');
+              }}
+              style={{
+                padding: '12px 18px',
+                background: 'transparent',
+                border: '2px solid rgba(0, 212, 255, 0.5)',
+                borderRadius: '8px',
+                color: '#00d4ff',
+                fontFamily: 'Orbitron, monospace',
+                cursor: 'pointer',
+              }}
+            >
+              No thanks — browse only
+            </button>
+          </div>
+        </div>
+      )}
+
+      {guideSeekStep === 'region' && (
+        <div
+          style={{
+            marginBottom: '16px',
+            padding: '16px',
+            borderRadius: '12px',
+            border: '2px solid rgba(255, 0, 255, 0.35)',
+            background: 'rgba(0, 0, 0, 0.35)',
+          }}
+        >
+          <div style={{ color: '#ff00ff', fontFamily: 'Orbitron, monospace', fontSize: '13px', marginBottom: '8px' }}>
+            Step 2 — Your country or region
+          </div>
+          <p style={{ fontSize: '12px', color: '#9ca3af', marginBottom: '10px', lineHeight: 1.45 }}>
+            We use this to prioritize experts who serve your area (e.g. Germany, California, UK). Leave blank to see
+            worldwide listings.
+          </p>
+          <input
+            type="text"
+            value={clientRegion}
+            onChange={(e) => setClientRegion(e.target.value)}
+            placeholder="e.g. Germany, UK, California"
+            style={{
+              width: '100%',
+              padding: '12px',
+              marginBottom: '12px',
+              background: 'rgba(0,0,0,0.5)',
+              border: '2px solid rgba(0, 212, 255, 0.5)',
+              borderRadius: '8px',
+              color: '#fff',
+              fontFamily: 'Orbitron, monospace',
+            }}
+          />
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
+            <button
+              type="button"
+              onClick={async () => {
+                setGuideSeekStep('ready');
+                if (user?.id) await loadRecommended(clientRegion);
+              }}
+              style={{
+                padding: '12px 18px',
+                background: 'rgba(0, 212, 255, 0.28)',
+                border: '2px solid #00d4ff',
+                borderRadius: '8px',
+                color: '#00d4ff',
+                fontFamily: 'Orbitron, monospace',
+                fontWeight: 'bold',
+                cursor: 'pointer',
+              }}
+            >
+              Continue — pick focus areas
+            </button>
+            <button
+              type="button"
+              onClick={() => setGuideSeekStep('choose')}
+              style={{
+                padding: '12px 18px',
+                background: 'transparent',
+                border: '2px solid rgba(156, 163, 175, 0.6)',
+                borderRadius: '8px',
+                color: '#9ca3af',
+                fontFamily: 'Orbitron, monospace',
+                cursor: 'pointer',
+              }}
+            >
+              ← Back
+            </button>
+          </div>
+        </div>
+      )}
+
+      {guideSeekStep === 'ready' && (
+        <div
+          style={{
+            marginBottom: '14px',
+            padding: '10px 14px',
+            borderRadius: '10px',
+            background: 'rgba(0, 212, 255, 0.12)',
+            border: '1px solid rgba(0, 212, 255, 0.35)',
+            fontSize: '12px',
+            color: '#a5f3fc',
+            fontFamily: 'Orbitron, monospace',
+            display: 'flex',
+            flexWrap: 'wrap',
+            alignItems: 'center',
+            gap: '10px',
+            justifyContent: 'space-between',
+          }}
+        >
+          <span>
+            Step 3 — Region: <strong style={{ color: '#fff' }}>{clientRegion.trim() || 'Worldwide'}</strong>
+          </span>
+          <button
+            type="button"
+            onClick={() => setGuideSeekStep('region')}
+            style={{
+              padding: '6px 12px',
+              background: 'transparent',
+              border: '1px solid rgba(0, 212, 255, 0.6)',
+              borderRadius: '6px',
+              color: '#00d4ff',
+              cursor: 'pointer',
+              fontFamily: 'Orbitron, monospace',
+              fontSize: '11px',
+            }}
+          >
+            Edit region
+          </button>
+        </div>
+      )}
 
       {myApplication?.status === 'pending' && (
         <div style={{ marginBottom: '12px', padding: '12px', border: '2px solid rgba(251, 191, 36, 0.6)', borderRadius: '10px', background: 'rgba(251, 191, 36, 0.1)', color: '#fbbf24', fontSize: '13px' }}>
@@ -534,7 +766,7 @@ export default function CompatibilityWidget() {
 
       {error && <div className="error-message" style={{ marginBottom: '12px' }}>{error}</div>}
 
-      {view === 'main' && (
+      {view === 'main' && (guideSeekStep === 'ready' || guideSeekStep === 'skipped') && (
         <>
           <div style={{ marginBottom: '16px' }}>
             <label style={{ display: 'block', marginBottom: '8px', color: '#00d4ff', fontSize: '12px', fontFamily: 'Orbitron, monospace' }}>Search by problem</label>
@@ -576,7 +808,9 @@ export default function CompatibilityWidget() {
 
           {user?.improvementCategories && user.improvementCategories.length > 0 && (
             <div style={{ marginBottom: '16px' }}>
-              <div style={{ color: '#00d4ff', fontSize: '12px', marginBottom: '8px', fontFamily: 'Orbitron, monospace' }}>Recommended for you (from signup)</div>
+              <div style={{ color: '#00d4ff', fontSize: '12px', marginBottom: '8px', fontFamily: 'Orbitron, monospace' }}>
+                Your focus areas (from signup) — tap to see guides
+              </div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
                 {user.improvementCategories.map((catId: string) => {
                   const cat = categories.find(c => c.id === catId);
@@ -606,7 +840,9 @@ export default function CompatibilityWidget() {
           )}
 
           <div style={{ marginTop: '12px' }}>
-            <div style={{ color: '#00d4ff', fontSize: '12px', marginBottom: '8px', fontFamily: 'Orbitron, monospace' }}>Browse by area</div>
+            <div style={{ color: '#00d4ff', fontSize: '12px', marginBottom: '8px', fontFamily: 'Orbitron, monospace' }}>
+              Or browse all topics — then choose an expert
+            </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', maxHeight: '200px', overflowY: 'auto' }}>
               {categories.slice(0, 24).map(cat => (
                 <button

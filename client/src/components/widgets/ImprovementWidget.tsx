@@ -5,9 +5,19 @@ import './Widget.css';
 
 // Stripe is only used in Checkout page, not in widget
 
+function clipText(text: string, max: number): string {
+  const t = (text || '').trim();
+  if (t.length <= max) return t;
+  return `${t.slice(0, max - 1)}…`;
+}
+
 const ImprovementWidget = () => {
   const { user } = useContext(AuthContext);
-  const [view, setView] = useState<'categories' | 'guides' | 'request' | 'send_proof' | 'booking' | 'apply' | 'trainer_paypal' | 'trainer_confirm'>('categories');
+  const [view, setView] = useState<
+    'start' | 'region' | 'categories' | 'guides' | 'request' | 'send_proof' | 'booking' | 'apply' | 'trainer_paypal' | 'trainer_confirm'
+  >('start');
+  const [guidedPath, setGuidedPath] = useState(false);
+  const [userRegion, setUserRegion] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('');
   const [categories, setCategories] = useState<ImprovementCategory[]>([]);
   const [guides, setGuides] = useState<Guide[]>([]);
@@ -66,7 +76,9 @@ const ImprovementWidget = () => {
   const loadGuides = async () => {
     setLoading(true);
     try {
-      const response = await improvementAPI.getGuidesForCategory(selectedCategory);
+      const region =
+        guidedPath && userRegion.trim() ? userRegion.trim() : undefined;
+      const response = await improvementAPI.getGuidesForCategory(selectedCategory, region);
       setGuides(response.guides);
     } catch (err) {
       setError('Failed to load guides');
@@ -196,10 +208,96 @@ const ImprovementWidget = () => {
 
       {error && <div className="error-message">{error}</div>}
 
+      {view === 'start' && (
+        <div className="improvement-content">
+          <p style={{ marginBottom: '16px', color: '#6b7280', lineHeight: 1.5 }}>
+            Want a guide to help you improve? We’ll ask your region, then your focus areas, then you’ll pick an expert by
+            name and expertise.
+          </p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            <button
+              type="button"
+              onClick={() => {
+                setGuidedPath(true);
+                setView('region');
+              }}
+              className="select-user-btn"
+            >
+              Yes — match me with guides
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setGuidedPath(false);
+                setUserRegion('');
+                setView('categories');
+              }}
+              className="select-user-btn"
+              style={{ background: '#6b7280' }}
+            >
+              Browse topics on my own
+            </button>
+          </div>
+        </div>
+      )}
+
+      {view === 'region' && (
+        <div className="improvement-content">
+          <button type="button" onClick={() => setView('start')} className="back-btn" style={{ marginBottom: '12px' }}>
+            ← Back
+          </button>
+          <h3 style={{ margin: '0 0 8px', fontSize: '16px' }}>Your country or region</h3>
+          <p style={{ marginBottom: '10px', fontSize: '13px', color: '#6b7280' }}>
+            Experts in your area are shown first. Leave blank for worldwide.
+          </p>
+          <input
+            type="text"
+            value={userRegion}
+            onChange={(e) => setUserRegion(e.target.value)}
+            placeholder="e.g. Germany, UK, Texas"
+            style={{ width: '100%', padding: '10px', marginBottom: '12px', border: '2px solid #e5e7eb', borderRadius: '8px' }}
+          />
+          <button type="button" onClick={() => setView('categories')} className="select-user-btn" style={{ width: '100%' }}>
+            Continue — choose focus areas
+          </button>
+        </div>
+      )}
+
       {view === 'categories' && (
         <div className="improvement-content">
+          <button
+            type="button"
+            onClick={() => (guidedPath ? setView('region') : setView('start'))}
+            className="back-btn"
+            style={{ marginBottom: '12px' }}
+          >
+            ← Back
+          </button>
+          {guidedPath && (
+            <div
+              style={{
+                marginBottom: '12px',
+                padding: '8px 10px',
+                background: '#f0f9ff',
+                borderRadius: '8px',
+                fontSize: '12px',
+                color: '#0369a1',
+              }}
+            >
+              Region: <strong>{userRegion.trim() || 'Worldwide'}</strong>
+              <button
+                type="button"
+                onClick={() => setView('region')}
+                style={{ marginLeft: '8px', background: 'none', border: 'none', color: '#0369a1', cursor: 'pointer', textDecoration: 'underline' }}
+              >
+                Edit
+              </button>
+            </div>
+          )}
           <p style={{ marginBottom: '16px', color: '#6b7280' }}>
-            Select an area you want to improve and find expert guides to help you.
+            {guidedPath
+              ? 'Pick a topic. Next you’ll see guides with names, regions, and expertise.'
+              : 'Select an area you want to improve and find expert guides to help you.'}
           </p>
           {user?.improvementCategories && user.improvementCategories.length > 0 && (
             <div style={{ marginBottom: '16px' }}>
@@ -329,9 +427,14 @@ const ImprovementWidget = () => {
               ← Back
             </button>
             <h3 style={{ margin: 0, fontSize: '18px' }}>
-              {categories.find(c => c.id === selectedCategory)?.name} Guides
+              Choose a guide — {categories.find(c => c.id === selectedCategory)?.name}
             </h3>
           </div>
+          {guidedPath && (
+            <p style={{ fontSize: '12px', color: '#6b7280', marginBottom: '10px' }}>
+              Experts for <strong>{userRegion.trim() || 'all regions'}</strong> in this topic.
+            </p>
+          )}
 
           {loading ? (
             <div style={{ textAlign: 'center', padding: '40px' }}>Loading guides...</div>
@@ -366,8 +469,46 @@ const ImprovementWidget = () => {
                       {guide.badge && <span style={{ fontSize: '12px' }}>✓ Verified Guide</span>}
                     </div>
                     <p style={{ margin: 0, fontSize: '12px', color: '#6b7280' }}>
-                      ${guide.hourlyRate}/hr • ⭐ {guide.rating.toFixed(1)} • {guide.totalSessions} sessions
+                      🌐 {guide.region} • ${guide.hourlyRate}/hr • ⭐ {guide.rating.toFixed(1)} • {guide.totalSessions}{' '}
+                      sessions
                     </p>
+                    {(guide.categories?.length ?? 0) > 0 && (
+                      <div style={{ marginTop: '6px', display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                        {guide.categories
+                          .map((id) => categories.find((c) => c.id === id)?.name)
+                          .filter(Boolean)
+                          .slice(0, 5)
+                          .map((name) => (
+                            <span
+                              key={`${guide.id}-${name}`}
+                              style={{
+                                fontSize: '10px',
+                                padding: '2px 8px',
+                                borderRadius: '999px',
+                                background: '#fff5f8',
+                                border: '1px solid #fecdd3',
+                                color: '#9f1239',
+                              }}
+                            >
+                              {name}
+                            </span>
+                          ))}
+                      </div>
+                    )}
+                    {(guide.experience || guide.qualifications) && (
+                      <div style={{ marginTop: '6px', fontSize: '11px', color: '#4b5563', lineHeight: 1.35 }}>
+                        {guide.experience && (
+                          <div>
+                            <strong>Experience:</strong> {clipText(guide.experience, 120)}
+                          </div>
+                        )}
+                        {guide.qualifications && (
+                          <div style={{ marginTop: '2px' }}>
+                            <strong>Credentials:</strong> {clipText(guide.qualifications, 120)}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                   {(() => {
                     const acceptedRequest = myRequests.find(

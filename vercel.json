@@ -4,8 +4,5 @@
   "installCommand": "npm install && cd client && npm install",
   "buildCommand": "cd client && npm run build:skip-typecheck",
   "outputDirectory": "client/dist",
-  "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api/p/$1" },
-    { "source": "/(.*)", "destination": "/index.html" }
-  ]
+  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
 }

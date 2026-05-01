@@ -1,12 +1,9 @@
 /**
- * Proxies browser /api/* → your real backend (Render, etc.).
- * Vercel rewrites: /api/:path* → /api/p/:path* (this file).
+ * Proxies same-origin /api/* → BACKEND_URL (Render, etc.).
+ * Lives at api/[...path].js so Vercel invokes this before SPA rewrites.
  *
- * Vercel env: BACKEND_URL = https://your-api.onrender.com (no trailing slash)
- * Fallback: VITE_API_URL or RENDER_EXTERNAL_URL
+ * Env: BACKEND_URL = https://your-api.onrender.com (no trailing slash)
  */
-
-const PREFIX = '/api/p/';
 
 function getBackendBase() {
   const raw =
@@ -17,17 +14,15 @@ function getBackendBase() {
   return raw.replace(/\/+$/, '');
 }
 
-function extractPath(req) {
-  const raw = req.url || '';
-  const pathOnly = raw.split('?')[0] || '';
-  if (pathOnly.startsWith(PREFIX)) {
-    return decodeURIComponent(pathOnly.slice(PREFIX.length));
+function extractApiPath(req) {
+  const pathParam = req.query?.path;
+  if (pathParam !== undefined && pathParam !== null) {
+    if (Array.isArray(pathParam)) return pathParam.map((s) => decodeURIComponent(String(s))).join('/');
+    return decodeURIComponent(String(pathParam));
   }
-  if (pathOnly.startsWith('/p/')) {
-    return decodeURIComponent(pathOnly.slice('/p/'.length));
-  }
-  if (pathOnly.startsWith('/')) {
-    return decodeURIComponent(pathOnly.slice(1));
+  const pathOnly = (req.url || '').split('?')[0] || '';
+  if (pathOnly.startsWith('/api/')) {
+    return decodeURIComponent(pathOnly.slice('/api/'.length));
   }
   return '';
 }
@@ -63,7 +58,7 @@ async function handler(req, res) {
     return;
   }
 
-  const apiPath = extractPath(req);
+  const apiPath = extractApiPath(req);
   if (!apiPath) {
     res.status(400).setHeader('Content-Type', 'application/json');
     res.send(JSON.stringify({ error: 'Bad API path' }));

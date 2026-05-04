@@ -1,5 +1,6 @@
 import { useState, useContext } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import axios from 'axios';
 import { AuthContext } from '../context/AuthContext';
 import { authAPI } from '../api/auth';
 import { discoverAPI } from '../api/discover';
@@ -49,11 +50,12 @@ const SignupWithImprovement = () => {
   const [phoneNumber, setPhoneNumber] = useState('');
   const [orientation, setOrientation] = useState<'straight' | 'gay' | 'lesbian' | 'bisexual' | 'pansexual'>('straight');
   const [lookingFor, setLookingFor] = useState<string[]>(['dating']);
-  const [userId, setUserId] = useState<string | null>(null);
+  /** Step 1 creates the account but we must not call login() yet — that would replace /signup with Navigate and unmount this wizard before preferences. */
+  const [pendingSignup, setPendingSignup] = useState<{ token: string; user: { id: string } } | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [agreedToTerms, setAgreedToTerms] = useState(false);
-  const { login, logout } = useContext(AuthContext);
+  const { login } = useContext(AuthContext);
   const navigate = useNavigate();
 
   const handleStep1Submit = async (e: React.FormEvent) => {
@@ -83,10 +85,11 @@ const SignupWithImprovement = () => {
         passwordHint3: passwordHint3.trim(),
         phoneNumber: phoneNumber.trim() || undefined,
       });
-      if (response.token && response.user) {
-        login(response.user, response.token);
-        setUserId(response.user.id);
+      if (response.token && response.user?.id) {
+        setPendingSignup({ token: response.token, user: response.user });
         setStep(2);
+      } else {
+        setError('Invalid response from server. Please try again.');
       }
     } catch (err: any) {
       setError(signupErrorMessage(err));
@@ -97,8 +100,8 @@ const SignupWithImprovement = () => {
 
   const handleStep2Submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!userId) {
-      setError('User ID not found');
+    if (!pendingSignup?.token || !pendingSignup.user?.id) {
+      setError('Signup session expired. Please go back and submit the form again.');
       return;
     }
     if (lookingFor.length === 0) {
@@ -109,16 +112,23 @@ const SignupWithImprovement = () => {
     setLoading(true);
     setError('');
 
+    const { token, user } = pendingSignup;
+    const prevAuth = axios.defaults.headers.common['Authorization'];
     try {
+      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
       await discoverAPI.setPreference({
         orientation,
         lookingFor: lookingFor as ('dating' | 'casual' | 'friends' | 'serious')[],
-        userId,
+        userId: user.id,
       });
+      login(user, token);
+      setPendingSignup(null);
       navigate('/profile-setup');
     } catch (err: any) {
       setError(err.response?.data?.error || 'Failed to save preferences');
     } finally {
+      if (prevAuth) axios.defaults.headers.common['Authorization'] = prevAuth;
+      else delete axios.defaults.headers.common['Authorization'];
       setLoading(false);
     }
   };
@@ -162,8 +172,7 @@ const SignupWithImprovement = () => {
               type="button"
               onClick={() => {
                 setError('');
-                logout();
-                setUserId(null);
+                setPendingSignup(null);
                 setStep(1);
               }}
               className="auth-button"
@@ -277,8 +286,8 @@ const SignupWithImprovement = () => {
               </label>
             </div>
 
-            <button type="submit" className="auth-button" disabled={!agreedToTerms}>
-              Continue
+            <button type="submit" className="auth-button" disabled={loading}>
+              {loading ? 'Creating account…' : 'Continue'}
             </button>
           </form>
         )}

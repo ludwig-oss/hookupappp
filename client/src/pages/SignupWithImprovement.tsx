@@ -1,11 +1,42 @@
-import { useState, useEffect, useContext } from 'react';
+import { useState, useContext } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
 import { authAPI } from '../api/auth';
-import { improvementAPI, ImprovementCategory } from '../api/improvement';
 import { discoverAPI } from '../api/discover';
 import './Auth.css';
 import './Legal.css';
+
+/** Same default as server when no categories sent — must match models/improvement.ts */
+const DEFAULT_SIGNUP_CATEGORY = 'dating-apps';
+
+function signupErrorMessage(err: any): string {
+  if (!err?.response) {
+    const code = err?.code;
+    const msg = String(err?.message || '');
+    if (code === 'ECONNABORTED' || msg.includes('timeout')) {
+      return 'Request timed out. Check your connection and try again.';
+    }
+    if (msg === 'Network Error' || code === 'ERR_NETWORK' || msg.includes('Failed to fetch')) {
+      return "Can't reach the server. If you're on the live site, the host needs BACKEND_URL set to your API (e.g. Render).";
+    }
+    return msg || 'Signup failed. Please try again.';
+  }
+  const raw = err.response.data;
+  if (typeof raw === 'string') {
+    if (raw.trim().startsWith('<')) {
+      return 'Server returned an error page instead of JSON — check API / proxy (BACKEND_URL on Vercel).';
+    }
+    return raw.slice(0, 200);
+  }
+  if (raw && typeof raw === 'object' && raw.error) {
+    return String(raw.error);
+  }
+  const st = err.response.status;
+  if (st === 503) return 'Service unavailable — API proxy may be missing BACKEND_URL.';
+  if (st === 502) return 'Bad gateway — API server may be down or URL wrong.';
+  if (st === 429) return 'Too many attempts. Wait a few minutes and try again.';
+  return `Signup failed (HTTP ${st}). Please try again.`;
+}
 
 const SignupWithImprovement = () => {
   const [step, setStep] = useState(1);
@@ -16,68 +47,16 @@ const SignupWithImprovement = () => {
   const [passwordHint2, setPasswordHint2] = useState('');
   const [passwordHint3, setPasswordHint3] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
-  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
-  const [categories, setCategories] = useState<ImprovementCategory[]>([]);
   const [orientation, setOrientation] = useState<'straight' | 'gay' | 'lesbian' | 'bisexual' | 'pansexual'>('straight');
   const [lookingFor, setLookingFor] = useState<string[]>(['dating']);
   const [userId, setUserId] = useState<string | null>(null);
   const [error, setError] = useState('');
-  const [categoryError, setCategoryError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [loadingCategories, setLoadingCategories] = useState(false);
   const [agreedToTerms, setAgreedToTerms] = useState(false);
-  const { login } = useContext(AuthContext);
+  const { login, logout } = useContext(AuthContext);
   const navigate = useNavigate();
 
-  // Only load categories when step 2 is reached
-  useEffect(() => {
-    if (step === 2 && categories.length === 0 && !loadingCategories) {
-      loadCategories();
-    }
-  }, [step]);
-
-  const loadCategories = async () => {
-    setLoadingCategories(true);
-    setCategoryError('');
-    try {
-      const response = await improvementAPI.getCategories();
-      if (response.categories && response.categories.length > 0) {
-        setCategories(response.categories);
-        setCategoryError('');
-      } else {
-        setCategoryError('No improvement categories available. Please try again later.');
-        setCategories([]);
-      }
-    } catch (err: any) {
-      console.error('Failed to load categories:', err);
-      let errorMessage = 'Failed to load categories. ';
-      
-      if (err.code === 'ECONNREFUSED' || err.message?.includes('Network Error') || err.message?.includes('Failed to fetch')) {
-        errorMessage += 'Unable to connect. Please check your connection and try again.';
-      } else if (err.response?.data?.error) {
-        errorMessage = err.response.data.error;
-      } else if (err.message) {
-        errorMessage += err.message;
-      } else {
-        errorMessage += 'Please try again later.';
-      }
-      
-      setCategoryError(errorMessage);
-      setCategories([]);
-    } finally {
-      setLoadingCategories(false);
-    }
-  };
-
-  const handleCategoryToggle = (categoryId: string) => {
-    setSelectedCategories(prev =>
-      prev.includes(categoryId)
-        ? prev.filter(id => id !== categoryId)
-        : [...prev, categoryId]
-    );
-  };
-
-  const handleStep1Submit = (e: React.FormEvent) => {
+  const handleStep1Submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name || !username || !password) {
       setError('All fields are required');
@@ -92,52 +71,31 @@ const SignupWithImprovement = () => {
       return;
     }
     setError('');
-    setCategoryError('');
-    setStep(2);
-  };
-
-  const handleStep2Submit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (selectedCategories.length === 0) {
-      setError('Please select at least one improvement area');
-      return;
-    }
-
     setLoading(true);
-    setError('');
-
     try {
       const response = await authAPI.signup({
         name,
         username,
         password,
-        improvementCategories: selectedCategories,
+        improvementCategories: [DEFAULT_SIGNUP_CATEGORY],
         passwordHint1: passwordHint1.trim(),
         passwordHint2: passwordHint2.trim(),
         passwordHint3: passwordHint3.trim(),
         phoneNumber: phoneNumber.trim() || undefined,
       });
-
       if (response.token && response.user) {
         login(response.user, response.token);
         setUserId(response.user.id);
-        setStep(3);
+        setStep(2);
       }
     } catch (err: any) {
-      const d = err.response?.data;
-      const msg =
-        typeof d === 'string'
-          ? d
-          : d && typeof d === 'object'
-            ? String(d.error || d.message || '')
-            : String(err.message || '');
-      setError(msg || 'Signup failed. Please try again.');
+      setError(signupErrorMessage(err));
     } finally {
       setLoading(false);
     }
   };
 
-  const handleStep3Submit = async (e: React.FormEvent) => {
+  const handleStep2Submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!userId) {
       setError('User ID not found');
@@ -169,16 +127,14 @@ const SignupWithImprovement = () => {
     <div className="auth-container">
       <div className="auth-card" style={{ maxWidth: step === 2 ? '700px' : '420px' }}>
         <h1 className="auth-title">
-          {step === 1 ? 'Create Account' : step === 2 ? 'Select Improvement Areas' : 'Set Your Preferences'}
+          {step === 1 ? 'Create Account' : 'Set Your Preferences'}
         </h1>
         <p className="auth-subtitle">
-          {step === 1 ? 'Sign up to get started' : step === 2 ? 'Choose areas you want to improve (required)' : 'Help us find your perfect connections'}
+          {step === 1 ? 'Sign up to get started' : 'Help us find your perfect connections. You can refine improvement areas later from your guide.'}
         </p>
 
-        {/* Only show form errors on step 1, category errors on step 2 */}
         {step === 1 && error && <div className="error-message">{error}</div>}
-        {step === 2 && categoryError && <div className="error-message">{categoryError}</div>}
-        {(step === 2 || step === 3) && error && <div className="error-message">{error}</div>}
+        {step === 2 && error && <div className="error-message">{error}</div>}
 
         {step === 1 && (
           <div style={{ marginBottom: '16px' }}>
@@ -204,7 +160,12 @@ const SignupWithImprovement = () => {
           <div style={{ marginBottom: '16px' }}>
             <button
               type="button"
-              onClick={() => { setCategoryError(''); setStep(1); }}
+              onClick={() => {
+                setError('');
+                logout();
+                setUserId(null);
+                setStep(1);
+              }}
               className="auth-button"
               style={{
                 background: 'rgba(0, 0, 0, 0.4)',
@@ -324,130 +285,12 @@ const SignupWithImprovement = () => {
 
         {step === 2 && (
           <form onSubmit={handleStep2Submit} className="auth-form">
-            {loadingCategories ? (
-              <div style={{
-                padding: '40px',
-                textAlign: 'center',
-                color: '#6b7280',
-              }}>
-                <div style={{ fontSize: '24px', marginBottom: '16px' }}>Loading categories...</div>
-              </div>
-            ) : categories.length === 0 ? (
-              <div style={{
-                padding: '40px',
-                textAlign: 'center',
-                color: '#6b7280',
-                background: '#f9fafb',
-                borderRadius: '12px',
-                marginBottom: '20px',
-              }}>
-                <div style={{ fontSize: '48px', marginBottom: '16px' }}>⚠️</div>
-                <div style={{ fontSize: '16px', fontWeight: 600, marginBottom: '8px' }}>
-                  No categories available
-                </div>
-                <div style={{ fontSize: '14px', marginBottom: '20px' }}>
-                  {categoryError || 'Unable to load improvement categories. Please try refreshing the page.'}
-                </div>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    loadCategories();
-                  }}
-                  className="auth-button"
-                  style={{ background: '#ff6b9d', cursor: loadingCategories ? 'not-allowed' : 'pointer' }}
-                  disabled={loadingCategories}
-                >
-                  {loadingCategories ? 'Loading...' : 'Retry Loading Categories'}
-                </button>
-                {categoryError && (categoryError.includes('Unable to connect') || categoryError.includes('connection')) && (
-                  <div style={{ marginTop: '12px', padding: '12px', background: '#fef2f2', borderRadius: '8px', fontSize: '12px', color: '#dc2626' }}>
-                    <strong>Connection issue:</strong> We couldn&apos;t load this page. Check your internet connection and try again.
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
-                gap: '12px',
-                maxHeight: '400px',
-                overflowY: 'auto',
-                padding: '10px',
-                marginBottom: '20px',
-              }}>
-                {categories.map((cat) => (
-                  <div
-                    key={cat.id}
-                    onClick={() => handleCategoryToggle(cat.id)}
-                    style={{
-                      padding: '16px',
-                      border: `2px solid ${selectedCategories.includes(cat.id) ? '#00d4ff' : 'rgba(0, 212, 255, 0.3)'}`,
-                      borderRadius: '12px',
-                      cursor: 'pointer',
-                      background: selectedCategories.includes(cat.id) ? 'rgba(0, 212, 255, 0.2)' : 'rgba(0, 0, 0, 0.4)',
-                      transition: 'all 0.3s',
-                      boxShadow: selectedCategories.includes(cat.id) ? '0 0 20px rgba(0, 212, 255, 0.4)' : '0 0 10px rgba(0, 212, 255, 0.1)',
-                    }}
-                    onMouseEnter={(e) => {
-                      if (!selectedCategories.includes(cat.id)) {
-                        e.currentTarget.style.borderColor = '#00d4ff';
-                        e.currentTarget.style.background = 'rgba(0, 212, 255, 0.15)';
-                        e.currentTarget.style.boxShadow = '0 0 15px rgba(0, 212, 255, 0.3)';
-                      }
-                    }}
-                    onMouseLeave={(e) => {
-                      if (!selectedCategories.includes(cat.id)) {
-                        e.currentTarget.style.borderColor = 'rgba(0, 212, 255, 0.3)';
-                        e.currentTarget.style.background = 'rgba(0, 0, 0, 0.4)';
-                        e.currentTarget.style.boxShadow = '0 0 10px rgba(0, 212, 255, 0.1)';
-                      }
-                    }}
-                  >
-                    <div style={{ fontSize: '24px', marginBottom: '8px' }}>{cat.icon}</div>
-                    <div style={{ fontWeight: 600, fontSize: '14px', marginBottom: '4px', color: '#fff', fontFamily: 'Orbitron, monospace' }}>
-                      {cat.name}
-                    </div>
-                    <div style={{ fontSize: '12px', color: '#9ca3af', fontFamily: 'Orbitron, monospace' }}>
-                      {cat.description}
-                    </div>
-                    {selectedCategories.includes(cat.id) && (
-                      <div style={{ marginTop: '8px', color: '#00d4ff', fontSize: '12px', fontWeight: 700, fontFamily: 'Orbitron, monospace', textShadow: '0 0 10px rgba(0, 212, 255, 0.6)' }}>
-                        ✓ Selected
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-
-            <div style={{ display: 'flex', gap: '12px' }}>
-              <button
-                type="button"
-                onClick={() => {
-                  setCategoryError(''); // Clear category errors when going back
-                  setStep(1);
-                }}
-                className="auth-button"
-                style={{ background: 'rgba(0, 0, 0, 0.4)', border: '2px solid rgba(107, 114, 128, 0.5)', color: '#9ca3af', fontFamily: 'Orbitron, monospace' }}
-              >
-                Back
-              </button>
-              <button type="submit" className="auth-button" disabled={loading || selectedCategories.length === 0}>
-                {loading ? 'Creating account...' : `Sign Up (${selectedCategories.length} selected)`}
-              </button>
-            </div>
-          </form>
-        )}
-
-        {step === 3 && (
-          <form onSubmit={handleStep3Submit} className="auth-form">
             <div className="form-group">
               <label htmlFor="orientation">Orientation</label>
               <select
                 id="orientation"
                 value={orientation}
-                onChange={(e) => setOrientation(e.target.value as any)}
+                onChange={(e) => setOrientation(e.target.value as typeof orientation)}
                 required
                 style={{ width: '100%', padding: '12px', border: '2px solid rgba(0, 212, 255, 0.3)', borderRadius: '8px', fontSize: '16px', background: 'rgba(0, 0, 0, 0.4)', color: '#fff', fontFamily: 'Orbitron, monospace' }}
               >
@@ -504,19 +347,9 @@ const SignupWithImprovement = () => {
               </small>
             </div>
 
-            <div style={{ display: 'flex', gap: '12px' }}>
-              <button
-                type="button"
-                onClick={() => setStep(2)}
-                className="auth-button"
-                style={{ background: 'rgba(0, 0, 0, 0.4)', border: '2px solid rgba(107, 114, 128, 0.5)', color: '#9ca3af', fontFamily: 'Orbitron, monospace' }}
-              >
-                Back
-              </button>
-              <button type="submit" className="auth-button" disabled={loading}>
-                {loading ? 'Saving...' : 'Continue'}
-              </button>
-            </div>
+            <button type="submit" className="auth-button" disabled={loading}>
+              {loading ? 'Saving...' : 'Continue'}
+            </button>
           </form>
         )}
 

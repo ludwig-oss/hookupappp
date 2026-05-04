@@ -54,8 +54,9 @@ export const signup = async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'All three password hints are required to help you recover your account' });
     }
 
+    /** Default when client skips picker (e.g. Vercel + flaky /improvement route). Valid id from models/improvement.ts */
     if (!improvementCategories || !Array.isArray(improvementCategories) || improvementCategories.length === 0) {
-      return res.status(400).json({ error: 'You must select at least one improvement category' });
+      improvementCategories = ['dating-apps'];
     }
 
     const passwordValidation = validateStrongPassword(password);

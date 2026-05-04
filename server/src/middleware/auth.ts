@@ -19,16 +19,19 @@ export const authenticateToken = (req: AuthRequest, res: Response, next: NextFun
   const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
 
   if (!token) {
-    return next();
+    return res.status(401).json({ error: 'Authentication required' });
   }
 
   try {
-    const decoded = jwt.verify(token, getJwtSecret()) as { userId: string; email: string };
-    req.userId = decoded.userId;
+    const decoded = jwt.verify(token, getJwtSecret()) as { userId?: string | number; email?: string };
+    const uid = decoded.userId != null ? String(decoded.userId) : '';
+    if (!uid) {
+      return res.status(401).json({ error: 'Invalid token' });
+    }
+    req.userId = uid;
     next();
-  } catch (error) {
-    // Token invalid, but allow userId in body for now
-    next();
+  } catch {
+    return res.status(401).json({ error: 'Invalid or expired token' });
   }
 };
 

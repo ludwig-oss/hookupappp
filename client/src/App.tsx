@@ -26,9 +26,16 @@ function isPlainObject(v: unknown): v is Record<string, any> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
 }
 
+/** APIs / DB drivers sometimes return id as number; login() used to no-op silently. */
+function normalizeUserId(v: unknown): string | null {
+  if (typeof v === 'string' && v.length > 0) return v;
+  if (typeof v === 'number' && Number.isFinite(v)) return String(Math.trunc(v));
+  return null;
+}
+
 function isValidUserShape(v: unknown): v is { id: string; profileSetupComplete?: boolean } {
   if (!isPlainObject(v)) return false;
-  return typeof v.id === 'string' && v.id.length > 0;
+  return normalizeUserId(v.id) !== null;
 }
 
 function App() {
@@ -80,8 +87,10 @@ function App() {
           hasRefreshedProfile.current = false;
           return;
         }
-        setUser(fullProfile);
-        localStorage.setItem('user', JSON.stringify(fullProfile));
+        const id = normalizeUserId((fullProfile as { id: unknown }).id);
+        const normalized = id ? { ...fullProfile, id } : fullProfile;
+        setUser(normalized);
+        localStorage.setItem('user', JSON.stringify(normalized));
         if (settingsRes?.settings?.localization?.language) {
           setStoredLanguage(settingsRes.settings.localization.language);
         }
@@ -90,12 +99,14 @@ function App() {
   }, [loading, user?.id]);
 
   const login = (userData: any, token: string) => {
-    if (!isValidUserShape(userData) || typeof token !== 'string' || !token) {
+    const id = normalizeUserId(userData?.id);
+    if (!isPlainObject(userData) || !id || typeof token !== 'string' || !token) {
       return;
     }
-    setUser(userData);
+    const normalized = { ...userData, id };
+    setUser(normalized);
     localStorage.setItem('token', token);
-    localStorage.setItem('user', JSON.stringify(userData));
+    localStorage.setItem('user', JSON.stringify(normalized));
     axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
   };
 

@@ -1,7 +1,9 @@
 /**
- * Photos storage (S3-style): upload images to CDN and return URL.
- * When Cloudinary is configured, profile/highlight images go to Cloudinary; otherwise we keep base64 (dev fallback).
+ * Photos storage (S3-style): upload images/videos to CDN and return URL.
+ * When Cloudinary is configured, media goes to Cloudinary; otherwise we keep data URLs (dev fallback).
  */
+
+import { inferMediaTypeFromUrl } from './mediaType.js';
 
 function base64ToDataUrl(base64: string, mimeType: string = 'image/jpeg'): string {
   if (base64.startsWith('data:')) return base64;
@@ -38,4 +40,26 @@ export async function uploadImage(data: string, folder: string = 'profile'): Pro
     return result.secure_url;
   }
   return data.startsWith('data:') ? data : base64ToDataUrl(data);
+}
+
+/**
+ * Upload image or video (detected from data URL / payload). Use for highlights and stories.
+ */
+export async function uploadMedia(data: string, folder: string = 'media'): Promise<string> {
+  const dataUri = data.startsWith('data:') ? data : base64ToDataUrl(data);
+  const isVideo = inferMediaTypeFromUrl(dataUri) === 'video';
+  if (useCloudinary()) {
+    const { v2: cloudinary } = await import('cloudinary');
+    cloudinary.config({
+      cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+      api_key: process.env.CLOUDINARY_API_KEY,
+      api_secret: process.env.CLOUDINARY_API_SECRET,
+    });
+    const result = await cloudinary.uploader.upload(dataUri, {
+      folder: `aswp/${folder}`,
+      resource_type: isVideo ? 'video' : 'image',
+    });
+    return result.secure_url;
+  }
+  return dataUri;
 }

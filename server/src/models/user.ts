@@ -3,12 +3,26 @@ import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { usePostgres } from '../db/index.js';
 import * as pgUsers from '../db/pg-users.js';
+import { inferMediaTypeFromUrl } from '../utils/mediaType.js';
+import { STORY_TTL_MS } from '../constants/socialMedia.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+
+export type StoryAudience = 'all' | 'closeFriends';
+
+export interface Story {
+  id: string;
+  mediaUrl: string;
+  mediaType: 'image' | 'video';
+  createdAt: Date | string;
+  expiresAt: Date | string;
+  audience: StoryAudience;
+}
 
 export interface HighlightItem {
   id: string;
   imageUrl: string;
+  mediaType?: 'image' | 'video';
   createdAt: Date | string;
 }
 
@@ -62,6 +76,10 @@ export interface User {
   phoneNumber?: string | null;
   profilePicture: string | null;
   highlights: Highlight[];
+  /** Ephemeral stories (24h); visibility controlled by `audience`. */
+  stories?: Story[];
+  /** User IDs who can see `closeFriends` stories (owner manages). */
+  closeFriendIds?: string[];
   disappearingPhotos: DisappearingPhoto[];
   profileSetupComplete: boolean;
   improvementCategories: string[]; // Categories user wants to improve
@@ -144,11 +162,19 @@ async function readUsers(): Promise<User[]> {
           items: (h.items || []).map((item: HighlightItem) => ({
             ...item,
             createdAt: item.createdAt ? new Date(item.createdAt) : new Date(),
+            mediaType: item.mediaType || inferMediaTypeFromUrl(item.imageUrl),
           })),
           createdAt: h.createdAt ? new Date(h.createdAt) : new Date(),
           coverImage: h.coverImage || (h.items && h.items[0]?.imageUrl) || null,
         };
       }),
+      stories: (user.stories || []).map((s: Story) => ({
+        ...s,
+        createdAt: s.createdAt ? new Date(s.createdAt) : new Date(),
+        expiresAt: s.expiresAt ? new Date(s.expiresAt) : new Date(),
+        mediaType: s.mediaType || inferMediaTypeFromUrl(s.mediaUrl),
+      })),
+      closeFriendIds: user.closeFriendIds || [],
       disappearingPhotos: (user.disappearingPhotos || []).map((photo: DisappearingPhoto) => ({
         ...photo,
         createdAt: photo.createdAt ? new Date(photo.createdAt) : new Date(),
@@ -201,6 +227,8 @@ export async function createUser(userData: Omit<User, 'id' | 'resetToken' | 'res
     mutedUsers: [],
     unmatchedUsers: [],
     profiles: [],
+    stories: [],
+    closeFriendIds: [],
     emailVerified: true,
     emailVerificationToken: null,
     emailVerificationTokenExpiry: null,
@@ -275,8 +303,14 @@ export async function updateUserLocation(
   });
 }
 
-export async function addHighlight(userId: string, imageUrl: string, highlightId?: string): Promise<Highlight | null> {
-  if (usePostgres()) return pgUsers.addHighlight(userId, imageUrl, highlightId);
+export async function addHighlight(
+  userId: string,
+  imageUrl: string,
+  highlightId?: string,
+  mediaType?: 'image' | 'video'
+): Promise<Highlight | null> {
+  if (usePostgres()) return pgUsers.addHighlight(userId, imageUrl, highlightId, mediaType);
+  const mt = mediaType || inferMediaTypeFromUrl(imageUrl);
   const users = await readUsers();
   const userIndex = users.findIndex(u => u.id === userId);
   if (userIndex !== -1) {
@@ -289,6 +323,7 @@ export async function addHighlight(userId: string, imageUrl: string, highlightId
         const newItem: HighlightItem = {
           id: Date.now().toString(),
           imageUrl,
+          mediaType: mt,
           createdAt: new Date(),
         };
         users[userIndex].highlights[highlightIndex].items.push(newItem);
@@ -308,6 +343,7 @@ export async function addHighlight(userId: string, imageUrl: string, highlightId
       items: [{
         id: Date.now().toString() + '_item',
         imageUrl,
+        mediaType: mt,
         createdAt: new Date(),
       }],
       createdAt: new Date(),
@@ -318,6 +354,71 @@ export async function addHighlight(userId: string, imageUrl: string, highlightId
     return highlight;
   }
   return null;
+}
+
+export async function pruneExpiredStories(userId: string): Promise<void> {
+  if (usePostgres()) return pgUsers.pruneExpiredStories(userId);
+  const users = await readUsers();
+  const userIndex = users.findIndex(u => u.id === userId);
+  if (userIndex === -1) return;
+  const list = users[userIndex].stories || [];
+  const now = Date.now();
+  const kept = list.filter(s => new Date(s.expiresAt).getTime() > now);
+  if (kept.length !== list.length) {
+    users[userIndex].stories = kept;
+    await writeUsers(users);
+  }
+}
+
+export async function addStory(
+  userId: string,
+  mediaUrl: string,
+  mediaType: 'image' | 'video',
+  audience: StoryAudience
+): Promise<Story | null> {
+  if (usePostgres()) return pgUsers.addStory(userId, mediaUrl, mediaType, audience);
+  await pruneExpiredStories(userId);
+  const users = await readUsers();
+  const idx = users.findIndex(u => u.id === userId);
+  if (idx === -1) return null;
+  const story: Story = {
+    id: `${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
+    mediaUrl,
+    mediaType,
+    createdAt: new Date(),
+    expiresAt: new Date(Date.now() + STORY_TTL_MS),
+    audience,
+  };
+  users[idx].stories = [...(users[idx].stories || []), story];
+  await writeUsers(users);
+  return story;
+}
+
+export async function removeStory(userId: string, storyId: string): Promise<boolean> {
+  if (usePostgres()) return pgUsers.removeStory(userId, storyId);
+  const users = await readUsers();
+  const userIndex = users.findIndex(u => u.id === userId);
+  if (userIndex === -1) return false;
+  const list = users[userIndex].stories || [];
+  const next = list.filter(s => s.id !== storyId);
+  if (next.length === list.length) return false;
+  users[userIndex].stories = next;
+  await writeUsers(users);
+  return true;
+}
+
+export async function reorderHighlights(userId: string, orderedIds: string[]): Promise<boolean> {
+  if (usePostgres()) return pgUsers.reorderHighlights(userId, orderedIds);
+  const users = await readUsers();
+  const userIndex = users.findIndex(u => u.id === userId);
+  if (userIndex === -1) return false;
+  const highlights = users[userIndex].highlights || [];
+  const map = new Map(highlights.map(h => [h.id, h]));
+  const ordered = orderedIds.map(id => map.get(id)).filter(Boolean) as Highlight[];
+  const missing = highlights.filter(h => !orderedIds.includes(h.id));
+  users[userIndex].highlights = [...ordered, ...missing];
+  await writeUsers(users);
+  return true;
 }
 
 export async function removeHighlight(userId: string, highlightId: string, itemId?: string): Promise<boolean> {

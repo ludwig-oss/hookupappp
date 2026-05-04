@@ -1,0 +1,6 @@
+# Smaller uploads; backend is hosted separately (e.g. Render).
+server
+deploy
+.git
+**/.git
+*.log

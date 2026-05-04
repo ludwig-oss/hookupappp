@@ -10,6 +10,8 @@ import { improvementAPI } from '../api/improvement';
 import { reviewsAPI, Review, REVIEW_ATTRIBUTE_LABELS } from '../api/reviews';
 import { getCountryFlagCode } from '../constants/countryFlags';
 import { useTranslation } from '../context/LanguageContext';
+import { chatAPI } from '../api/chat';
+import { isVideoMediaUrl } from '../lib/media';
 import './Dashboard.css';
 
 const NOMINATIM_REVERSE = 'https://nominatim.openstreetmap.org/reverse';
@@ -38,6 +40,11 @@ const Profile = () => {
   const [city, setCity] = useState('');
   const [viewingHighlight, setViewingHighlight] = useState<any>(null);
   const [selectedHighlightId, setSelectedHighlightId] = useState<string | null>(null);
+  const [pendingStoryMedia, setPendingStoryMedia] = useState<string | null>(null);
+  const [showStoryAudiencePicker, setShowStoryAudiencePicker] = useState(false);
+  const [viewingStories, setViewingStories] = useState<{ items: any[]; index: number } | null>(null);
+  const [closeFriendCandidates, setCloseFriendCandidates] = useState<Array<{ id: string; name: string }>>([]);
+  const [highlightPickForStory, setHighlightPickForStory] = useState<string>('__new__');
   const [reviews, setReviews] = useState<Review[]>([]);
   const [replyDraft, setReplyDraft] = useState<Record<string, string>>({});
   const [replyingId, setReplyingId] = useState<string | null>(null);
@@ -63,6 +70,8 @@ const Profile = () => {
   const [showPhotoVerification, setShowPhotoVerification] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const highlightInputRef = useRef<HTMLInputElement>(null);
+  const storyInputRef = useRef<HTMLInputElement>(null);
+  const storyVideoRef = useRef<HTMLVideoElement>(null);
   const publicFigureIdInputRef = useRef<HTMLInputElement>(null);
   const publicFigureUniqueInputRef = useRef<HTMLInputElement>(null);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -71,6 +80,34 @@ const Profile = () => {
   useEffect(() => {
     if (user?.id) loadProfile();
   }, [user]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    chatAPI.getAvailableUsers(user.id).then(({ users }) => setCloseFriendCandidates(users)).catch(() => setCloseFriendCandidates([]));
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (!viewingStories) return;
+    const item = viewingStories.items[viewingStories.index];
+    if (!item) return;
+    const isVid = item.mediaType === 'video' || isVideoMediaUrl(item.mediaUrl);
+    if (isVid) {
+      const v = storyVideoRef.current;
+      if (v) {
+        v.currentTime = 0;
+        v.play().catch(() => {});
+      }
+      return;
+    }
+    const tid = window.setTimeout(() => {
+      setViewingStories((vs) => {
+        if (!vs) return null;
+        if (vs.index + 1 < vs.items.length) return { ...vs, index: vs.index + 1 };
+        return null;
+      });
+    }, 6000);
+    return () => clearTimeout(tid);
+  }, [viewingStories]);
 
   const loadProfile = async () => {
     if (!user?.id) return;
@@ -228,6 +265,62 @@ const Profile = () => {
     highlightInputRef.current?.click();
   };
 
+  const handleAddStoryClick = () => storyInputRef.current?.click();
+
+  const handleStoryFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setPendingStoryMedia(reader.result as string);
+      setShowStoryAudiencePicker(true);
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
+  const submitStoryWithAudience = async (audience: 'all' | 'closeFriends') => {
+    if (!pendingStoryMedia || !user?.id) return;
+    setUploading(true);
+    setError('');
+    try {
+      await profileAPI.addStory(pendingStoryMedia, audience);
+      setShowStoryAudiencePicker(false);
+      setPendingStoryMedia(null);
+      await loadProfile();
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Story upload failed');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleDeleteStory = async (storyId: string) => {
+    if (!confirm(t('deleteStory') + '?')) return;
+    try {
+      await profileAPI.deleteStory(storyId);
+      await loadProfile();
+      setViewingStories(null);
+    } catch {
+      setError('Failed to delete story');
+    }
+  };
+
+  const moveHighlight = async (highlightId: string, dir: 'left' | 'right') => {
+    const ids = (profile?.highlights || []).map((h: any) => h.id);
+    const i = ids.indexOf(highlightId);
+    const j = dir === 'left' ? i - 1 : i + 1;
+    if (i < 0 || j < 0 || j >= ids.length) return;
+    const next = [...ids];
+    [next[i], next[j]] = [next[j], next[i]];
+    try {
+      await profileAPI.reorderHighlights(next);
+      await loadProfile();
+    } catch {
+      setError('Could not reorder highlights');
+    }
+  };
+
   const handleProfilePictureChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !user?.id) return;
@@ -256,8 +349,8 @@ const Profile = () => {
     try {
       const reader = new FileReader();
       reader.onloadend = async () => {
-        const base64 = (reader.result as string).split(',')[1];
-        await profileAPI.addHighlight(base64, user.id, selectedHighlightId || undefined);
+        const dataUrl = reader.result as string;
+        await profileAPI.addHighlight(dataUrl, user.id, selectedHighlightId || undefined);
         await loadProfile();
         setSelectedHighlightId(null);
       };
@@ -340,6 +433,10 @@ const Profile = () => {
   }
 
   const highlights = profile.highlights || [];
+  const storiesSorted = [...(profile.stories || [])].sort(
+    (a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+  );
+  const closeFriendIds = (profile as any).closeFriendIds || [];
 
   return (
     <div className="dashboard-container">
@@ -458,10 +555,77 @@ const Profile = () => {
               {city && <div className="profile-detail">📍 {city}</div>}
             </div>
 
+            <div className="stories-section" style={{ marginTop: 16 }}>
+              <div className="highlights-header">
+                <span className="highlights-title">{t('stories').toUpperCase()}</span>
+                <button type="button" className="add-highlight-btn" onClick={handleAddStoryClick} disabled={uploading} title={t('addStory')}>+</button>
+              </div>
+              <p className="stories-expires-note">{t('storyExpiresNote')}</p>
+              <input ref={storyInputRef} type="file" accept="image/*,video/*" style={{ display: 'none' }} onChange={handleStoryFileChange} />
+              <div className="stories-rings-scroll">
+                <button type="button" className="story-ring story-ring-add" onClick={handleAddStoryClick} disabled={uploading}>
+                  <span className="story-ring-inner">+</span>
+                  <span className="story-ring-label">{t('addStory')}</span>
+                </button>
+                {storiesSorted.map((story: any, idx: number) => {
+                  const thumbIsVideo = story.mediaType === 'video' || isVideoMediaUrl(story.mediaUrl);
+                  return (
+                    <button
+                      type="button"
+                      key={story.id}
+                      className={`story-ring ${story.audience === 'closeFriends' ? 'story-ring-close' : ''}`}
+                      onClick={() => setViewingStories({ items: storiesSorted, index: idx })}
+                    >
+                      <span className="story-ring-inner">
+                        {thumbIsVideo ? (
+                          <video src={story.mediaUrl} className="story-ring-media" muted playsInline autoPlay loop />
+                        ) : (
+                          <img src={story.mediaUrl} alt="" className="story-ring-media" />
+                        )}
+                      </span>
+                      <span className="story-ring-label">{story.audience === 'closeFriends' ? '🔒' : '○'}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              <details className="close-friends-details">
+                <summary className="close-friends-summary">{t('manageCloseFriends')}</summary>
+                <p className="close-friends-hint">{t('storyAudienceCloseFriends')} — {t('closeFriends').toLowerCase()}.</p>
+                <div className="close-friends-checklist">
+                  {closeFriendCandidates.map((c) => {
+                    const checked = closeFriendIds.includes(c.id);
+                    return (
+                      <label key={c.id} className="close-friends-row">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={async (e) => {
+                            const next = e.target.checked
+                              ? [...closeFriendIds, c.id]
+                              : closeFriendIds.filter((id: string) => id !== c.id);
+                            try {
+                              await profileAPI.updateProfile({ closeFriendIds: next });
+                              await loadProfile();
+                            } catch {
+                              setError('Could not update close friends');
+                            }
+                          }}
+                        />
+                        <span>{c.name}</span>
+                      </label>
+                    );
+                  })}
+                  {closeFriendCandidates.length === 0 && (
+                    <p className="close-friends-empty">Chat with people first — they will appear here.</p>
+                  )}
+                </div>
+              </details>
+            </div>
+
             <div className="highlights-section" style={{ marginTop: 16 }}>
               <div className="highlights-header">
                 <span className="highlights-title">{t('highlights').toUpperCase()}</span>
-                <button className="add-highlight-btn" onClick={() => handleHighlightClick()} disabled={uploading}>+</button>
+                <button type="button" className="add-highlight-btn" onClick={() => handleHighlightClick()} disabled={uploading}>+</button>
               </div>
               <input ref={highlightInputRef} type="file" accept="image/*,video/*" style={{ display: 'none' }} onChange={handleHighlightChange} />
               <div className="highlights-scrollable">
@@ -469,22 +633,27 @@ const Profile = () => {
                   const items = highlight.items || (highlight.imageUrl ? [{ id: highlight.id + '_item', imageUrl: highlight.imageUrl }] : []);
                   const coverImage = highlight.coverImage || items[0]?.imageUrl || highlight.imageUrl;
                   const itemCount = items.length;
+                  const coverIsVideo = items[0]?.mediaType === 'video' || isVideoMediaUrl(coverImage || '');
                   return (
                     <div key={highlight.id} className="highlight-card">
+                      <div className="highlight-reorder">
+                        <button type="button" className="highlight-move-btn" title={t('highlightMoveLeft')} onClick={(e) => { e.stopPropagation(); moveHighlight(highlight.id, 'left'); }}>‹</button>
+                        <button type="button" className="highlight-move-btn" title={t('highlightMoveRight')} onClick={(e) => { e.stopPropagation(); moveHighlight(highlight.id, 'right'); }}>›</button>
+                      </div>
                       <div className="highlight-media-wrapper" onClick={() => setViewingHighlight({ ...highlight, items })}>
                         {coverImage && (
-                          coverImage.startsWith('data:video') ? (
-                            <video src={coverImage} className="highlight-media" />
+                          coverIsVideo ? (
+                            <video src={coverImage} className="highlight-media" muted playsInline loop autoPlay />
                           ) : (
                             <img src={coverImage} alt="Highlight" className="highlight-media" />
                           )
                         )}
                         {itemCount > 1 && <div className="highlight-count-badge">{itemCount}</div>}
                         <div className="highlight-add-overlay">
-                          <button className="add-to-highlight-btn" onClick={(e) => { e.stopPropagation(); handleHighlightClick(highlight.id); }} title="Add more">+</button>
+                          <button type="button" className="add-to-highlight-btn" onClick={(e) => { e.stopPropagation(); handleHighlightClick(highlight.id); }} title="Add more">+</button>
                         </div>
                       </div>
-                      <button className="highlight-delete" onClick={() => handleDeleteHighlight(highlight.id)} title="Delete">×</button>
+                      <button type="button" className="highlight-delete" onClick={() => handleDeleteHighlight(highlight.id)} title="Delete">×</button>
                     </div>
                   );
                 })}
@@ -871,8 +1040,8 @@ const Profile = () => {
                 <div className="viewer-items">
                   {(viewingHighlight.items || []).map((item: any, idx: number) => (
                     <div key={item.id || idx} className="viewer-item">
-                      {item.imageUrl.startsWith('data:video') ? (
-                        <video src={item.imageUrl} className="viewer-media" controls />
+                      {item.mediaType === 'video' || isVideoMediaUrl(item.imageUrl) ? (
+                        <video src={item.imageUrl} className="viewer-media" controls playsInline />
                       ) : (
                         <img src={item.imageUrl} alt="" className="viewer-media" />
                       )}
@@ -894,6 +1063,98 @@ const Profile = () => {
         <button className="console-btn" onClick={() => navigate('/home')}>{t('home').toUpperCase()}</button>
         <button className="console-btn logout" onClick={handleLogout}>{t('logout').toUpperCase()}</button>
       </div>
+
+      {showStoryAudiencePicker && pendingStoryMedia && createPortal(
+        <div className="story-audience-overlay" role="dialog" aria-modal onClick={() => { if (!uploading) { setShowStoryAudiencePicker(false); setPendingStoryMedia(null); } }}>
+          <div className="story-audience-panel" onClick={(e) => e.stopPropagation()}>
+            <h3 className="story-audience-title">{t('addStory')}</h3>
+            <p className="story-audience-question">Who can see this story?</p>
+            <div className="story-audience-actions">
+              <button type="button" className="story-audience-btn story-audience-everyone" disabled={uploading} onClick={() => submitStoryWithAudience('all')}>
+                {t('storyAudienceEveryone')}
+              </button>
+              <button type="button" className="story-audience-btn story-audience-close" disabled={uploading} onClick={() => submitStoryWithAudience('closeFriends')}>
+                {t('storyAudienceCloseFriends')}
+              </button>
+              <button type="button" className="story-audience-cancel" disabled={uploading} onClick={() => { setShowStoryAudiencePicker(false); setPendingStoryMedia(null); }}>
+                {t('cancel')}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {viewingStories && viewingStories.items.length > 0 && createPortal(
+        <div
+          className="story-fullscreen-viewer"
+          role="presentation"
+          onClick={() => setViewingStories(null)}
+        >
+          <div className="story-progress-row" aria-hidden>
+            {viewingStories.items.map((_, i) => (
+              <div key={i} className={`story-progress-seg ${i <= viewingStories.index ? 'story-progress-on' : ''}`} />
+            ))}
+          </div>
+          <button type="button" className="story-tap-left" aria-label="Previous" onClick={(e) => { e.stopPropagation(); setViewingStories((vs) => vs && vs.index > 0 ? { ...vs, index: vs.index - 1 } : vs); }} />
+          <button type="button" className="story-tap-right" aria-label="Next" onClick={(e) => { e.stopPropagation(); setViewingStories((vs) => vs && vs.index + 1 < vs.items.length ? { ...vs, index: vs.index + 1 } : null); }} />
+          <div className="story-fullscreen-inner" onClick={(e) => e.stopPropagation()}>
+            {(() => {
+              const cur = viewingStories.items[viewingStories.index];
+              if (!cur) return null;
+              const vid = cur.mediaType === 'video' || isVideoMediaUrl(cur.mediaUrl);
+              return vid ? (
+                <video
+                  ref={storyVideoRef}
+                  src={cur.mediaUrl}
+                  className="story-full-bleed-media"
+                  playsInline
+                  controls
+                  onEnded={() => {
+                    setViewingStories((vs) => {
+                      if (!vs) return null;
+                      if (vs.index + 1 < vs.items.length) return { ...vs, index: vs.index + 1 };
+                      return null;
+                    });
+                  }}
+                />
+              ) : (
+                <img src={cur.mediaUrl} alt="" className="story-full-bleed-media" />
+              );
+            })()}
+          </div>
+          <div className="story-viewer-toolbar" onClick={(e) => e.stopPropagation()}>
+            <button type="button" className="story-toolbar-btn" onClick={() => {
+              const cur = viewingStories.items[viewingStories.index];
+              if (cur) handleDeleteStory(cur.id);
+            }}>{t('deleteStory')}</button>
+            <select
+              className="story-highlight-select"
+              value={highlightPickForStory}
+              onChange={(e) => setHighlightPickForStory(e.target.value)}
+              aria-label="Add to highlight"
+            >
+              <option value="__new__">{t('addHighlight')}</option>
+              {highlights.map((h: any) => (
+                <option key={h.id} value={h.id}>{h.title || 'Highlight'}</option>
+              ))}
+            </select>
+            <button type="button" className="story-toolbar-btn" onClick={async () => {
+              const cur = viewingStories.items[viewingStories.index];
+              if (!cur || !user?.id) return;
+              try {
+                await profileAPI.addHighlightFromStory(cur.id, highlightPickForStory === '__new__' ? undefined : highlightPickForStory);
+                await loadProfile();
+                setViewingStories(null);
+              } catch {
+                setError('Could not add to highlight');
+              }
+            }}>{t('addToHighlight')}</button>
+            <button type="button" className="story-toolbar-close" onClick={() => setViewingStories(null)}>×</button>
+          </div>
+        </div>,
+        document.body
+      )}
 
       {showPhotoVerification && user?.id && createPortal(
         <PhotoVerificationModal

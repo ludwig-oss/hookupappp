@@ -393,6 +393,14 @@ export default function LoveFeedWidget({ onShareToFriends }: { onShareToFriends?
     }
   };
 
+  const isPostAuthor = (post: DatingPost) => {
+    if (!user?.id) return false;
+    const uid = String(user.id).trim();
+    const fromPost = post.userId != null && String(post.userId).length > 0 ? String(post.userId).trim() : '';
+    const fromNested = post.user?.id != null ? String(post.user.id).trim() : '';
+    return fromPost === uid || fromNested === uid;
+  };
+
   const formatCount = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(n));
   const formatDate = (d: string) => {
     const date = new Date(d);
@@ -472,6 +480,17 @@ export default function LoveFeedWidget({ onShareToFriends }: { onShareToFriends?
         ) : (
           posts.map((post) => (
             <article key={post.id} className="love-feed-card">
+              {isPostAuthor(post) && (
+                <div className="love-feed-card-own-toolbar">
+                  <button
+                    type="button"
+                    className="love-feed-delete-post-btn"
+                    onClick={() => handleDelete(post.id)}
+                  >
+                    Delete post
+                  </button>
+                </div>
+              )}
               <div className="love-feed-card-media">
                 {post.contentType === 'video' && post.content.startsWith('data:video') ? (
                   <VideoPostPlayer
@@ -524,36 +543,40 @@ export default function LoveFeedWidget({ onShareToFriends }: { onShareToFriends?
                 </p>
               </div>
               <div className="love-feed-card-actions">
-                <button type="button" className="love-feed-action" onClick={() => user && handleLike(post.id)} title="Like" disabled={!user}>
-                  <span className="love-feed-icon">♥</span>
-                  <span>{formatCount(post.likes || 0)}</span>
-                </button>
-                <button
-                  type="button"
-                  className="love-feed-action"
-                  onClick={() => setExpandedComments(expandedComments === post.id ? null : post.id)}
-                  title="Comment"
-                >
-                  <span className="love-feed-icon">💬</span>
-                  <span>{formatCount(post.comments?.length || 0)}</span>
-                </button>
-                <button type="button" className="love-feed-action love-feed-share" onClick={() => user && handleShare(post)} title="Share" disabled={!user}>
-                  <span className="love-feed-icon">↗</span>
-                  <span>Share</span>
-                </button>
-                {user && post.userId === user.id && (
-                  <button type="button" className="love-feed-action love-feed-delete" onClick={() => handleDelete(post.id)} title="Delete your post">
-                    <span className="love-feed-icon">🗑</span>
-                    <span>Delete</span>
+                <div className="love-feed-actions-primary">
+                  <button type="button" className="love-feed-action" onClick={() => user && handleLike(post.id)} title="Like" disabled={!user}>
+                    <span className="love-feed-icon">♥</span>
+                    <span>{formatCount(post.likes || 0)}</span>
                   </button>
-                )}
-                <button
-                  type="button"
-                  className="love-feed-show-comments"
-                  onClick={() => setExpandedComments(expandedComments === post.id ? null : post.id)}
-                >
-                  {expandedComments === post.id ? 'Hide comments' : 'Comments'}
-                </button>
+                  <button
+                    type="button"
+                    className="love-feed-action"
+                    onClick={() => setExpandedComments(expandedComments === post.id ? null : post.id)}
+                    title="Comment"
+                  >
+                    <span className="love-feed-icon">💬</span>
+                    <span>{formatCount(post.comments?.length || 0)}</span>
+                  </button>
+                </div>
+                <div className="love-feed-actions-secondary">
+                  <button type="button" className="love-feed-action love-feed-share" onClick={() => user && handleShare(post)} title="Share" disabled={!user}>
+                    <span className="love-feed-icon">↗</span>
+                    <span>Share</span>
+                  </button>
+                  {isPostAuthor(post) && (
+                    <button type="button" className="love-feed-action love-feed-delete" onClick={() => handleDelete(post.id)} title="Delete your post">
+                      <span className="love-feed-icon">🗑</span>
+                      <span>Delete</span>
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className="love-feed-show-comments"
+                    onClick={() => setExpandedComments(expandedComments === post.id ? null : post.id)}
+                  >
+                    {expandedComments === post.id ? 'Hide comments' : 'Comments'}
+                  </button>
+                </div>
               </div>
               {expandedComments === post.id && (
                 <div className="love-feed-comments">

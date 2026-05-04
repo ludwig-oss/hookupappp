@@ -5,6 +5,10 @@ import {
   getUserProfile,
   addUserHighlight,
   deleteUserHighlight,
+  addUserStory,
+  deleteUserStory,
+  reorderUserHighlights,
+  addHighlightFromStory,
   addDisappearingPhotoUser,
   viewDisappearingPhotoUser,
   completeProfileSetup,
@@ -21,9 +25,13 @@ router.get('/me', getUserProfile);
 router.get('/:userId', getUserProfile);
 // Update current user (use /me so auth user is always targeted)
 router.put('/me', updateUserProfileInfo);
+router.put('/highlights/reorder', reorderUserHighlights);
 router.put('/:userId', updateUserProfileInfo);
 router.post('/picture', uploadProfilePicture);
 router.post('/verify-photo', submitPhotoVerification);
+router.post('/stories', addUserStory);
+router.delete('/stories/:storyId', deleteUserStory);
+router.post('/highlights/from-story', addHighlightFromStory);
 router.post('/highlights', addUserHighlight);
 router.delete('/highlights/:highlightId', deleteUserHighlight);
 router.post('/disappearing-photos', addDisappearingPhotoUser);

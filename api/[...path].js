@@ -1,5 +1,6 @@
 /**
- * Node serverless: proxy /api/* → BACKEND_URL (runs before SPA rewrites).
+ * Vercel Node serverless: proxy /api/* → BACKEND_URL.
+ * Fixes: (1) POST body not always on req.body, (2) path as /auth/... vs /api/auth/...
  */
 function getBackendBase() {
   const raw =
@@ -12,13 +13,21 @@ function getBackendBase() {
 
 function extractApiPath(req) {
   const pathParam = req.query?.path;
-  if (pathParam !== undefined && pathParam !== null) {
-    if (Array.isArray(pathParam)) return pathParam.map((s) => decodeURIComponent(String(s))).join('/');
+  if (pathParam !== undefined && pathParam !== null && String(pathParam).length > 0) {
+    if (Array.isArray(pathParam)) {
+      return pathParam.map((s) => decodeURIComponent(String(s))).join('/');
+    }
     return decodeURIComponent(String(pathParam));
   }
-  const pathOnly = (req.url || '').split('?')[0] || '';
+  let pathOnly = (req.url || '').split('?')[0] || '';
+  if (!pathOnly.startsWith('/')) pathOnly = '/' + pathOnly;
   if (pathOnly.startsWith('/api/')) {
     return decodeURIComponent(pathOnly.slice('/api/'.length));
+  }
+  // Vercel may invoke with path already relative to /api
+  if (pathOnly.length > 1) {
+    const rest = pathOnly.startsWith('/') ? pathOnly.slice(1) : pathOnly;
+    if (rest && !rest.startsWith('_')) return decodeURIComponent(rest);
   }
   return '';
 }
@@ -40,6 +49,32 @@ const HOP_BY_HOP = new Set([
   'transfer-encoding',
   'upgrade',
 ]);
+
+async function bodyForUpstream(req) {
+  if (req.body !== undefined && req.body !== null) {
+    if (Buffer.isBuffer(req.body)) return { body: req.body, contentType: null };
+    if (typeof req.body === 'string') return { body: Buffer.from(req.body, 'utf8'), contentType: null };
+    if (typeof req.body === 'object') {
+      return {
+        body: Buffer.from(JSON.stringify(req.body), 'utf8'),
+        contentType: 'application/json',
+      };
+    }
+  }
+  const method = (req.method || 'GET').toUpperCase();
+  if (method === 'GET' || method === 'HEAD') return { body: undefined, contentType: null };
+
+  const chunks = [];
+  try {
+    for await (const chunk of req) {
+      chunks.push(chunk);
+    }
+  } catch {
+    return { body: undefined, contentType: null };
+  }
+  if (!chunks.length) return { body: undefined, contentType: null };
+  return { body: Buffer.concat(chunks), contentType: null };
+}
 
 module.exports = async function handler(req, res) {
   const base = getBackendBase();
@@ -73,15 +108,12 @@ module.exports = async function handler(req, res) {
   }
 
   const method = (req.method || 'GET').toUpperCase();
+  const { body: rawBody, contentType: inferredCt } = await bodyForUpstream(req);
   let body;
   if (method !== 'GET' && method !== 'HEAD') {
-    if (req.body !== undefined && req.body !== null) {
-      if (typeof req.body === 'string' || Buffer.isBuffer(req.body)) {
-        body = req.body;
-      } else if (typeof req.body === 'object') {
-        body = JSON.stringify(req.body);
-        if (!headers.has('content-type')) headers.set('content-type', 'application/json');
-      }
+    body = rawBody && rawBody.length ? rawBody : undefined;
+    if (body && inferredCt && !headers.has('content-type')) {
+      headers.set('content-type', inferredCt);
     }
   }
 

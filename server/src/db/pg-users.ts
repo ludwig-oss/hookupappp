@@ -1,5 +1,7 @@
 import { query, usePostgres } from './index.js';
-import type { User, Highlight, HighlightItem, DisappearingPhoto, DatingProfile } from '../models/user.js';
+import type { User, Highlight, HighlightItem, DisappearingPhoto, DatingProfile, Story, StoryAudience } from '../models/user.js';
+import { STORY_TTL_MS } from '../constants/socialMedia.js';
+import { inferMediaTypeFromUrl } from '../utils/mediaType.js';
 
 const USER_COLS = 'id, email, password, name, username, data';
 
@@ -28,10 +30,24 @@ function rowToUser(row: { id: string; email: string; password: string; name: str
     unmatchedUsers: Array.isArray(data.unmatchedUsers) ? data.unmatchedUsers : [],
     highlights: ((data.highlights as unknown[]) || []).map((h: any) => ({
       ...h,
-      items: (h.items || []).map((item: HighlightItem) => ({ ...item, createdAt: item.createdAt ? new Date(item.createdAt as string) : new Date() })),
+      items: (h.items || []).map((item: HighlightItem) => ({
+        ...item,
+        createdAt: item.createdAt ? new Date(item.createdAt as string) : new Date(),
+        mediaType: item.mediaType || inferMediaTypeFromUrl(item.imageUrl),
+      })),
       createdAt: h.createdAt ? new Date(h.createdAt) : new Date(),
       coverImage: h.coverImage || (h.items?.[0]?.imageUrl) || null,
     })),
+    stories: ((data.stories as unknown[]) || []).map((raw: unknown) => {
+      const s = raw as Story;
+      return {
+        ...s,
+        createdAt: s.createdAt ? new Date(s.createdAt as string) : new Date(),
+        expiresAt: s.expiresAt ? new Date(s.expiresAt as string) : new Date(),
+        mediaType: s.mediaType || inferMediaTypeFromUrl(s.mediaUrl),
+      };
+    }),
+    closeFriendIds: Array.isArray(data.closeFriendIds) ? data.closeFriendIds : [],
     disappearingPhotos: ((data.disappearingPhotos as unknown[]) || []).map((p: any) => ({
       ...p,
       createdAt: p.createdAt ? new Date(p.createdAt) : new Date(),
@@ -73,7 +89,7 @@ function userToData(u: Partial<User>): Record<string, unknown> {
   const data: Record<string, unknown> = {};
   const keys = ['phoneNumber', 'profilePicture', 'profileSetupComplete', 'improvementCategories', 'resetToken', 'resetTokenExpiry',
     'emailVerified', 'emailVerificationToken', 'emailVerificationTokenExpiry', 'emailVerificationCode', 'emailVerificationCodeExpiry',
-    'blockedUsers', 'mutedUsers', 'unmatchedUsers', 'highlights', 'disappearingPhotos', 'location', 'profiles', 'activeProfileId',
+    'blockedUsers', 'mutedUsers', 'unmatchedUsers', 'highlights', 'stories', 'closeFriendIds', 'disappearingPhotos', 'location', 'profiles', 'activeProfileId',
     'bio', 'age', 'gender', 'height', 'interests', 'education', 'occupation', 'relationshipStatus', 'country', 'city',
     'passwordHint1', 'passwordHint2', 'passwordHint3', 'publicFigureLevel', 'publicFigureProof', 'publicFigureIdImage',
     'publicFigureUniqueImage', 'publicFigureVerified', 'publicFigureVerifiedAt', 'revealToUserIds', 'celebChatDisappearMode',
@@ -98,6 +114,8 @@ export async function createUser(userData: Omit<User, 'id' | 'resetToken' | 'res
     mutedUsers: [],
     unmatchedUsers: [],
     profiles: [],
+    stories: [],
+    closeFriendIds: [],
     emailVerified: true,
     emailVerificationToken: null,
     emailVerificationTokenExpiry: null,
@@ -162,14 +180,20 @@ export async function updateUserLocation(userId: string, location: { lat: number
   });
 }
 
-export async function addHighlight(userId: string, imageUrl: string, highlightId?: string): Promise<Highlight | null> {
+export async function addHighlight(
+  userId: string,
+  imageUrl: string,
+  highlightId?: string,
+  mediaType?: 'image' | 'video'
+): Promise<Highlight | null> {
   const u = await getUserById(userId);
   if (!u) return null;
+  const mt = mediaType || inferMediaTypeFromUrl(imageUrl);
   const highlights = [...(u.highlights || [])];
   if (highlightId) {
     const hi = highlights.findIndex(h => h.id === highlightId);
     if (hi !== -1) {
-      const newItem: HighlightItem = { id: Date.now().toString(), imageUrl, createdAt: new Date() };
+      const newItem: HighlightItem = { id: Date.now().toString(), imageUrl, mediaType: mt, createdAt: new Date() };
       highlights[hi].items = [...highlights[hi].items, newItem];
       if (!highlights[hi].coverImage) highlights[hi].coverImage = imageUrl;
       await updateUserProfile(userId, { highlights });
@@ -179,13 +203,66 @@ export async function addHighlight(userId: string, imageUrl: string, highlightId
   const highlight: Highlight = {
     id: Date.now().toString(),
     title: '',
-    items: [{ id: Date.now().toString() + '_item', imageUrl, createdAt: new Date() }],
+    items: [{ id: Date.now().toString() + '_item', imageUrl, mediaType: mt, createdAt: new Date() }],
     createdAt: new Date(),
     coverImage: imageUrl,
   };
   highlights.push(highlight);
   await updateUserProfile(userId, { highlights });
   return highlight;
+}
+
+export async function pruneExpiredStories(userId: string): Promise<void> {
+  const u = await getUserById(userId);
+  if (!u) return;
+  const list = u.stories || [];
+  const now = Date.now();
+  const kept = list.filter(s => new Date(s.expiresAt).getTime() > now);
+  if (kept.length !== list.length) {
+    await updateUserProfile(userId, { stories: kept });
+  }
+}
+
+export async function addStory(
+  userId: string,
+  mediaUrl: string,
+  mediaType: 'image' | 'video',
+  audience: StoryAudience
+): Promise<Story | null> {
+  await pruneExpiredStories(userId);
+  const u = await getUserById(userId);
+  if (!u) return null;
+  const story: Story = {
+    id: `${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
+    mediaUrl,
+    mediaType,
+    createdAt: new Date(),
+    expiresAt: new Date(Date.now() + STORY_TTL_MS),
+    audience,
+  };
+  await updateUserProfile(userId, { stories: [...(u.stories || []), story] });
+  return story;
+}
+
+export async function removeStory(userId: string, storyId: string): Promise<boolean> {
+  const u = await getUserById(userId);
+  if (!u) return false;
+  const list = u.stories || [];
+  const next = list.filter(s => s.id !== storyId);
+  if (next.length === list.length) return false;
+  await updateUserProfile(userId, { stories: next });
+  return true;
+}
+
+export async function reorderHighlights(userId: string, orderedIds: string[]): Promise<boolean> {
+  const u = await getUserById(userId);
+  if (!u) return false;
+  const highlights = u.highlights || [];
+  const map = new Map(highlights.map(h => [h.id, h]));
+  const ordered = orderedIds.map(id => map.get(id)).filter(Boolean) as Highlight[];
+  const missing = highlights.filter(h => !orderedIds.includes(h.id));
+  await updateUserProfile(userId, { highlights: [...ordered, ...missing] });
+  return true;
 }
 
 export async function removeHighlight(userId: string, highlightId: string, itemId?: string): Promise<boolean> {

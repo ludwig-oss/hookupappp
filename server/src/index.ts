@@ -56,6 +56,11 @@ const PORT = process.env.PORT || 5000;
 const isProduction = process.env.NODE_ENV === 'production';
 const frontendUrl = process.env.FRONTEND_URL?.trim() || '';
 
+/** Render / reverse proxy + Vercel API proxy forward X-Forwarded-For. Without this, rate limits see one IP and block signups. */
+if (isProduction) {
+  app.set('trust proxy', true);
+}
+
 if (isProduction && !process.env.JWT_SECRET) {
   console.error('FATAL: JWT_SECRET must be set in production. Set it in server/.env');
   process.exit(1);

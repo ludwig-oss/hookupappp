@@ -7,17 +7,18 @@ import { sendPasswordResetEmail, sendVerificationEmail } from '../utils/email.js
 import { sendPasswordResetSMS, sendVerificationSMS } from '../utils/sms.js';
 import { sanitizeName, sanitizeUsername } from '../utils/sanitize.js';
 
-const JWT_SECRET = process.env.JWT_SECRET;
 const JWT_EXPIRES_IN = '7d';
 
 const BCRYPT_ROUNDS = process.env.NODE_ENV === 'production' ? 12 : 10;
 
+/** Read env at call time — not at module load — so tokens match `dotenv.config()` in `index.ts` (imports run before that). */
 function getJwtSecret(): string {
-  if (JWT_SECRET && JWT_SECRET.length >= 32) return JWT_SECRET;
+  const secret = process.env.JWT_SECRET;
+  if (secret && secret.length >= 32) return secret;
   if (process.env.NODE_ENV === 'production') {
     throw new Error('JWT_SECRET must be set in production (min 32 characters). Set it in server/.env');
   }
-  return JWT_SECRET || 'dev-only-secret-do-not-use-in-production';
+  return secret || 'dev-only-secret-do-not-use-in-production';
 }
 
 // Strong password validation

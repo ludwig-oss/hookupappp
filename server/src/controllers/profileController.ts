@@ -1,10 +1,22 @@
 import { Request, Response } from 'express';
-import { getUserById, updateUserProfile, addHighlight, removeHighlight, addDisappearingPhoto, viewDisappearingPhoto } from '../models/user.js';
+import {
+  getUserById,
+  updateUserProfile,
+  addHighlight,
+  removeHighlight,
+  addDisappearingPhoto,
+  viewDisappearingPhoto,
+  addStory,
+  removeStory,
+  reorderHighlights,
+  pruneExpiredStories,
+} from '../models/user.js';
 import { getActiveRelationship } from '../models/relationship.js';
 import { readFile, writeFile } from 'fs/promises';
 import { join } from 'path';
 import { v4 as uuidv4 } from 'uuid';
-import { uploadImage } from '../utils/storage.js';
+import { uploadImage, uploadMedia } from '../utils/storage.js';
+import { inferMediaTypeFromUrl } from '../utils/mediaType.js';
 
 const UPLOADS_DIR = join(process.cwd(), 'server', 'uploads');
 
@@ -94,26 +106,38 @@ export const submitPhotoVerification = async (req: Request, res: Response) => {
 
 export const getUserProfile = async (req: Request, res: Response) => {
   try {
-    // GET /me → use auth userId; GET /:userId → use param
-    const userId = req.params.userId === 'me' || !req.params.userId
-      ? (req as any).userId
-      : req.params.userId;
-    if (!userId) {
+    const profileUserId =
+      req.params.userId === 'me' || !req.params.userId ? (req as any).userId : req.params.userId;
+    if (!profileUserId) {
       return res.status(401).json({ error: 'Unauthorized. Send Authorization: Bearer <token> for /me' });
     }
 
-    const user = await getUserById(userId);
+    await pruneExpiredStories(profileUserId);
+    const user = await getUserById(profileUserId);
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
+
+    const authUserId = (req as any).userId as string;
+    const viewingOwnProfile = authUserId === profileUserId;
+    const now = Date.now();
+    const ownerCloseFriends = user.closeFriendIds || [];
+    const visibleStories = (user.stories || []).filter((s) => {
+      if (new Date(s.expiresAt).getTime() <= now) return false;
+      if (viewingOwnProfile) return true;
+      if (s.audience === 'all') return true;
+      return ownerCloseFriends.includes(authUserId);
+    });
 
     // Don't send password and sensitive data
     const { password, resetToken, resetTokenExpiry, ...userProfile } = user;
     
     // Ensure all required fields exist with defaults
-    const profile = {
+    const profile: Record<string, unknown> = {
       ...userProfile,
       highlights: userProfile.highlights || [],
+      stories: visibleStories,
+      closeFriendIds: viewingOwnProfile ? (userProfile.closeFriendIds || []) : undefined,
       disappearingPhotos: userProfile.disappearingPhotos || [],
       improvementCategories: userProfile.improvementCategories || [],
       profilePicture: userProfile.profilePicture || null,
@@ -124,10 +148,13 @@ export const getUserProfile = async (req: Request, res: Response) => {
       profiles: userProfile.profiles || [],
       photoVerifiedAt: userProfile.photoVerifiedAt || null,
     };
+    if (!viewingOwnProfile) {
+      delete profile.closeFriendIds;
+    }
 
     if (req.params.userId && req.params.userId !== 'me') {
       try {
-        const rel = await getActiveRelationship(userId);
+        const rel = await getActiveRelationship(profileUserId);
         (profile as any).inRelationship = !!rel && rel.status === 'active';
       } catch (_) {
         (profile as any).inRelationship = false;
@@ -148,13 +175,16 @@ export const addUserHighlight = async (req: Request, res: Response) => {
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    const { image, highlightId } = req.body; // Base64 image data, optional highlightId to add to existing
-    if (!image) {
-      return res.status(400).json({ error: 'Image is required' });
+    const { image, media, highlightId } = req.body;
+    const raw = media || image;
+    if (!raw || typeof raw !== 'string') {
+      return res.status(400).json({ error: 'Image or media (data URL / base64) is required' });
     }
 
-    const imageUrl = await uploadImage(image, 'highlights');
-    const highlight = await addHighlight(userId, imageUrl, highlightId);
+    const dataPayload = raw.startsWith('data:') ? raw : base64ToDataUrl(raw);
+    const mediaUrl = await uploadMedia(dataPayload, 'highlights');
+    const mediaType = inferMediaTypeFromUrl(mediaUrl);
+    const highlight = await addHighlight(userId, mediaUrl, highlightId, mediaType);
 
     if (!highlight) {
       return res.status(404).json({ error: 'User not found' });
@@ -166,6 +196,102 @@ export const addUserHighlight = async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error('Add highlight error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+export const addUserStory = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).userId;
+    if (!userId) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const { media, image, audience } = req.body;
+    const raw = media || image;
+    if (!raw || typeof raw !== 'string') {
+      return res.status(400).json({ error: 'media or image (data URL / base64) is required' });
+    }
+
+    const aud = audience === 'closeFriends' ? 'closeFriends' : 'all';
+    const dataPayload = raw.startsWith('data:') ? raw : base64ToDataUrl(raw);
+    const mediaUrl = await uploadMedia(dataPayload, 'stories');
+    const mediaType = inferMediaTypeFromUrl(mediaUrl);
+    const story = await addStory(userId, mediaUrl, mediaType, aud);
+    if (!story) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    res.json({ message: 'Story published (visible for 24 hours)', story });
+  } catch (error) {
+    console.error('Add story error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+export const deleteUserStory = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).userId;
+    const { storyId } = req.params;
+    if (!userId) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+    if (!storyId) {
+      return res.status(400).json({ error: 'Story ID is required' });
+    }
+    const ok = await removeStory(userId, storyId);
+    if (!ok) {
+      return res.status(404).json({ error: 'Story not found' });
+    }
+    res.json({ message: 'Story deleted' });
+  } catch (error) {
+    console.error('Delete story error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+export const reorderUserHighlights = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).userId;
+    if (!userId) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+    const { orderedIds } = req.body;
+    if (!Array.isArray(orderedIds) || !orderedIds.every((id: unknown) => typeof id === 'string')) {
+      return res.status(400).json({ error: 'orderedIds must be an array of highlight id strings' });
+    }
+    await reorderHighlights(userId, orderedIds);
+    res.json({ message: 'Highlights reordered' });
+  } catch (error) {
+    console.error('Reorder highlights error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+export const addHighlightFromStory = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).userId;
+    if (!userId) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+    const { storyId, highlightId } = req.body;
+    if (!storyId || typeof storyId !== 'string') {
+      return res.status(400).json({ error: 'storyId is required' });
+    }
+    const owner = await getUserById(userId);
+    const story = owner?.stories?.find((s) => s.id === storyId);
+    if (!story || new Date(story.expiresAt).getTime() <= Date.now()) {
+      return res.status(404).json({ error: 'Story not found or expired' });
+    }
+    const highlight = await addHighlight(userId, story.mediaUrl, highlightId, story.mediaType);
+    if (!highlight) {
+      return res.status(404).json({ error: 'Could not add highlight' });
+    }
+    res.json({
+      message: highlightId ? 'Added to highlight' : 'Created highlight from story',
+      highlight,
+    });
+  } catch (error) {
+    console.error('Highlight from story error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 };
@@ -328,6 +454,9 @@ export const updateUserProfileInfo = async (req: Request, res: Response) => {
     if (body.celebChatDisappearMode !== undefined) updates.celebChatDisappearMode = body.celebChatDisappearMode || 'none';
     if (body.celebChatDisappearSeconds !== undefined) updates.celebChatDisappearSeconds = body.celebChatDisappearSeconds;
     if (body.celebMessagesOnlyWhenOpened !== undefined) updates.celebMessagesOnlyWhenOpened = !!body.celebMessagesOnlyWhenOpened;
+    if (Array.isArray(body.closeFriendIds)) {
+      updates.closeFriendIds = body.closeFriendIds.filter((id: unknown) => typeof id === 'string');
+    }
 
     const user = await updateUserProfile(userId, updates);
     if (!user) {

@@ -26,12 +26,23 @@ export interface ProfileData {
     items?: Array<{
       id: string;
       imageUrl: string;
+      mediaType?: 'image' | 'video';
       createdAt: string;
     }>;
     imageUrl?: string; // Backward compatibility
     coverImage?: string;
     createdAt: string;
   }>;
+  stories?: Array<{
+    id: string;
+    mediaUrl: string;
+    mediaType: 'image' | 'video';
+    createdAt: string;
+    expiresAt: string;
+    audience: 'all' | 'closeFriends';
+  }>;
+  /** Only present on your own profile. */
+  closeFriendIds?: string[];
   disappearingPhotos: Array<{
     id: string;
     imageUrl: string;
@@ -52,13 +63,13 @@ export const profileAPI = {
 
   getUserProfile: async (userId: string): Promise<ProfileData> => {
     try {
-      const response = await axios.get(`${API_URL}/${userId}`);
+      const response = await axios.get(`${API_URL}/${userId}`, { headers: getAuthHeaders() });
       return response.data;
     } catch (err: any) {
       // If userId route fails, try /me route for current user
       if (err.response?.status === 404 || err.response?.status === 400) {
         try {
-          const meResponse = await axios.get(`${API_URL}/me`);
+          const meResponse = await axios.get(`${API_URL}/me`, { headers: getAuthHeaders() });
           return meResponse.data;
         } catch (meErr) {
           throw err; // Throw original error
@@ -79,13 +90,44 @@ export const profileAPI = {
     return response.data;
   },
 
-  addHighlight: async (imageBase64: string, userId: string, highlightId?: string): Promise<{ highlight: any }> => {
-    const response = await axios.post(`${API_URL}/highlights`, { image: imageBase64, userId, highlightId });
+  addHighlight: async (mediaBase64OrDataUrl: string, userId: string, highlightId?: string): Promise<{ highlight: any }> => {
+    const body: Record<string, string | undefined> = { userId, highlightId };
+    if (mediaBase64OrDataUrl.startsWith('data:')) (body as any).media = mediaBase64OrDataUrl;
+    else body.image = mediaBase64OrDataUrl;
+    const response = await axios.post(`${API_URL}/highlights`, body, { headers: getAuthHeaders() });
+    return response.data;
+  },
+
+  addStory: async (
+    mediaBase64OrDataUrl: string,
+    audience: 'all' | 'closeFriends'
+  ): Promise<{ story: any }> => {
+    const body: Record<string, string> = { audience };
+    if (mediaBase64OrDataUrl.startsWith('data:')) body.media = mediaBase64OrDataUrl;
+    else body.image = mediaBase64OrDataUrl;
+    const response = await axios.post(`${API_URL}/stories`, body, { headers: getAuthHeaders() });
+    return response.data;
+  },
+
+  deleteStory: async (storyId: string): Promise<void> => {
+    await axios.delete(`${API_URL}/stories/${storyId}`, { headers: getAuthHeaders() });
+  },
+
+  reorderHighlights: async (orderedIds: string[]): Promise<void> => {
+    await axios.put(`${API_URL}/highlights/reorder`, { orderedIds }, { headers: getAuthHeaders() });
+  },
+
+  addHighlightFromStory: async (storyId: string, highlightId?: string): Promise<{ highlight: any }> => {
+    const response = await axios.post(
+      `${API_URL}/highlights/from-story`,
+      { storyId, highlightId },
+      { headers: getAuthHeaders() }
+    );
     return response.data;
   },
 
   deleteHighlight: async (highlightId: string, userId: string, itemId?: string): Promise<void> => {
-    await axios.delete(`${API_URL}/highlights/${highlightId}`, { data: { userId, itemId } });
+    await axios.delete(`${API_URL}/highlights/${highlightId}`, { data: { userId, itemId }, headers: getAuthHeaders() });
   },
 
   completeProfileSetup: async (profilePicture: string | null, userId: string): Promise<{ user: any }> => {
@@ -126,6 +168,7 @@ export const profileAPI = {
     celebChatDisappearMode?: 'none' | 'after_read' | 'after_read_seconds';
     celebChatDisappearSeconds?: number;
     celebMessagesOnlyWhenOpened?: boolean;
+    closeFriendIds?: string[];
   }): Promise<{ user: any }> => {
     const response = await axios.put(`${API_URL}/me`, updates, { headers: getAuthHeaders() });
     return response.data;

@@ -2,6 +2,9 @@
   "name": "auth-web-app",
   "version": "1.0.0",
   "description": "Full-stack web application with authentication",
+  "engines": {
+    "node": ">=20 <23"
+  },
   "scripts": {
     "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
     "dev:server": "cd server && npm run dev",
@@ -12,7 +15,9 @@
     "build:server": "cd server && npm run build",
     "start": "cd server && node dist/index.js",
     "pack": "node scripts/pack.js",
-    "pack:full": "npm run build && node scripts/pack.js"
+    "pack:full": "npm run build && node scripts/pack.js",
+    "vercel-install": "npm install --include=dev && npm install --include=dev --prefix client",
+    "vercel-build": "npm run build:skip-typecheck --prefix client"
   },
   "dependencies": {
     "@vercel/node": "^3.2.29"

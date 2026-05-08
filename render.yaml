@@ -8,6 +8,9 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
+      # Render defaults can be Node 18; this repo requires Node >=20 (see package.json engines)
+      - key: NODE_VERSION
+        value: 20
       - key: JWT_SECRET
         generateValue: true
       - key: FRONTEND_URL

@@ -6,11 +6,12 @@ services:
     buildCommand: npm run install:all && npm run build
     startCommand: NODE_ENV=production node server/dist/index.js
     envVars:
-      - key: NODE_ENV
-        value: production
       # Render defaults can be Node 18; this repo requires Node >=20 (see package.json engines)
       - key: NODE_VERSION
         value: 20
+      # Ensure devDependencies are installed during build (tsc/vite live in devDependencies).
+      - key: NPM_CONFIG_PRODUCTION
+        value: "false"
       - key: JWT_SECRET
         generateValue: true
       - key: FRONTEND_URL

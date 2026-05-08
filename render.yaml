@@ -3,7 +3,9 @@ services:
   - type: web
     name: aswp
     env: node
-    buildCommand: npm run install:all && npm run build
+    # Render build environments sometimes omit devDependencies despite config; client build uses newer TS options.
+    # Use Vite build without tsc on Render; typecheck is still run in CI/local.
+    buildCommand: npm run install:all && npm run build:skip-typecheck --prefix client && npm run build:server
     startCommand: NODE_ENV=production node server/dist/index.js
     envVars:
       # Render defaults can be Node 18; this repo requires Node >=20 (see package.json engines)

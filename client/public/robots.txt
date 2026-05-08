@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /
+
+# If you add a sitemap later, put it at /sitemap.xml and uncomment:
+# Sitemap: /sitemap.xml
+

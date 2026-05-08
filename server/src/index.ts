@@ -79,6 +79,12 @@ app.use(
       }
       try {
         const host = new URL(origin).hostname;
+        // Render-only single-service deploy: if FRONTEND_URL isn't set, allow browser origins
+        // (same-origin on Render + custom domains). This avoids blocking signup/login due to CORS.
+        if (!frontendUrl) {
+          callback(null, true);
+          return;
+        }
         if (frontendUrl && origin === frontendUrl) {
           callback(null, true);
           return;

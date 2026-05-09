@@ -1,16 +1,20 @@
-# Render.com one-click deploy. Connect this repo and Render will use this.
+# Render Blueprint: Web + managed Postgres (DATABASE_URL wired automatically)
+# Dashboard: New → Blueprint → connect repo, or sync an existing Blueprint from this file.
+
+databases:
+  - name: hookupappp-db
+    plan: free
+
 services:
   - type: web
-    name: aswp
+    name: hookupappp
     env: node
-    # Always install devDependencies (Vite lives there). Client skips `tsc` on Render (avoids stale TS).
     buildCommand: npm run install:all && npm run build:render
     startCommand: NODE_ENV=production node server/dist/index.js
+    healthCheckPath: /api/health
     envVars:
-      # Render defaults can be Node 18; this repo requires Node >=20 (see package.json engines)
       - key: NODE_VERSION
-        value: 20
-      # Ensure devDependencies are installed during build (tsc/vite live in devDependencies).
+        value: "20"
       - key: NPM_CONFIG_PRODUCTION
         value: "false"
       - key: JWT_SECRET
@@ -18,5 +22,6 @@ services:
       - key: FRONTEND_URL
         sync: false
       - key: DATABASE_URL
-        sync: false
-    healthCheckPath: /api/health
+        fromDatabase:
+          name: hookupappp-db
+          property: connectionString

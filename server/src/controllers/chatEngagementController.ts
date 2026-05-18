@@ -18,6 +18,7 @@ import {
   readConnectionPrompts,
   readChallenges,
 } from '../models/chatEngagement.js';
+import { sanitizeForStorage, sanitizeHttpUrl, LIMITS } from '../utils/sanitize.js';
 
 export const submitProofOfLove = async (req: Request, res: Response) => {
   try {
@@ -26,7 +27,9 @@ export const submitProofOfLove = async (req: Request, res: Response) => {
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    const { toUserId, prompt, mediaUrl } = req.body;
+    const { toUserId } = req.body;
+    const prompt = sanitizeForStorage(req.body.prompt, LIMITS.PROMPT);
+    const mediaUrl = sanitizeHttpUrl(req.body.mediaUrl) || sanitizeForStorage(req.body.mediaUrl, LIMITS.HTTP_URL);
     if (!toUserId || !prompt || !mediaUrl) {
       return res.status(400).json({ error: 'All fields are required' });
     }

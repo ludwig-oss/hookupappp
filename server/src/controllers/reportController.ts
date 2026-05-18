@@ -6,6 +6,7 @@ import {
   updateReportStatus,
 } from '../models/reports.js';
 import { blockUser, getUserById, getUserByUsername } from '../models/user.js';
+import { sanitizeForStorage, parseReportCategory, LIMITS } from '../utils/sanitize.js';
 
 /** GET /api/reports/lookup?q=usernameOrId — resolve to userId and name for reporting. */
 export const lookupUserForReport = async (req: Request, res: Response) => {
@@ -55,15 +56,20 @@ export const createUserReport = async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'You cannot report yourself' });
     }
 
+    const safeCategory = parseReportCategory(category);
+    if (!safeCategory) {
+      return res.status(400).json({ error: 'Category is required' });
+    }
+
     const report = await createReport({
       reporterId: userId,
       reportedUserId: targetUserId,
-      category,
-      description: description || '',
+      category: safeCategory,
+      description: sanitizeForStorage(description, LIMITS.REPORT_DESCRIPTION),
     });
 
     // Auto-block for serious categories so reporter is protected immediately
-    if (['harassment', 'violence', 'underage'].includes(category)) {
+    if (['harassment', 'violence', 'underage'].includes(safeCategory)) {
       await blockUser(userId, targetUserId);
     }
 

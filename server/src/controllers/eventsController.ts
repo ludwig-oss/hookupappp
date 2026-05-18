@@ -17,6 +17,8 @@ import {
 } from '../models/events.js';
 import { getUserById } from '../models/user.js';
 import { maskUserForViewer } from '../lib/celebMask.js';
+import { checkContent } from '../utils/moderation.js';
+import { sanitizeForStorage, sanitizeMessageContent, parseEventType, LIMITS } from '../utils/sanitize.js';
 
 const SAFETY_NOTE =
   'Be careful: meet at a public place first. Get details of where you\'re going and who you\'re with. Share your plans with an emergency contact.';
@@ -65,7 +67,16 @@ export async function createEventHandler(req: Request, res: Response) {
     const userId = (req as any).userId;
     if (!userId) return res.status(401).json({ error: 'Unauthorized' });
     const body = req.body || {};
-    const { type, title, description, city, country, startDate, startTime, endTime } = body;
+    const type = parseEventType(body.type);
+    const title = sanitizeForStorage(body.title, LIMITS.EVENT_TITLE);
+    const description = body.description != null
+      ? sanitizeForStorage(body.description, LIMITS.EVENT_DESCRIPTION)
+      : undefined;
+    const city = sanitizeForStorage(body.city, LIMITS.CITY);
+    const country = body.country != null ? sanitizeForStorage(body.country, LIMITS.COUNTRY) : undefined;
+    const startDate = sanitizeForStorage(body.startDate, 20);
+    const startTime = sanitizeForStorage(body.startTime, 10);
+    const endTime = sanitizeForStorage(body.endTime || '06:00', 10);
     if (!type || !title || !city || !startDate || !startTime) {
       return res.status(400).json({ error: 'type, title, city, startDate, startTime are required' });
     }
@@ -194,11 +205,15 @@ export async function postEventMessage(req: Request, res: Response) {
     const userId = (req as any).userId;
     if (!userId) return res.status(401).json({ error: 'Unauthorized' });
     const eventId = req.params.eventId || req.body.eventId;
-    const content = req.body.content;
-    if (!eventId || !(typeof content === 'string' && content.trim())) {
+    const content = sanitizeMessageContent(req.body.content);
+    if (!eventId || !content) {
       return res.status(400).json({ error: 'eventId and content are required' });
     }
-    const msg = await addEventMessage(eventId, userId, content.trim());
+    const moderation = checkContent(content);
+    if (!moderation.allowed) {
+      return res.status(400).json({ error: moderation.reason || 'Message not allowed.' });
+    }
+    const msg = await addEventMessage(eventId, userId, content);
     if (!msg) return res.status(403).json({ error: 'Cannot post or event ended' });
     const u = await getUserById(userId);
     const base = u ? creatorBase(u) : null;
@@ -217,7 +232,8 @@ export async function updateMeetupDetails(req: Request, res: Response) {
     const eventId = req.params.eventId || req.body.eventId;
     const meetupDetails = req.body.meetupDetails;
     if (!eventId) return res.status(400).json({ error: 'eventId is required' });
-    const event = await updateEventMeetupDetails(eventId, userId, typeof meetupDetails === 'string' ? meetupDetails : '');
+    const details = sanitizeForStorage(meetupDetails, LIMITS.EVENT_DESCRIPTION);
+    const event = await updateEventMeetupDetails(eventId, userId, details);
     if (!event) return res.status(404).json({ error: 'Event not found' });
     res.json({ event });
   } catch (e: any) {

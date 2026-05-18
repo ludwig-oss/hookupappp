@@ -1,9 +1,9 @@
 import { useState, useContext } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import axios from 'axios';
 import { AuthContext } from '../context/AuthContext';
 import { authAPI } from '../api/auth';
 import { discoverAPI } from '../api/discover';
+import { formatAxiosError } from '../lib/apiError';
 import './Auth.css';
 import './Legal.css';
 
@@ -14,35 +14,6 @@ function coerceUserId(u: unknown): string | null {
   if (typeof u === 'string' && u.length > 0) return u;
   if (typeof u === 'number' && Number.isFinite(u)) return String(Math.trunc(u));
   return null;
-}
-
-function signupErrorMessage(err: any): string {
-  if (!err?.response) {
-    const code = err?.code;
-    const msg = String(err?.message || '');
-    if (code === 'ECONNABORTED' || msg.includes('timeout')) {
-      return 'Request timed out. Check your connection and try again.';
-    }
-    if (msg === 'Network Error' || code === 'ERR_NETWORK' || msg.includes('Failed to fetch')) {
-      return "Can't reach the server. If you're on the live site, the host needs BACKEND_URL set to your API (e.g. Render).";
-    }
-    return msg || 'Signup failed. Please try again.';
-  }
-  const raw = err.response.data;
-  if (typeof raw === 'string') {
-    if (raw.trim().startsWith('<')) {
-      return 'Server returned an error page instead of JSON — check API / proxy (BACKEND_URL on Vercel).';
-    }
-    return raw.slice(0, 200);
-  }
-  if (raw && typeof raw === 'object' && raw.error) {
-    return String(raw.error);
-  }
-  const st = err.response.status;
-  if (st === 503) return 'Service unavailable — API proxy may be missing BACKEND_URL.';
-  if (st === 502) return 'Bad gateway — API server may be down or URL wrong.';
-  if (st === 429) return 'Too many attempts. Wait a few minutes and try again.';
-  return `Signup failed (HTTP ${st}). Please try again.`;
 }
 
 const SignupWithImprovement = () => {
@@ -86,7 +57,7 @@ const SignupWithImprovement = () => {
 
     setError('');
     setLoading(true);
-    const prevAuth = axios.defaults.headers.common['Authorization'];
+    let signedUp = false;
     try {
       const response = await authAPI.signup({
         name: name.trim(),
@@ -107,7 +78,9 @@ const SignupWithImprovement = () => {
 
       const userForLogin = { ...response.user, id };
 
-      axios.defaults.headers.common['Authorization'] = `Bearer ${response.token}`;
+      login(userForLogin, response.token);
+      signedUp = true;
+
       try {
         await discoverAPI.setPreference({
           orientation,
@@ -118,13 +91,12 @@ const SignupWithImprovement = () => {
         /* Preferences are optional for onboarding; account + JWT are already created. */
       }
 
-      login(userForLogin, response.token);
       navigate('/profile-setup', { replace: true });
-    } catch (err: any) {
-      setError(signupErrorMessage(err));
+    } catch (err: unknown) {
+      if (!signedUp) {
+        setError(formatAxiosError(err, 'Signup failed. Please try again.'));
+      }
     } finally {
-      if (prevAuth) axios.defaults.headers.common['Authorization'] = prevAuth;
-      else delete axios.defaults.headers.common['Authorization'];
       setLoading(false);
     }
   };

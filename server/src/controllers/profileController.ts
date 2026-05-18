@@ -17,6 +17,14 @@ import { join } from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { uploadImage, uploadMedia } from '../utils/storage.js';
 import { inferMediaTypeFromUrl } from '../utils/mediaType.js';
+import {
+  sanitizeName,
+  sanitizeUsername,
+  sanitizeBio,
+  sanitizeForStorage,
+  sanitizeOptionalAge,
+  LIMITS,
+} from '../utils/sanitize.js';
 
 const UPLOADS_DIR = join(process.cwd(), 'server', 'uploads');
 
@@ -418,12 +426,25 @@ export const updateUserProfileInfo = async (req: Request, res: Response) => {
     }
 
     const updates: any = {};
-    if (name) updates.name = name;
-    if (username) updates.username = username;
+    if (name) {
+      const safeName = sanitizeName(name);
+      if (!safeName) return res.status(400).json({ error: 'Name is required' });
+      updates.name = safeName;
+    }
+    if (username) {
+      const safeUsername = sanitizeUsername(username);
+      if (!safeUsername) {
+        return res.status(400).json({ error: 'Username must be 3-20 characters and contain only letters, numbers, and underscores' });
+      }
+      updates.username = safeUsername;
+    }
 
     // Check if phone number is already taken (if changing)
     if (phoneNumber) {
-      const normalizedPhone = phoneNumber.replace(/\D/g, '');
+      const normalizedPhone = String(phoneNumber).replace(/\D/g, '').slice(0, LIMITS.PHONE);
+      if (normalizedPhone.length < 10) {
+        return res.status(400).json({ error: 'Invalid phone number' });
+      }
       const { getUserByPhone } = await import('../models/user.js');
       const existingUser = await getUserByPhone(normalizedPhone);
       if (existingUser && existingUser.id !== userId) {
@@ -432,16 +453,24 @@ export const updateUserProfileInfo = async (req: Request, res: Response) => {
       updates.phoneNumber = normalizedPhone;
     }
 
-    if (age !== undefined) updates.age = age;
-    if (bio !== undefined) updates.bio = bio;
-    if (gender !== undefined) updates.gender = gender;
-    if (height !== undefined) updates.height = height;
-    if (education !== undefined) updates.education = education;
-    if (occupation !== undefined) updates.occupation = occupation;
-    if (relationshipStatus !== undefined) updates.relationshipStatus = relationshipStatus;
+    if (age !== undefined) {
+      const safeAge = sanitizeOptionalAge(age);
+      if (age !== null && age !== '' && safeAge === undefined) {
+        return res.status(400).json({ error: 'Age must be between 18 and 120' });
+      }
+      if (safeAge !== undefined) updates.age = safeAge;
+    }
+    if (bio !== undefined) updates.bio = sanitizeBio(bio);
+    if (gender !== undefined) updates.gender = sanitizeForStorage(gender, LIMITS.SHORT_LABEL);
+    if (height !== undefined) updates.height = sanitizeForStorage(height, LIMITS.SHORT_LABEL);
+    if (education !== undefined) updates.education = sanitizeForStorage(education, LIMITS.SHORT_LABEL);
+    if (occupation !== undefined) updates.occupation = sanitizeForStorage(occupation, LIMITS.SHORT_LABEL);
+    if (relationshipStatus !== undefined) {
+      updates.relationshipStatus = sanitizeForStorage(relationshipStatus, LIMITS.SHORT_LABEL);
+    }
     // Always persist country and city when present in body (required for profile save)
-    if ('country' in body) updates.country = typeof body.country === 'string' ? body.country.trim() : '';
-    if ('city' in body) updates.city = typeof body.city === 'string' ? body.city.trim() : '';
+    if ('country' in body) updates.country = sanitizeForStorage(body.country, LIMITS.COUNTRY);
+    if ('city' in body) updates.city = sanitizeForStorage(body.city, LIMITS.CITY);
 
     // Public figure / celebrity
     if (body.publicFigureLevel !== undefined) updates.publicFigureLevel = body.publicFigureLevel || null;

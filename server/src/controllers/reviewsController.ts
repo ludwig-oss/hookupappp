@@ -8,14 +8,21 @@ import {
   REVIEW_ATTRIBUTES,
 } from '../models/reviews.js';
 import { getUserById } from '../models/user.js';
+import { checkContent } from '../utils/moderation.js';
+import { sanitizeForStorage, LIMITS } from '../utils/sanitize.js';
 
 export const submitReview = async (req: Request, res: Response) => {
   try {
     const userId = (req as any).userId;
     if (!userId) return res.status(401).json({ error: 'Unauthorized' });
-    const { toUserId, attributes, reviewText } = req.body;
-    if (!toUserId || !reviewText || typeof reviewText !== 'string') {
+    const { toUserId, attributes } = req.body;
+    const reviewText = sanitizeForStorage(req.body.reviewText, LIMITS.REVIEW);
+    if (!toUserId || !reviewText) {
       return res.status(400).json({ error: 'toUserId and reviewText are required' });
+    }
+    const moderation = checkContent(reviewText);
+    if (!moderation.allowed) {
+      return res.status(400).json({ error: moderation.reason || 'Review not allowed.' });
     }
     const review = await createReview({
       fromUserId: userId,
@@ -53,9 +60,13 @@ export const replyToReview = async (req: Request, res: Response) => {
     const userId = (req as any).userId;
     if (!userId) return res.status(401).json({ error: 'Unauthorized' });
     const { reviewId } = req.params;
-    const { replyText } = req.body;
-    if (!reviewId || !replyText || typeof replyText !== 'string') {
+    const replyText = sanitizeForStorage(req.body.replyText, LIMITS.REPLY);
+    if (!reviewId || !replyText) {
       return res.status(400).json({ error: 'reviewId and replyText required' });
+    }
+    const moderation = checkContent(replyText);
+    if (!moderation.allowed) {
+      return res.status(400).json({ error: moderation.reason || 'Reply not allowed.' });
     }
     const review = await addReply(reviewId, userId, replyText);
     if (!review) return res.status(404).json({ error: 'Review not found' });

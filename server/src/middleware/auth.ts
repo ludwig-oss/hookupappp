@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
+import { dbContext } from '../db/context.js';
 
 function getJwtSecret(): string {
   const secret = process.env.JWT_SECRET;
@@ -29,7 +30,11 @@ export const authenticateToken = (req: AuthRequest, res: Response, next: NextFun
       return res.status(401).json({ error: 'Invalid token' });
     }
     req.userId = uid;
-    next();
+    if (req.body && typeof req.body === 'object') {
+      if ('userId' in req.body) req.body.userId = uid;
+      if ('fromUserId' in req.body) req.body.fromUserId = uid;
+    }
+    dbContext.run({ mode: 'user', userId: uid }, () => next());
   } catch {
     return res.status(401).json({ error: 'Invalid or expired token' });
   }

@@ -11,6 +11,7 @@ import {
 } from '../models/connections.js';
 import { updateUserLocation, getUserById } from '../models/user.js';
 import { fetchVenuesByType } from '../utils/overpass.js';
+import { sanitizeBuzzLocation } from '../utils/sanitize.js';
 
 export const sendBuzz = async (req: Request, res: Response) => {
   try {
@@ -27,7 +28,7 @@ export const sendBuzz = async (req: Request, res: Response) => {
     const buzz = await createBuzz({
       fromUserId: userId,
       toUserId,
-      location: location || undefined,
+      location: sanitizeBuzzLocation(location),
     });
 
     res.json({ message: 'Buzz sent successfully', buzz });

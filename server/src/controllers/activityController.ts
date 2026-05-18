@@ -13,6 +13,7 @@ import {
 import { getUserById, getAllUsers } from '../models/user.js';
 import { maskUserForViewer } from '../lib/celebMask.js';
 import { getNDAByInterest, hasSignedNDA, signNDA } from '../models/nda.js';
+import { preCommFieldsWithDefaults, sanitizeForStorage, LIMITS } from '../utils/sanitize.js';
 
 export async function getRegionUsers(req: Request, res: Response) {
   try {
@@ -135,7 +136,7 @@ export async function savePreCommHandler(req: Request, res: Response) {
     if (!userId) return res.status(401).json({ error: 'Unauthorized' });
     const { interestId, ...data } = req.body;
     if (!interestId) return res.status(400).json({ error: 'interestId is required' });
-    const profile = await savePreCommProfile(userId, interestId, data);
+    const profile = await savePreCommProfile(userId, interestId, preCommFieldsWithDefaults(data));
     res.json({ message: 'Saved', profile });
   } catch (e: any) {
     console.error('Save pre-comm error:', e);
@@ -233,7 +234,8 @@ export async function signNDAHandler(req: Request, res: Response) {
   try {
     const userId = (req as any).userId;
     if (!userId) return res.status(401).json({ error: 'Unauthorized' });
-    const { interestId, signatureData, agreementText } = req.body;
+    const { interestId, agreementText } = req.body;
+    const signatureData = sanitizeForStorage(req.body.signatureData, LIMITS.NAME);
     if (!interestId || !signatureData) return res.status(400).json({ error: 'interestId and signatureData are required' });
     const interest = await getInterestById(interestId);
     if (!interest) return res.status(404).json({ error: 'Interest not found' });
@@ -249,7 +251,7 @@ export async function signNDAHandler(req: Request, res: Response) {
       celebrityUserId: celebId,
       signerUserId: userId,
       signatureData,
-      agreementText: agreementText || NDA_AGREEMENT_TEXT,
+      agreementText: NDA_AGREEMENT_TEXT,
     });
     res.json({ message: 'NDA signed', nda: { id: nda.id, signedAt: nda.signedAt } });
   } catch (e: any) {

@@ -1,7 +1,9 @@
 import { useState, useContext, useRef } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
 import { profileAPI } from '../api/profile';
+import { formatAxiosError } from '../lib/apiError';
+import { compressImageDataUrl } from '../lib/compressImage';
 import './ProfileSetup.css';
 
 const ProfileSetup = () => {
@@ -12,6 +14,36 @@ const ProfileSetup = () => {
   const [loading, setLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const finishSetup = async (picture: string | null) => {
+    if (!user?.id) {
+      setError('Session expired. Please log in again.');
+      return;
+    }
+    setLoading(true);
+    setError('');
+    try {
+      let payload = picture;
+      if (payload) {
+        payload = await compressImageDataUrl(payload);
+      }
+      const response = await profileAPI.completeProfileSetup(payload, user.id);
+      const token = localStorage.getItem('token') || '';
+      login(
+        {
+          ...user,
+          profileSetupComplete: true,
+          profilePicture: response.user?.profilePicture ?? payload,
+        },
+        token
+      );
+      navigate('/home', { replace: true });
+    } catch (err: unknown) {
+      setError(formatAxiosError(err, 'Failed to complete profile setup'));
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -21,11 +53,12 @@ const ProfileSetup = () => {
       return;
     }
 
-    if (file.size > 5 * 1024 * 1024) {
-      setError('Image size must be less than 5MB');
+    if (file.size > 8 * 1024 * 1024) {
+      setError('Image size must be less than 8MB');
       return;
     }
 
+    setError('');
     const reader = new FileReader();
     reader.onloadend = () => {
       setProfilePicture(reader.result as string);
@@ -33,35 +66,11 @@ const ProfileSetup = () => {
     reader.readAsDataURL(file);
   };
 
-  const handleContinue = async () => {
-    if (!profilePicture) {
-      setError('Please upload a profile picture');
-      return;
-    }
-
-    setLoading(true);
-    setError('');
-
-    try {
-      const response = await profileAPI.completeProfileSetup(profilePicture, user!.id);
-      // Update user context
-      const updatedUser = { ...user!, profileSetupComplete: true, profilePicture: response.user.profilePicture };
-      const token = localStorage.getItem('token') || '';
-      login(updatedUser, token);
-      navigate('/home');
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to complete profile setup');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   return (
     <div className="profile-setup-container">
       <div className="profile-setup-card">
-        <Link to="/login" className="back-link">← Back to Login</Link>
         <h1 className="setup-title">Complete Your Profile</h1>
-        <p className="setup-subtitle">Upload a profile picture to get started</p>
+        <p className="setup-subtitle">Add a photo so people recognize you, or skip and add one later</p>
 
         {error && <div className="error-message">{error}</div>}
 
@@ -80,6 +89,7 @@ const ProfileSetup = () => {
             type="button"
             onClick={() => fileInputRef.current?.click()}
             className="upload-button"
+            disabled={loading}
           >
             {profilePicture ? 'Change Photo' : 'Choose Photo'}
           </button>
@@ -94,11 +104,22 @@ const ProfileSetup = () => {
         />
 
         <button
-          onClick={handleContinue}
+          type="button"
+          onClick={() => finishSetup(profilePicture)}
           className="continue-button"
           disabled={loading || !profilePicture}
         >
           {loading ? 'Setting up...' : 'Continue'}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => finishSetup(null)}
+          className="upload-button"
+          disabled={loading}
+          style={{ marginTop: 12, width: '100%' }}
+        >
+          Skip for now
         </button>
       </div>
     </div>
@@ -106,4 +127,3 @@ const ProfileSetup = () => {
 };
 
 export default ProfileSetup;
-

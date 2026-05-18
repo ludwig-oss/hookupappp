@@ -2,14 +2,32 @@ import { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { v4 as uuidv4 } from 'uuid';
-import { createUser, getUserByEmail, getUserByUsername, getUserByResetToken, updateUserPassword, updateUserResetToken, getUserByPhone, getUserById, updateUserProfile, getUserByEmailVerificationToken, updateEmailVerificationToken, verifyUserEmail, getUserByEmailVerificationCode, updateEmailVerificationCode } from '../models/user.js';
+import { createUser, getUserByEmail, getUserByUsername, getUserByResetToken, updateUserPassword, updateUserResetToken, getUserByPhone, getUserById, updateUserProfile, getUserByEmailVerificationToken, updateEmailVerificationToken, verifyUserEmail, getUserByEmailVerificationCode, updateEmailVerificationCode, type User } from '../models/user.js';
 import { sendPasswordResetEmail, sendVerificationEmail } from '../utils/email.js';
 import { sendPasswordResetSMS, sendVerificationSMS } from '../utils/sms.js';
-import { sanitizeName, sanitizeUsername } from '../utils/sanitize.js';
+import { sanitizeName, sanitizeUsername, sanitizeForStorage, LIMITS } from '../utils/sanitize.js';
 
 const JWT_EXPIRES_IN = '7d';
 
 const BCRYPT_ROUNDS = process.env.NODE_ENV === 'production' ? 12 : 10;
+
+/** Safe user payload for the client — no password, hints, or large JSON blobs. */
+function toClientUser(user: User) {
+  return {
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    username: user.username,
+    profilePicture: user.profilePicture ?? null,
+    profileSetupComplete: Boolean(user.profileSetupComplete),
+    emailVerified: Boolean(user.emailVerified),
+    improvementCategories: Array.isArray(user.improvementCategories) ? user.improvementCategories : [],
+    phoneNumber: user.phoneNumber ?? null,
+    age: user.age,
+    country: user.country,
+    city: user.city,
+  };
+}
 
 /** Read env at call time — not at module load — so tokens match `dotenv.config()` in `index.ts` (imports run before that). */
 function getJwtSecret(): string {
@@ -45,7 +63,7 @@ export const signup = async (req: Request, res: Response) => {
   try {
     let { password, name, username, improvementCategories, phoneNumber, passwordHint1, passwordHint2, passwordHint3 } = req.body;
     name = sanitizeName(name);
-    username = sanitizeUsername(username) || (typeof req.body.username === 'string' ? req.body.username.trim().slice(0, 20) : '');
+    username = sanitizeUsername(username);
     if (!password || !name || !username) {
       return res.status(400).json({ error: 'All fields are required' });
     }
@@ -90,9 +108,9 @@ export const signup = async (req: Request, res: Response) => {
       name,
       username,
       improvementCategories,
-      passwordHint1: String(passwordHint1).trim().slice(0, 200),
-      passwordHint2: String(passwordHint2).trim().slice(0, 200),
-      passwordHint3: String(passwordHint3).trim().slice(0, 200),
+      passwordHint1: sanitizeForStorage(passwordHint1, LIMITS.PASSWORD_HINT),
+      passwordHint2: sanitizeForStorage(passwordHint2, LIMITS.PASSWORD_HINT),
+      passwordHint3: sanitizeForStorage(passwordHint3, LIMITS.PASSWORD_HINT),
     });
     await updateUserProfile(user.id, { emailVerified: false });
 
@@ -102,9 +120,7 @@ export const signup = async (req: Request, res: Response) => {
 
     const token = jwt.sign({ userId: user.id, email: user.email }, getJwtSecret(), { expiresIn: JWT_EXPIRES_IN });
 
-    // Return full profile (no password); do not override emailVerified so client can gate features
-    const { password: _p, resetToken: _rt, resetTokenExpiry: _rte, ...safeUser } = user;
-    const userForClient = { ...safeUser, emailVerified: user.emailVerified };
+    const userForClient = toClientUser(user);
 
     res.status(201).json({
       message: 'Account created successfully. Verify your email or phone to unlock all features.',
@@ -139,14 +155,10 @@ export const login = async (req: Request, res: Response) => {
       expiresIn: JWT_EXPIRES_IN,
     });
 
-    // Return full profile (no password); expose real emailVerified so client can require verification
-    const { password: _p, resetToken: _rt, resetTokenExpiry: _rte, ...safeUser } = user;
-    const userForClient = { ...safeUser, emailVerified: user.emailVerified };
-
     res.json({
       message: 'Login successful',
       token,
-      user: userForClient,
+      user: toClientUser(user),
     });
   } catch (error) {
     console.error('Login error:', error);
@@ -291,10 +303,8 @@ export const verifyEmail = async (req: Request, res: Response) => {
       expiresIn: JWT_EXPIRES_IN,
     });
 
-    // Return full profile (no password) so client has everything
     const fullUser = await getUserById(user.id);
-    const { password: _p, resetToken: _rt, resetTokenExpiry: _rte, ...safeUser } = fullUser!;
-    const userForClient = { ...safeUser, emailVerified: true };
+    const userForClient = fullUser ? { ...toClientUser(fullUser)!, emailVerified: true } : null;
 
     res.json({ 
       message: 'Email verified successfully',

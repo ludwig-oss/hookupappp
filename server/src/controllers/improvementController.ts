@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import { sanitizeForStorage, sanitizeHttpUrl, LIMITS } from '../utils/sanitize.js';
 import {
   IMPROVEMENT_CATEGORIES,
   SESSION_PRICE_EUR,
@@ -76,14 +77,40 @@ export const applyAsGuide = async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'You have already submitted an application' });
     }
 
+    const sanitizedProof =
+      proofPerCategory && typeof proofPerCategory === 'object'
+        ? Object.fromEntries(
+            Object.entries(
+              proofPerCategory as Record<string, { description?: string; imageUrls?: string[]; imageUrl?: string }>
+            ).map(([key, val]) => {
+              const urls = Array.isArray(val?.imageUrls)
+                ? val.imageUrls
+                    .map((u) => sanitizeHttpUrl(u) || sanitizeForStorage(u, LIMITS.HTTP_URL))
+                    .filter(Boolean)
+                : val?.imageUrl
+                  ? [sanitizeHttpUrl(val.imageUrl) || sanitizeForStorage(val.imageUrl, LIMITS.HTTP_URL)].filter(Boolean)
+                  : undefined;
+              return [
+                sanitizeForStorage(key, LIMITS.SHORT_LABEL),
+                {
+                  description: sanitizeForStorage(val?.description, LIMITS.PRECOMM_FIELD),
+                  ...(urls?.length ? { imageUrls: urls } : {}),
+                },
+              ];
+            })
+          )
+        : undefined;
+
     const application = await createApplication({
       userId,
       categories,
-      region: region || 'Global',
-      experience,
-      qualifications,
-      identificationUrl: hasIdentification ? String(identificationUrl).trim() : '',
-      proofPerCategory: proofPerCategory && typeof proofPerCategory === 'object' ? proofPerCategory : undefined,
+      region: sanitizeForStorage(region || 'Global', LIMITS.CITY),
+      experience: sanitizeForStorage(experience, LIMITS.EXPERIENCE),
+      qualifications: sanitizeForStorage(qualifications, LIMITS.QUALIFICATIONS),
+      identificationUrl: hasIdentification
+        ? sanitizeHttpUrl(identificationUrl) || sanitizeForStorage(identificationUrl, LIMITS.HTTP_URL)
+        : '',
+      proofPerCategory: sanitizedProof,
     });
 
     res.json({

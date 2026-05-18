@@ -2,6 +2,7 @@ import { useState, useContext } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
 import { authAPI } from '../api/auth';
+import { formatAxiosError } from '../lib/apiError';
 import './Auth.css';
 
 const Signup = () => {
@@ -25,7 +26,7 @@ const Signup = () => {
       login(response.user, response.token);
       navigate('/profile-setup');
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Signup failed. Please try again.');
+      setError(formatAxiosError(err, 'Signup failed. Please try again.'));
     } finally {
       setLoading(false);
     }

@@ -91,10 +91,16 @@ const Dashboard = () => {
   const loadHighlights = async () => {
     if (!user?.id) return;
     try {
-      const profile = await profileAPI.getUserProfile(user.id);
+      const profile = await profileAPI.getCurrentUser();
       setHighlights(profile.highlights || []);
-    } catch (error) {
-      console.error('Failed to load highlights:', error);
+    } catch (error: unknown) {
+      const ax = error as { response?: { status?: number; data?: { error?: string } }; message?: string };
+      const status = ax.response?.status;
+      const msg = ax.response?.data?.error || ax.message || 'Unknown error';
+      console.error('Failed to load highlights:', status ? `HTTP ${status} — ${msg}` : msg);
+      if (status === 401) {
+        console.warn('Session expired or invalid. Log out and log in again.');
+      }
     }
   };
 

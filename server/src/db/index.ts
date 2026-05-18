@@ -1,4 +1,6 @@
 import pg from 'pg';
+import { getDbContext } from './context.js';
+import { RLS_SQL } from './rls.js';
 
 const { Pool } = pg;
 
@@ -17,13 +19,57 @@ export function getPool(): pg.Pool | null {
   return null;
 }
 
+async function execQuery<T extends pg.QueryResultRow>(
+  client: pg.Pool | pg.PoolClient,
+  text: string,
+  params?: unknown[],
+  settings?: Record<string, string>
+): Promise<pg.QueryResult<T>> {
+  if (!settings || Object.keys(settings).length === 0) {
+    return client.query<T>(text, params);
+  }
+  const entries = Object.entries(settings);
+  const setParts = entries.map(([k], i) => `SET LOCAL app.${k} = $${i + 1}`);
+  const values = entries.map(([, v]) => v);
+  await client.query('BEGIN');
+  try {
+    for (let i = 0; i < setParts.length; i++) {
+      await client.query(setParts[i], [values[i]]);
+    }
+    const result = await client.query<T>(text, params);
+    await client.query('COMMIT');
+    return result;
+  } catch (e) {
+    await client.query('ROLLBACK');
+    throw e;
+  }
+}
+
+function resolveRlsSettings(): Record<string, string> | undefined {
+  const ctx = getDbContext();
+  if (ctx?.mode === 'user' && ctx.userId) {
+    return { current_user_id: ctx.userId, bypass_rls: 'false' };
+  }
+  if (ctx?.mode === 'system') {
+    return { bypass_rls: 'true' };
+  }
+  // No middleware context (startup, legacy) — bypass so migrations/auth still work
+  return { bypass_rls: 'true' };
+}
+
 export async function query<T extends pg.QueryResultRow = pg.QueryResultRow>(
   text: string,
   params?: unknown[]
 ): Promise<pg.QueryResult<T>> {
   const p = getPool();
   if (!p) throw new Error('DATABASE_URL not set');
-  return p.query<T>(text, params);
+  const settings = resolveRlsSettings();
+  const client = await p.connect();
+  try {
+    return await execQuery<T>(client, text, params, settings);
+  } finally {
+    client.release();
+  }
 }
 
 export function usePostgres(): boolean {
@@ -81,4 +127,5 @@ export async function runSchema(): Promise<void> {
   const p = getPool();
   if (!p) return;
   await p.query(SCHEMA_SQL);
+  await p.query(RLS_SQL);
 }

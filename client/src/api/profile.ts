@@ -80,7 +80,7 @@ export const profileAPI = {
   },
 
   uploadProfilePicture: async (imageBase64: string, userId: string): Promise<{ profilePicture: string; photoVerifiedAt?: string | null }> => {
-    const response = await axios.post(`${API_URL}/picture`, { image: imageBase64, userId });
+    const response = await axios.post(`${API_URL}/picture`, { image: imageBase64, userId }, { headers: getAuthHeaders() });
     return response.data;
   },
 
@@ -131,17 +131,17 @@ export const profileAPI = {
   },
 
   completeProfileSetup: async (profilePicture: string | null, userId: string): Promise<{ user: any }> => {
-    const response = await axios.post(`${API_URL}/setup`, { profilePicture, userId });
+    const response = await axios.post(`${API_URL}/setup`, { profilePicture, userId }, { headers: getAuthHeaders() });
     return response.data;
   },
 
   addDisappearingPhoto: async (imageBase64: string, userId: string): Promise<{ photo: any }> => {
-    const response = await axios.post(`${API_URL}/disappearing-photos`, { image: imageBase64, userId });
+    const response = await axios.post(`${API_URL}/disappearing-photos`, { image: imageBase64, userId }, { headers: getAuthHeaders() });
     return response.data;
   },
 
   viewDisappearingPhoto: async (photoId: string, ownerId: string, viewerId: string): Promise<{ canView: boolean; imageUrl: string | null }> => {
-    const response = await axios.post(`${API_URL}/disappearing-photos/view`, { photoId, ownerId, viewerId });
+    const response = await axios.post(`${API_URL}/disappearing-photos/view`, { photoId, ownerId, viewerId }, { headers: getAuthHeaders() });
     return response.data;
   },
 

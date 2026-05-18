@@ -40,3 +40,6 @@ CREATE TABLE IF NOT EXISTS messages (
 
 CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(from_user_id, to_user_id);
 CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages(created_at);
+
+-- Row Level Security is enabled at runtime via server/src/db/rls.ts (runSchema on startup).
+-- Policies use session vars app.current_user_id and app.bypass_rls set per request.

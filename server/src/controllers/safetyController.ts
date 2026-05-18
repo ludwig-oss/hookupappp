@@ -16,6 +16,7 @@ import {
   addCoachReview,
 } from '../models/safety.js';
 import { getUserById, getAllUsers, unblockUser as unblockUserFunc } from '../models/user.js';
+import { sanitizeName, sanitizeBio, sanitizeForStorage, LIMITS } from '../utils/sanitize.js';
 
 // Emergency Contacts
 export const getMyEmergencyContacts = async (req: Request, res: Response) => {
@@ -38,12 +39,17 @@ export const addMyEmergencyContact = async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Name and phone are required' });
     }
 
+    const safeName = sanitizeName(name);
+    if (!safeName) {
+      return res.status(400).json({ error: 'Name is required' });
+    }
+
     const contact = await addEmergencyContact({
       userId,
-      name,
-      phone,
-      email,
-      relationship,
+      name: safeName,
+      phone: String(phone).replace(/\D/g, '').slice(0, LIMITS.PHONE),
+      email: email != null ? sanitizeForStorage(email, 254) : undefined,
+      relationship: relationship != null ? sanitizeForStorage(relationship, LIMITS.SHORT_LABEL) : undefined,
     });
     
     res.json({ contact });
@@ -80,7 +86,7 @@ export const createMeetupPlanHandler = async (req: Request, res: Response) => {
     const plan = await createMeetupPlan({
       userId,
       meetAt,
-      location,
+      location: sanitizeForStorage(location, LIMITS.LOCATION),
       expectedBackAt,
       emergencyContactUserId: emergencyContactUserId || null,
       emergencyContactId: emergencyContactId || null,
@@ -144,9 +150,9 @@ export const shareDateWithContacts = async (req: Request, res: Response) => {
     const share = await shareDateInfo({
       userId,
       dateUserId,
-      location,
+      location: sanitizeForStorage(location, LIMITS.LOCATION),
       date,
-      notes,
+      notes: notes != null ? sanitizeForStorage(notes, LIMITS.NOTES) : undefined,
       sharedWith: contactIds,
     });
     
@@ -188,7 +194,7 @@ export const registerAsTextingCoach = async (req: Request, res: Response) => {
       specialties: specialties || [],
       isActive: true,
       hourlyRate: hourlyRate || 0,
-      bio,
+      bio: bio != null ? sanitizeBio(bio) : undefined,
     });
     
     res.json({ coach });
@@ -243,7 +249,7 @@ export const endCoachingSession = async (req: Request, res: Response) => {
         userId,
         userName: (await getUserById(userId))?.name || 'Anonymous',
         rating: req.body.rating,
-        comment: req.body.comment,
+        comment: sanitizeForStorage(req.body.comment, LIMITS.COMMENT),
       });
     }
     

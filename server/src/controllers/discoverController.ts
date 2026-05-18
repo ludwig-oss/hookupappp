@@ -15,6 +15,7 @@ import { sendPushToUser } from '../realtime/push.js';
 import { getAllUsers, getUserById } from '../models/user.js';
 import { getUserSettings } from '../models/settings.js';
 import { maskUserForViewer } from '../lib/celebMask.js';
+import { sanitizeForStorage, sanitizeMessageContent, LIMITS } from '../utils/sanitize.js';
 
 export async function getAllCities(req: Request, res: Response) {
   try {
@@ -145,9 +146,9 @@ export async function showInterest(req: Request, res: Response) {
     const interest = await createInterest({
       fromUserId: userId,
       toUserId,
-      city,
-      placeId,
-      placeType,
+      city: city != null ? sanitizeForStorage(city, LIMITS.CITY) : undefined,
+      placeId: placeId != null ? sanitizeForStorage(placeId, 80) : undefined,
+      placeType: placeType != null ? sanitizeForStorage(placeType, LIMITS.SHORT_LABEL) : undefined,
     });
 
     notifyNewInterest(toUserId, { fromUserId: userId, interestId: interest.id });
@@ -217,7 +218,8 @@ export async function respondInterest(req: Request, res: Response) {
       return res.status(400).json({ error: 'interestId and response are required' });
     }
 
-    const interest = await respondToInterest(interestId, userId, response, message);
+    const safeMessage = message != null ? sanitizeMessageContent(message, 500) : undefined;
+    const interest = await respondToInterest(interestId, userId, response, safeMessage);
 
     if (!interest) {
       return res.status(404).json({ error: 'Interest not found, already handled, or expired (24h)' });
@@ -249,10 +251,22 @@ export async function setPreference(req: Request, res: Response) {
     const userId = (req as any).userId;
     const { orientation, lookingFor, city } = req.body;
 
+    const orientations = ['straight', 'gay', 'lesbian', 'bisexual', 'pansexual'] as const;
+    const safeOrientation =
+      typeof orientation === 'string' && orientations.includes(orientation as (typeof orientations)[number])
+        ? (orientation as (typeof orientations)[number])
+        : undefined;
+    const lookingOptions = ['dating', 'casual', 'friends', 'serious'] as const;
+    const safeLookingFor = Array.isArray(lookingFor)
+      ? lookingFor.filter((v): v is (typeof lookingOptions)[number] =>
+          typeof v === 'string' && lookingOptions.includes(v as (typeof lookingOptions)[number])
+        )
+      : undefined;
+
     const preference = await setUserPreference(userId, {
-      orientation,
-      lookingFor,
-      city,
+      ...(safeOrientation ? { orientation: safeOrientation } : {}),
+      ...(safeLookingFor?.length ? { lookingFor: safeLookingFor } : {}),
+      city: sanitizeForStorage(city, LIMITS.CITY) || undefined,
     });
 
     res.json({ preference });

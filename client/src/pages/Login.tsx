@@ -2,6 +2,7 @@ import { useState, useContext } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
 import { authAPI } from '../api/auth';
+import { formatAxiosError } from '../lib/apiError';
 import './Auth.css';
 import './Legal.css';
 
@@ -27,9 +28,8 @@ const Login = () => {
       } else {
         navigate('/profile-setup');
       }
-    } catch (err: any) {
-      const errorData = err.response?.data;
-      setError(errorData?.error || 'Invalid credentials. Password must match this account.');
+    } catch (err: unknown) {
+      setError(formatAxiosError(err, 'Invalid credentials. Password must match this account.'));
     } finally {
       setLoading(false);
     }

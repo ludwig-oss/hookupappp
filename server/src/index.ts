@@ -49,6 +49,7 @@ import relationshipRoutes from './routes/relationship.js';
 import connectionJourneyRoutes from './routes/connectionJourney.js';
 import notificationsRoutes from './routes/notifications.js';
 import { runSchema } from './db/index.js';
+import { runWithSystem } from './db/context.js';
 import { apiLimiter } from './middleware/rateLimit.js';
 
 const app = express();
@@ -176,8 +177,16 @@ app.get('/api/email-status', (req, res) => {
 
 async function start() {
   if (process.env.DATABASE_URL) {
-    await runSchema();
-    console.log('✓ PostgreSQL schema ensured');
+    try {
+      await runWithSystem(() => runSchema());
+      console.log('✓ PostgreSQL schema + RLS policies ensured');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn('⚠ PostgreSQL not reachable — using JSON files for now.');
+      console.warn('  Start DB: docker compose up -d   (see docker-compose.yml)');
+      console.warn('  Error:', msg);
+      delete process.env.DATABASE_URL;
+    }
   }
   app.listen(PORT, () => {
     console.log(`Server running on http://localhost:${PORT}`);

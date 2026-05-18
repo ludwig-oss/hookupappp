@@ -7,6 +7,9 @@
   },
   "scripts": {
     "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
+    "db:up": "docker compose up -d",
+    "db:down": "docker compose down",
+    "db:setup": "powershell -ExecutionPolicy Bypass -File scripts/setup-local-db.ps1",
     "dev:server": "cd server && npm run dev",
     "dev:client": "cd client && npm run dev",
     "install:all": "npm install --include=dev && npm install --include=dev --prefix server && npm install --include=dev --prefix client",

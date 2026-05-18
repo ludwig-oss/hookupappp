@@ -8,6 +8,7 @@ import {
   markUnmatchReasonAsViewed,
 } from '../models/ratings.js';
 import { unmatchUser } from '../models/user.js';
+import { sanitizeForStorage, LIMITS } from '../utils/sanitize.js';
 
 export const submitRating = async (req: Request, res: Response) => {
   try {
@@ -78,7 +79,8 @@ export const unmatchWithReason = async (req: Request, res: Response) => {
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    const { unmatchedUserId, reason } = req.body;
+    const { unmatchedUserId } = req.body;
+    const reason = sanitizeForStorage(req.body.reason, LIMITS.REASON);
     if (!unmatchedUserId || !reason) {
       return res.status(400).json({ error: 'User ID and reason are required' });
     }

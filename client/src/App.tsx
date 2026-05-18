@@ -2,7 +2,7 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import Login from './pages/Login';
-import Signup from './pages/Signup';
+import SignupWithImprovement from './pages/SignupWithImprovement';
 import Landing from './pages/Landing';
 import TermsOfService from './pages/TermsOfService';
 import PrivacyPolicy from './pages/PrivacyPolicy';
@@ -21,6 +21,8 @@ import { LanguageProvider } from './context/LanguageContext';
 import { profileAPI } from './api/profile';
 import { settingsAPI } from './api/settings';
 import { setStoredLanguage } from './i18n/languageStorage';
+import { userForStorage } from './lib/userStorage';
+import './api/http';
 
 function isPlainObject(v: unknown): v is Record<string, any> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -53,7 +55,8 @@ function App() {
       if (token && userData) {
         const parsed = JSON.parse(userData);
         if (isValidUserShape(parsed)) {
-          setUser(parsed);
+          const id = normalizeUserId(parsed.id);
+          setUser(id ? { ...userForStorage(parsed as Record<string, unknown>), id } : parsed);
         } else {
           localStorage.removeItem('token');
           localStorage.removeItem('user');
@@ -88,11 +91,14 @@ function App() {
           return;
         }
         const id = normalizeUserId((fullProfile as { id: unknown }).id);
-        const normalized = id ? { ...fullProfile, id } : fullProfile;
+        const normalized = id
+          ? { ...userForStorage(fullProfile as Record<string, unknown>), id }
+          : userForStorage(fullProfile as Record<string, unknown>);
         setUser(normalized);
         localStorage.setItem('user', JSON.stringify(normalized));
-        if (settingsRes?.settings?.localization?.language) {
-          setStoredLanguage(settingsRes.settings.localization.language);
+        const lang = settingsRes?.settings?.localization?.language;
+        if (typeof lang === 'string' && lang.trim()) {
+          setStoredLanguage(lang.trim());
         }
       })
       .catch(() => { hasRefreshedProfile.current = false; });
@@ -103,10 +109,14 @@ function App() {
     if (!isPlainObject(userData) || !id || typeof token !== 'string' || !token) {
       return;
     }
-    const normalized = { ...userData, id };
+    const normalized = { ...userForStorage(userData as Record<string, unknown>), id };
     setUser(normalized);
     localStorage.setItem('token', token);
-    localStorage.setItem('user', JSON.stringify(normalized));
+    try {
+      localStorage.setItem('user', JSON.stringify(normalized));
+    } catch {
+      /* Quota exceeded — session still works via token + /me refresh */
+    }
     axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
   };
 
@@ -152,7 +162,7 @@ function App() {
       <AuthContext.Provider value={{ user, login, logout, updateUser }}>
         <Routes>
           <Route path="/login" element={user ? <Navigate to={user.profileSetupComplete ? "/home" : "/profile-setup"} /> : <Login />} />
-          <Route path="/signup" element={user ? <Navigate to={user.profileSetupComplete ? "/home" : "/profile-setup"} /> : <Signup />} />
+          <Route path="/signup" element={user ? <Navigate to={user.profileSetupComplete ? "/home" : "/profile-setup"} /> : <SignupWithImprovement />} />
           <Route path="/terms" element={<TermsOfService />} />
           <Route path="/privacy" element={<PrivacyPolicy />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />

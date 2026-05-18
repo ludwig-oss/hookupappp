@@ -5,6 +5,7 @@ import { getActiveFocus, setFocus as setFocusRecord, clearFocus } from '../model
 import { checkContent } from '../utils/moderation.js';
 import { notifyNewMessage } from '../realtime/notifications.js';
 import { sendPushToUser } from '../realtime/push.js';
+import { sanitizeMessageContent } from '../utils/sanitize.js';
 
 function isBlocked(blocker: string[], blocked: string): boolean {
   return (blocker || []).includes(blocked);
@@ -13,7 +14,8 @@ function isBlocked(blocker: string[], blocked: string): boolean {
 export const sendMessage = async (req: Request, res: Response) => {
   try {
     const userId = (req as any).userId || req.body.fromUserId;
-    const { toUserId, content } = req.body;
+    const { toUserId } = req.body;
+    const content = sanitizeMessageContent(req.body.content);
 
     if (!toUserId || !content) {
       return res.status(400).json({ error: 'Recipient and message content are required' });
@@ -32,7 +34,7 @@ export const sendMessage = async (req: Request, res: Response) => {
       return res.status(403).json({ error: 'You cannot message this user.' });
     }
 
-    const moderation = checkContent(typeof content === 'string' ? content : '');
+    const moderation = checkContent(content);
     if (!moderation.allowed) {
       return res.status(400).json({ error: moderation.reason || 'Message not allowed.' });
     }

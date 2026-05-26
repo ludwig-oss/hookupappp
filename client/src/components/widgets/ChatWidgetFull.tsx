@@ -199,9 +199,24 @@ const ChatWidgetFull = () => {
   const loadMessages = async (otherUserId: string) => {
     try {
       const response = await chatAPI.getConversation(otherUserId, user!.id);
+      if (response.unmatched) {
+        alert(response.unmatchedReason || 'This match ended — no reply within 24 hours.');
+        setSelectedUser1(null);
+        setMessages([]);
+        await loadConversations();
+        return;
+      }
       setMessages(response.messages);
       await chatAPI.markAsRead(otherUserId, user!.id);
-    } catch (err) {
+    } catch (err: any) {
+      const msg = err.response?.data?.error;
+      if (err.response?.data?.unmatched) {
+        alert(msg || 'This match ended — no reply within 24 hours.');
+        setSelectedUser1(null);
+        setMessages([]);
+        await loadConversations();
+        return;
+      }
       console.error('Failed to load messages', err);
     }
   };
@@ -249,7 +264,15 @@ const ChatWidgetFull = () => {
       await loadMessages(selectedUser1.id);
       await loadConversations();
       setShowDateAlert(false);
-    } catch (err) {
+    } catch (err: any) {
+      const msg = err.response?.data?.error;
+      if (err.response?.data?.unmatched) {
+        alert(msg || 'This match ended — no reply within 24 hours.');
+        setSelectedUser1(null);
+        setMessages([]);
+        await loadConversations();
+        return;
+      }
       console.error('Failed to send message', err);
     }
   };

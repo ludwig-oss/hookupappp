@@ -1,0 +1,135 @@
+.women-sos-fab {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 9000;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 18px;
+  border: 2px solid rgba(239, 68, 68, 0.8);
+  border-radius: 999px;
+  background: linear-gradient(135deg, rgba(127, 29, 29, 0.95), rgba(185, 28, 28, 0.9));
+  color: #fff;
+  font-family: 'Orbitron', monospace;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 0 24px rgba(239, 68, 68, 0.45);
+  animation: women-sos-pulse 2s ease-in-out infinite;
+}
+
+.women-sos-fab-icon {
+  font-size: 18px;
+}
+
+@keyframes women-sos-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 16px rgba(239, 68, 68, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 28px rgba(239, 68, 68, 0.7);
+  }
+}
+
+.women-sos-hint {
+  position: fixed;
+  bottom: 4px;
+  right: 24px;
+  z-index: 8999;
+  font-size: 9px;
+  color: rgba(255, 255, 255, 0.45);
+  max-width: 200px;
+  text-align: right;
+  margin: 0;
+}
+
+.women-sos-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  background: rgba(0, 0, 0, 0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.women-sos-modal {
+  max-width: 400px;
+  padding: 24px;
+  border-radius: 12px;
+  border: 2px solid rgba(239, 68, 68, 0.6);
+  background: #1a0a0a;
+  color: #fff;
+  font-family: 'Orbitron', monospace;
+}
+
+.women-sos-modal h3 {
+  margin: 0 0 12px;
+  color: #fca5a5;
+}
+
+.women-sos-modal p {
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 0 0 10px;
+}
+
+.women-sos-warning {
+  color: #fbbf24;
+  font-size: 12px;
+}
+
+.women-sos-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.women-sos-cancel,
+.women-sos-confirm {
+  flex: 1;
+  padding: 12px;
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.women-sos-cancel {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  color: #fff;
+}
+
+.women-sos-confirm {
+  background: #dc2626;
+  border: none;
+  color: #fff;
+  font-weight: 700;
+}
+
+.women-sos-status {
+  position: fixed;
+  bottom: 80px;
+  left: 16px;
+  right: 16px;
+  z-index: 9001;
+  padding: 12px;
+  background: rgba(0, 0, 0, 0.9);
+  border: 1px solid rgba(239, 68, 68, 0.5);
+  border-radius: 8px;
+  color: #fecaca;
+  font-size: 12px;
+}
+
+.women-sos-status button {
+  display: block;
+  margin-top: 8px;
+  background: transparent;
+  border: none;
+  color: #00d4ff;
+  cursor: pointer;
+}

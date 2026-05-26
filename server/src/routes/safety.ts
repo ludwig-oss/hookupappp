@@ -7,6 +7,14 @@ import {
   createMeetupPlanHandler,
   getMyMeetupPlans,
   markMeetupPlanNotified,
+  submitMeetupSafetyCheckHandler,
+  getMeetupWeekStatusHandler,
+  getDateVenueProposalHandler,
+  voteDateVenueHandler,
+  triggerWomenSafetySOS,
+  getNearbyWomenSafetyAlerts,
+  resolveWomenSafetySOSHandler,
+  pollMeetupSafetyReminders,
   getAllTextingCoaches,
   registerAsTextingCoach,
   startCoachingSession,
@@ -16,10 +24,16 @@ import {
   unblockUser,
 } from '../controllers/safetyController.js';
 import { authenticateToken } from '../middleware/auth.js';
+import type { AuthRequest } from '../middleware/auth.js';
+import { isAdminUserId } from '../middleware/requireAdmin.js';
 
 const router = express.Router();
 
 router.use(authenticateToken);
+
+router.get('/is-admin', (req: AuthRequest, res) => {
+  res.json({ isAdmin: isAdminUserId(req.userId) });
+});
 
 // Emergency Contacts
 router.get('/emergency-contacts', getMyEmergencyContacts);
@@ -30,6 +44,14 @@ router.delete('/emergency-contacts/:contactId', removeEmergencyContact);
 router.post('/meetup-plan', createMeetupPlanHandler);
 router.get('/meetup-plans', getMyMeetupPlans);
 router.post('/meetup-plan/:planId/notified', markMeetupPlanNotified);
+router.post('/meetup-plan/safety-check', submitMeetupSafetyCheckHandler);
+router.get('/meetup-week/:otherUserId', getMeetupWeekStatusHandler);
+router.get('/date-venues/:otherUserId', getDateVenueProposalHandler);
+router.post('/date-venues/vote', voteDateVenueHandler);
+router.post('/women-sos', triggerWomenSafetySOS);
+router.get('/women-sos/nearby', getNearbyWomenSafetyAlerts);
+router.post('/women-sos/resolve', resolveWomenSafetySOSHandler);
+router.get('/meetup-safety/poll', pollMeetupSafetyReminders);
 
 // Date Sharing
 router.post('/share-date', shareDateWithContacts);

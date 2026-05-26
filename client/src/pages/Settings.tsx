@@ -1,10 +1,22 @@
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import axios from 'axios';
+import { API_BASE } from '../api/config';
 import SettingsWidgetFull from '../components/widgets/SettingsWidgetFull';
 import { useTranslation } from '../context/LanguageContext';
 import './Dashboard.css';
 
 const Settings = () => {
   const { t } = useTranslation();
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    axios
+      .get(`${API_BASE}/api/safety/is-admin`)
+      .then((r) => setIsAdmin(!!r.data.isAdmin))
+      .catch(() => setIsAdmin(false));
+  }, []);
+
   return (
     <div className="dashboard-container">
       <div className="stars-background" aria-hidden>
@@ -23,6 +35,11 @@ const Settings = () => {
       <div className="dashboard-top-nav">
         <Link to="/home" className="dashboard-back-link">← {t('backToHome')}</Link>
         <Link to="/profile" className="dashboard-back-link">👤 {t('profile')}</Link>
+        {isAdmin && (
+          <Link to="/admin/safety" className="dashboard-back-link" style={{ color: '#fbbf24' }}>
+            🛡 Safety review
+          </Link>
+        )}
       </div>
       <div className="holographic-panel left-panel" style={{ maxWidth: '720px', margin: '0 auto' }}>
         <SettingsWidgetFull />

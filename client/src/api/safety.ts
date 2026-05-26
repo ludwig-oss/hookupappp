@@ -23,7 +23,47 @@ export interface MeetupPlan {
   emergencyContactId?: string | null;
   chatPartnerUserId?: string | null;
   notifiedAt?: string | null;
+  emergencyContactVideoNotifiedAt?: string | null;
+  idVerificationConsent?: boolean;
+  safetyCheckStatus?: 'none' | 'pending_review' | 'approved' | 'rejected';
+  hasIdOnFile?: boolean;
+  hasSafetyVideo?: boolean;
+  safetyCheckSubmittedAt?: string | null;
+  agreedVenueName?: string | null;
   createdAt: string;
+}
+
+export interface MeetupWeekStatus {
+  active: boolean;
+  connectedAt: string | null;
+  deadlineAt: string | null;
+  metInPerson: boolean;
+  expired: boolean;
+  daysRemaining: number | null;
+  hoursRemaining: number | null;
+  ruleText: string;
+}
+
+export interface DateVenueOption {
+  id: string;
+  name: string;
+  type: string;
+  description: string;
+  estimatedCost: string;
+  splitBillNote: string;
+}
+
+export interface DateVenueProposal {
+  id: string;
+  userA: string;
+  userB: string;
+  venues: DateVenueOption[];
+  userAChoiceId: string | null;
+  userBChoiceId: string | null;
+  agreedVenue: DateVenueOption | null;
+  status: 'voting' | 'agreed';
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface DateShare {
@@ -94,9 +134,56 @@ export const safetyAPI = {
     emergencyContactUserId?: string | null;
     emergencyContactId?: string | null;
     chatPartnerUserId?: string | null;
+    idVerificationConsent: boolean;
+    idFrontImage: string;
+    idBackImage: string;
+    agreedVenueName?: string;
   }): Promise<{ plan: MeetupPlan }> => {
     const response = await axios.post(`${API_URL}/meetup-plan`, data);
     return response.data;
+  },
+
+  submitMeetupSafetyCheck: async (planId: string, safetyCheckVideo: string): Promise<{ plan: MeetupPlan; message: string }> => {
+    const response = await axios.post(`${API_URL}/meetup-plan/safety-check`, { planId, safetyCheckVideo });
+    return response.data;
+  },
+
+  getMeetupWeekStatus: async (otherUserId: string): Promise<{ meetupWeek: MeetupWeekStatus }> => {
+    const response = await axios.get(`${API_URL}/meetup-week/${otherUserId}`);
+    return response.data;
+  },
+
+  getDateVenueProposal: async (otherUserId: string, refresh = false): Promise<{ proposal: DateVenueProposal; rules: string }> => {
+    const response = await axios.get(`${API_URL}/date-venues/${otherUserId}`, { params: { refresh: refresh ? 'true' : 'false' } });
+    return response.data;
+  },
+
+  voteDateVenue: async (otherUserId: string, venueId: string): Promise<{ proposal: DateVenueProposal }> => {
+    const response = await axios.post(`${API_URL}/date-venues/vote`, { otherUserId, venueId });
+    return response.data;
+  },
+
+  pollMeetupSafetyReminders: async (): Promise<{
+    needsSafetyVideo: MeetupPlan[];
+    emergencyVideoCallPlans: MeetupPlan[];
+  }> => {
+    const response = await axios.get(`${API_URL}/meetup-safety/poll`);
+    return response.data;
+  },
+
+  triggerWomenSOS: async (lat: number, lon: number, message?: string): Promise<{
+    alert: { id: string };
+    nearbyWomenNotified: number;
+    policeNumber: string;
+    mapsUrl: string;
+    message: string;
+  }> => {
+    const response = await axios.post(`${API_URL}/women-sos`, { lat, lon, message });
+    return response.data;
+  },
+
+  resolveWomenSOS: async (alertId: string): Promise<void> => {
+    await axios.post(`${API_URL}/women-sos/resolve`, { alertId });
   },
 
   getMeetupPlans: async (): Promise<{ plans: MeetupPlan[] }> => {
@@ -166,6 +253,11 @@ export const safetyAPI = {
 
   unblockUser: async (blockedUserId: string): Promise<void> => {
     await axios.post(`${API_URL}/unblock`, { blockedUserId });
+  },
+
+  isAdmin: async (): Promise<{ isAdmin: boolean }> => {
+    const response = await axios.get(`${API_URL}/is-admin`);
+    return response.data;
   },
 };
 

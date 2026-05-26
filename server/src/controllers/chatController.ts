@@ -6,6 +6,8 @@ import { checkContent } from '../utils/moderation.js';
 import { notifyNewMessage } from '../realtime/notifications.js';
 import { sendPushToUser } from '../realtime/push.js';
 import { sanitizeMessageContent } from '../utils/sanitize.js';
+import { enforceReplyDeadline, getReplyStatusForConversation } from '../models/chatReplyDeadline.js';
+import { enforceMeetupWeek, getMeetupWeekStatus } from '../models/matchMeetupDeadline.js';
 
 function isBlocked(blocker: string[], blocked: string): boolean {
   return (blocker || []).includes(blocked);
@@ -39,6 +41,35 @@ export const sendMessage = async (req: Request, res: Response) => {
       return res.status(400).json({ error: moderation.reason || 'Message not allowed.' });
     }
 
+    const meetupWeekCheck = await enforceMeetupWeek(userId, toUserId);
+    if (meetupWeekCheck.unmatched) {
+      return res.status(403).json({
+        error: meetupWeekCheck.reason,
+        unmatched: true,
+        meetupWeek: meetupWeekCheck.status,
+      });
+    }
+
+    const deadlineCheck = await enforceReplyDeadline(userId, toUserId);
+    if (deadlineCheck.unmatched) {
+      return res.status(403).json({
+        error: deadlineCheck.reason,
+        unmatched: true,
+        replyDeadline: deadlineCheck.status,
+      });
+    }
+    if (
+      deadlineCheck.status.active &&
+      deadlineCheck.status.expired &&
+      deadlineCheck.status.owesReplyUserId === userId
+    ) {
+      return res.status(403).json({
+        error: 'You did not reply within 24 hours. This match has ended.',
+        unmatched: true,
+        replyDeadline: deadlineCheck.status,
+      });
+    }
+
     const message = await createMessage({
       fromUserId: userId,
       toUserId,
@@ -52,7 +83,8 @@ export const sendMessage = async (req: Request, res: Response) => {
       data: { fromUserId: userId, conversationId: userId, messageId: message.id },
     }).catch(() => {});
 
-    res.json({ message });
+    const replyDeadline = await getReplyStatusForConversation(userId, toUserId);
+    res.json({ message, replyDeadline });
   } catch (error) {
     console.error('Send message error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -74,8 +106,32 @@ export const getConversationMessages = async (req: Request, res: Response) => {
       return res.json({ messages: [] });
     }
 
+    const meetupEnforcement = await enforceMeetupWeek(userId, otherUserId);
+    if (meetupEnforcement.unmatched) {
+      return res.json({
+        messages: [],
+        replyDeadline: (await getReplyStatusForConversation(userId, otherUserId)),
+        meetupWeek: meetupEnforcement.status,
+        unmatched: true,
+        unmatchedReason: meetupEnforcement.reason,
+      });
+    }
+
+    const enforcement = await enforceReplyDeadline(userId, otherUserId);
+    if (enforcement.unmatched) {
+      return res.json({
+        messages: [],
+        replyDeadline: enforcement.status,
+        meetupWeek: meetupEnforcement.status,
+        unmatched: true,
+        unmatchedReason: enforcement.reason,
+      });
+    }
+
     const messages = await getConversation(userId, otherUserId);
-    res.json({ messages });
+    const replyDeadline = enforcement.status;
+    const meetupWeek = meetupEnforcement.status;
+    res.json({ messages, replyDeadline, meetupWeek });
   } catch (error) {
     console.error('Get conversation error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -95,16 +151,24 @@ export const getConversationsList = async (req: Request, res: Response) => {
 
     const raw = await getUserConversations(userId);
     const filtered = raw.filter((c) => !blockedSet.has(c.userId));
-    const conversations = await Promise.all(
-      filtered.map(async (c) => {
-        const other = await getUserById(c.userId);
-        return {
-          ...c,
-          name: other?.name ?? 'Unknown',
-          profilePicture: other?.profilePicture ?? null,
-        };
-      })
-    );
+    const conversations = (
+      await Promise.all(
+        filtered.map(async (c) => {
+          const meetupEnforcement = await enforceMeetupWeek(userId, c.userId);
+          if (meetupEnforcement.unmatched) return null;
+          const enforcement = await enforceReplyDeadline(userId, c.userId);
+          if (enforcement.unmatched) return null;
+          const other = await getUserById(c.userId);
+          return {
+            ...c,
+            name: other?.name ?? 'Unknown',
+            profilePicture: other?.profilePicture ?? null,
+            replyDeadline: enforcement.status,
+            meetupWeek: meetupEnforcement.status,
+          };
+        })
+      )
+    ).filter((c): c is NonNullable<typeof c> => c !== null);
     res.json({ conversations });
   } catch (error) {
     console.error('Get conversations list error:', error);

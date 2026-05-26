@@ -12,12 +12,35 @@ export interface Message {
   read: boolean;
 }
 
+export interface MeetupWeekStatus {
+  active: boolean;
+  connectedAt: string | null;
+  deadlineAt: string | null;
+  metInPerson: boolean;
+  expired: boolean;
+  daysRemaining: number | null;
+  hoursRemaining: number | null;
+  ruleText: string;
+}
+
+export interface ReplyDeadlineStatus {
+  active: boolean;
+  owesReplyUserId: string | null;
+  deadlineAt: string | null;
+  expired: boolean;
+  hoursRemaining: number | null;
+  minutesRemaining: number | null;
+  ruleText: string;
+}
+
 export interface Conversation {
   userId: string;
   name: string;
   profilePicture: string | null;
   lastMessage: Message;
   unreadCount: number;
+  replyDeadline?: ReplyDeadlineStatus;
+  meetupWeek?: MeetupWeekStatus;
 }
 
 export interface User {
@@ -28,12 +51,25 @@ export interface User {
 }
 
 export const chatAPI = {
-  sendMessage: async (toUserId: string, content: string, fromUserId: string): Promise<{ message: Message }> => {
+  sendMessage: async (
+    toUserId: string,
+    content: string,
+    fromUserId: string
+  ): Promise<{ message: Message; replyDeadline?: ReplyDeadlineStatus }> => {
     const response = await axios.post(`${API_URL}/send`, { toUserId, content, fromUserId });
     return response.data;
   },
 
-  getConversation: async (otherUserId: string, userId: string): Promise<{ messages: Message[] }> => {
+  getConversation: async (
+    otherUserId: string,
+    userId: string
+  ): Promise<{
+    messages: Message[];
+    replyDeadline?: ReplyDeadlineStatus;
+    meetupWeek?: MeetupWeekStatus;
+    unmatched?: boolean;
+    unmatchedReason?: string;
+  }> => {
     const response = await axios.get(`${API_URL}/conversation/${otherUserId}`, { params: { userId } });
     return response.data;
   },

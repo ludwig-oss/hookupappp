@@ -1,11 +1,12 @@
 import { useState, useEffect, useContext, useRef } from 'react';
 import { AuthContext } from '../../context/AuthContext';
-import { chatAPI, Conversation, Message, User } from '../../api/chat';
+import { chatAPI, Conversation, Message, ReplyDeadlineStatus, User } from '../../api/chat';
 import { relationshipAPI, RelationshipState } from '../../api/relationship';
 import { profileAPI, ProfileData } from '../../api/profile';
 import { activityAPI } from '../../api/activity';
 import { healthAPI, HealthTest } from '../../api/health';
-import { safetyAPI, MeetupPlan, EmergencyContact } from '../../api/safety';
+import { safetyAPI, MeetupPlan, EmergencyContact, MeetupWeekStatus } from '../../api/safety';
+import DateVenuePicker from '../DateVenuePicker';
 import { reviewsAPI, ReviewAttributes, REVIEW_ATTRIBUTE_LABELS } from '../../api/reviews';
 import { speedDateAPI, SpeedDate } from '../../api/speedDate';
 import { connectionJourneyAPI, ConnectionJourneyResponse } from '../../api/connectionJourney';
@@ -67,6 +68,7 @@ const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId }: ChatWidgetProps)
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [replyDeadline, setReplyDeadline] = useState<ReplyDeadlineStatus | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const threadEndRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -98,6 +100,15 @@ const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId }: ChatWidgetProps)
   const [emergencyPhone, setEmergencyPhone] = useState('');
   const [savedContacts, setSavedContacts] = useState<EmergencyContact[]>([]);
   const [meetupSubmitting, setMeetupSubmitting] = useState(false);
+  const [meetupWeek, setMeetupWeek] = useState<MeetupWeekStatus | null>(null);
+  const [idVerificationConsent, setIdVerificationConsent] = useState(false);
+  const [idFrontImage, setIdFrontImage] = useState<string | null>(null);
+  const [idBackImage, setIdBackImage] = useState<string | null>(null);
+  const [agreedVenueName, setAgreedVenueName] = useState('');
+  const [showSafetyVideoModal, setShowSafetyVideoModal] = useState<MeetupPlan | null>(null);
+  const [safetyVideoSubmitting, setSafetyVideoSubmitting] = useState(false);
+  const safetyVideoRecorderRef = useRef<MediaRecorder | null>(null);
+  const safetyVideoChunksRef = useRef<Blob[]>([]);
 
   // Check-in reminder (when expectedBackAt is reached)
   const [checkInPlan, setCheckInPlan] = useState<EnrichedMeetupPlan | null>(null);
@@ -207,6 +218,10 @@ const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId }: ChatWidgetProps)
   const fetchMeetupPlansAndCheckDue = async () => {
     if (!user?.id) return;
     try {
+      const poll = await safetyAPI.pollMeetupSafetyReminders().catch(() => null);
+      if (poll?.needsSafetyVideo?.length) {
+        setShowSafetyVideoModal(poll.needsSafetyVideo[0] as MeetupPlan);
+      }
       const { plans } = await safetyAPI.getMeetupPlans();
       setMeetupPlans(plans as EnrichedMeetupPlan[]);
       const now = new Date();
@@ -233,6 +248,17 @@ const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId }: ChatWidgetProps)
       safetyAPI.getEmergencyContacts().then((r) => setSavedContacts(r.contacts));
     }
   }, [showMeetupPopup, emergencyType]);
+
+  const handleReplyDeadlineUnmatched = (reason?: string) => {
+    setError(reason || 'This match ended — someone did not reply within 24 hours.');
+    setReplyDeadline(null);
+    setMessages([]);
+    setSelectedUserId(null);
+    setSelectedName(null);
+    setSelectedAvatar(null);
+    setView('list');
+    loadConversations();
+  };
 
   const loadConversations = async () => {
     if (!user?.id) return;
@@ -306,11 +332,17 @@ const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId }: ChatWidgetProps)
     setLoading(true);
     setError('');
     try {
-      const { messages: msgs } = await chatAPI.getConversation(otherUserId, user.id);
-      setMessages(msgs);
+      const data = await chatAPI.getConversation(otherUserId, user.id);
+      if (data.unmatched) {
+        handleReplyDeadlineUnmatched(data.unmatchedReason);
+        return;
+      }
+      setReplyDeadline(data.replyDeadline ?? null);
+      setMeetupWeek(data.meetupWeek ?? null);
+      setMessages(data.messages);
       await chatAPI.markAsRead(otherUserId, user.id);
       await loadConversations();
-      if (!meetupDismissedForChat && msgs.some((m: Message) => MEETUP_KEYWORDS.test(m.content))) {
+      if (!meetupDismissedForChat && data.messages.some((m: Message) => MEETUP_KEYWORDS.test(m.content))) {
         if (!boundariesDismissedForChat) setShowBoundariesModal(true);
         else setShowMeetupPopup(true);
       }
@@ -395,17 +427,40 @@ const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId }: ChatWidgetProps)
   const sendContent = async (content: string) => {
     if (!selectedUserId || !user?.id) return;
     try {
-      const { message } = await chatAPI.sendMessage(selectedUserId, content, user.id);
+      const { message, replyDeadline: nextDeadline } = await chatAPI.sendMessage(selectedUserId, content, user.id);
       setMessages((prev) => [...prev, message]);
+      if (nextDeadline) setReplyDeadline(nextDeadline);
       await loadConversations();
       if (!content.startsWith('data:') && !meetupDismissedForChat && MEETUP_KEYWORDS.test(content)) {
         if (!boundariesDismissedForChat) setShowBoundariesModal(true);
         else setShowMeetupPopup(true);
       }
     } catch (e: any) {
-      setError(e.response?.data?.error || 'Failed to send');
+      const msg = e.response?.data?.error || 'Failed to send';
+      setError(msg);
+      if (e.response?.data?.unmatched) {
+        handleReplyDeadlineUnmatched(msg);
+      }
     }
   };
+
+  useEffect(() => {
+    if (view !== 'thread' || !selectedUserId || !user?.id) return;
+    const tick = () => {
+      chatAPI
+        .getConversation(selectedUserId, user.id)
+        .then((data) => {
+          if (data.unmatched) {
+            handleReplyDeadlineUnmatched(data.unmatchedReason);
+            return;
+          }
+          setReplyDeadline(data.replyDeadline ?? null);
+        })
+        .catch(() => {});
+    };
+    const id = setInterval(tick, 60_000);
+    return () => clearInterval(id);
+  }, [view, selectedUserId, user?.id]);
 
   const handleSend = async () => {
     const text = inputText.trim();
@@ -873,6 +928,18 @@ const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId }: ChatWidgetProps)
       setError('Please enter emergency contact name and phone, or select a saved contact.');
       return;
     }
+    if (!idVerificationConsent) {
+      setError('You must consent to ID verification for safety before meeting.');
+      return;
+    }
+    if (!idFrontImage || !idBackImage) {
+      setError('Upload ID front and back before meeting.');
+      return;
+    }
+    if (!agreedVenueName.trim()) {
+      setError('You and your match must agree on a public date spot below first.');
+      return;
+    }
     setMeetupSubmitting(true);
     setError('');
     try {
@@ -883,11 +950,15 @@ const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId }: ChatWidgetProps)
       }
       await safetyAPI.createMeetupPlan({
         meetAt: new Date(meetAt).toISOString(),
-        location: meetupLocation,
+        location: meetupLocation || agreedVenueName,
         expectedBackAt: new Date(expectedBackAt).toISOString(),
         emergencyContactUserId: emergencyType === 'app' ? emergencyContactUserId || undefined : undefined,
         emergencyContactId: contactId || undefined,
         chatPartnerUserId: selectedUserId,
+        idVerificationConsent: true,
+        idFrontImage,
+        idBackImage,
+        agreedVenueName,
       });
       setShowMeetupPopup(false);
       setMeetupDismissedForChat(selectedUserId);
@@ -1133,6 +1204,11 @@ const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId }: ChatWidgetProps)
               <span className="chat-focus-text">In a relationship with {relationship.partnerName ?? 'partner'}. Other chats below are blurred until you both confirm you&apos;re no longer dating.</span>
             </div>
           )}
+          <div className="chat-reply-policy-banner">
+            <span>
+              Reply within <strong>24 hours</strong> to every message you receive after a match or mutual interest — or the match ends. Same rule for all ongoing chats.
+            </span>
+          </div>
           {focus && (
             <div className="chat-focus-banner">
               <span className="chat-focus-text">
@@ -1245,7 +1321,14 @@ const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId }: ChatWidgetProps)
                       {c.unreadCount > 0 && <span className="chat-unread">{c.unreadCount}</span>}
                     </div>
                     <div className="chat-list-body">
-                      <span className="chat-list-name">{c.name}</span>
+                      <span className="chat-list-name">
+                        {c.name}
+                        {c.replyDeadline?.active &&
+                          c.replyDeadline.owesReplyUserId === user?.id &&
+                          !c.replyDeadline.expired && (
+                            <span className="chat-reply-urgent-badge">Reply · {c.replyDeadline.hoursRemaining}h{c.replyDeadline.minutesRemaining != null ? ` ${c.replyDeadline.minutesRemaining}m` : ''}</span>
+                          )}
+                      </span>
                     <span className="chat-list-preview">
                       {c.lastMessage.fromUserId === user?.id ? 'You: ' : ''}
                       {c.lastMessage.content.startsWith('data:') ? (c.lastMessage.content.startsWith('data:image') || c.lastMessage.content.startsWith('data:video') ? '📷 Media' : c.lastMessage.content.startsWith('data:audio') ? '🎤 Voice' : 'Media') : /^https?:\/\//.test(c.lastMessage.content) && (c.lastMessage.content.includes('gif') || /\.(gif|webp|png|jpg)/i.test(c.lastMessage.content)) ? '🖼️ GIF' : c.lastMessage.content.slice(0, 40)}
@@ -1431,6 +1514,21 @@ const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId }: ChatWidgetProps)
 
       {view === 'thread' && (
         <>
+          {meetupWeek?.active && !meetupWeek.metInPerson && (
+            <div
+              className={`chat-reply-deadline-banner ${meetupWeek.expired ? 'chat-reply-deadline-banner-expired' : ''}`}
+              style={meetupWeek.expired ? undefined : { borderColor: 'rgba(168,85,247,0.5)', background: 'rgba(168,85,247,0.12)' }}
+            >
+              <span>{meetupWeek.ruleText}</span>
+            </div>
+          )}
+          {replyDeadline && (
+            <div
+              className={`chat-reply-deadline-banner ${replyDeadline.owesReplyUserId === user?.id ? 'chat-reply-deadline-banner-urgent' : ''} ${replyDeadline.expired ? 'chat-reply-deadline-banner-expired' : ''}`}
+            >
+              <span>{replyDeadline.ruleText}</span>
+            </div>
+          )}
           {messages.some((m) => m.fromUserId === selectedUserId && m.content.includes('[Safety]')) && (
             <div className="chat-focus-banner" style={{ background: 'rgba(239,68,68,0.2)', border: '1px solid rgba(239,68,68,0.5)', marginBottom: 8, padding: '10px 12px', borderRadius: 8 }}>
               <strong>Your date has asked to keep distance and stay in public.</strong> Please respect their boundaries. Stay in a public place with people around and do not assume they are comfortable with anything beyond that.
@@ -1619,11 +1717,27 @@ const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId }: ChatWidgetProps)
               onChange={(e) => setInputText(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSend()}
             />
-            <button type="button" className="chat-send-btn" onClick={handleSend} disabled={!inputText.trim()}>
+            <button
+              type="button"
+              className="chat-send-btn"
+              onClick={handleSend}
+              disabled={
+                !inputText.trim() ||
+                (!!replyDeadline?.expired && replyDeadline.owesReplyUserId === user?.id)
+              }
+            >
               Send
             </button>
           </div>
-          <button type="button" className="chat-back-btn chat-back-inline" onClick={() => { setView('list'); setSelectedUserId(null); }}>
+          <button
+            type="button"
+            className="chat-back-btn chat-back-inline"
+            onClick={() => {
+              setView('list');
+              setSelectedUserId(null);
+              setReplyDeadline(null);
+            }}
+          >
             ← Back to chats
           </button>
         </>
@@ -1863,6 +1977,66 @@ const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId }: ChatWidgetProps)
         </div>
       )}
 
+      {showSafetyVideoModal && (
+        <div className="chat-meetup-overlay">
+          <div className="chat-meetup-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="chat-meetup-header">
+              <h3>Check in — you should be back by now</h3>
+            </div>
+            <p style={{ fontSize: 13, marginBottom: 12 }}>
+              Record a short 360° video saying you are safe. It will be reviewed. Your emergency contact was notified to video call you.
+            </p>
+            <div className="chat-meetup-actions">
+              <button
+                type="button"
+                className="chat-send-btn"
+                disabled={safetyVideoSubmitting}
+                onClick={async () => {
+                  try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+                    const recorder = new MediaRecorder(stream);
+                    safetyVideoChunksRef.current = [];
+                    recorder.ondataavailable = (ev) => {
+                      if (ev.data.size) safetyVideoChunksRef.current.push(ev.data);
+                    };
+                    recorder.onstop = async () => {
+                      stream.getTracks().forEach((t) => t.stop());
+                      const blob = new Blob(safetyVideoChunksRef.current, { type: 'video/webm' });
+                      const reader = new FileReader();
+                      reader.onload = async () => {
+                        setSafetyVideoSubmitting(true);
+                        try {
+                          await safetyAPI.submitMeetupSafetyCheck(showSafetyVideoModal.id, String(reader.result));
+                          setShowSafetyVideoModal(null);
+                          setSuccess('Safety check-in submitted for review.');
+                        } catch (err: any) {
+                          setError(err.response?.data?.error || 'Failed to submit video');
+                        } finally {
+                          setSafetyVideoSubmitting(false);
+                        }
+                      };
+                      reader.readAsDataURL(blob);
+                    };
+                    safetyVideoRecorderRef.current = recorder;
+                    recorder.start();
+                    setTimeout(() => {
+                      if (recorder.state === 'recording') recorder.stop();
+                    }, 8000);
+                  } catch {
+                    setError('Camera access required for safety check-in.');
+                  }
+                }}
+              >
+                {safetyVideoSubmitting ? 'Uploading…' : 'Record 8s safety video'}
+              </button>
+              <button type="button" className="chat-back-btn" onClick={() => setShowSafetyVideoModal(null)}>
+                Later
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showMeetupPopup && selectedUserId && (
         <div className="chat-meetup-overlay" onClick={() => setShowMeetupPopup(false)}>
           <div className="chat-meetup-modal" onClick={(e) => e.stopPropagation()}>
@@ -1871,16 +2045,65 @@ const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId }: ChatWidgetProps)
               <button type="button" className="chat-profile-close" onClick={() => { setShowMeetupPopup(false); setMeetupDismissedForChat(selectedUserId); }}>×</button>
             </div>
             <div className="chat-meetup-form">
+              <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.85)', marginBottom: 12, padding: 8, background: 'rgba(168,85,247,0.15)', borderRadius: 8 }}>
+                <strong>7-day rule:</strong> Meet in person within a week of matching or this match ends. Pick a public talk-friendly spot below — parks, coffee to-go, plazas only (no sit-down restaurants, cinemas, or movies). Each pays your own.
+              </p>
+              {selectedUserId && user?.id && (
+                <DateVenuePicker
+                  otherUserId={selectedUserId}
+                  userId={user.id}
+                  onAgreed={(name) => {
+                    setAgreedVenueName(name);
+                    setMeetupLocation(name);
+                  }}
+                />
+              )}
               <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.85)', marginBottom: 12, padding: 8, background: 'rgba(0,212,255,0.1)', borderRadius: 8 }}>
-                💡 Before you meet, check your date&apos;s health results (tap their name in the chat header → Request to see health results). Update your own in Profile → Health results.
+                💡 Before you meet, check your date&apos;s health results (tap their name in the chat header → Request to see health results).
               </p>
               <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.9)', marginBottom: 12, padding: 10, background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.4)', borderRadius: 8 }}>
-                <strong>Safety:</strong> Stay in a public place with people around. This is not a guarantee that the other person wants anything beyond hanging out—always ask beforehand. If they&apos;re not comfortable, stay outdoors and in public. Be careful inviting someone to your place: you could be robbed, drugged, or worse. Add an emergency contact below.
+                <strong>Safety:</strong> Stay in a public place with people around. Add an emergency contact. ID is used only if your match does not check in with video evidence.
               </div>
+              <label className="chat-meetup-checkbox">
+                <input
+                  type="checkbox"
+                  checked={idVerificationConsent}
+                  onChange={(e) => setIdVerificationConsent(e.target.checked)}
+                />
+                I consent: my ID may be used to identify my match if they do not return safely and do not submit safety video check-in.
+              </label>
+              <label>ID front (photo)</label>
+              <input
+                type="file"
+                accept="image/*"
+                capture="environment"
+                className="chat-meetup-input"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (!f) return;
+                  const r = new FileReader();
+                  r.onload = () => setIdFrontImage(String(r.result));
+                  r.readAsDataURL(f);
+                }}
+              />
+              <label>ID back (photo)</label>
+              <input
+                type="file"
+                accept="image/*"
+                capture="environment"
+                className="chat-meetup-input"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (!f) return;
+                  const r = new FileReader();
+                  r.onload = () => setIdBackImage(String(r.result));
+                  r.readAsDataURL(f);
+                }}
+              />
               <label>Meet-up time</label>
               <input type="datetime-local" value={meetAt} onChange={(e) => setMeetAt(e.target.value)} className="chat-meetup-input" />
-              <label>Location</label>
-              <input type="text" placeholder="Where are you meeting?" value={meetupLocation} onChange={(e) => setMeetupLocation(e.target.value)} className="chat-meetup-input" />
+              <label>Location (auto-filled when you agree on a spot)</label>
+              <input type="text" placeholder="Agreed public spot" value={meetupLocation} onChange={(e) => setMeetupLocation(e.target.value)} className="chat-meetup-input" />
               <label>Expected back time</label>
               <input type="datetime-local" value={expectedBackAt} onChange={(e) => setExpectedBackAt(e.target.value)} className="chat-meetup-input" />
               <label>Emergency contact (required)</label>

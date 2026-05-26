@@ -104,7 +104,7 @@ const DiscoverWidgetFull = () => {
       
       await discoverAPI.showInterest(toUserId, city, placeId, placeType);
       await loadInterests();
-      alert('Interest sent! They have 48 hours to respond. If they don\'t reply, the message will disappear.');
+      alert('Interest sent! They have 24 hours to accept or decline. Once you match, reply within 24 hours to every message you receive or the match ends.');
     } catch (err: any) {
       setError(err.response?.data?.error || 'Failed to send interest');
     }
@@ -118,7 +118,7 @@ const DiscoverWidgetFull = () => {
       if (result.openChat && result.chatUserId) {
         localStorage.setItem('chatSelectedUserId', result.chatUserId);
         window.dispatchEvent(new CustomEvent('chat:open', { detail: { userId: result.chatUserId } }));
-        alert('Interest accepted! Opening chat...');
+        alert('Match! Opening chat — reply within 24 hours to every message you receive, or the match ends.');
       } else if (response === 'rejected') {
         alert('Interest declined.');
       }

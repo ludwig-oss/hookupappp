@@ -32,6 +32,22 @@ export interface MeetupPlan {
   emergencyContactId?: string | null; // From safety EmergencyContact (name+phone)
   chatPartnerUserId?: string | null;
   notifiedAt?: string | null; // When we showed the check-in reminder
+  emergencyContactVideoNotifiedAt?: string | null;
+  idVerificationConsent?: boolean;
+  /** @deprecated legacy inline storage — use vault refs */
+  idFrontImage?: string | null;
+  /** @deprecated legacy inline storage */
+  idBackImage?: string | null;
+  /** @deprecated legacy inline storage */
+  safetyCheckVideo?: string | null;
+  idFrontVaultRef?: string | null;
+  idBackVaultRef?: string | null;
+  safetyVideoVaultRef?: string | null;
+  safetyCheckStatus?: 'none' | 'pending_review' | 'approved' | 'rejected';
+  safetyCheckSubmittedAt?: string | null;
+  safetyReviewedAt?: string | null;
+  safetyReviewedBy?: string | null;
+  agreedVenueName?: string | null;
   createdAt: Date | string;
 }
 
@@ -142,22 +158,63 @@ async function readMeetupPlans(): Promise<MeetupPlan[]> {
   }
 }
 
+export async function readMeetupPlansFromDisk(): Promise<MeetupPlan[]> {
+  return readMeetupPlans();
+}
+
+export function sanitizeMeetupPlanForClient(plan: MeetupPlan): Omit<
+  MeetupPlan,
+  'idFrontImage' | 'idBackImage' | 'safetyCheckVideo' | 'idFrontVaultRef' | 'idBackVaultRef' | 'safetyVideoVaultRef'
+> & {
+  hasIdOnFile: boolean;
+  hasSafetyVideo: boolean;
+} {
+  const {
+    idFrontImage,
+    idBackImage,
+    safetyCheckVideo,
+    idFrontVaultRef,
+    idBackVaultRef,
+    safetyVideoVaultRef,
+    ...rest
+  } = plan;
+  return {
+    ...rest,
+    hasIdOnFile: Boolean(idFrontVaultRef || idBackVaultRef || idFrontImage),
+    hasSafetyVideo: Boolean(safetyVideoVaultRef || safetyCheckVideo),
+  };
+}
+
+export async function updateMeetupPlanFields(
+  planId: string,
+  fields: Partial<MeetupPlan>
+): Promise<boolean> {
+  const plans = await readMeetupPlans();
+  const i = plans.findIndex((p) => p.id === planId);
+  if (i === -1) return false;
+  plans[i] = { ...plans[i], ...fields };
+  await writeMeetupPlans(plans);
+  return true;
+}
+
 async function writeMeetupPlans(plans: MeetupPlan[]): Promise<void> {
   const dir = join(process.cwd(), 'server', 'data');
   await import('fs/promises').then(fs => fs.mkdir(dir, { recursive: true }));
   await writeFile(MEETUP_PLANS_PATH, JSON.stringify(plans, null, 2));
 }
 
-export async function createMeetupPlan(plan: Omit<MeetupPlan, 'id' | 'createdAt'>): Promise<MeetupPlan> {
+export async function createMeetupPlan(
+  plan: Omit<MeetupPlan, 'id' | 'createdAt'> & { id?: string }
+): Promise<MeetupPlan> {
   const plans = await readMeetupPlans();
   const newPlan: MeetupPlan = {
     ...plan,
-    id: Date.now().toString(),
+    id: plan.id || Date.now().toString(),
     createdAt: new Date(),
   };
   plans.push(newPlan);
   await writeMeetupPlans(plans);
-  return newPlan;
+  return sanitizeMeetupPlanForClient(newPlan) as MeetupPlan;
 }
 
 export async function getMeetupPlansForUser(userId: string): Promise<MeetupPlan[]> {
@@ -172,6 +229,46 @@ export async function setMeetupPlanNotified(planId: string, userId: string): Pro
   plans[i].notifiedAt = new Date().toISOString();
   await writeMeetupPlans(plans);
   return true;
+}
+
+export async function setMeetupPlanEmergencyVideoNotified(planId: string, userId: string): Promise<boolean> {
+  const plans = await readMeetupPlans();
+  const i = plans.findIndex((p) => p.id === planId && p.userId === userId);
+  if (i === -1) return false;
+  plans[i].emergencyContactVideoNotifiedAt = new Date().toISOString();
+  await writeMeetupPlans(plans);
+  return true;
+}
+
+export async function getMeetupPlanById(planId: string, userId: string): Promise<MeetupPlan | null> {
+  const plans = await readMeetupPlans();
+  return plans.find((p) => p.id === planId && p.userId === userId) ?? null;
+}
+
+export async function submitMeetupSafetyCheck(
+  planId: string,
+  userId: string,
+  safetyVideoVaultRef: string
+): Promise<MeetupPlan | null> {
+  const plans = await readMeetupPlans();
+  const i = plans.findIndex((p) => p.id === planId && p.userId === userId);
+  if (i === -1) return null;
+  plans[i].safetyVideoVaultRef = safetyVideoVaultRef;
+  plans[i].safetyCheckVideo = null;
+  plans[i].safetyCheckStatus = 'pending_review';
+  plans[i].safetyCheckSubmittedAt = new Date().toISOString();
+  await writeMeetupPlans(plans);
+  return sanitizeMeetupPlanForClient(plans[i]) as MeetupPlan;
+}
+
+export async function getDueMeetupPlansForEmergencyVideo(): Promise<MeetupPlan[]> {
+  const plans = await readMeetupPlans();
+  const now = Date.now();
+  return plans.filter((p) => {
+    if (!p.expectedBackAt || p.emergencyContactVideoNotifiedAt) return false;
+    const due = new Date(p.expectedBackAt).getTime();
+    return due <= now && (!p.safetyCheckStatus || p.safetyCheckStatus === 'none');
+  });
 }
 
 // Date Shares

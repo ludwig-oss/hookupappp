@@ -15,6 +15,7 @@ import Profile from './pages/Profile';
 import ProfileSetup from './pages/ProfileSetup';
 import Settings from './pages/Settings';
 import Home from './pages/Home';
+import AdminSafetyReview from './pages/AdminSafetyReview';
 import Checkout from './pages/Checkout';
 import { AuthContext } from './context/AuthContext';
 import { LanguageProvider } from './context/LanguageContext';
@@ -175,6 +176,7 @@ function App() {
           <Route path="/profile-setup" element={user ? <ProfileSetup /> : <Navigate to="/login" />} />
           <Route path="/home" element={user ? <Dashboard /> : <Navigate to="/login" />} />
           <Route path="/checkout" element={user ? <Checkout /> : <Navigate to="/login" />} />
+          <Route path="/admin/safety" element={user ? <AdminSafetyReview /> : <Navigate to="/login" />} />
           <Route path="/" element={user ? <Navigate to={user.profileSetupComplete ? "/home" : "/profile-setup"} /> : <Landing />} />
         </Routes>
       </AuthContext.Provider>

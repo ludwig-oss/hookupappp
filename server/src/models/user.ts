@@ -134,6 +134,9 @@ export interface User {
   profileImpressionCount?: number;
   styleScore?: number;
   outdoorWalkEnabled?: boolean;
+  schoolHomeHour?: number;
+  schoolHomeMinute?: number;
+  schoolNotifyEnabled?: boolean;
 }
 
 const DB_PATH = join(__dirname, '..', 'data', 'users.json');

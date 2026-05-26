@@ -83,6 +83,18 @@ export default function CompatibilityWidget() {
   }, []);
 
   useEffect(() => {
+    const handler = (e: Event) => {
+      const catId = (e as CustomEvent<{ categoryId?: string }>).detail?.categoryId;
+      if (catId) {
+        loadGuidesForCategory(catId);
+        setView('guides');
+      }
+    };
+    window.addEventListener('school:open-guides', handler);
+    return () => window.removeEventListener('school:open-guides', handler);
+  }, [user?.id]);
+
+  useEffect(() => {
     if (user?.id) {
       loadRecommended();
       loadMyRequests();

@@ -15,6 +15,7 @@ import LoveFeedWidget from '../components/widgets/LoveFeedWidget';
 import EventsWidget from '../components/widgets/EventsWidget';
 import HelpWidget from '../components/widgets/HelpWidget';
 import WalkingPartnerPopup from '../components/WalkingPartnerPopup';
+import SchoolDailyNotification from '../components/SchoolDailyNotification';
 import { useTranslation } from '../context/LanguageContext';
 import { postsAPI } from '../api/posts';
 import { relationshipAPI } from '../api/relationship';
@@ -244,6 +245,14 @@ const Dashboard = () => {
 
   return (
     <div className="dashboard-container">
+      <SchoolDailyNotification
+        onOpenGuides={(categoryId) => {
+          setOpenWidget('compatibility');
+          window.setTimeout(() => {
+            window.dispatchEvent(new CustomEvent('school:open-guides', { detail: { categoryId } }));
+          }, 400);
+        }}
+      />
       <WalkingPartnerPopup
         onOpenChat={(userId) => {
           setOpenChatWithUserId(userId);

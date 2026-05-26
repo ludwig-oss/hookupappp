@@ -90,6 +90,9 @@ function rowToUser(row: { id: string; email: string; password: string; name: str
     profileImpressionCount: (data.profileImpressionCount as number) ?? undefined,
     styleScore: (data.styleScore as number) ?? undefined,
     outdoorWalkEnabled: (data.outdoorWalkEnabled as boolean) ?? undefined,
+    schoolHomeHour: (data.schoolHomeHour as number) ?? undefined,
+    schoolHomeMinute: (data.schoolHomeMinute as number) ?? undefined,
+    schoolNotifyEnabled: (data.schoolNotifyEnabled as boolean) ?? undefined,
   } as User;
 }
 
@@ -103,7 +106,8 @@ function userToData(u: Partial<User>): Record<string, unknown> {
     'publicFigureUniqueImage', 'publicFigureVerified', 'publicFigureVerifiedAt', 'revealToUserIds', 'celebChatDisappearMode',
     'celebChatDisappearSeconds', 'celebMessagesOnlyWhenOpened', 'photoVerifiedAt',
     'financialTier', 'lifeQuizCompleted', 'lifeQuizGoals', 'isFamousOrInfluencer',
-    'profileClickCount', 'profileImpressionCount', 'styleScore', 'outdoorWalkEnabled'] as const;
+    'profileClickCount', 'profileImpressionCount', 'styleScore', 'outdoorWalkEnabled',
+    'schoolHomeHour', 'schoolHomeMinute', 'schoolNotifyEnabled'] as const;
   for (const k of keys) {
     if ((u as any)[k] !== undefined) data[k] = (u as any)[k];
   }

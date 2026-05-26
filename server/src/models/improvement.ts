@@ -10,6 +10,7 @@ export interface ImprovementCategory {
 
 /** Dating and relationship improvement topics only. No general skills (e.g. technology, career, fitness). */
 export const IMPROVEMENT_CATEGORIES: ImprovementCategory[] = [
+  { id: 'style-fashion', name: 'Style & Fashion', description: 'Build your personal style, grooming, and wardrobe confidence', icon: '👔' },
   { id: 'communication', name: 'Communication in Relationships', description: 'Express yourself clearly and listen better with your partner', icon: '💬' },
   { id: 'texting', name: 'Texting & DMs', description: 'Master texting, when to reply, and keeping the spark over messages', icon: '📱' },
   { id: 'bedroom', name: 'Bedroom & Intimacy', description: 'Improve intimacy, connection, and address bedroom concerns', icon: '💕' },

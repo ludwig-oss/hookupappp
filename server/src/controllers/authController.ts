@@ -127,9 +127,20 @@ export const signup = async (req: Request, res: Response) => {
       token,
       user: userForClient,
     });
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Signup error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    const pgCode = (error as { code?: string })?.code;
+    if (pgCode === '23505') {
+      return res.status(400).json({ error: 'Username is already taken. Pick another username.' });
+    }
+    if (pgCode === '23502') {
+      return res.status(400).json({ error: 'Missing required account information. Check all fields and try again.' });
+    }
+    const msg = error instanceof Error ? error.message : '';
+    if (msg.includes('JWT_SECRET')) {
+      return res.status(503).json({ error: 'Server configuration error. Try again later or contact support.' });
+    }
+    res.status(500).json({ error: 'Could not create account. Please try again.' });
   }
 };
 

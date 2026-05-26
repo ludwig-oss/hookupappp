@@ -114,7 +114,36 @@ function userToData(u: Partial<User>): Record<string, unknown> {
   return data;
 }
 
-export async function createUser(userData: Omit<User, 'id' | 'resetToken' | 'resetTokenExpiry' | 'profilePicture' | 'highlights' | 'disappearingPhotos' | 'profileSetupComplete' | 'improvementCategories' | 'blockedUsers' | 'mutedUsers' | 'unmatchedUsers' | 'profiles' | 'activeProfileId' | 'emailVerified' | 'emailVerificationToken' | 'emailVerificationTokenExpiry' | 'emailVerificationCode' | 'emailVerificationCodeExpiry' | 'phoneNumber'> & { improvementCategories?: string[] }): Promise<User> {
+export async function createUser(
+  userData: Omit<
+    User,
+    | 'id'
+    | 'resetToken'
+    | 'resetTokenExpiry'
+    | 'profilePicture'
+    | 'highlights'
+    | 'disappearingPhotos'
+    | 'profileSetupComplete'
+    | 'improvementCategories'
+    | 'blockedUsers'
+    | 'mutedUsers'
+    | 'unmatchedUsers'
+    | 'profiles'
+    | 'activeProfileId'
+    | 'emailVerified'
+    | 'emailVerificationToken'
+    | 'emailVerificationTokenExpiry'
+    | 'emailVerificationCode'
+    | 'emailVerificationCodeExpiry'
+    | 'phoneNumber'
+  > & {
+    improvementCategories?: string[];
+    passwordHint1?: string;
+    passwordHint2?: string;
+    passwordHint3?: string;
+    phoneNumber?: string | null;
+  }
+): Promise<User> {
   const id = Date.now().toString();
   const data = userToData({
     ...userData,
@@ -130,12 +159,15 @@ export async function createUser(userData: Omit<User, 'id' | 'resetToken' | 'res
     profiles: [],
     stories: [],
     closeFriendIds: [],
-    emailVerified: true,
+    emailVerified: false,
     emailVerificationToken: null,
     emailVerificationTokenExpiry: null,
     emailVerificationCode: null,
     emailVerificationCodeExpiry: null,
-    phoneNumber: null,
+    phoneNumber: userData.phoneNumber ?? null,
+    passwordHint1: userData.passwordHint1,
+    passwordHint2: userData.passwordHint2,
+    passwordHint3: userData.passwordHint3,
   });
   await query(
     'INSERT INTO users (id, email, password, name, username, data) VALUES ($1, $2, $3, $4, $5, $6)',

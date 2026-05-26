@@ -108,8 +108,9 @@ app.use(
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-app.use('/api', apiLimiter);
+/** Auth first so signup/login are not starved by the general /api bucket during onboarding. */
 app.use('/api/auth', authRoutes);
+app.use('/api', apiLimiter);
 app.use('/api/profile', profileRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/improvement', improvementRoutes);

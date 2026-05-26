@@ -41,6 +41,18 @@ const SignupWithImprovement = () => {
       setError('All fields are required');
       return;
     }
+    const passwordOk =
+      password.length >= 8 &&
+      /[a-z]/.test(password) &&
+      /[A-Z]/.test(password) &&
+      /[0-9]/.test(password) &&
+      /[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]/.test(password);
+    if (!passwordOk) {
+      setError(
+        'Password must be 8+ characters with uppercase, lowercase, a number, and a special character (!@#$…).'
+      );
+      return;
+    }
     if (!passwordHint1.trim() || !passwordHint2.trim() || !passwordHint3.trim()) {
       setError('All three password hints are required (to help you recover your account later)');
       return;

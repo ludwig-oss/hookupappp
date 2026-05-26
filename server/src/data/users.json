@@ -34,6 +34,40 @@
     "emailVerificationCodeExpiry": null,
     "phoneNumber": null,
     "country": "",
-    "city": ""
+    "city": "",
+    "stories": [],
+    "closeFriendIds": []
+  },
+  {
+    "email": "fixuser01@noreply.local",
+    "password": "$2a$10$Muxgy0DJ//qeQokE5dReVOTm0UpyFPny2ag/gb0QnJDJXrfW88WmW",
+    "name": "Test Fix",
+    "username": "fixuser01",
+    "improvementCategories": [
+      "dating-apps"
+    ],
+    "passwordHint1": "h1",
+    "passwordHint2": "h2",
+    "passwordHint3": "h3",
+    "id": "1779837822803",
+    "resetToken": null,
+    "resetTokenExpiry": null,
+    "profilePicture": null,
+    "highlights": [],
+    "disappearingPhotos": [],
+    "profileSetupComplete": false,
+    "location": null,
+    "blockedUsers": [],
+    "mutedUsers": [],
+    "unmatchedUsers": [],
+    "profiles": [],
+    "stories": [],
+    "closeFriendIds": [],
+    "emailVerified": false,
+    "emailVerificationToken": null,
+    "emailVerificationTokenExpiry": null,
+    "emailVerificationCode": null,
+    "emailVerificationCodeExpiry": null,
+    "phoneNumber": null
   }
 ]

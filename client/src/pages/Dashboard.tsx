@@ -14,6 +14,7 @@ import WheelOutcomeFlow from '../components/widgets/WheelOutcomeFlow.tsx';
 import LoveFeedWidget from '../components/widgets/LoveFeedWidget';
 import EventsWidget from '../components/widgets/EventsWidget';
 import HelpWidget from '../components/widgets/HelpWidget';
+import WalkingPartnerPopup from '../components/WalkingPartnerPopup';
 import { useTranslation } from '../context/LanguageContext';
 import { postsAPI } from '../api/posts';
 import { relationshipAPI } from '../api/relationship';
@@ -243,6 +244,12 @@ const Dashboard = () => {
 
   return (
     <div className="dashboard-container">
+      <WalkingPartnerPopup
+        onOpenChat={(userId) => {
+          setOpenChatWithUserId(userId);
+          setOpenWidget('chat');
+        }}
+      />
       <div className="stars-background" aria-hidden>
         <div className="love-bg-hearts" />
         <div className="love-bg-float">

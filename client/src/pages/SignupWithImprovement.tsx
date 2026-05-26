@@ -4,6 +4,7 @@ import { AuthContext } from '../context/AuthContext';
 import { authAPI } from '../api/auth';
 import { discoverAPI } from '../api/discover';
 import { formatAxiosError } from '../lib/apiError';
+import { walkMatchAPI } from '../api/walkMatch';
 import './Auth.css';
 import './Legal.css';
 
@@ -24,6 +25,8 @@ const SignupWithImprovement = () => {
   const [passwordHint2, setPasswordHint2] = useState('');
   const [passwordHint3, setPasswordHint3] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
+  const [age, setAge] = useState('');
+  const [gender, setGender] = useState('');
   const [orientation, setOrientation] = useState<'straight' | 'gay' | 'lesbian' | 'bisexual' | 'pansexual'>('straight');
   const [lookingFor, setLookingFor] = useState<string[]>(['dating']);
   const [error, setError] = useState('');
@@ -54,6 +57,11 @@ const SignupWithImprovement = () => {
       setError('Please select at least one option for Looking For');
       return;
     }
+    const ageNum = parseInt(age, 10);
+    if (!gender || !age || Number.isNaN(ageNum) || ageNum < 18 || ageNum > 99) {
+      setError('Please enter your age (18–99) and gender for outdoor matching');
+      return;
+    }
 
     setError('');
     setLoading(true);
@@ -80,6 +88,12 @@ const SignupWithImprovement = () => {
 
       login(userForLogin, response.token);
       signedUp = true;
+
+      try {
+        await walkMatchAPI.updateSettings({ age: ageNum, gender });
+      } catch {
+        /* non-blocking */
+      }
 
       try {
         await discoverAPI.setPreference({
@@ -155,6 +169,34 @@ const SignupWithImprovement = () => {
             <small style={{ color: '#9ca3af', fontSize: '12px', fontFamily: 'Orbitron, monospace' }}>
               Only letters, numbers, and underscores allowed
             </small>
+          </div>
+
+          <div className="form-group">
+            <label htmlFor="age">Age</label>
+            <input
+              type="number"
+              id="age"
+              min={18}
+              max={99}
+              value={age}
+              onChange={(e) => setAge(e.target.value)}
+              placeholder="Your age (18+)"
+            />
+          </div>
+
+          <div className="form-group">
+            <label htmlFor="gender">Gender</label>
+            <select
+              id="gender"
+              value={gender}
+              onChange={(e) => setGender(e.target.value)}
+              style={{ width: '100%', padding: '10px', borderRadius: '6px' }}
+            >
+              <option value="">Select…</option>
+              <option value="female">Female</option>
+              <option value="male">Male</option>
+              <option value="other">Other</option>
+            </select>
           </div>
 
           <div className="form-group">

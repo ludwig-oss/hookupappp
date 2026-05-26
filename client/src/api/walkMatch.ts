@@ -1,0 +1,79 @@
+import axios from 'axios';
+import { API_BASE } from './config';
+
+const API_URL = API_BASE + '/api/walk-match';
+
+export interface WalkSuggestion {
+  id: string;
+  name: string;
+  profilePicture: string | null;
+  age?: number;
+  distance: number;
+  matchReason: string;
+  matchScore: number;
+  tags: string[];
+  isOnline: boolean;
+}
+
+export interface WalkIncomingInterest {
+  id: string;
+  fromUserId: string;
+  toUserId: string;
+  status: string;
+  createdAt: string;
+  fromUser?: { id: string; name: string; profilePicture: string | null };
+}
+
+export const walkMatchAPI = {
+  getSuggestions: async (lat: number, lon: number, radius = 120) => {
+    const res = await axios.get(`${API_URL}/suggestions`, { params: { lat, lon, radius } });
+    return res.data as {
+      suggestions: WalkSuggestion[];
+      needsLifeQuiz: boolean;
+      outdoorWalkEnabled: boolean;
+    };
+  },
+
+  updateLocation: async (lat: number, lon: number, accuracy?: number) => {
+    await axios.post(`${API_URL}/location`, { lat, lon, accuracy });
+  },
+
+  sendInterest: async (toUserId: string) => {
+    const res = await axios.post(`${API_URL}/interest`, { toUserId });
+    return res.data as { mutual: boolean; chatUserId?: string; message: string };
+  },
+
+  respondInterest: async (interestId: string, accept: boolean) => {
+    const res = await axios.post(`${API_URL}/interest/respond`, { interestId, accept });
+    return res.data as { mutual: boolean; chatUserId?: string };
+  },
+
+  getIncoming: async () => {
+    const res = await axios.get(`${API_URL}/incoming`);
+    return res.data as { incoming: WalkIncomingInterest[] };
+  },
+
+  submitLifeQuiz: async (data: {
+    lifeStage: string;
+    financialSituation: string;
+    datingGoals: string;
+    isFamousOrInfluencer: boolean;
+    styleRating?: number;
+  }) => {
+    const res = await axios.post(`${API_URL}/life-quiz`, data);
+    return res.data;
+  },
+
+  recordClick: async (targetUserId: string) => {
+    await axios.post(`${API_URL}/profile-click`, { targetUserId });
+  },
+
+  recordImpression: async (targetUserId: string) => {
+    await axios.post(`${API_URL}/profile-impression`, { targetUserId });
+  },
+
+  updateSettings: async (data: { outdoorWalkEnabled?: boolean; gender?: string; age?: number }) => {
+    const res = await axios.patch(`${API_URL}/settings`, data);
+    return res.data;
+  },
+};

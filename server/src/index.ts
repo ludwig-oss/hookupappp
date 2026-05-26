@@ -48,6 +48,7 @@ import eventsRoutes from './routes/events.js';
 import relationshipRoutes from './routes/relationship.js';
 import connectionJourneyRoutes from './routes/connectionJourney.js';
 import notificationsRoutes from './routes/notifications.js';
+import walkMatchRoutes from './routes/walkMatch.js';
 import { runSchema } from './db/index.js';
 import { runWithSystem } from './db/context.js';
 import { apiLimiter } from './middleware/rateLimit.js';
@@ -131,6 +132,7 @@ app.use('/api/events', eventsRoutes);
 app.use('/api/relationship', relationshipRoutes);
 app.use('/api/connection-journey', connectionJourneyRoutes);
 app.use('/api/notifications', notificationsRoutes);
+app.use('/api/walk-match', walkMatchRoutes);
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', message: 'Server is running' });

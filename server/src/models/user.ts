@@ -125,6 +125,15 @@ export interface User {
   celebMessagesOnlyWhenOpened?: boolean;
   /** Anti-catfish: user verified their profile photo with a selfie (look left/center/right scan). Shown as green badge. */
   photoVerifiedAt?: string | null;
+  /** Outdoor walk matching: financial / life stage */
+  financialTier?: 'building' | 'stable' | 'wealthy';
+  lifeQuizCompleted?: boolean;
+  lifeQuizGoals?: string;
+  isFamousOrInfluencer?: boolean;
+  profileClickCount?: number;
+  profileImpressionCount?: number;
+  styleScore?: number;
+  outdoorWalkEnabled?: boolean;
 }
 
 const DB_PATH = join(__dirname, '..', 'data', 'users.json');

@@ -82,6 +82,14 @@ function rowToUser(row: { id: string; email: string; password: string; name: str
     celebChatDisappearSeconds: (data.celebChatDisappearSeconds as number) ?? undefined,
     celebMessagesOnlyWhenOpened: (data.celebMessagesOnlyWhenOpened as boolean) ?? undefined,
     photoVerifiedAt: (data.photoVerifiedAt as string) ?? null,
+    financialTier: (data.financialTier as User['financialTier']) ?? undefined,
+    lifeQuizCompleted: (data.lifeQuizCompleted as boolean) ?? undefined,
+    lifeQuizGoals: (data.lifeQuizGoals as string) ?? undefined,
+    isFamousOrInfluencer: (data.isFamousOrInfluencer as boolean) ?? undefined,
+    profileClickCount: (data.profileClickCount as number) ?? undefined,
+    profileImpressionCount: (data.profileImpressionCount as number) ?? undefined,
+    styleScore: (data.styleScore as number) ?? undefined,
+    outdoorWalkEnabled: (data.outdoorWalkEnabled as boolean) ?? undefined,
   } as User;
 }
 
@@ -93,7 +101,9 @@ function userToData(u: Partial<User>): Record<string, unknown> {
     'bio', 'age', 'gender', 'height', 'interests', 'education', 'occupation', 'relationshipStatus', 'country', 'city',
     'passwordHint1', 'passwordHint2', 'passwordHint3', 'publicFigureLevel', 'publicFigureProof', 'publicFigureIdImage',
     'publicFigureUniqueImage', 'publicFigureVerified', 'publicFigureVerifiedAt', 'revealToUserIds', 'celebChatDisappearMode',
-    'celebChatDisappearSeconds', 'celebMessagesOnlyWhenOpened', 'photoVerifiedAt'] as const;
+    'celebChatDisappearSeconds', 'celebMessagesOnlyWhenOpened', 'photoVerifiedAt',
+    'financialTier', 'lifeQuizCompleted', 'lifeQuizGoals', 'isFamousOrInfluencer',
+    'profileClickCount', 'profileImpressionCount', 'styleScore', 'outdoorWalkEnabled'] as const;
   for (const k of keys) {
     if ((u as any)[k] !== undefined) data[k] = (u as any)[k];
   }

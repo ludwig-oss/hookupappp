@@ -44,7 +44,18 @@ export default function SchoolDailyNotification({ onOpenGuides }: Props) {
 
   const dismiss = async () => {
     try {
-      await schoolAPI.dismiss();
+      const res = await schoolAPI.dismiss();
+      if (res?.message) setToast(res.message);
+    } catch {
+      /* ignore */
+    }
+    setVisible(false);
+  };
+
+  const exception = async (reason: 'work' | 'busy' | 'emergency') => {
+    try {
+      const res = await schoolAPI.exception(reason);
+      if (res?.message) setToast(res.message);
     } catch {
       /* ignore */
     }
@@ -112,6 +123,11 @@ export default function SchoolDailyNotification({ onOpenGuides }: Props) {
             <strong>Today&apos;s workout:</strong> {topic.dailyWorkout}
           </p>
         )}
+        {lesson.compliance?.enabled && lesson.compliance.policyText && !lesson.alreadyCompletedToday && (
+          <p className="school-alt" style={{ borderColor: 'rgba(239,68,68,0.35)', background: 'rgba(239,68,68,0.08)' }}>
+            <strong>Men&apos;s rule:</strong> {lesson.compliance.policyText}
+          </p>
+        )}
         <p className="school-progress">
           Class {lesson.completedCount + 1} of {lesson.totalClasses} · {lesson.progressPercent}% complete
         </p>
@@ -148,6 +164,16 @@ export default function SchoolDailyNotification({ onOpenGuides }: Props) {
           <button type="button" className="school-btn-ghost" onClick={dismiss}>
             {lesson.alreadyCompletedToday ? 'Close' : 'Remind me later'}
           </button>
+          {!lesson.alreadyCompletedToday && lesson.compliance?.enabled && (
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center' }}>
+              <button type="button" className="school-btn-ghost" onClick={() => exception('work')}>
+                Work busy (exception)
+              </button>
+              <button type="button" className="school-btn-ghost" onClick={() => exception('emergency')}>
+                Emergency (exception)
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>

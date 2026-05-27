@@ -93,6 +93,18 @@ function rowToUser(row: { id: string; email: string; password: string; name: str
     schoolHomeHour: (data.schoolHomeHour as number) ?? undefined,
     schoolHomeMinute: (data.schoolHomeMinute as number) ?? undefined,
     schoolNotifyEnabled: (data.schoolNotifyEnabled as boolean) ?? undefined,
+
+    // Enforcement
+    suspensionUntil: (data.suspensionUntil as string) ?? null,
+    suspensionReason: (data.suspensionReason as string) ?? null,
+    meetupNoShowStrikes: (data.meetupNoShowStrikes as number) ?? 0,
+    meetupNoShowLastAt: (data.meetupNoShowLastAt as string) ?? null,
+    schoolSkipStreak: (data.schoolSkipStreak as number) ?? 0,
+    schoolSkipLastDate: (data.schoolSkipLastDate as string) ?? null,
+    schoolSkipTotal: (data.schoolSkipTotal as number) ?? 0,
+    schoolSkipExceptionLastDate: (data.schoolSkipExceptionLastDate as string) ?? null,
+    visibilityReducedUntil: (data.visibilityReducedUntil as string) ?? null,
+    visibilityReducedReason: (data.visibilityReducedReason as string) ?? null,
   } as User;
 }
 
@@ -107,7 +119,11 @@ function userToData(u: Partial<User>): Record<string, unknown> {
     'celebChatDisappearSeconds', 'celebMessagesOnlyWhenOpened', 'photoVerifiedAt',
     'financialTier', 'lifeQuizCompleted', 'lifeQuizGoals', 'isFamousOrInfluencer',
     'profileClickCount', 'profileImpressionCount', 'styleScore', 'outdoorWalkEnabled',
-    'schoolHomeHour', 'schoolHomeMinute', 'schoolNotifyEnabled'] as const;
+    'schoolHomeHour', 'schoolHomeMinute', 'schoolNotifyEnabled',
+    'suspensionUntil', 'suspensionReason',
+    'meetupNoShowStrikes', 'meetupNoShowLastAt',
+    'schoolSkipStreak', 'schoolSkipLastDate', 'schoolSkipTotal', 'schoolSkipExceptionLastDate',
+    'visibilityReducedUntil', 'visibilityReducedReason'] as const;
   for (const k of keys) {
     if ((u as any)[k] !== undefined) data[k] = (u as any)[k];
   }

@@ -137,6 +137,24 @@ export interface User {
   schoolHomeHour?: number;
   schoolHomeMinute?: number;
   schoolNotifyEnabled?: boolean;
+
+  /** Enforcement: user cannot use app while suspended (ISO date). */
+  suspensionUntil?: string | null;
+  suspensionReason?: string | null;
+
+  /** Enforcement: repeated "didn't meet in 7 days" strikes. */
+  meetupNoShowStrikes?: number;
+  meetupNoShowLastAt?: string | null;
+
+  /** Enforcement: men's daily improvement compliance (School). */
+  schoolSkipStreak?: number;
+  schoolSkipLastDate?: string | null; // YYYY-MM-DD
+  schoolSkipTotal?: number;
+  schoolSkipExceptionLastDate?: string | null; // YYYY-MM-DD
+
+  /** Discovery penalty if user ignores required improvement (ISO date). */
+  visibilityReducedUntil?: string | null;
+  visibilityReducedReason?: string | null;
 }
 
 const DB_PATH = join(__dirname, '..', 'data', 'users.json');
@@ -208,6 +226,18 @@ async function readUsers(): Promise<User[]> {
         ...p,
         createdAt: p.createdAt ? new Date(p.createdAt) : new Date(),
       })),
+
+      // Enforcement defaults
+      suspensionUntil: (user as any).suspensionUntil ?? null,
+      suspensionReason: (user as any).suspensionReason ?? null,
+      meetupNoShowStrikes: typeof (user as any).meetupNoShowStrikes === 'number' ? (user as any).meetupNoShowStrikes : 0,
+      meetupNoShowLastAt: (user as any).meetupNoShowLastAt ?? null,
+      schoolSkipStreak: typeof (user as any).schoolSkipStreak === 'number' ? (user as any).schoolSkipStreak : 0,
+      schoolSkipLastDate: (user as any).schoolSkipLastDate ?? null,
+      schoolSkipTotal: typeof (user as any).schoolSkipTotal === 'number' ? (user as any).schoolSkipTotal : 0,
+      schoolSkipExceptionLastDate: (user as any).schoolSkipExceptionLastDate ?? null,
+      visibilityReducedUntil: (user as any).visibilityReducedUntil ?? null,
+      visibilityReducedReason: (user as any).visibilityReducedReason ?? null,
     }));
   } catch (error) {
     return [];
@@ -250,6 +280,18 @@ export async function createUser(userData: Omit<User, 'id' | 'resetToken' | 'res
     passwordHint1: userData.passwordHint1 || '',
     passwordHint2: userData.passwordHint2 || '',
     passwordHint3: userData.passwordHint3 || '',
+
+    // Enforcement defaults
+    suspensionUntil: null,
+    suspensionReason: null,
+    meetupNoShowStrikes: 0,
+    meetupNoShowLastAt: null,
+    schoolSkipStreak: 0,
+    schoolSkipLastDate: null,
+    schoolSkipTotal: 0,
+    schoolSkipExceptionLastDate: null,
+    visibilityReducedUntil: null,
+    visibilityReducedReason: null,
   };
   users.push(user);
   await writeUsers(users);

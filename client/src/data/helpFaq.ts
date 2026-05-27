@@ -129,7 +129,7 @@ export const HELP_FAQ: HelpFaqItem[] = [
   {
     category: 'Safety & meetups',
     q: 'How do in-person meetups work in chat?',
-    a: 'Plan via meetup tools: agree on a public venue from suggested spots (parks, coffee to-go, plazas—not private homes). You have about 7 days to meet after matching or the match may end. Before meeting: boundaries checklist, ID consent, expected return time, and optional safety video check-in. Each person pays their own way.',
+    a: 'Plan via meetup tools: agree on a public venue from suggested spots (parks, coffee to-go, plazas—not private homes). You have about 7 days to meet after matching or the match may end. Repeatedly stalling meetups can lead to suspension over time (this app is for serious users). Before meeting: boundaries checklist, ID consent, expected return time, and optional safety video check-in. Each person pays their own way.',
     keywords: ['meetup', 'venue', '7 day', 'meet in person'],
   },
   {
@@ -159,7 +159,7 @@ export const HELP_FAQ: HelpFaqItem[] = [
   {
     category: 'Tips & learning',
     q: 'What is School / daily lessons?',
-    a: 'You may see a School notification for a daily class or quiz on relationships and self-improvement. Complete or skip per your schedule. It can link you to Compatibility guides for deeper reading.',
+    a: 'You may see a School notification for a daily class or quiz on relationships and self-improvement. For men, daily self-improvement is required: warnings start after 3 skips in a row, and after 5 skips in a row visibility is reduced automatically (you can mark work busy or emergency, and completing a class clears the penalty). School can link you to Compatibility guides for deeper reading.',
     keywords: ['school', 'daily', 'lesson', 'quiz', 'class'],
   },
   {

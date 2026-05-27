@@ -93,8 +93,8 @@ function App() {
         }
         const id = normalizeUserId((fullProfile as { id: unknown }).id);
         const normalized = id
-          ? { ...userForStorage(fullProfile as Record<string, unknown>), id }
-          : userForStorage(fullProfile as Record<string, unknown>);
+          ? { ...userForStorage(fullProfile as unknown as Record<string, unknown>), id }
+          : userForStorage(fullProfile as unknown as Record<string, unknown>);
         setUser(normalized);
         localStorage.setItem('user', JSON.stringify(normalized));
         const lang = settingsRes?.settings?.localization?.language;

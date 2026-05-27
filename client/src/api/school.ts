@@ -34,6 +34,13 @@ export interface TodayLesson {
   alternateSuggestion: SchoolTopic | null;
   progressPercent: number;
   completedCount: number;
+  compliance?: {
+    enabled: boolean;
+    skipStreak: number;
+    warning: string | null;
+    visibilityReducedUntil: string | null;
+    policyText?: string;
+  } | null;
 }
 
 export const schoolAPI = {
@@ -53,7 +60,13 @@ export const schoolAPI = {
   },
 
   dismiss: async () => {
-    await axios.post(`${API_URL}/dismiss`);
+    const res = await axios.post(`${API_URL}/dismiss`);
+    return res.data as { ok: true; message?: string | null; compliance?: TodayLesson['compliance'] };
+  },
+
+  exception: async (reason: 'work' | 'busy' | 'emergency') => {
+    const res = await axios.post(`${API_URL}/exception`, { reason });
+    return res.data as { ok: true; message: string; compliance?: TodayLesson['compliance'] };
   },
 
   completeToday: async () => {

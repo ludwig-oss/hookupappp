@@ -3,6 +3,7 @@ import {
   getTodayLesson,
   saveSchedule,
   dismissNotification,
+  dismissWithException,
   completeToday,
   submitSkipQuiz,
   jumpToTopic,
@@ -48,8 +49,25 @@ export const postDismiss = async (req: Request, res: Response) => {
   try {
     const userId = (req as any).userId;
     if (!userId) return res.status(401).json({ error: 'Unauthorized' });
-    await dismissNotification(userId);
-    res.json({ ok: true });
+    const compliance = await dismissNotification(userId);
+    res.json({
+      ok: true,
+      compliance,
+      message: compliance?.warning || null,
+    });
+  } catch (e) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+export const postException = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).userId;
+    if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+    const reason = String(req.body?.reason || '').toLowerCase();
+    const normalized = reason === 'emergency' ? 'emergency' : reason === 'work' ? 'work' : 'busy';
+    const result = await dismissWithException(userId, normalized as any);
+    res.json(result);
   } catch (e) {
     res.status(500).json({ error: 'Internal server error' });
   }

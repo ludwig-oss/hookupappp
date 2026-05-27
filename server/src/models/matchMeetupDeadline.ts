@@ -2,6 +2,7 @@ import { readFile, writeFile, mkdir } from 'fs/promises';
 import { join } from 'path';
 import { mutualUnmatch } from './chatReplyDeadline.js';
 import { getConversation } from './chat.js';
+import { getUserById, updateUserProfile } from './user.js';
 
 export const MEETUP_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -11,6 +12,8 @@ export interface MatchMeetupRecord {
   connectedAt: string;
   metInPersonAt: string | null;
   deadlineAt: string;
+  /** When enforcement ran (prevents double-striking/suspension). */
+  enforcedAt?: string | null;
 }
 
 const PATH = join(process.cwd(), 'server', 'data', 'match-meetup-deadlines.json');
@@ -47,6 +50,7 @@ export async function ensureMatchMeetupRecord(userA: string, userB: string): Pro
       connectedAt,
       metInPersonAt: null,
       deadlineAt: new Date(Date.now() + MEETUP_WEEK_MS).toISOString(),
+      enforcedAt: null,
     };
     records.push(record);
     await writeAll(records);
@@ -113,9 +117,9 @@ export function statusFromRecord(viewerUserId: string, record: MatchMeetupRecord
   let ruleText: string;
   if (expired) {
     ruleText =
-      'The 7-day window to meet in person has passed. This match is ending unless you already met and checked in.';
+      'The 7-day window to meet in person has passed. This match is ending unless you already met and checked in. Repeatedly stalling meetups can lead to suspension.';
   } else {
-    ruleText = `Meet in person within ${daysRemaining}d ${hoursRemaining}h at an agreed public place (park, coffee to-go, plaza — somewhere you can talk). Each pays your own.`;
+    ruleText = `Meet in person within ${daysRemaining}d ${hoursRemaining}h at an agreed public place (park, coffee to-go, plaza — somewhere you can talk). Each pays your own. Repeatedly avoiding meetups can lead to suspension.`;
   }
 
   return {
@@ -164,11 +168,60 @@ export async function enforceMeetupWeek(
     return { unmatched: false, status };
   }
 
+  // Prevent double enforcement/strike if both sides fetch at the same time.
+  if (record.enforcedAt) {
+    await mutualUnmatch(viewerUserId, otherUserId);
+    return {
+      unmatched: true,
+      reason:
+        'You did not meet in person within 7 days. This match has ended — plan a public meetup early to keep things real.',
+      status,
+    };
+  }
+
+  // Apply enforcement marker + strikes/suspension once.
+  record.enforcedAt = new Date().toISOString();
+  const records = await readAll();
+  const key = pairKey(viewerUserId, otherUserId);
+  const i = records.findIndex((r) => pairKey(r.userA, r.userB) === key);
+  if (i !== -1) {
+    records[i] = record;
+    await writeAll(records);
+  }
+
+  const applyStrike = async (uid: string) => {
+    const u = await getUserById(uid);
+    if (!u) return;
+    const strikes = (u.meetupNoShowStrikes ?? 0) + 1;
+    const nowIso = new Date().toISOString();
+
+    let suspensionDays = 0;
+    if (strikes >= 5) suspensionDays = 30;
+    else if (strikes === 4) suspensionDays = 14;
+    else if (strikes === 3) suspensionDays = 7;
+    else suspensionDays = 0;
+
+    const updates: any = {
+      meetupNoShowStrikes: strikes,
+      meetupNoShowLastAt: nowIso,
+    };
+    if (suspensionDays > 0) {
+      updates.suspensionUntil = new Date(Date.now() + suspensionDays * 24 * 60 * 60 * 1000).toISOString();
+      updates.suspensionReason =
+        `Suspended for ${suspensionDays} day${suspensionDays === 1 ? '' : 's'}: repeatedly avoiding meetups after discussing/starting a match. This app is for serious users.`;
+    }
+    await updateUserProfile(uid, updates);
+  };
+
+  // Strike both sides — the system can't reliably infer intent, only repeated patterns.
+  await applyStrike(viewerUserId);
+  await applyStrike(otherUserId);
+
   await mutualUnmatch(viewerUserId, otherUserId);
   return {
     unmatched: true,
     reason:
-      'You did not meet in person within 7 days. This match has ended — plan a public meetup early to keep things real.',
+      'You did not meet in person within 7 days. This match has ended — repeatedly avoiding meetups can lead to suspension. Plan a public meetup early to keep things real.',
     status,
   };
 }

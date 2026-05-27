@@ -27,7 +27,20 @@ export async function getRegionUsers(req: Request, res: Response) {
     const me = await getUserById(userId);
     const blocked = new Set(me?.blockedUsers || []);
     const filtered = users.filter((u: any) => u.id !== userId && !blocked.has(u.id));
-    const withProfile = filtered.map((u: any) => {
+
+    // Visibility penalty: users who skip required improvement repeatedly appear less often.
+    const shouldShowCandidate = (viewerId: string, candidate: any): boolean => {
+      const until = candidate?.visibilityReducedUntil ? new Date(candidate.visibilityReducedUntil).getTime() : 0;
+      if (!until || until <= Date.now()) return true;
+      const seed = `${viewerId}:${candidate.id}:${new Date().toISOString().slice(0, 10)}`;
+      let h = 0;
+      for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) | 0;
+      const pct = Math.abs(h) % 100;
+      return pct < 35; // ~35% visibility while reduced
+    };
+
+    const discoveryFiltered = filtered.filter((u: any) => shouldShowCandidate(userId, u));
+    const finalList = discoveryFiltered.map((u: any) => {
       const base = {
         id: u.id,
         name: u.name,
@@ -41,7 +54,7 @@ export async function getRegionUsers(req: Request, res: Response) {
       };
       return maskUserForViewer(base, userId);
     });
-    res.json({ users: withProfile });
+    res.json({ users: finalList });
   } catch (e: any) {
     console.error('Get region users error:', e);
     res.status(500).json({ error: e.message || 'Internal server error' });

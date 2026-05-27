@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { dbContext } from '../db/context.js';
+import { getUserById } from '../models/user.js';
 
 function getJwtSecret(): string {
   const secret = process.env.JWT_SECRET;
@@ -15,7 +16,7 @@ export interface AuthRequest extends Request {
   userId?: string;
 }
 
-export const authenticateToken = (req: AuthRequest, res: Response, next: NextFunction) => {
+export const authenticateToken = async (req: AuthRequest, res: Response, next: NextFunction) => {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
 
@@ -29,6 +30,21 @@ export const authenticateToken = (req: AuthRequest, res: Response, next: NextFun
     if (!uid) {
       return res.status(401).json({ error: 'Invalid token' });
     }
+
+    // Suspension gate (serious-users only enforcement)
+    try {
+      const u = await getUserById(uid);
+      const until = u?.suspensionUntil ? new Date(u.suspensionUntil).getTime() : 0;
+      if (until && until > Date.now()) {
+        return res.status(403).json({
+          error: u?.suspensionReason || 'Account suspended',
+          suspensionUntil: u?.suspensionUntil,
+        });
+      }
+    } catch {
+      // If user lookup fails, continue; token auth still works for dev/offline
+    }
+
     req.userId = uid;
     if (req.body && typeof req.body === 'object') {
       if ('userId' in req.body) req.body.userId = uid;

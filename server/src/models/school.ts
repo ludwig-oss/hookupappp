@@ -128,6 +128,19 @@ export async function getTodayLesson(userId: string) {
     ? `You finished ${curriculum.find((t) => t.id === alreadyDone)?.title || 'your lesson'}. Rest up — next class tomorrow.`
     : `Hey! Time for class: ${topic.title}. ${topic.dailyWorkout}`;
 
+  const compliance = await (async () => {
+    const u = await getUserById(userId);
+    if (!u || !isMale(u.gender)) return null;
+    return {
+      enabled: true,
+      skipStreak: u.schoolSkipStreak ?? 0,
+      warning: null,
+      visibilityReducedUntil: (u as any).visibilityReducedUntil ?? null,
+      policyText:
+        'For men: daily self-improvement is mandatory. Warnings start at 3 skips in a row. If you skip 5 times in a row, your visibility is reduced automatically (you can mark busy/emergency, and completing a class clears the penalty).',
+    };
+  })();
+
   return {
     setupComplete: state.setupComplete,
     homeTime: { hour: state.homeHour, minute: state.homeMinute },
@@ -143,6 +156,7 @@ export async function getTodayLesson(userId: string) {
     alternateSuggestion,
     progressPercent: Math.round((state.completedTopicIds.length / totalClasses) * 100),
     completedCount: state.completedTopicIds.length,
+    compliance,
   };
 }
 
@@ -166,6 +180,112 @@ export async function dismissNotification(userId: string) {
   const state = await getState(userId);
   state.lastDismissedDate = todayKey();
   await saveState(state);
+  const compliance = await recordMaleSkip(userId, 'dismiss');
+  return compliance;
+}
+
+export async function dismissWithException(userId: string, reason: 'work' | 'busy' | 'emergency') {
+  const state = await getState(userId);
+  state.lastDismissedDate = todayKey();
+  await saveState(state);
+  const compliance = await recordMaleSkip(userId, 'exception');
+  return {
+    ok: true,
+    message:
+      reason === 'emergency'
+        ? 'Emergency exception recorded. Stay safe — your improvement streak is not counted as skipped today.'
+        : 'Busy exception recorded. Your improvement streak is not counted as skipped today.',
+    compliance,
+  };
+}
+
+function isMale(gender?: string | null): boolean {
+  if (!gender) return false;
+  const g = String(gender).toLowerCase().trim();
+  return g === 'male' || g === 'm' || g === 'man';
+}
+
+export interface ImprovementComplianceStatus {
+  enabled: boolean;
+  skipStreak: number;
+  warning: string | null;
+  visibilityReducedUntil: string | null;
+}
+
+async function recordMaleSkip(userId: string, kind: 'dismiss' | 'exception'): Promise<ImprovementComplianceStatus | null> {
+  const u = await getUserById(userId);
+  if (!u || !isMale(u.gender)) return null;
+
+  const today = todayKey();
+  const prevDate = u.schoolSkipLastDate || null;
+  const prevStreak = typeof u.schoolSkipStreak === 'number' ? u.schoolSkipStreak : 0;
+  const prevTotal = typeof u.schoolSkipTotal === 'number' ? u.schoolSkipTotal : 0;
+
+  // Exceptions don't count as skips, but still mark the day as dismissed.
+  if (kind === 'exception') {
+    await updateUserProfile(userId, {
+      schoolSkipExceptionLastDate: today,
+    } as any);
+    return {
+      enabled: true,
+      skipStreak: prevStreak,
+      warning: null,
+      visibilityReducedUntil: (u as any).visibilityReducedUntil ?? null,
+    };
+  }
+
+  // Only count once per day.
+  if (prevDate === today) {
+    return {
+      enabled: true,
+      skipStreak: prevStreak,
+      warning: null,
+      visibilityReducedUntil: (u as any).visibilityReducedUntil ?? null,
+    };
+  }
+
+  const nextStreak = prevStreak + 1;
+  const nextTotal = prevTotal + 1;
+
+  let warning: string | null = null;
+  if (nextStreak === 3) warning = 'Warning (3/5): skipping your daily improvement reduces trust. Keep it real — do your daily work.';
+  if (nextStreak === 4) warning = 'Warning (4/5): one more skip and your visibility will be reduced automatically.';
+  if (nextStreak >= 5) warning = 'Consequence: your visibility is now reduced until you complete daily improvement again.';
+
+  const updates: any = {
+    schoolSkipLastDate: today,
+    schoolSkipStreak: Math.min(nextStreak, 99),
+    schoolSkipTotal: nextTotal,
+  };
+
+  if (nextStreak >= 5) {
+    // Reduced discovery visibility for 30 days (clears early when they complete a class).
+    updates.visibilityReducedUntil = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+    updates.visibilityReducedReason = 'Skipped daily improvement 5+ times in a row';
+  }
+
+  await updateUserProfile(userId, updates);
+
+  return {
+    enabled: true,
+    skipStreak: nextStreak,
+    warning,
+    visibilityReducedUntil: updates.visibilityReducedUntil ?? (u as any).visibilityReducedUntil ?? null,
+  };
+}
+
+async function recordMaleCompletion(userId: string): Promise<void> {
+  const u = await getUserById(userId);
+  if (!u || !isMale(u.gender)) return;
+  const updates: any = {
+    schoolSkipStreak: 0,
+  };
+  // Clear visibility penalty early once they resume improvement.
+  if ((u as any).visibilityReducedReason && String((u as any).visibilityReducedReason).includes('Skipped daily improvement')) {
+    updates.visibilityReducedUntil = null;
+    updates.visibilityReducedReason = null;
+  }
+  await updateUserProfile(userId, updates);
 }
 
 export async function completeToday(userId: string) {
@@ -183,6 +303,7 @@ export async function completeToday(userId: string) {
     state.currentTopicIndex += 1;
   }
   await saveState(state);
+  await recordMaleCompletion(userId);
   return { topic, nextTopic: getTopicByIndex(state.currentTopicIndex) };
 }
 
@@ -219,6 +340,7 @@ export async function submitSkipQuiz(userId: string, topicId: string, answers: R
     state.currentTopicIndex = Math.min(idx + 1, curriculum.length - 1);
   }
   await saveState(state);
+  await recordMaleCompletion(userId);
 
   return {
     pass: true,

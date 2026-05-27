@@ -16,6 +16,7 @@ export interface ProfileData {
   username: string;
   profilePicture: string | null;
   profileSetupComplete: boolean;
+  gender?: string;
   /** ISO date when user completed selfie verification (anti-catfish). Shown as green badge. */
   photoVerifiedAt?: string | null;
   /** When viewing another user's profile: true if they are in an active relationship. */

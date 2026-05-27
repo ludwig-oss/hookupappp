@@ -2024,7 +2024,7 @@ const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId }: ChatWidgetProps)
             </div>
             <div className="chat-meetup-form">
               <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.85)', marginBottom: 12, padding: 8, background: 'rgba(168,85,247,0.15)', borderRadius: 8 }}>
-                <strong>7-day rule:</strong> Meet in person within a week of matching or this match ends. Pick a public talk-friendly spot below — parks, coffee to-go, plazas only (no sit-down restaurants, cinemas, or movies). Each pays your own.
+                <strong>7-day rule (serious users only):</strong> Meet in person within a week of matching or this match ends. Repeatedly stalling meetups can lead to suspension over time. Pick a public talk-friendly spot below — parks, coffee to-go, plazas only (no sit-down restaurants, cinemas, or movies). Each pays your own.
               </p>
               {selectedUserId && user?.id && (
                 <DateVenuePicker

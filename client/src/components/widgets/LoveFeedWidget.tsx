@@ -1,7 +1,10 @@
 import { useState, useEffect, useRef, useContext, useCallback } from 'react';
 import { AuthContext } from '../../context/AuthContext';
 import { postsAPI, DatingPost } from '../../api/posts';
+import { formatAxiosError } from '../../lib/apiError';
 import './Widget.css';
+
+const BLOWING_UP_LIKES = 25;
 
 const BANNER_TEXT = 'Strictly dating, relationship & marriage content only. To inform, warn & educate.';
 
@@ -257,6 +260,7 @@ export default function LoveFeedWidget({ onShareToFriends }: { onShareToFriends?
   const { user } = useContext(AuthContext);
   const [posts, setPosts] = useState<DatingPost[]>([]);
   const [loading, setLoading] = useState(true);
+  const [feedError, setFeedError] = useState<string | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [expandedComments, setExpandedComments] = useState<string | null>(null);
   const [commentDraft, setCommentDraft] = useState<Record<string, string>>({});
@@ -299,11 +303,15 @@ export default function LoveFeedWidget({ onShareToFriends }: { onShareToFriends?
   }, []);
 
   const loadFeed = async () => {
+    setFeedError(null);
+    setLoading(true);
     try {
       const res = await postsAPI.getFeed();
-      setPosts(res.posts);
+      setPosts(Array.isArray(res.posts) ? res.posts : []);
     } catch (err) {
       console.error('Failed to load feed', err);
+      setPosts([]);
+      setFeedError(formatAxiosError(err, 'Could not load the feed. Tap Retry — the API may be waking up.'));
     } finally {
       setLoading(false);
     }
@@ -337,7 +345,9 @@ export default function LoveFeedWidget({ onShareToFriends }: { onShareToFriends?
       console.error('Failed to create post', err);
       const status = err?.response?.status;
       const msg = err?.response?.data?.error || err?.message || 'Failed to create post';
-      if (status === 413 || msg.toLowerCase().includes('too large')) {
+      if (status === 403) {
+        alert('Verify your email or phone before posting. Open Settings or check your inbox.');
+      } else if (status === 413 || msg.toLowerCase().includes('too large')) {
         alert(`Video is too large. Try a shorter or smaller file (under ${MAX_VIDEO_MB}MB).`);
       } else {
         alert(msg);
@@ -446,14 +456,135 @@ export default function LoveFeedWidget({ onShareToFriends }: { onShareToFriends?
     e.target.value = '';
   };
 
-  if (loading) {
-    return (
-      <div className="love-feed-widget">
-        <div className="love-feed-banner">{BANNER_TEXT}</div>
-        <div style={{ textAlign: 'center', padding: '40px', color: '#00d4ff' }}>Loading feed...</div>
+  const trendingPosts = [...posts]
+    .sort((a, b) => (b.likes || 0) - (a.likes || 0))
+    .slice(0, 5)
+    .filter((p) => (p.likes || 0) > 0);
+  const blowingUpPosts = posts.filter((p) => (p.likes || 0) >= BLOWING_UP_LIKES);
+
+  const renderPostCard = (post: DatingPost) => (
+    <article key={post.id} className="love-feed-card">
+      {isPostAuthor(post) && (
+        <div className="love-feed-card-own-toolbar">
+          <button
+            type="button"
+            className="love-feed-delete-post-btn"
+            onClick={() => handleDelete(post.id)}
+          >
+            Delete post
+          </button>
+        </div>
+      )}
+      <div className="love-feed-card-media">
+        {post.contentType === 'video' && post.content.startsWith('data:video') ? (
+          <VideoPostPlayer
+            dataUrl={post.content}
+            onOpenFullScreen={() => setFullScreenMedia({ type: 'video', src: post.content, postId: post.id })}
+          />
+        ) : post.contentType === 'video' && post.content.startsWith('http') ? (
+          <div
+            className="love-feed-card-media-video-wrap"
+            onClick={() => setFullScreenMedia({ type: 'video', src: post.content, postId: post.id })}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => e.key === 'Enter' && setFullScreenMedia({ type: 'video', src: post.content, postId: post.id })}
+            title="Tap to open full screen"
+          >
+            <video src={post.content} controls playsInline preload="auto" style={{ maxWidth: '100%', maxHeight: 320, display: 'block', background: '#000' }} onClick={(e) => e.stopPropagation()} />
+          </div>
+        ) : post.contentType === 'image' && (post.content.startsWith('data:') || post.content) ? (
+          <div
+            className="love-feed-card-media-tappable"
+            onClick={() => setFullScreenMedia({ type: 'image', src: post.content, postId: post.id })}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => e.key === 'Enter' && setFullScreenMedia({ type: 'image', src: post.content, postId: post.id })}
+            title="Tap to open full screen"
+          >
+            <img src={post.content} alt="" />
+          </div>
+        ) : (
+          <div className="love-feed-card-media-text">{post.content.slice(0, 200)}{post.content.length > 200 ? '…' : ''}</div>
+        )}
       </div>
-    );
-  }
+      <div className="love-feed-card-meta">
+        <div className="love-feed-card-author">
+          {post.user?.profilePicture ? (
+            <img src={post.user.profilePicture} alt="" className="love-feed-avatar" />
+          ) : (
+            <div className="love-feed-avatar-placeholder">{post.user?.name?.[0] || '?'}</div>
+          )}
+          <div className="love-feed-card-author-info">
+            <span className="love-feed-author-name">
+              {post.user?.name || 'Anonymous'}
+              <span className="love-feed-verified" aria-hidden>✓</span>
+            </span>
+            <span className="love-feed-card-date">{formatDate(post.createdAt)}</span>
+          </div>
+        </div>
+        <p className="love-feed-card-headline">
+          {post.title ? `"${post.title}"` : post.contentType === 'text' ? `"${post.content.slice(0, 120)}${post.content.length > 120 ? '…' : ''}"` : post.contentType === 'video' ? 'Shared a video' : 'Shared a post'}
+        </p>
+      </div>
+      <div className="love-feed-card-actions">
+        <div className="love-feed-actions-primary">
+          <button type="button" className="love-feed-action" onClick={() => user && handleLike(post.id)} title="Like" disabled={!user}>
+            <span className="love-feed-icon">♥</span>
+            <span>{formatCount(post.likes || 0)}</span>
+          </button>
+          <button
+            type="button"
+            className="love-feed-action"
+            onClick={() => setExpandedComments(expandedComments === post.id ? null : post.id)}
+            title="Comment"
+          >
+            <span className="love-feed-icon">💬</span>
+            <span>{formatCount(post.comments?.length || 0)}</span>
+          </button>
+        </div>
+        <div className="love-feed-actions-secondary">
+          <button type="button" className="love-feed-action love-feed-share" onClick={() => user && handleShare(post)} title="Share in app" disabled={!user}>
+            <span className="love-feed-icon">↗</span>
+            <span>Share</span>
+          </button>
+          {isPostAuthor(post) && (
+            <button type="button" className="love-feed-action love-feed-delete" onClick={() => handleDelete(post.id)} title="Delete your post">
+              <span className="love-feed-icon">🗑</span>
+              <span>Delete</span>
+            </button>
+          )}
+          <button
+            type="button"
+            className="love-feed-show-comments"
+            onClick={() => setExpandedComments(expandedComments === post.id ? null : post.id)}
+          >
+            {expandedComments === post.id ? 'Hide comments' : 'Comments'}
+          </button>
+        </div>
+      </div>
+      {expandedComments === post.id && (
+        <div className="love-feed-comments">
+          {(post.comments || []).map((c) => (
+            <div key={c.id} className="love-feed-comment">
+              <strong>{c.userName}</strong>: {c.content}
+            </div>
+          ))}
+          {user && (
+            <div className="love-feed-comment-form">
+              <input
+                type="text"
+                placeholder="Add a comment..."
+                value={commentDraft[post.id] || ''}
+                onChange={(e) => setCommentDraft((prev) => ({ ...prev, [post.id]: e.target.value }))}
+                onKeyDown={(e) => e.key === 'Enter' && handleComment(post.id)}
+              />
+              <button type="button" onClick={() => handleComment(post.id)}>Reply</button>
+            </div>
+          )}
+        </div>
+      )}
+    </article>
+  );
 
   return (
     <div className="love-feed-widget">
@@ -466,141 +597,56 @@ export default function LoveFeedWidget({ onShareToFriends }: { onShareToFriends?
         </button>
       </div>
 
+      <p className="love-feed-hint">
+        Post text thoughts, photos, or videos about dating & relationships. Like, comment, and share inside the app — most-liked posts rise to the top.
+      </p>
+
       {!user && (
-        <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.7)', marginBottom: 12, padding: '0 4px' }}>Sign in to like, comment and share posts.</p>
+        <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.7)', marginBottom: 12, padding: '0 4px' }}>Sign in to post, like, comment and share.</p>
       )}
+
       <div ref={feedRef} className="love-feed-scroll">
-        {posts.length === 0 ? (
+        {loading && (
+          <div style={{ textAlign: 'center', padding: '24px', color: '#00d4ff' }}>Loading feed… (API may take a moment on first open)</div>
+        )}
+        {!loading && feedError && (
+          <div className="love-feed-error">
+            <p>{feedError}</p>
+            <button type="button" className="love-feed-create-btn" onClick={() => loadFeed()}>Retry</button>
+          </div>
+        )}
+        {!loading && !feedError && blowingUpPosts.length > 0 && (
+          <section className="love-feed-trending">
+            <h3 className="love-feed-trending-title">🔥 Blowing up ({blowingUpPosts.length})</h3>
+            <p className="love-feed-trending-sub">Posts with {BLOWING_UP_LIKES}+ likes — open Chat after Share to send to a match.</p>
+          </section>
+        )}
+        {!loading && !feedError && trendingPosts.length > 0 && (
+          <section className="love-feed-trending">
+            <h3 className="love-feed-trending-title">📈 Trending (most likes)</h3>
+            <ul className="love-feed-trending-list">
+              {trendingPosts.map((post) => (
+                <li key={post.id}>
+                  ♥ {formatCount(post.likes || 0)} — {post.title || post.content.slice(0, 60)}
+                  {post.content.length > 60 ? '…' : ''}
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+        {!loading && !feedError && posts.length === 0 && (
           <div className="love-feed-empty">
             <p>No posts yet. Share advice, warnings or stories about dating, relationships & marriage.</p>
             <button type="button" className="love-feed-create-btn" onClick={() => setShowCreateModal(true)}>
               Create first post
             </button>
           </div>
-        ) : (
-          posts.map((post) => (
-            <article key={post.id} className="love-feed-card">
-              {isPostAuthor(post) && (
-                <div className="love-feed-card-own-toolbar">
-                  <button
-                    type="button"
-                    className="love-feed-delete-post-btn"
-                    onClick={() => handleDelete(post.id)}
-                  >
-                    Delete post
-                  </button>
-                </div>
-              )}
-              <div className="love-feed-card-media">
-                {post.contentType === 'video' && post.content.startsWith('data:video') ? (
-                  <VideoPostPlayer
-                    dataUrl={post.content}
-                    onOpenFullScreen={() => setFullScreenMedia({ type: 'video', src: post.content, postId: post.id })}
-                  />
-                ) : post.contentType === 'video' && post.content.startsWith('http') ? (
-                  <div
-                    className="love-feed-card-media-video-wrap"
-                    onClick={() => setFullScreenMedia({ type: 'video', src: post.content, postId: post.id })}
-                    role="button"
-                    tabIndex={0}
-                    onKeyDown={(e) => e.key === 'Enter' && setFullScreenMedia({ type: 'video', src: post.content, postId: post.id })}
-                    title="Tap to open full screen"
-                  >
-                    <video src={post.content} controls playsInline preload="auto" style={{ maxWidth: '100%', maxHeight: 320, display: 'block', background: '#000' }} onClick={(e) => e.stopPropagation()} />
-                  </div>
-                ) : post.contentType === 'image' && (post.content.startsWith('data:') || post.content) ? (
-                  <div
-                    className="love-feed-card-media-tappable"
-                    onClick={() => setFullScreenMedia({ type: 'image', src: post.content, postId: post.id })}
-                    role="button"
-                    tabIndex={0}
-                    onKeyDown={(e) => e.key === 'Enter' && setFullScreenMedia({ type: 'image', src: post.content, postId: post.id })}
-                    title="Tap to open full screen"
-                  >
-                    <img src={post.content} alt="" />
-                  </div>
-                ) : (
-                  <div className="love-feed-card-media-text">{post.content.slice(0, 200)}{post.content.length > 200 ? '…' : ''}</div>
-                )}
-              </div>
-              <div className="love-feed-card-meta">
-                <div className="love-feed-card-author">
-                  {post.user?.profilePicture ? (
-                    <img src={post.user.profilePicture} alt="" className="love-feed-avatar" />
-                  ) : (
-                    <div className="love-feed-avatar-placeholder">{post.user?.name?.[0] || '?'}</div>
-                  )}
-                  <div className="love-feed-card-author-info">
-                    <span className="love-feed-author-name">
-                      {post.user?.name || 'Anonymous'}
-                      <span className="love-feed-verified" aria-hidden>✓</span>
-                    </span>
-                    <span className="love-feed-card-date">{formatDate(post.createdAt)}</span>
-                  </div>
-                </div>
-                <p className="love-feed-card-headline">
-                  {post.title ? `"${post.title}"` : post.contentType === 'text' ? `"${post.content.slice(0, 120)}${post.content.length > 120 ? '…' : ''}"` : post.contentType === 'video' ? 'Shared a video' : 'Shared a post'}
-                </p>
-              </div>
-              <div className="love-feed-card-actions">
-                <div className="love-feed-actions-primary">
-                  <button type="button" className="love-feed-action" onClick={() => user && handleLike(post.id)} title="Like" disabled={!user}>
-                    <span className="love-feed-icon">♥</span>
-                    <span>{formatCount(post.likes || 0)}</span>
-                  </button>
-                  <button
-                    type="button"
-                    className="love-feed-action"
-                    onClick={() => setExpandedComments(expandedComments === post.id ? null : post.id)}
-                    title="Comment"
-                  >
-                    <span className="love-feed-icon">💬</span>
-                    <span>{formatCount(post.comments?.length || 0)}</span>
-                  </button>
-                </div>
-                <div className="love-feed-actions-secondary">
-                  <button type="button" className="love-feed-action love-feed-share" onClick={() => user && handleShare(post)} title="Share" disabled={!user}>
-                    <span className="love-feed-icon">↗</span>
-                    <span>Share</span>
-                  </button>
-                  {isPostAuthor(post) && (
-                    <button type="button" className="love-feed-action love-feed-delete" onClick={() => handleDelete(post.id)} title="Delete your post">
-                      <span className="love-feed-icon">🗑</span>
-                      <span>Delete</span>
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    className="love-feed-show-comments"
-                    onClick={() => setExpandedComments(expandedComments === post.id ? null : post.id)}
-                  >
-                    {expandedComments === post.id ? 'Hide comments' : 'Comments'}
-                  </button>
-                </div>
-              </div>
-              {expandedComments === post.id && (
-                <div className="love-feed-comments">
-                  {(post.comments || []).map((c) => (
-                    <div key={c.id} className="love-feed-comment">
-                      <strong>{c.userName}</strong>: {c.content}
-                    </div>
-                  ))}
-                  {user && (
-                    <div className="love-feed-comment-form">
-                      <input
-                        type="text"
-                        placeholder="Add a comment..."
-                        value={commentDraft[post.id] || ''}
-                        onChange={(e) => setCommentDraft((prev) => ({ ...prev, [post.id]: e.target.value }))}
-                        onKeyDown={(e) => e.key === 'Enter' && handleComment(post.id)}
-                      />
-                      <button type="button" onClick={() => handleComment(post.id)}>Reply</button>
-                    </div>
-                  )}
-                </div>
-              )}
-            </article>
-          ))
+        )}
+        {!loading && !feedError && posts.length > 0 && (
+          <section>
+            <h3 className="love-feed-trending-title" style={{ marginBottom: 10 }}>Feed</h3>
+            {posts.map((post) => renderPostCard(post))}
+          </section>
         )}
       </div>
 
@@ -620,7 +666,7 @@ export default function LoveFeedWidget({ onShareToFriends }: { onShareToFriends?
               <h3>New post</h3>
               <button type="button" className="love-feed-modal-close" onClick={closeCreateModal}>×</button>
             </div>
-            <p className="love-feed-modal-note">Dating, relationship & marriage only.</p>
+            <p className="love-feed-modal-note">Text thoughts, photos, or videos — dating, relationship & marriage only.</p>
             <div className="love-feed-modal-form">
               <label>
                 Type

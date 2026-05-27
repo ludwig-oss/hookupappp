@@ -82,7 +82,7 @@ export const getFeed = async (req: Request, res: Response) => {
     res.json({ posts: enrichedPosts });
   } catch (error) {
     console.error('Get feed error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.json({ posts: [] });
   }
 };
 
@@ -109,20 +109,25 @@ export const shareDatingPost = async (req: Request, res: Response) => {
 };
 
 async function enrichPostsWithUser(posts: any[]) {
-  return Promise.all(
-    posts.map(async (post) => {
-      const user = await getUserById(post.userId);
-      return {
-        ...post,
-        user: user ? {
+  const userIds = [...new Set(posts.map((p) => p.userId).filter(Boolean))];
+  const byId = new Map<string, { id: string; name: string; username: string; profilePicture: string | null }>();
+  await Promise.all(
+    userIds.map(async (id) => {
+      const user = await getUserById(id);
+      if (user) {
+        byId.set(id, {
           id: user.id,
           name: user.name,
           username: user.username,
-          profilePicture: user.profilePicture,
-        } : null,
-      };
+          profilePicture: user.profilePicture ?? null,
+        });
+      }
     })
   );
+  return posts.map((post) => ({
+    ...post,
+    user: byId.get(post.userId) ?? null,
+  }));
 }
 
 export const likeDatingPost = async (req: Request, res: Response) => {

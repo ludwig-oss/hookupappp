@@ -3,6 +3,9 @@ import { API_BASE } from './config';
 
 const API_URL = API_BASE + '/api/posts';
 
+/** Feed can wait on cold Render wake-up; avoid infinite "Loading feed…" */
+const FEED_TIMEOUT_MS = 25_000;
+
 function getAuthHeaders(): Record<string, string> {
   const token = typeof localStorage !== 'undefined' ? localStorage.getItem('token') : null;
   if (token) return { Authorization: `Bearer ${token}` };
@@ -42,7 +45,7 @@ export const postsAPI = {
   },
 
   getFeed: async (): Promise<{ posts: DatingPost[] }> => {
-    const response = await axios.get(`${API_URL}/feed`);
+    const response = await axios.get(`${API_URL}/feed`, { timeout: FEED_TIMEOUT_MS });
     return response.data;
   },
 

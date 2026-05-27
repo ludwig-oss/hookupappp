@@ -158,6 +158,12 @@ export const HELP_FAQ: HelpFaqItem[] = [
   },
   {
     category: 'Tips & learning',
+    q: 'What are the “Respect tip” popups for men?',
+    a: 'Male users get short “Respect tip · public safety” reminders about what to avoid doing to women in public (catcalling, blocking paths, following, unwanted touching, doxxing, retaliation, etc.). They show a couple times a month at first, then less over time. Tap × or Got it to dismiss and continue what you were doing.',
+    keywords: ['respect tip', 'harassment', 'public safety', 'catcalling', 'stalking'],
+  },
+  {
+    category: 'Tips & learning',
     q: 'What is School / daily lessons?',
     a: 'You may see a School notification for a daily class or quiz on relationships and self-improvement. For men, daily self-improvement is required: warnings start after 3 skips in a row, and after 5 skips in a row visibility is reduced automatically (you can mark work busy or emergency, and completing a class clears the penalty). School can link you to Compatibility guides for deeper reading.',
     keywords: ['school', 'daily', 'lesson', 'quiz', 'class'],

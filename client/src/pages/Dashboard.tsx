@@ -20,6 +20,7 @@ import SchoolDailyNotification from '../components/SchoolDailyNotification';
 import WomenSafetySOS from '../components/WomenSafetySOS';
 import MensDatingTipPopup from '../components/MensDatingTipPopup';
 import WomensDatingTipPopup from '../components/WomensDatingTipPopup';
+import MensRespectSafetyPopup from '../components/MensRespectSafetyPopup';
 import { useTranslation } from '../context/LanguageContext';
 import { postsAPI } from '../api/posts';
 import { relationshipAPI } from '../api/relationship';
@@ -265,6 +266,7 @@ const Dashboard = () => {
       />
       <MensDatingTipPopup />
       <WomensDatingTipPopup />
+      <MensRespectSafetyPopup />
       {!openWidget && <WomenSafetySOS />}
       <div className="stars-background" aria-hidden>
         <div className="love-bg-hearts" />

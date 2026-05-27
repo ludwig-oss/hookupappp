@@ -70,29 +70,6 @@
   pointer-events: none;
 }
 
-/* Cupid – flying angel baby with bow and arrow */
-.landing-cupid {
-  position: fixed;
-  top: 12%;
-  right: 10%;
-  z-index: 2;
-  width: 140px;
-  height: 160px;
-  pointer-events: none;
-  animation: cupidFloat 6s ease-in-out infinite;
-}
-
-.cupid-svg {
-  width: 100%;
-  height: 100%;
-  filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.3));
-}
-
-@keyframes cupidFloat {
-  0%, 100% { transform: translateY(0) rotate(-3deg); }
-  50% { transform: translateY(-15px) rotate(2deg); }
-}
-
 /* Floating hearts */
 .landing-hearts {
   position: fixed;
@@ -276,13 +253,6 @@
 @media (max-width: 768px) {
   .landing-nav-links {
     display: none;
-  }
-
-  .landing-cupid {
-    width: 90px;
-    height: 100px;
-    top: 8%;
-    right: 5%;
   }
 
   .landing-tagline {

@@ -1,0 +1,124 @@
+/* Flying cherub on landing — gentle bob + arrow “love shot” pulse */
+.landing-cupid {
+  position: fixed;
+  top: 10%;
+  right: 8%;
+  z-index: 2;
+  width: min(200px, 28vw);
+  height: min(240px, 34vw);
+  pointer-events: none;
+}
+
+.landing-cupid-inner {
+  width: 100%;
+  height: 100%;
+  animation: cupidFloat 4.5s ease-in-out infinite;
+}
+
+.cupid-svg {
+  width: 100%;
+  height: 100%;
+  filter: drop-shadow(0 10px 24px rgba(0, 0, 0, 0.35));
+}
+
+.cupid-halo {
+  animation: haloPulse 3s ease-in-out infinite;
+  transform-origin: 100px 38px;
+}
+
+.cupid-wings {
+  animation: wingFlap 2.8s ease-in-out infinite;
+  transform-origin: 100px 95px;
+}
+
+.cupid-arrow-group {
+  animation: arrowLoveShot 2.2s ease-in-out infinite;
+  transform-origin: 138px 108px;
+}
+
+.cupid-sparkles {
+  animation: sparkleFade 2.2s ease-in-out infinite;
+}
+
+@keyframes cupidFloat {
+  0%,
+  100% {
+    transform: translateY(0) rotate(-2deg);
+  }
+  50% {
+    transform: translateY(-22px) rotate(2deg);
+  }
+}
+
+@keyframes arrowLoveShot {
+  0%,
+  100% {
+    transform: translate(0, 0) rotate(0deg);
+    opacity: 1;
+  }
+  35% {
+    transform: translate(8px, -14px) rotate(-4deg);
+    opacity: 1;
+  }
+  55% {
+    transform: translate(14px, -22px) rotate(-6deg);
+    opacity: 0.95;
+  }
+  70% {
+    transform: translate(4px, -8px) rotate(-2deg);
+    opacity: 1;
+  }
+}
+
+@keyframes wingFlap {
+  0%,
+  100% {
+    transform: scaleX(1);
+  }
+  50% {
+    transform: scaleX(1.04);
+  }
+}
+
+@keyframes haloPulse {
+  0%,
+  100% {
+    opacity: 0.85;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.06);
+  }
+}
+
+@keyframes sparkleFade {
+  0%,
+  100% {
+    opacity: 0.4;
+    transform: translateY(0);
+  }
+  50% {
+    opacity: 1;
+    transform: translateY(-6px);
+  }
+}
+
+@media (max-width: 768px) {
+  .landing-cupid {
+    top: 6%;
+    right: 2%;
+    width: 110px;
+    height: 132px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing-cupid-inner,
+  .cupid-halo,
+  .cupid-wings,
+  .cupid-arrow-group,
+  .cupid-sparkles {
+    animation: none;
+  }
+}

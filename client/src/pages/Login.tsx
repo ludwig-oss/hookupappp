@@ -1,5 +1,5 @@
 import { useState, useContext } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
 import { authAPI } from '../api/auth';
 import { formatAxiosError } from '../lib/apiError';
@@ -12,7 +12,6 @@ const Login = () => {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const { login } = useContext(AuthContext);
-  const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -23,11 +22,7 @@ const Login = () => {
       const response = await authAPI.login({ username, password });
       if (!response.token || !response.user) throw new Error('Invalid login response');
       login(response.user, response.token);
-      if (response.user.profileSetupComplete) {
-        navigate('/home');
-      } else {
-        navigate('/profile-setup');
-      }
+      // GuestOnly in App.tsx redirects after user state updates (avoids double-navigate loops).
     } catch (err: unknown) {
       setError(formatAxiosError(err, 'Invalid credentials. Password must match this account.'));
     } finally {

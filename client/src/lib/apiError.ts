@@ -5,6 +5,9 @@ export function formatApiError(value: unknown, fallback = 'Something went wrong'
     const t = value.trim();
     if (!t) return fallback;
     if (t.startsWith('<')) return 'Server returned an error page instead of JSON.';
+    if (/infinite\s*loop/i.test(t)) {
+      return 'API redirect loop. On Vercel, set BACKEND_URL to your Render host (e.g. https://hookupappp.onrender.com), not the Vercel app URL.';
+    }
     return t.length > 400 ? `${t.slice(0, 399)}…` : t;
   }
   if (typeof value === 'number' || typeof value === 'boolean') return String(value);
@@ -31,6 +34,9 @@ export function formatAxiosError(err: unknown, fallback: string): string {
     const fromBody = formatApiError(ax.response.data, '');
     if (fromBody) return fromBody;
     const st = ax.response.status;
+    if (st === 508) {
+      return 'Server redirect loop (508). In Vercel, set BACKEND_URL to your Render API URL — not this site’s URL.';
+    }
     if (st === 503) return 'Service unavailable — API proxy may be missing BACKEND_URL.';
     if (st === 502) return 'Bad gateway — API server may be down or URL wrong.';
     if (st === 429) return 'Too many attempts. Please wait a few minutes and try again.';

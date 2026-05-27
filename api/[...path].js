@@ -39,6 +39,24 @@ function buildTargetUrl(req, apiPath) {
   return `${base}/api/${apiPath}${forwardQs ? `?${forwardQs}` : ''}`;
 }
 
+/** BACKEND_URL pointing at this Vercel site causes 508 INFINITE_LOOP_DETECTED on /api/auth/login. */
+function isSelfProxy(req, base) {
+  try {
+    const baseUrl = new URL(base.startsWith('http') ? base : `https://${base}`);
+    const fwdHost = req.headers['x-forwarded-host'] || req.headers.host;
+    const reqHost = String(Array.isArray(fwdHost) ? fwdHost[0] : fwdHost || '')
+      .split(',')[0]
+      .trim()
+      .toLowerCase()
+      .replace(/:\d+$/, '');
+    const baseHost = baseUrl.hostname.toLowerCase();
+    if (reqHost && baseHost && reqHost === baseHost) return true;
+  } catch {
+    /* ignore */
+  }
+  return false;
+}
+
 const HOP_BY_HOP = new Set([
   'connection',
   'content-length',
@@ -89,6 +107,17 @@ module.exports = async function handler(req, res) {
     return;
   }
 
+  if (isSelfProxy(req, base)) {
+    res.status(503).setHeader('Content-Type', 'application/json');
+    res.send(
+      JSON.stringify({
+        error:
+          'BACKEND_URL must be your Render API (e.g. https://hookupappp.onrender.com), not this Vercel site URL.',
+      })
+    );
+    return;
+  }
+
   const apiPath = extractApiPath(req);
   if (!apiPath) {
     res.status(400).setHeader('Content-Type', 'application/json');
@@ -119,6 +148,16 @@ module.exports = async function handler(req, res) {
 
   try {
     const upstream = await fetch(target, { method, headers, body, redirect: 'manual' });
+    if (upstream.status === 508) {
+      res.status(503).setHeader('Content-Type', 'application/json');
+      res.send(
+        JSON.stringify({
+          error:
+            'Infinite loop detected by host. Set BACKEND_URL on Vercel to your Render API URL (not this app URL).',
+        })
+      );
+      return;
+    }
     res.status(upstream.status);
     upstream.headers.forEach((value, key) => {
       const lower = key.toLowerCase();

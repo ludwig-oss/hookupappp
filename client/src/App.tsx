@@ -1,6 +1,7 @@
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route } from 'react-router-dom';
 import { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
+import { GuestOnly, RequireAuth, LandingOrRedirect } from './components/AuthRouteGuards';
 import Login from './pages/Login';
 import SignupWithImprovement from './pages/SignupWithImprovement';
 import Landing from './pages/Landing';
@@ -88,7 +89,6 @@ function App() {
           localStorage.removeItem('user');
           delete axios.defaults.headers.common['Authorization'];
           setUser(null);
-          hasRefreshedProfile.current = false;
           return;
         }
         const id = normalizeUserId((fullProfile as { id: unknown }).id);
@@ -102,7 +102,10 @@ function App() {
           setStoredLanguage(lang.trim());
         }
       })
-      .catch(() => { hasRefreshedProfile.current = false; });
+      .catch((err) => {
+        console.warn('Profile refresh failed after login:', err);
+        // Keep hasRefreshedProfile true — resetting it caused an infinite /me retry loop.
+      });
   }, [loading, user?.id]);
 
   const login = (userData: any, token: string) => {
@@ -111,6 +114,7 @@ function App() {
       return;
     }
     const normalized = { ...userForStorage(userData as Record<string, unknown>), id };
+    hasRefreshedProfile.current = false;
     setUser(normalized);
     localStorage.setItem('token', token);
     try {
@@ -162,22 +166,22 @@ function App() {
     <LanguageProvider>
       <AuthContext.Provider value={{ user, login, logout, updateUser }}>
         <Routes>
-          <Route path="/login" element={user ? <Navigate to={user.profileSetupComplete ? "/home" : "/profile-setup"} /> : <Login />} />
-          <Route path="/signup" element={user ? <Navigate to={user.profileSetupComplete ? "/home" : "/profile-setup"} /> : <SignupWithImprovement />} />
+          <Route path="/login" element={<GuestOnly><Login /></GuestOnly>} />
+          <Route path="/signup" element={<GuestOnly><SignupWithImprovement /></GuestOnly>} />
           <Route path="/terms" element={<TermsOfService />} />
           <Route path="/privacy" element={<PrivacyPolicy />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />
           <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/verify-email" element={<VerifyEmail />} />
           <Route path="/verify-email-pending" element={<VerifyEmailPending />} />
-          <Route path="/dashboard" element={user ? <Dashboard /> : <Navigate to="/login" />} />
-          <Route path="/profile" element={user ? <Profile /> : <Navigate to="/login" />} />
-          <Route path="/settings" element={user ? <Settings /> : <Navigate to="/login" />} />
-          <Route path="/profile-setup" element={user ? <ProfileSetup /> : <Navigate to="/login" />} />
-          <Route path="/home" element={user ? <Dashboard /> : <Navigate to="/login" />} />
-          <Route path="/checkout" element={user ? <Checkout /> : <Navigate to="/login" />} />
-          <Route path="/admin/safety" element={user ? <AdminSafetyReview /> : <Navigate to="/login" />} />
-          <Route path="/" element={user ? <Navigate to={user.profileSetupComplete ? "/home" : "/profile-setup"} /> : <Landing />} />
+          <Route path="/dashboard" element={<RequireAuth><Dashboard /></RequireAuth>} />
+          <Route path="/profile" element={<RequireAuth><Profile /></RequireAuth>} />
+          <Route path="/settings" element={<RequireAuth><Settings /></RequireAuth>} />
+          <Route path="/profile-setup" element={<RequireAuth><ProfileSetup /></RequireAuth>} />
+          <Route path="/home" element={<RequireAuth><Dashboard /></RequireAuth>} />
+          <Route path="/checkout" element={<RequireAuth><Checkout /></RequireAuth>} />
+          <Route path="/admin/safety" element={<RequireAuth><AdminSafetyReview /></RequireAuth>} />
+          <Route path="/" element={user ? <LandingOrRedirect /> : <Landing />} />
         </Routes>
       </AuthContext.Provider>
     </LanguageProvider>

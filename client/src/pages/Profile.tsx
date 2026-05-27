@@ -7,7 +7,7 @@ import PhotoVerificationModal from '../components/PhotoVerificationModal';
 import { activityAPI } from '../api/activity';
 import { healthAPI, HealthTest, HealthResults, HealthViewRequest, HEALTH_CONDITIONS } from '../api/health';
 import { improvementAPI } from '../api/improvement';
-import { reviewsAPI, Review, REVIEW_ATTRIBUTE_LABELS } from '../api/reviews';
+import { reviewsAPI, Review, OverallStarRating, REVIEW_ATTRIBUTE_LABELS } from '../api/reviews';
 import { getCountryFlagCode } from '../constants/countryFlags';
 import { useTranslation } from '../context/LanguageContext';
 import { chatAPI } from '../api/chat';
@@ -46,8 +46,11 @@ const Profile = () => {
   const [closeFriendCandidates, setCloseFriendCandidates] = useState<Array<{ id: string; name: string }>>([]);
   const [highlightPickForStory, setHighlightPickForStory] = useState<string>('__new__');
   const [reviews, setReviews] = useState<Review[]>([]);
+  const [overallRating, setOverallRating] = useState<OverallStarRating | null>(null);
   const [replyDraft, setReplyDraft] = useState<Record<string, string>>({});
   const [replyingId, setReplyingId] = useState<string | null>(null);
+  const [courtDraft, setCourtDraft] = useState<Record<string, { summary: string; note: string; confirm: boolean }>>({});
+  const [courtSubmittingId, setCourtSubmittingId] = useState<string | null>(null);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [locationDetecting, setLocationDetecting] = useState(false);
   const [publicFigureLevel, setPublicFigureLevel] = useState<string>('');
@@ -141,8 +144,9 @@ const Profile = () => {
       healthAPI.getMyRequests().then((r) => setHealthRequests({ incoming: r.incoming, outgoing: r.outgoing })).catch(() => setHealthRequests({ incoming: [], outgoing: [] }));
       const improvement = await improvementAPI.getUserImprovement(user.id).catch(() => ({ improvementPercentage: 0 }));
       setMatchScore(improvement.improvementPercentage ?? 0);
-      const { reviews: revs } = await reviewsAPI.getReviews(user.id).catch(() => ({ reviews: [] }));
-      setReviews(revs);
+      const revData = await reviewsAPI.getReviews(user.id).catch(() => ({ reviews: [], overall: null }));
+      setReviews(revData.reviews);
+      setOverallRating(revData.overall ?? null);
     } catch (err: any) {
       const status = err?.response?.status;
       if (status === 401 || status === 404) {
@@ -977,23 +981,60 @@ const Profile = () => {
 
           <div className="profile-reviews-section">
             <div className="highlights-title">{t('reviews').toUpperCase()}</div>
-            <p className="profile-reviews-note">Reviews cannot be deleted. You can reply once.</p>
+            <p className="profile-reviews-note">
+              Reviews cannot be deleted. You can reply once. False or malicious claims may lead to ban or suspension.
+            </p>
+            {overallRating && overallRating.totalReviews > 0 && (
+              <div className="profile-overall-rating">
+                <span className="profile-overall-stars" aria-label={`${overallRating.averageStars} out of 5`}>
+                  {'★'.repeat(Math.round(overallRating.averageStars))}
+                  {'☆'.repeat(5 - Math.round(overallRating.averageStars))}
+                </span>
+                <span className="profile-overall-value">{overallRating.averageStars.toFixed(1)}</span>
+                <span className="profile-overall-count">({overallRating.totalReviews} reviews)</span>
+              </div>
+            )}
             {reviews.length === 0 ? (
               <p className="chat-empty">{t('noReviewsYet')}</p>
             ) : (
               <div className="profile-reviews-list">
-                {reviews.map((r) => (
-                  <div key={r.id} className="profile-review-card">
+                {reviews.map((r) => {
+                  const stars = r.overallStars ?? 3;
+                  const court = courtDraft[r.id] ?? { summary: '', note: '', confirm: false };
+                  return (
+                  <div key={r.id} className={`profile-review-card ${r.isSeriousClaim ? 'profile-review-serious' : ''}`}>
                     <div className="profile-review-header">
                       <strong>{r.fromUserName || 'Someone'}</strong>
+                      <span className="profile-review-stars-inline">{'★'.repeat(stars)}{'☆'.repeat(5 - stars)}</span>
                       <span className="profile-review-date">{new Date(r.createdAt).toLocaleDateString()}</span>
                     </div>
-                    <div className="profile-review-attributes">
-                      {(Object.keys(r.attributes) as (keyof typeof r.attributes)[]).slice(0, 4).map((k) => (
-                        <span key={k} className="profile-review-attr">{REVIEW_ATTRIBUTE_LABELS[k]}: {r.attributes[k]}/10</span>
-                      ))}
-                    </div>
+                    {r.isSeriousClaim && r.claimStatus === 'pending_innocent' && (
+                      <div className="profile-claim-badge profile-claim-pending">
+                        <strong>Serious allegation — innocent until proven guilty</strong>
+                        <p>
+                          This claim is unproven and highlighted as pending. The accused may reply but cannot delete
+                          this comment. We encourage pursuing legal action through proper authorities if appropriate.
+                        </p>
+                      </div>
+                    )}
+                    {r.claimStatus === 'proven' && (
+                      <div className="profile-claim-badge profile-claim-proven">
+                        <strong>Proven — court evidence on record</strong>
+                      </div>
+                    )}
                     <p className="profile-review-text">{r.reviewText}</p>
+                    {r.courtEvidence && (
+                      <div className="profile-court-evidence-pinned">
+                        <strong>Official court evidence (pinned)</strong>
+                        <p>{r.courtEvidence.summary}</p>
+                        {r.courtEvidence.documentNote && (
+                          <p className="profile-court-note">{r.courtEvidence.documentNote}</p>
+                        )}
+                        <span className="profile-court-date">
+                          Submitted {new Date(r.courtEvidence.submittedAt).toLocaleDateString()}
+                        </span>
+                      </div>
+                    )}
                     {r.replyText && <p className="profile-review-reply"><em>Your reply:</em> {r.replyText}</p>}
                     {!r.replyText && user?.id && (
                       <div className="profile-review-reply-form">
@@ -1013,8 +1054,9 @@ const Profile = () => {
                             setReplyingId(r.id);
                             try {
                               await reviewsAPI.replyToReview(r.id, replyDraft[r.id].trim());
+                              const text = replyDraft[r.id].trim();
                               setReplyDraft((prev) => { const n = { ...prev }; delete n[r.id]; return n; });
-                              setReviews((prev) => prev.map((rev) => rev.id === r.id ? { ...rev, replyText: replyDraft[r.id].trim(), repliedAt: new Date().toISOString() } : rev));
+                              setReviews((prev) => prev.map((rev) => rev.id === r.id ? { ...rev, replyText: text, repliedAt: new Date().toISOString() } : rev));
                             } finally {
                               setReplyingId(null);
                             }
@@ -1024,8 +1066,64 @@ const Profile = () => {
                         </button>
                       </div>
                     )}
+                    {user?.id === r.fromUserId && r.claimStatus === 'pending_innocent' && (
+                      <div className="profile-court-submit">
+                        <p className="profile-court-submit-title">Add official court evidence (review author only)</p>
+                        <textarea
+                          className="profile-input"
+                          rows={2}
+                          placeholder="Court outcome summary…"
+                          value={court.summary}
+                          onChange={(e) => setCourtDraft((prev) => ({
+                            ...prev,
+                            [r.id]: { ...court, summary: e.target.value },
+                          }))}
+                        />
+                        <input
+                          className="profile-input"
+                          placeholder="Docket / court reference (optional)"
+                          value={court.note}
+                          onChange={(e) => setCourtDraft((prev) => ({
+                            ...prev,
+                            [r.id]: { ...court, note: e.target.value },
+                          }))}
+                        />
+                        <label className="profile-court-check">
+                          <input
+                            type="checkbox"
+                            checked={court.confirm}
+                            onChange={(e) => setCourtDraft((prev) => ({
+                              ...prev,
+                              [r.id]: { ...court, confirm: e.target.checked },
+                            }))}
+                          />
+                          I confirm this is official court documentation
+                        </label>
+                        <button
+                          type="button"
+                          className="avatar-btn"
+                          disabled={courtSubmittingId === r.id || !court.summary.trim() || !court.confirm}
+                          onClick={async () => {
+                            setCourtSubmittingId(r.id);
+                            try {
+                              const { review } = await reviewsAPI.submitCourtEvidence(r.id, {
+                                summary: court.summary.trim(),
+                                documentNote: court.note.trim() || undefined,
+                                confirmOfficial: true,
+                              });
+                              setReviews((prev) => prev.map((rev) => (rev.id === r.id ? review : rev)));
+                            } finally {
+                              setCourtSubmittingId(null);
+                            }
+                          }}
+                        >
+                          {courtSubmittingId === r.id ? 'Submitting…' : 'Submit court evidence'}
+                        </button>
+                      </div>
+                    )}
                   </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>

@@ -1,5 +1,6 @@
 import { readFile, writeFile } from 'fs/promises';
 import { join } from 'path';
+import { detectSeriousClaim } from '../utils/seriousClaim.js';
 
 export const REVIEW_ATTRIBUTES = [
   'personality',
@@ -43,15 +44,30 @@ export interface ReviewAttributes {
   goodInBed: number;
 }
 
+export type ReviewClaimStatus = 'none' | 'pending_innocent' | 'proven';
+
+export interface ReviewCourtEvidence {
+  summary: string;
+  documentNote?: string | null;
+  submittedAt: string;
+}
+
 export interface Review {
   id: string;
   fromUserId: string;
   toUserId: string;
   attributes: ReviewAttributes;
+  /** Overall experience 1–5 (Google Play style aggregate). */
+  overallStars: number;
   reviewText: string;
   replyText?: string | null;
   repliedAt?: string | null;
   createdAt: string;
+  source?: 'unmatch' | 'manual';
+  isSeriousClaim?: boolean;
+  claimStatus?: ReviewClaimStatus;
+  courtEvidence?: ReviewCourtEvidence | null;
+  disclaimerAcceptedAt?: string | null;
 }
 
 const REVIEWS_PATH = join(process.cwd(), 'server', 'data', 'reviews.json');
@@ -103,25 +119,52 @@ export function normalizeAttributes(attrs: Partial<ReviewAttributes>): ReviewAtt
   return out;
 }
 
+function clampStars(n: number): number {
+  return Math.max(1, Math.min(5, Math.round(n)));
+}
+
+function migrateReview(r: Review): Review {
+  return {
+    ...r,
+    overallStars: typeof r.overallStars === 'number' ? clampStars(r.overallStars) : 3,
+    isSeriousClaim: r.isSeriousClaim ?? detectSeriousClaim(r.reviewText),
+    claimStatus:
+      r.claimStatus ??
+      (detectSeriousClaim(r.reviewText) ? 'pending_innocent' : 'none'),
+    courtEvidence: r.courtEvidence ?? null,
+  };
+}
+
 export async function createReview(data: {
   fromUserId: string;
   toUserId: string;
   attributes: Partial<ReviewAttributes>;
+  overallStars: number;
   reviewText: string;
+  source?: 'unmatch' | 'manual';
+  disclaimerAccepted?: boolean;
 }): Promise<Review> {
   const reviews = await readReviews();
   const existing = reviews.find(
     r => r.fromUserId === data.fromUserId && r.toUserId === data.toUserId
   );
+  const reviewText = data.reviewText?.trim() || '';
+  const serious = detectSeriousClaim(reviewText);
   const review: Review = {
     id: existing?.id ?? Date.now().toString(),
     fromUserId: data.fromUserId,
     toUserId: data.toUserId,
     attributes: normalizeAttributes(data.attributes || {}),
-    reviewText: data.reviewText?.trim() || '',
+    overallStars: clampStars(data.overallStars),
+    reviewText,
     replyText: existing?.replyText ?? null,
     repliedAt: existing?.repliedAt ?? null,
     createdAt: existing?.createdAt ?? new Date().toISOString(),
+    source: data.source ?? 'manual',
+    isSeriousClaim: serious,
+    claimStatus: serious ? (existing?.claimStatus === 'proven' ? 'proven' : 'pending_innocent') : 'none',
+    courtEvidence: existing?.courtEvidence ?? null,
+    disclaimerAcceptedAt: data.disclaimerAccepted ? new Date().toISOString() : existing?.disclaimerAcceptedAt ?? null,
   };
   if (existing) {
     const i = reviews.findIndex(r => r.id === existing.id);
@@ -135,7 +178,7 @@ export async function createReview(data: {
 
 export async function getReviewsForUser(userId: string): Promise<Review[]> {
   const reviews = await readReviews();
-  return reviews.filter(r => r.toUserId === userId);
+  return reviews.filter((r) => r.toUserId === userId).map(migrateReview);
 }
 
 export async function addReply(reviewId: string, toUserId: string, replyText: string): Promise<Review | null> {
@@ -145,7 +188,7 @@ export async function addReply(reviewId: string, toUserId: string, replyText: st
   r.replyText = replyText.trim();
   r.repliedAt = new Date().toISOString();
   await writeReviews(reviews);
-  return r;
+  return migrateReview(r);
 }
 
 export async function getAggregateAttributes(userId: string): Promise<{
@@ -176,5 +219,56 @@ export async function getAggregateAttributes(userId: string): Promise<{
 
 export async function getReviewById(reviewId: string): Promise<Review | null> {
   const reviews = await readReviews();
-  return reviews.find(r => r.id === reviewId) || null;
+  const r = reviews.find(rev => rev.id === reviewId);
+  if (!r) return null;
+  return migrateReview(r);
+}
+
+/** Google Play–style: average of all overall star ratings for this user. */
+export async function getOverallStarRating(userId: string): Promise<{
+  averageStars: number;
+  totalReviews: number;
+  distribution: Record<1 | 2 | 3 | 4 | 5, number>;
+}> {
+  const reviews = (await readReviews()).map(migrateReview).filter((r) => r.toUserId === userId);
+  const distribution: Record<1 | 2 | 3 | 4 | 5, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+  if (reviews.length === 0) {
+    return { averageStars: 0, totalReviews: 0, distribution };
+  }
+  let sum = 0;
+  for (const r of reviews) {
+    const s = clampStars(r.overallStars) as 1 | 2 | 3 | 4 | 5;
+    distribution[s]++;
+    sum += s;
+  }
+  const averageStars = Math.round((sum / reviews.length) * 10) / 10;
+  return { averageStars, totalReviews: reviews.length, distribution };
+}
+
+export async function submitCourtEvidence(
+  reviewId: string,
+  fromUserId: string,
+  evidence: { summary: string; documentNote?: string; confirmOfficial: boolean }
+): Promise<Review | null> {
+  if (!evidence.confirmOfficial) return null;
+  const reviews = await readReviews();
+  const i = reviews.findIndex((r) => r.id === reviewId && r.fromUserId === fromUserId);
+  if (i === -1) return null;
+  const r = migrateReview(reviews[i]);
+  if (!r.isSeriousClaim) return null;
+  r.courtEvidence = {
+    summary: evidence.summary.trim(),
+    documentNote: evidence.documentNote?.trim() || null,
+    submittedAt: new Date().toISOString(),
+  };
+  r.claimStatus = 'proven';
+  reviews[i] = r;
+  await writeReviews(reviews);
+  return r;
+}
+
+export async function getReviewBetween(fromUserId: string, toUserId: string): Promise<Review | null> {
+  const reviews = await readReviews();
+  const r = reviews.find((rev) => rev.fromUserId === fromUserId && rev.toUserId === toUserId);
+  return r ? migrateReview(r) : null;
 }

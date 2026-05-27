@@ -17,6 +17,8 @@ import HelpWidget from '../components/widgets/HelpWidget';
 import WalkingPartnerPopup from '../components/WalkingPartnerPopup';
 import SchoolDailyNotification from '../components/SchoolDailyNotification';
 import WomenSafetySOS from '../components/WomenSafetySOS';
+import MensDatingTipPopup from '../components/MensDatingTipPopup';
+import WomensDatingTipPopup from '../components/WomensDatingTipPopup';
 import { useTranslation } from '../context/LanguageContext';
 import { postsAPI } from '../api/posts';
 import { relationshipAPI } from '../api/relationship';
@@ -260,6 +262,8 @@ const Dashboard = () => {
           setOpenWidget('chat');
         }}
       />
+      <MensDatingTipPopup />
+      <WomensDatingTipPopup />
       {!openWidget && <WomenSafetySOS />}
       <div className="stars-background" aria-hidden>
         <div className="love-bg-hearts" />

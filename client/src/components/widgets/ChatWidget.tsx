@@ -8,6 +8,7 @@ import { healthAPI, HealthTest } from '../../api/health';
 import { safetyAPI, MeetupPlan, EmergencyContact, MeetupWeekStatus } from '../../api/safety';
 import DateVenuePicker from '../DateVenuePicker';
 import { reviewsAPI, ReviewAttributes, REVIEW_ATTRIBUTE_LABELS } from '../../api/reviews';
+import ExperienceReviewModal from '../ExperienceReviewModal';
 import { speedDateAPI, SpeedDate } from '../../api/speedDate';
 import { connectionJourneyAPI, ConnectionJourneyResponse } from '../../api/connectionJourney';
 import '../../pages/Dashboard.css';
@@ -159,11 +160,10 @@ const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId }: ChatWidgetProps)
   const [healthViewLoading, setHealthViewLoading] = useState(false);
   const [healthRequesting, setHealthRequesting] = useState(false);
 
-  // Review (after end chat)
+  // Experience review (before unmatch / end chat)
   const [showReviewModal, setShowReviewModal] = useState(false);
-  const [reviewAttributes, setReviewAttributes] = useState<Partial<ReviewAttributes>>({});
-  const [reviewText, setReviewText] = useState('');
-  const [reviewSubmitting, setReviewSubmitting] = useState(false);
+  const [reviewModalSource, setReviewModalSource] = useState<'unmatch' | 'manual'>('manual');
+  const [pendingUnmatchAfterReview, setPendingUnmatchAfterReview] = useState(false);
 
   // Speed date
   const [speedDate, setSpeedDate] = useState<SpeedDate | null>(null);
@@ -772,27 +772,24 @@ const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId }: ChatWidgetProps)
 
   const handleEndChatAndRate = () => {
     setMenuOpen(false);
+    setReviewModalSource('manual');
+    setPendingUnmatchAfterReview(false);
     setShowReviewModal(true);
-    setReviewAttributes({});
-    setReviewText('');
   };
 
-  const handleReviewSubmit = async () => {
-    if (!selectedUserId || !user?.id || !reviewText.trim()) {
-      setError('Please write a review.');
-      return;
-    }
-    setReviewSubmitting(true);
-    setError('');
-    try {
-      await reviewsAPI.submitReview(selectedUserId, reviewAttributes, reviewText);
+  const handleReviewModalComplete = async () => {
+    if (pendingUnmatchAfterReview) {
+      await performUnmatch();
+    } else {
       setShowReviewModal(false);
-      setReviewText('');
-      setReviewAttributes({});
-    } catch (e: any) {
-      setError(e.response?.data?.error || 'Failed to submit review');
-    } finally {
-      setReviewSubmitting(false);
+    }
+  };
+
+  const handleReviewModalClose = async () => {
+    if (pendingUnmatchAfterReview) {
+      await performUnmatch();
+    } else {
+      setShowReviewModal(false);
     }
   };
 
@@ -848,7 +845,7 @@ const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId }: ChatWidgetProps)
     }
   };
 
-  const handleUnmatch = async () => {
+  const performUnmatch = async () => {
     if (!selectedUserId) return;
     try {
       await chatAPI.unmatchUser(selectedUserId);
@@ -858,7 +855,18 @@ const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId }: ChatWidgetProps)
       await loadConversations();
     } catch (e: any) {
       setError(e.response?.data?.error || 'Failed to unmatch');
+    } finally {
+      setPendingUnmatchAfterReview(false);
+      setShowReviewModal(false);
     }
+  };
+
+  const handleUnmatch = () => {
+    if (!selectedUserId) return;
+    setMenuOpen(false);
+    setReviewModalSource('unmatch');
+    setPendingUnmatchAfterReview(true);
+    setShowReviewModal(true);
   };
 
   const handleOpenProfile = async () => {
@@ -1854,44 +1862,14 @@ const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId }: ChatWidgetProps)
       )}
 
       {showReviewModal && selectedUserId && (
-        <div className="chat-meetup-overlay" onClick={() => setShowReviewModal(false)}>
-          <div className="chat-meetup-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="chat-meetup-header">
-              <h3>Rate {selectedName}</h3>
-              <button type="button" className="chat-profile-close" onClick={() => setShowReviewModal(false)}>×</button>
-            </div>
-            <div className="chat-meetup-form">
-              <p className="chat-review-desc">Rate from 1–10 in each category. This review cannot be deleted and will appear on their profile. They can reply.</p>
-              {(Object.keys(REVIEW_ATTRIBUTE_LABELS) as (keyof ReviewAttributes)[]).map((key) => (
-                <div key={key} className="chat-review-attr">
-                  <label>{REVIEW_ATTRIBUTE_LABELS[key]}</label>
-                  <input
-                    type="number"
-                    min={1}
-                    max={10}
-                    value={reviewAttributes[key] ?? ''}
-                    onChange={(e) => setReviewAttributes((prev) => ({ ...prev, [key]: parseInt(e.target.value, 10) || undefined }))}
-                    className="chat-meetup-input"
-                  />
-                </div>
-              ))}
-              <label>Your review (required)</label>
-              <textarea
-                className="chat-meetup-input"
-                rows={3}
-                placeholder="Write your review..."
-                value={reviewText}
-                onChange={(e) => setReviewText(e.target.value)}
-              />
-              <div className="chat-meetup-actions">
-                <button type="button" className="chat-send-btn" onClick={handleReviewSubmit} disabled={reviewSubmitting || !reviewText.trim()}>
-                  {reviewSubmitting ? 'Submitting…' : 'Submit review'}
-                </button>
-                <button type="button" className="chat-back-btn" onClick={() => setShowReviewModal(false)}>Cancel</button>
-              </div>
-            </div>
-          </div>
-        </div>
+        <ExperienceReviewModal
+          open={showReviewModal}
+          partnerUserId={selectedUserId}
+          partnerName={selectedName || 'this person'}
+          source={reviewModalSource}
+          onClose={handleReviewModalClose}
+          onComplete={handleReviewModalComplete}
+        />
       )}
 
       {showContinuePrompt && speedDate && (

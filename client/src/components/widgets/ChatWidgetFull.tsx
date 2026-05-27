@@ -3,6 +3,7 @@ import { AuthContext } from '../../context/AuthContext';
 import { chatAPI, Message, Conversation, User } from '../../api/chat';
 import { safetyAPI, EmergencyContact, TextingCoach, CoachingSession } from '../../api/safety';
 import { ratingsAPI, AverageRatings, UnmatchReason } from '../../api/ratings';
+import ExperienceReviewModal from '../ExperienceReviewModal';
 import { chatEngagementAPI, ProofOfLove, ConnectionPrompt, ChatChallenge } from '../../api/chatEngagement';
 import './Widget.css';
 
@@ -70,6 +71,7 @@ const ChatWidgetFull = () => {
   const [ratings2, setRatings2] = useState<AverageRatings | null>(null);
   const [unmatchReasons, setUnmatchReasons] = useState<UnmatchReason[]>([]);
   const [showUnmatchModal, setShowUnmatchModal] = useState(false);
+  const [showExpReviewBeforeUnmatch, setShowExpReviewBeforeUnmatch] = useState(false);
   const [unmatchReason, setUnmatchReason] = useState('');
   const [unmatchingUserId, setUnmatchingUserId] = useState<string | null>(null);
   
@@ -323,6 +325,11 @@ const ChatWidgetFull = () => {
 
   const handleUnmatch = (userId: string) => {
     setUnmatchingUserId(userId);
+    setShowExpReviewBeforeUnmatch(true);
+  };
+
+  const openUnmatchReasonModal = () => {
+    setShowExpReviewBeforeUnmatch(false);
     setShowUnmatchModal(true);
   };
 
@@ -1089,6 +1096,23 @@ const ChatWidgetFull = () => {
           </div>
         )}
       </div>
+
+      {showExpReviewBeforeUnmatch && unmatchingUserId && (
+        <ExperienceReviewModal
+          open={showExpReviewBeforeUnmatch}
+          partnerUserId={unmatchingUserId}
+          partnerName={
+            selectedUser1?.id === unmatchingUserId
+              ? selectedUser1.name
+              : selectedUser2?.id === unmatchingUserId
+                ? selectedUser2.name
+                : 'this person'
+          }
+          source="unmatch"
+          onClose={openUnmatchReasonModal}
+          onComplete={openUnmatchReasonModal}
+        />
+      )}
 
       {/* Unmatch Reason Modal */}
       {showUnmatchModal && (

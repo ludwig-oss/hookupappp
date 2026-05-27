@@ -3564,7 +3564,63 @@ img.celeb-blur-img {
 
 .profile-reviews-section { margin-top: 24px; padding-top: 20px; border-top: 1px solid rgba(0, 212, 255, 0.3); }
 .profile-reviews-note { font-size: 11px; color: #9ca3af; margin: 0 0 12px; font-family: 'Orbitron', monospace; }
+.profile-overall-rating {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+  padding: 12px;
+  border-radius: 8px;
+  background: rgba(251, 191, 36, 0.08);
+  border: 1px solid rgba(251, 191, 36, 0.35);
+}
+.profile-overall-stars { color: #fbbf24; font-size: 20px; letter-spacing: 2px; }
+.profile-overall-value { font-size: 22px; font-weight: 700; color: #fff; }
+.profile-overall-count { font-size: 12px; color: #9ca3af; }
 .profile-reviews-list { display: flex; flex-direction: column; gap: 12px; }
+.profile-review-stars-inline { color: #fbbf24; font-size: 12px; margin-left: 8px; }
+.profile-review-serious { border-color: rgba(245, 158, 11, 0.6); }
+.profile-claim-badge {
+  margin: 0 0 10px;
+  padding: 10px;
+  border-radius: 6px;
+  font-size: 11px;
+  line-height: 1.45;
+}
+.profile-claim-badge strong { display: block; margin-bottom: 4px; font-size: 12px; }
+.profile-claim-badge p { margin: 0; }
+.profile-claim-pending {
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.45);
+  color: #fcd34d;
+}
+.profile-claim-proven {
+  background: rgba(34, 197, 94, 0.12);
+  border: 1px solid rgba(34, 197, 94, 0.45);
+  color: #86efac;
+}
+.profile-court-evidence-pinned {
+  margin: 0 0 10px;
+  padding: 10px;
+  border-radius: 6px;
+  background: rgba(34, 197, 94, 0.1);
+  border-left: 3px solid #22c55e;
+  font-size: 12px;
+}
+.profile-court-evidence-pinned strong { color: #86efac; display: block; margin-bottom: 6px; }
+.profile-court-evidence-pinned p { margin: 0 0 4px; color: #fff; }
+.profile-court-note { color: #9ca3af; font-size: 11px; }
+.profile-court-date { font-size: 10px; color: #6b7280; }
+.profile-court-submit {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px dashed rgba(0, 212, 255, 0.3);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.profile-court-submit-title { font-size: 11px; color: #9ca3af; margin: 0; }
+.profile-court-check { font-size: 11px; display: flex; gap: 8px; align-items: flex-start; cursor: pointer; }
 .profile-review-card {
   background: rgba(0, 0, 0, 0.4);
   border: 1px solid rgba(0, 212, 255, 0.3);

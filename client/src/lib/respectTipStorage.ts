@@ -59,11 +59,24 @@ export function recordRespectTipSeen(userId: string, tipIndex: number): void {
   localStorage.setItem(key(userId), JSON.stringify(next));
 }
 
+/** Short headline for the taper banner (always clear). */
+export function taperHeadlineForUser(userId: string): string {
+  const seen = readRespectTipState(userId)?.seenCount ?? 0;
+  const days = minDaysForSeenCount(seen);
+  if (days <= 10) return 'These show a couple times a month at first — then less over time.';
+  if (days <= 20) return 'These reminders will show less over time.';
+  return 'You’ll see these only occasionally from now on.';
+}
+
 export function taperMessageForUser(userId: string): string {
   const seen = readRespectTipState(userId)?.seenCount ?? 0;
   const days = minDaysForSeenCount(seen);
-  if (days <= 10) return 'You’ll see these a couple times a month at first, then less over time.';
-  if (days <= 20) return 'These reminders will show up less often over time.';
-  return 'You’ll only see these occasionally now.';
+  if (days <= 10) {
+    return 'After you’ve read a few, they appear less often automatically. You can always close with × and keep using the app.';
+  }
+  if (days <= 20) {
+    return 'Frequency keeps dropping the more you’ve seen them. Press × anytime to dismiss.';
+  }
+  return 'You’re almost through the full set — future reminders will be rare.';
 }
 

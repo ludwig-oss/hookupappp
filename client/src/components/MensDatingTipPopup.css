@@ -186,3 +186,30 @@
 .respect-tip-card .dating-tip-gotit:hover {
   background: rgba(52, 211, 153, 0.3);
 }
+
+.respect-tip-taper-banner {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0 0 12px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: rgba(52, 211, 153, 0.15);
+  border: 1px solid rgba(52, 211, 153, 0.45);
+  font-family: system-ui, sans-serif;
+  font-size: 12px;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.respect-tip-taper-banner strong {
+  display: block;
+  font-size: 13px;
+  color: #6ee7b7;
+  letter-spacing: 0.02em;
+}
+
+.respect-tip-taper-detail {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.75);
+}

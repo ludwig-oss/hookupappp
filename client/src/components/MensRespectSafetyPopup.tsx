@@ -6,6 +6,7 @@ import {
   nextRespectTipIndex,
   recordRespectTipSeen,
   shouldShowRespectTip,
+  taperHeadlineForUser,
   taperMessageForUser,
 } from '../lib/respectTipStorage';
 import './MensDatingTipPopup.css';
@@ -63,8 +64,13 @@ export default function MensRespectSafetyPopup() {
             ×
           </button>
         </div>
+        <div className="respect-tip-taper-banner" role="note">
+          <strong>These reminders show less over time.</strong>
+          <span>{taperHeadlineForUser(user?.id || '')}</span>
+          <span className="respect-tip-taper-detail">{taperMessageForUser(user?.id || '')}</span>
+        </div>
         <p className="dating-tip-helper">
-          {taperMessageForUser(user?.id || '')} Think: would your favorite teacher, mother, sister, or cousin want this done to them?
+          Think: would your favorite teacher, mother, sister, or cousin want this done to them?
         </p>
         <h2 id="respect-tip-title" className="dating-tip-title">
           {tip.title}

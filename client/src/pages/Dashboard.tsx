@@ -14,6 +14,7 @@ import WheelOutcomeFlow from '../components/widgets/WheelOutcomeFlow.tsx';
 import LoveFeedWidget from '../components/widgets/LoveFeedWidget';
 import EventsWidget from '../components/widgets/EventsWidget';
 import HelpWidget from '../components/widgets/HelpWidget';
+import type { HelpNavTarget } from '../data/helpFaq';
 import WalkingPartnerPopup from '../components/WalkingPartnerPopup';
 import SchoolDailyNotification from '../components/SchoolDailyNotification';
 import WomenSafetySOS from '../components/WomenSafetySOS';
@@ -371,6 +372,17 @@ const Dashboard = () => {
               <HelpWidget
                 onOpenChat={() => setOpenWidget('chat')}
                 onOpenLoveFeed={() => setOpenWidget('lovefeed')}
+                onNavigate={(target: HelpNavTarget) => {
+                  if (target === 'profile') {
+                    navigate('/profile');
+                    return;
+                  }
+                  if (target === 'settings') {
+                    navigate('/settings');
+                    return;
+                  }
+                  setOpenWidget(target);
+                }}
               />
             )}
             {openWidget === 'chat' && <ChatWidget initialOtherUserId={openChatWithUserId} onOpenedWithUserId={() => setOpenChatWithUserId(null)} />}

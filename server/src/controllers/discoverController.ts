@@ -16,6 +16,7 @@ import { getAllUsers, getUserById } from '../models/user.js';
 import { getUserSettings } from '../models/settings.js';
 import { maskUserForViewer } from '../lib/celebMask.js';
 import { sanitizeForStorage, sanitizeMessageContent, LIMITS } from '../utils/sanitize.js';
+import { ensureMatchConversation } from '../models/chat.js';
 
 export async function getAllCities(req: Request, res: Response) {
   try {
@@ -235,8 +236,9 @@ export async function respondInterest(req: Request, res: Response) {
       }).catch(() => {});
     }
 
-    // If accepted, open chat
+    // If accepted, seed chat thread so both appear in Communications
     if (response === 'accepted') {
+      await ensureMatchConversation(userId, interest.fromUserId);
       res.json({ interest, openChat: true, chatUserId: interest.fromUserId });
     } else {
       res.json({ interest });

@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { getAllUsers, updateUserLocation } from '../models/user.js';
 import { createBuzz, getIncomingBuzz, getOutgoingBuzz, respondToBuzz } from '../models/nearby.js';
+import { ensureMatchConversation } from '../models/chat.js';
 
 function haversineMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6371000;
@@ -129,6 +130,11 @@ export const respondBuzz = async (req: Request, res: Response) => {
 
     const updated = await respondToBuzz(buzzId, userId, status, responseMessage);
     if (!updated) return res.status(404).json({ error: 'Buzz request not found' });
+
+    if (status === 'accepted' || status === 'later') {
+      await ensureMatchConversation(userId, updated.fromUserId);
+      return res.json({ buzz: updated, openChat: true, chatUserId: updated.fromUserId });
+    }
 
     res.json({ buzz: updated });
   } catch (error) {

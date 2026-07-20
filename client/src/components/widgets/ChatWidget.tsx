@@ -215,6 +215,30 @@ const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId }: ChatWidgetProps)
     }
   }, [user?.id]);
 
+  useEffect(() => {
+    const onOpen = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { userId?: string } | undefined;
+      const otherId = detail?.userId || localStorage.getItem('chatSelectedUserId');
+      if (!otherId || !user?.id) return;
+      localStorage.removeItem('chatSelectedUserId');
+      profileAPI.getUserProfile(otherId)
+        .then((profile) => {
+          loadMessages(otherId, profile.name || 'User', profile.profilePicture || null);
+          loadConversations();
+        })
+        .catch(() => {
+          loadMessages(otherId, 'User', null);
+          loadConversations();
+        });
+    };
+    window.addEventListener('chat:open', onOpen);
+    const pending = localStorage.getItem('chatSelectedUserId');
+    if (pending && user?.id) {
+      window.dispatchEvent(new CustomEvent('chat:open', { detail: { userId: pending } }));
+    }
+    return () => window.removeEventListener('chat:open', onOpen);
+  }, [user?.id]);
+
   const fetchMeetupPlansAndCheckDue = async () => {
     if (!user?.id) return;
     try {

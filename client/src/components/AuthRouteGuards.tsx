@@ -9,14 +9,9 @@ function postLoginPath(user: { profileSetupComplete?: boolean }) {
 /** Login/signup pages — redirect signed-in users once (avoids /login ↔ /home loops). */
 export function GuestOnly({ children }: { children: ReactNode }) {
   const { user } = useContext(AuthContext);
-  const location = useLocation();
 
   if (!user) return <>{children}</>;
-
-  const target = postLoginPath(user);
-  if (location.pathname === target) return <>{children}</>;
-
-  return <Navigate to={target} replace />;
+  return <Navigate to={postLoginPath(user)} replace />;
 }
 
 /** App pages that require a session. */

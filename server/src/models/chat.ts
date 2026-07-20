@@ -34,16 +34,32 @@ async function writeMessages(messages: Message[]): Promise<void> {
 }
 
 export async function createMessage(messageData: Omit<Message, 'id' | 'createdAt' | 'read'>): Promise<Message> {
+  if (usePostgres()) return pgChat.createMessage(messageData);
   const messages = await readMessages();
   const message: Message = {
     ...messageData,
-    id: Date.now().toString(),
+    id: Date.now().toString() + Math.random().toString(36).slice(2, 7),
     createdAt: new Date(),
     read: false,
   };
   messages.push(message);
   await writeMessages(messages);
   return message;
+}
+
+/**
+ * After "I'm interested" / buzz / walk match — seed a thread so both users
+ * appear in Communications until they unmatch or miss reply/meetup deadlines.
+ */
+export async function ensureMatchConversation(
+  fromUserId: string,
+  toUserId: string,
+  opener = "You're matched! Say hi and start chatting 💬"
+): Promise<Message | null> {
+  if (!fromUserId || !toUserId || fromUserId === toUserId) return null;
+  const existing = await getConversation(fromUserId, toUserId);
+  if (existing.length > 0) return null;
+  return createMessage({ fromUserId, toUserId, content: opener });
 }
 
 export async function getConversation(userId1: string, userId2: string): Promise<Message[]> {

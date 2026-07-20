@@ -46,6 +46,7 @@ function App() {
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const hasRefreshedProfile = useRef(false);
+  const refreshGen = useRef(0);
 
   useEffect(() => {
     try {
@@ -78,17 +79,16 @@ function App() {
     const token = localStorage.getItem('token');
     if (!token) return;
     hasRefreshedProfile.current = true;
+    const gen = ++refreshGen.current;
     Promise.all([
       profileAPI.getCurrentUser(),
       settingsAPI.getSettings().catch(() => null),
     ])
       .then(([fullProfile, settingsRes]) => {
+        if (gen !== refreshGen.current) return; // stale response after logout/re-login
         if (!isValidUserShape(fullProfile)) {
-          // If the API returned HTML/string/invalid data, avoid crashing the app.
-          localStorage.removeItem('token');
-          localStorage.removeItem('user');
-          delete axios.defaults.headers.common['Authorization'];
-          setUser(null);
+          // Keep current session — bad/HTML proxy responses must not wipe a valid login
+          console.warn('Profile refresh returned invalid shape; keeping local session');
           return;
         }
         const id = normalizeUserId((fullProfile as { id: unknown }).id);
@@ -102,18 +102,29 @@ function App() {
           setStoredLanguage(lang.trim());
         }
       })
-      .catch((err) => {
+      .catch((err: any) => {
+        if (gen !== refreshGen.current) return;
+        const status = err?.response?.status;
+        if (status === 401) {
+          // Only hard-logout on explicit auth failure
+          localStorage.removeItem('token');
+          localStorage.removeItem('user');
+          delete axios.defaults.headers.common['Authorization'];
+          setUser(null);
+          hasRefreshedProfile.current = false;
+          return;
+        }
         console.warn('Profile refresh failed after login:', err);
-        // Keep hasRefreshedProfile true — resetting it caused an infinite /me retry loop.
       });
   }, [loading, user?.id]);
 
   const login = (userData: any, token: string) => {
     const id = normalizeUserId(userData?.id);
     if (!isPlainObject(userData) || !id || typeof token !== 'string' || !token) {
-      return;
+      throw new Error('Invalid login payload');
     }
     const normalized = { ...userForStorage(userData as Record<string, unknown>), id };
+    refreshGen.current += 1;
     hasRefreshedProfile.current = false;
     setUser(normalized);
     localStorage.setItem('token', token);
@@ -126,6 +137,7 @@ function App() {
   };
 
   const logout = () => {
+    refreshGen.current += 1;
     setUser(null);
     localStorage.removeItem('token');
     localStorage.removeItem('user');

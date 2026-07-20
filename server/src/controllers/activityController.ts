@@ -11,6 +11,7 @@ import {
   canChatAfterPreComm,
 } from '../models/activity.js';
 import { getUserById, getAllUsers } from '../models/user.js';
+import { ensureMatchConversation } from '../models/chat.js';
 import { maskUserForViewer } from '../lib/celebMask.js';
 import { getNDAByInterest, hasSignedNDA, signNDA } from '../models/nda.js';
 import { preCommFieldsWithDefaults, sanitizeForStorage, LIMITS } from '../utils/sanitize.js';
@@ -81,8 +82,9 @@ export async function acceptInterestHandler(req: Request, res: Response) {
     if (!toUserId) return res.status(401).json({ error: 'Unauthorized' });
     const { interestId } = req.body;
     if (!interestId) return res.status(400).json({ error: 'interestId is required' });
-    await acceptInterest(interestId, toUserId);
-    res.json({ message: 'Interest accepted' });
+    const accepted = await acceptInterest(interestId, toUserId);
+    await ensureMatchConversation(toUserId, accepted.fromUserId);
+    res.json({ message: 'Interest accepted', openChat: true, chatUserId: accepted.fromUserId });
   } catch (e: any) {
     console.error('Accept interest error:', e);
     res.status(400).json({ error: e.message || 'Bad request' });

@@ -87,10 +87,9 @@ const SettingsWidgetFull = () => {
 
   const formatPhoneNumber = (phone: string) => {
     if (!phone) return '';
-    const digits = phone.replace(/\D/g, '');
-    if (digits.length <= 3) return digits;
-    if (digits.length <= 6) return `(${digits.slice(0, 3)}) ${digits.slice(3)}`;
-    return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6, 10)}`;
+    const cleaned = phone.replace(/[^\d+]/g, '');
+    if (cleaned.startsWith('+')) return '+' + cleaned.slice(1).replace(/\D/g, '').slice(0, 18);
+    return cleaned.replace(/\D/g, '').slice(0, 18);
   };
 
   useEffect(() => {
@@ -102,7 +101,7 @@ const SettingsWidgetFull = () => {
       setProfilePicture(user.profilePicture || null);
       loadAllData();
     }
-  }, [user]);
+  }, [user?.id]);
 
   const loadAllData = async () => {
     try {
@@ -404,17 +403,13 @@ const SettingsWidgetFull = () => {
             <input 
               type="tel" 
               value={userPhoneNumber} 
-              onChange={(e) => {
-                const digits = e.target.value.replace(/\D/g, '');
-                const formatted = formatPhoneNumber(digits);
-                setUserPhoneNumber(formatted);
-              }}
-              placeholder="(123) 456-7890"
-              maxLength={14}
+              onChange={(e) => setUserPhoneNumber(formatPhoneNumber(e.target.value))}
+              placeholder="+1 234 567 8901"
+              autoComplete="tel"
               style={{ width: '100%', padding: '12px', border: '2px solid #e5e7eb', borderRadius: '8px', fontSize: '16px' }} 
             />
             <small style={{ color: '#6b7280', fontSize: '12px', display: 'block', marginTop: '4px' }}>
-              Add your phone number to enable password reset via SMS
+              Full number with country code (for password reset). Example: +491701234567
             </small>
           </div>
 

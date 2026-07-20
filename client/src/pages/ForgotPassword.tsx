@@ -3,6 +3,15 @@ import { Link } from 'react-router-dom';
 import { authAPI } from '../api/auth';
 import './Auth.css';
 
+/** Allow full international numbers: + and digits, up to 30 digits. */
+function normalizePhoneInput(value: string): string {
+  const cleaned = value.replace(/[^\d+]/g, '');
+  if (cleaned.startsWith('+')) {
+    return '+' + cleaned.slice(1).replace(/\D/g, '').slice(0, 18);
+  }
+  return cleaned.replace(/\D/g, '').slice(0, 18);
+}
+
 const ForgotPassword = () => {
   const [method, setMethod] = useState<'username' | 'phone'>('username');
   const [username, setUsername] = useState('');
@@ -31,6 +40,11 @@ const ForgotPassword = () => {
 
     try {
       const cleanPhoneNumber = phoneNumber.replace(/\D/g, '');
+      if (method === 'phone' && cleanPhoneNumber.length < 10) {
+        setError('Enter your full phone number (at least 10 digits, include country code if you signed up with one).');
+        setLoading(false);
+        return;
+      }
       const response = await authAPI.forgotPassword(
         method === 'username' ? username.trim() : undefined,
         method === 'phone' ? cleanPhoneNumber : undefined
@@ -48,21 +62,12 @@ const ForgotPassword = () => {
     }
   };
 
-  const formatPhoneNumber = (value: string) => {
-    // Remove all non-digit characters
-    const digits = value.replace(/\D/g, '');
-    // Format as (XXX) XXX-XXXX
-    if (digits.length <= 3) return digits;
-    if (digits.length <= 6) return `(${digits.slice(0, 3)}) ${digits.slice(3)}`;
-    return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6, 10)}`;
-  };
-
   return (
     <div className="auth-container">
       <div className="auth-card">
-        <Link to="/login" className="back-link">← Back to Login</Link>
+        <Link to="/login" className="back-link">← Back to Sign in</Link>
         <h1 className="auth-title">Forgot Password</h1>
-        <p className="auth-subtitle">Enter your username or phone number to get your password hints and reset link</p>
+        <p className="auth-subtitle">Enter your username or full phone number to get hints and a reset link</p>
 
         {error && <div className="error-message">{error}</div>}
         {message && (
@@ -144,21 +149,19 @@ const ForgotPassword = () => {
             </div>
           ) : (
             <div className="form-group">
-              <label htmlFor="phone">Phone Number</label>
+              <label htmlFor="phone">Full phone number</label>
               <input
                 type="tel"
                 id="phone"
                 value={phoneNumber}
-                onChange={(e) => {
-                  const formatted = formatPhoneNumber(e.target.value);
-                  setPhoneNumber(formatted);
-                }}
+                onChange={(e) => setPhoneNumber(normalizePhoneInput(e.target.value))}
                 required
-                placeholder="(123) 456-7890"
-                maxLength={14}
+                placeholder="+1 234 567 8901 or 2345678901"
+                autoComplete="tel"
+                inputMode="tel"
               />
               <small style={{ color: '#6b7280', fontSize: '12px' }}>
-                Enter the phone number you added in your profile settings
+                Use the same full number from your profile (country code + number). Digits only or with +.
               </small>
             </div>
           )}
@@ -177,11 +180,3 @@ const ForgotPassword = () => {
 };
 
 export default ForgotPassword;
-
-
-
-
-
-
-
-

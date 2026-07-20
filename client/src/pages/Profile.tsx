@@ -82,7 +82,7 @@ const Profile = () => {
 
   useEffect(() => {
     if (user?.id) loadProfile();
-  }, [user]);
+  }, [user?.id]);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -149,9 +149,11 @@ const Profile = () => {
       setOverallRating(revData.overall ?? null);
     } catch (err: any) {
       const status = err?.response?.status;
-      if (status === 401 || status === 404) {
-        setError('Session expired or account not found. Logging out…');
+      if (status === 401) {
+        setError('Session expired. Please sign in again.');
         setTimeout(() => { logout(); navigate('/login'); }, 1500);
+      } else if (status === 404) {
+        setError('Could not load profile. Tap refresh or try again — you are still signed in.');
       } else {
         setError('Failed to load profile');
       }

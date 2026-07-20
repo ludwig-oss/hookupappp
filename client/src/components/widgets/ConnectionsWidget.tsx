@@ -263,10 +263,15 @@ const ConnectionsWidget = () => {
         setTimeout(() => setComfortingMessage(null), 8000);
       }
       if (response === 'accepted' || response === 'talk_later') {
+        const chatId = (result as any).chatUserId;
         setComfortingMessage(response === 'talk_later'
           ? "They're in your Communications. Chat when you're both ready!"
           : "They're in your Communications. You can start chatting now!");
         setTimeout(() => setComfortingMessage(null), 5000);
+        if (chatId) {
+          localStorage.setItem('chatSelectedUserId', chatId);
+          window.dispatchEvent(new CustomEvent('chat:open', { detail: { userId: chatId } }));
+        }
       }
       await loadBuzzes();
     } catch (err: any) {

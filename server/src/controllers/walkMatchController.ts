@@ -11,6 +11,7 @@ import {
 } from '../models/walkMatch.js';
 import { updateUserLocation } from '../models/user.js';
 import { getUserById } from '../models/user.js';
+import { ensureMatchConversation } from '../models/chat.js';
 
 export const getSuggestions = async (req: Request, res: Response) => {
   try {
@@ -71,6 +72,9 @@ export const postInterest = async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'toUserId required' });
     }
     const result = await sendWalkInterest(userId, toUserId);
+    if (result.mutual && result.chatUserId) {
+      await ensureMatchConversation(userId, result.chatUserId);
+    }
     res.json({
       message: result.mutual ? "It's a match! You can chat now." : 'Interest sent',
       ...result,
@@ -89,6 +93,9 @@ export const postRespondInterest = async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'interestId required' });
     }
     const result = await respondWalkInterest(userId, interestId, accept !== false);
+    if (result.mutual && result.chatUserId) {
+      await ensureMatchConversation(userId, result.chatUserId);
+    }
     res.json(result);
   } catch (e: any) {
     console.error('Walk respond error:', e);

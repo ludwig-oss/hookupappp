@@ -103,7 +103,7 @@ export async function sendInterest(fromUserId: string, toUserId: string): Promis
   return interest;
 }
 
-export async function acceptInterest(interestId: string, toUserId: string): Promise<void> {
+export async function acceptInterest(interestId: string, toUserId: string): Promise<{ fromUserId: string }> {
   const interests = await readInterests();
   const interest = interests.find(i => i.id === interestId && i.toUserId === toUserId);
   if (!interest) throw new Error('Interest not found');
@@ -111,6 +111,7 @@ export async function acceptInterest(interestId: string, toUserId: string): Prom
   interest.status = 'accepted';
   interest.respondedAt = new Date();
   await writeInterests(interests);
+  return { fromUserId: interest.fromUserId };
 }
 
 export async function rejectInterest(interestId: string, toUserId: string): Promise<void> {

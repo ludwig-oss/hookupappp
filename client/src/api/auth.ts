@@ -16,7 +16,10 @@ export interface SignupData {
 }
 
 export interface LoginData {
-  username: string;
+  username?: string;
+  email?: string;
+  phoneNumber?: string;
+  identifier?: string;
   password: string;
 }
 

@@ -10,6 +10,7 @@ import {
   getComfortingMessage,
 } from '../models/connections.js';
 import { updateUserLocation, getUserById } from '../models/user.js';
+import { ensureMatchConversation } from '../models/chat.js';
 import { fetchVenuesByType } from '../utils/overpass.js';
 import { sanitizeBuzzLocation } from '../utils/sanitize.js';
 
@@ -76,6 +77,14 @@ export const respondBuzz = async (req: Request, res: Response) => {
     }
 
     const result = await respondToBuzz(buzzId, response);
+    if (response === 'accepted' && result.buzz) {
+      const userId = (req as any).userId;
+      const otherId = result.buzz.fromUserId === userId ? result.buzz.toUserId : result.buzz.fromUserId;
+      if (userId && otherId) {
+        await ensureMatchConversation(userId, otherId);
+      }
+      return res.json({ ...result, openChat: true, chatUserId: otherId || result.buzz.fromUserId });
+    }
     res.json(result);
   } catch (error: any) {
     console.error('Respond to buzz error:', error);

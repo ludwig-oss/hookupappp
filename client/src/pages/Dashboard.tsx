@@ -248,6 +248,18 @@ const Dashboard = () => {
     return () => { if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current); };
   }, []);
 
+  useEffect(() => {
+    const onOpen = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { userId?: string } | undefined;
+      const uid = detail?.userId;
+      if (!uid) return;
+      setOpenChatWithUserId(uid);
+      setOpenWidget('chat');
+    };
+    window.addEventListener('chat:open', onOpen);
+    return () => window.removeEventListener('chat:open', onOpen);
+  }, []);
+
   return (
     <div className="dashboard-container">
       <SchoolDailyNotification

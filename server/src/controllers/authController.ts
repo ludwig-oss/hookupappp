@@ -146,13 +146,22 @@ export const signup = async (req: Request, res: Response) => {
 
 export const login = async (req: Request, res: Response) => {
   try {
-    const { username, password } = req.body;
-    const loginUsername = (username || '').trim();
-    if (!loginUsername || !password) {
-      return res.status(400).json({ error: 'Username and password are required' });
+    const { username, password, email, phoneNumber, identifier } = req.body;
+    const rawId = String(identifier || username || email || phoneNumber || '').trim();
+    if (!rawId || !password) {
+      return res.status(400).json({ error: 'Username/email/phone and password are required' });
     }
 
-    const user = await getUserByUsername(loginUsername);
+    let user = await getUserByUsername(rawId);
+    if (!user && rawId.includes('@')) {
+      user = await getUserByEmail(rawId.toLowerCase());
+    }
+    if (!user) {
+      const digits = rawId.replace(/\D/g, '');
+      if (digits.length >= 10) {
+        user = await getUserByPhone(digits);
+      }
+    }
     if (!user) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }

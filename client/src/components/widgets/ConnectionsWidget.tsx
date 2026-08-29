@@ -40,7 +40,7 @@ const PLACE_TYPES = [
 
 const ConnectionsWidget = () => {
   const { user, updateUser } = useContext(AuthContext);
-  const [view, setView] = useState<'main' | 'venues' | 'nearby' | 'buzzes' | 'search_places'>('main');
+  const [view, setView] = useState<'main' | 'venues' | 'buzzes' | 'search_places'>('main');
   const [venues, setVenues] = useState<VenueCount[]>([]);
   const [nearbyUsers, setNearbyUsers] = useState<NearbyUser[]>([]);
   const [buzzes, setBuzzes] = useState<{ received: Buzz[]; sent: Buzz[] }>({ received: [], sent: [] });
@@ -110,6 +110,34 @@ const ConnectionsWidget = () => {
     });
   }, [pushLocation]);
 
+  const loadBuzzes = useCallback(async () => {
+    if (!user?.id) return;
+    try {
+      const response = await connectionsAPI.getMyBuzzes(user.id);
+      setBuzzes(response);
+    } catch (err) {
+      console.error('Failed to load buzzes:', err);
+    }
+  }, [user?.id]);
+
+  const refreshNearby = useCallback(async (coords?: { lat: number; lon: number; accuracy?: number }) => {
+    if (!user?.id) return;
+    const loc = coords || location;
+    if (!loc) return;
+    try {
+      await pushLocation(loc, connectionsVisible);
+      const response = await connectionsAPI.getNearby({
+        lat: loc.lat,
+        lon: loc.lon,
+        radius: NEARBY_DISCOVERY_RADIUS_M,
+        userId: user.id,
+      });
+      setNearbyUsers(response.users);
+    } catch (err: unknown) {
+      setError(formatAxiosError(err, 'Could not refresh nearby'));
+    }
+  }, [user?.id, location, connectionsVisible, pushLocation]);
+
   useEffect(() => {
     if (user?.id) {
       connectionsAPI.getPrefs().then((p) => {
@@ -123,7 +151,7 @@ const ConnectionsWidget = () => {
         clearInterval(locationIntervalRef.current);
       }
     };
-  }, [user?.id, ensureLocation]);
+  }, [user?.id, ensureLocation, loadBuzzes]);
 
   useEffect(() => {
     if (location && user?.id) {
@@ -157,6 +185,17 @@ const ConnectionsWidget = () => {
     return () => navigator.geolocation.clearWatch(watchId);
   }, [user?.id]);
 
+  useEffect(() => {
+    if (!location || !user?.id) return;
+    refreshNearby(location);
+    loadBuzzes();
+    const nearbyPoll = setInterval(() => {
+      refreshNearby(location);
+      loadBuzzes();
+    }, 25000);
+    return () => clearInterval(nearbyPoll);
+  }, [location, user?.id, refreshNearby, loadBuzzes]);
+
   const toggleVisibility = async () => {
     if (!user?.id) return;
     const next = !connectionsVisible;
@@ -166,7 +205,12 @@ const ConnectionsWidget = () => {
       await connectionsAPI.setVisibility(next);
       setConnectionsVisible(next);
       updateUser({ connectionsVisible: next });
-      if (next && location) await pushLocation(location, true);
+      if (next && location) {
+        await pushLocation(location, true);
+        await refreshNearby(location);
+      } else if (!next) {
+        await refreshNearby(location || undefined);
+      }
     } catch (err) {
       setError(formatAxiosError(err, 'Could not update visibility'));
     } finally {
@@ -191,39 +235,6 @@ const ConnectionsWidget = () => {
       setError(err.response?.data?.error || 'Failed to load venues');
     } finally {
       setLoading(false);
-    }
-  };
-
-  const loadNearby = async () => {
-    if (!user?.id) return;
-    setLoading(true);
-    setError('');
-    try {
-      let coords = location;
-      if (!coords) coords = await ensureLocation();
-      await pushLocation(coords, connectionsVisible);
-      const response = await connectionsAPI.getNearby({
-        lat: coords.lat,
-        lon: coords.lon,
-        radius: NEARBY_DISCOVERY_RADIUS_M,
-        userId: user.id,
-      });
-      setNearbyUsers(response.users);
-      setView('nearby');
-    } catch (err: unknown) {
-      setError(formatAxiosError(err, 'Failed to load nearby'));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const loadBuzzes = async () => {
-    if (!user?.id) return;
-    try {
-      const response = await connectionsAPI.getMyBuzzes(user.id);
-      setBuzzes(response);
-    } catch (err) {
-      console.error('Failed to load buzzes:', err);
     }
   };
 
@@ -266,6 +277,7 @@ const ConnectionsWidget = () => {
         userId: user.id,
       });
       await loadBuzzes();
+      await refreshNearby();
       const chatId = (result as { chatUserId?: string }).chatUserId;
       if (chatId) {
         openChatWithUser(chatId);
@@ -301,11 +313,40 @@ const ConnectionsWidget = () => {
         }
       }
       await loadBuzzes();
+      await refreshNearby();
     } catch (err: any) {
       setError(err.response?.data?.error || 'Failed to respond');
     } finally {
       setLoading(false);
     }
+  };
+
+  const nearbyIds = new Set(nearbyUsers.map((u) => u.id));
+  const pendingBuzzNotNearby = buzzes.received.filter(
+    (b) => b.status === 'pending' && !nearbyIds.has(b.fromUserId)
+  );
+
+  const renderPersonActions = (personId: string, receivedBuzz?: Buzz) => {
+    const buzz = receivedBuzz || buzzes.received.find((b) => b.fromUserId === personId && b.status === 'pending');
+    const alreadyBuzzed = buzzes.sent.some((b) => b.toUserId === personId && b.status === 'pending');
+
+    if (buzz) {
+      return (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+          <button type="button" onClick={() => handleRespondBuzz(buzz.id, 'accepted')} className="send-btn" disabled={loading} style={{ background: 'rgba(16, 185, 129, 0.2)', border: '2px solid #10b981', color: '#10b981', fontSize: '11px', padding: '6px 10px', fontFamily: 'Orbitron, monospace', fontWeight: 'bold' }}>Yes</button>
+          <button type="button" onClick={() => handleRespondBuzz(buzz.id, 'rejected')} className="send-btn" disabled={loading} style={{ background: 'rgba(239, 68, 68, 0.2)', border: '2px solid #ef4444', color: '#ef4444', fontSize: '11px', padding: '6px 10px', fontFamily: 'Orbitron, monospace', fontWeight: 'bold' }}>No</button>
+          <button type="button" onClick={() => handleRespondBuzz(buzz.id, 'talk_later')} className="send-btn" disabled={loading} style={{ background: 'rgba(245, 158, 11, 0.2)', border: '2px solid #f59e0b', color: '#f59e0b', fontSize: '11px', padding: '6px 10px', fontFamily: 'Orbitron, monospace', fontWeight: 'bold' }}>Talk later</button>
+        </div>
+      );
+    }
+    if (alreadyBuzzed) {
+      return <span style={{ fontSize: '12px', color: '#9ca3af', fontFamily: 'Orbitron, monospace' }}>Interest sent</span>;
+    }
+    return (
+      <button type="button" onClick={() => handleSendBuzz(personId)} className="send-btn" disabled={loading} style={{ background: 'rgba(0, 0, 0, 0.4)', border: '2px solid #ff00ff', color: '#ff00ff', fontSize: '12px', padding: '8px 14px', fontFamily: 'Orbitron, monospace', fontWeight: 'bold', boxShadow: '0 0 10px rgba(255, 0, 255, 0.3)' }}>
+        Show interest
+      </button>
+    );
   };
 
   return (
@@ -339,7 +380,7 @@ const ConnectionsWidget = () => {
             </p>
           )}
           <p style={{ marginBottom: '14px', color: '#9ca3af', fontFamily: 'Orbitron, monospace', fontSize: '12px' }}>
-            When someone compatible is nearby, they show up here. Tap to send interest — exact distance is never shown for safety.
+            People nearby update automatically. Show interest — if you both are, you&apos;re added to Communications.
           </p>
           <div
             style={{
@@ -380,22 +421,98 @@ const ConnectionsWidget = () => {
               {connectionsVisible ? 'On' : 'Off'}
             </button>
           </div>
+
+          <div style={{ marginBottom: 16 }}>
+            <h3 style={{ margin: '0 0 10px', fontSize: '15px', color: '#00d4ff', fontFamily: 'Orbitron, monospace' }}>
+              People nearby {nearbyUsers.length > 0 ? `(${nearbyUsers.length})` : ''}
+            </h3>
+            {!location ? (
+              <p style={{ color: '#9ca3af', fontSize: '12px', fontFamily: 'Orbitron, monospace' }}>
+                Waiting for location… allow GPS to see who&apos;s nearby.
+              </p>
+            ) : nearbyUsers.length === 0 && pendingBuzzNotNearby.length === 0 ? (
+              <p style={{ color: '#9ca3af', fontSize: '12px', fontFamily: 'Orbitron, monospace' }}>
+                No one nearby right now — list refreshes automatically.
+              </p>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', maxHeight: '320px', overflowY: 'auto' }}>
+                {pendingBuzzNotNearby.map((buzz) => (
+                  <div
+                    key={buzz.id}
+                    style={{
+                      padding: '12px',
+                      border: '2px solid rgba(255, 0, 255, 0.45)',
+                      borderRadius: '12px',
+                      display: 'flex',
+                      gap: '12px',
+                      alignItems: 'center',
+                      background: 'rgba(0, 0, 0, 0.4)',
+                    }}
+                  >
+                    <div style={{ width: '48px', height: '48px', borderRadius: '50%', overflow: 'hidden', border: '2px solid rgba(255, 0, 255, 0.5)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(255, 0, 255, 0.1)' }}>
+                      {buzz.fromUserProfilePicture ? (
+                        <img src={buzz.fromUserProfilePicture} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      ) : (
+                        <span style={{ fontSize: '20px', color: '#ff00ff' }}>?</span>
+                      )}
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#fff', fontFamily: 'Orbitron, monospace' }}>Someone interested</div>
+                      <div style={{ fontSize: '11px', color: '#ff00ff', marginTop: 4 }}>Wants to connect</div>
+                    </div>
+                    {renderPersonActions(buzz.fromUserId, buzz)}
+                  </div>
+                ))}
+                {nearbyUsers.map((nearbyUser) => (
+                  <div
+                    key={nearbyUser.id}
+                    style={{
+                      padding: '12px',
+                      border: '2px solid rgba(0, 212, 255, 0.3)',
+                      borderRadius: '12px',
+                      display: 'flex',
+                      gap: '12px',
+                      alignItems: 'center',
+                      background: 'rgba(0, 0, 0, 0.4)',
+                      boxShadow: '0 0 15px rgba(0, 212, 255, 0.2)',
+                    }}
+                  >
+                    <div className="user-avatar" style={{ width: '56px', height: '56px', flexShrink: 0, borderRadius: '50%', overflow: 'hidden', border: '2px solid rgba(255, 0, 255, 0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', background: 'rgba(255, 0, 255, 0.1)' }}>
+                      {nearbyUser.profilePicture ? (
+                        <img src={nearbyUser.profilePicture} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      ) : (
+                        <span style={{ fontSize: '24px', color: '#ff00ff' }}>?</span>
+                      )}
+                      {nearbyUser.isOnline && (
+                        <div style={{
+                          position: 'absolute',
+                          bottom: 0,
+                          right: 0,
+                          width: '12px',
+                          height: '12px',
+                          background: '#10b981',
+                          border: '2px solid #0a0a1a',
+                          borderRadius: '50%',
+                          boxShadow: '0 0 10px rgba(16, 185, 129, 0.6)',
+                        }} />
+                      )}
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: '15px', fontWeight: 'bold', color: '#fff', fontFamily: 'Orbitron, monospace' }}>
+                        {nearbyUser.name}
+                      </div>
+                      <div style={{ fontSize: '11px', color: nearbyUser.isOnline ? '#10b981' : '#9ca3af', marginTop: 4 }}>
+                        {nearbyUser.isOnline ? 'Active nearby' : 'Recently nearby'}
+                      </div>
+                    </div>
+                    {renderPersonActions(nearbyUser.id)}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            <button
-              onClick={loadNearby}
-              className="select-user-btn"
-              disabled={loading}
-              style={{
-                background: 'rgba(0, 212, 255, 0.15)',
-                border: '2px solid #00d4ff',
-                color: '#00d4ff',
-                fontFamily: 'Orbitron, monospace',
-                fontWeight: 'bold',
-                boxShadow: '0 0 15px rgba(0, 212, 255, 0.3)',
-              }}
-            >
-              {loading ? 'Loading...' : "👥 See who's nearby"}
-            </button>
             <div>
               <label style={{ fontSize: '10px', color: '#9ca3af', fontFamily: 'Orbitron, monospace', display: 'block', marginBottom: '4px' }}>Venues radius</label>
               <select
@@ -580,90 +697,6 @@ const ConnectionsWidget = () => {
                   </p>
                 </div>
               ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {view === 'nearby' && (
-        <div className="improvement-content">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-            <button onClick={() => setView('main')} className="back-btn" style={{
-              background: 'rgba(0, 0, 0, 0.4)',
-              border: '2px solid #00d4ff',
-              color: '#00d4ff',
-              fontFamily: 'Orbitron, monospace',
-              padding: '8px 16px',
-              borderRadius: '6px',
-            }}>← Back</button>
-            <h3 style={{ margin: 0, fontSize: '18px', color: '#00d4ff', fontFamily: 'Orbitron, monospace', textShadow: '0 0 10px rgba(0, 212, 255, 0.5)' }}>People nearby</h3>
-          </div>
-          {nearbyUsers.length === 0 ? (
-            <p style={{ textAlign: 'center', color: '#9ca3af', padding: '20px', fontFamily: 'Orbitron, monospace' }}>
-              No one nearby right now. Keep visibility on and location enabled.
-            </p>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', maxHeight: '400px', overflowY: 'auto' }}>
-              {nearbyUsers.map((nearbyUser) => {
-                const alreadyBuzzed = buzzes.sent.some(b => b.toUserId === nearbyUser.id && b.status === 'pending');
-                const receivedBuzz = buzzes.received.find(b => b.fromUserId === nearbyUser.id);
-                
-                return (
-                  <div
-                    key={nearbyUser.id}
-                    style={{
-                      padding: '12px',
-                      border: '2px solid rgba(0, 212, 255, 0.3)',
-                      borderRadius: '12px',
-                      display: 'flex',
-                      gap: '12px',
-                      alignItems: 'center',
-                      background: 'rgba(0, 0, 0, 0.4)',
-                      boxShadow: '0 0 15px rgba(0, 212, 255, 0.2)',
-                    }}
-                  >
-                    <div className="user-avatar" style={{ width: '56px', height: '56px', flexShrink: 0, borderRadius: '50%', overflow: 'hidden', border: '2px solid rgba(255, 0, 255, 0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', background: 'rgba(255, 0, 255, 0.1)' }}>
-                      {nearbyUser.profilePicture ? (
-                        <img src={nearbyUser.profilePicture} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                      ) : (
-                        <span style={{ fontSize: '24px', color: '#ff00ff' }}>?</span>
-                      )}
-                      {nearbyUser.isOnline && (
-                        <div style={{
-                          position: 'absolute',
-                          bottom: 0,
-                          right: 0,
-                          width: '12px',
-                          height: '12px',
-                          background: '#10b981',
-                          border: '2px solid #0a0a1a',
-                          borderRadius: '50%',
-                          boxShadow: '0 0 10px rgba(16, 185, 129, 0.6)',
-                        }} />
-                      )}
-                    </div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: '15px', fontWeight: 'bold', color: '#fff', fontFamily: 'Orbitron, monospace' }}>
-                        {nearbyUser.name}
-                      </div>
-                      <div style={{ fontSize: '11px', color: nearbyUser.isOnline ? '#10b981' : '#9ca3af', marginTop: 4 }}>
-                        {nearbyUser.isOnline ? 'Active nearby' : 'Recently nearby'}
-                      </div>
-                    </div>
-                    {receivedBuzz ? (
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                        <button onClick={() => handleRespondBuzz(receivedBuzz.id, 'accepted')} className="send-btn" disabled={loading} style={{ background: 'rgba(16, 185, 129, 0.2)', border: '2px solid #10b981', color: '#10b981', fontSize: '11px', padding: '6px 10px', fontFamily: 'Orbitron, monospace', fontWeight: 'bold' }}>Yes</button>
-                        <button onClick={() => handleRespondBuzz(receivedBuzz.id, 'rejected')} className="send-btn" disabled={loading} style={{ background: 'rgba(239, 68, 68, 0.2)', border: '2px solid #ef4444', color: '#ef4444', fontSize: '11px', padding: '6px 10px', fontFamily: 'Orbitron, monospace', fontWeight: 'bold' }}>No</button>
-                        <button onClick={() => handleRespondBuzz(receivedBuzz.id, 'talk_later')} className="send-btn" disabled={loading} style={{ background: 'rgba(245, 158, 11, 0.2)', border: '2px solid #f59e0b', color: '#f59e0b', fontSize: '11px', padding: '6px 10px', fontFamily: 'Orbitron, monospace', fontWeight: 'bold' }}>Talk later</button>
-                      </div>
-                    ) : alreadyBuzzed ? (
-                      <span style={{ fontSize: '12px', color: '#9ca3af', fontFamily: 'Orbitron, monospace' }}>Sent</span>
-                    ) : (
-                      <button onClick={() => handleSendBuzz(nearbyUser.id)} className="send-btn" disabled={loading} style={{ background: 'rgba(0, 0, 0, 0.4)', border: '2px solid #ff00ff', color: '#ff00ff', fontSize: '12px', padding: '8px 14px', fontFamily: 'Orbitron, monospace', fontWeight: 'bold', boxShadow: '0 0 10px rgba(255, 0, 255, 0.3)' }}>Show interest</button>
-                    )}
-                  </div>
-                );
-              })}
             </div>
           )}
         </div>

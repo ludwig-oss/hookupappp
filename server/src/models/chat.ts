@@ -54,7 +54,7 @@ export async function createMessage(messageData: Omit<Message, 'id' | 'createdAt
 export async function ensureMatchConversation(
   fromUserId: string,
   toUserId: string,
-  opener = "You're matched! Say hi and start chatting 💬"
+  opener = "You're matched! Reply within 24 hours or the match ends — say hi! 💬"
 ): Promise<Message | null> {
   if (!fromUserId || !toUserId || fromUserId === toUserId) return null;
   const existing = await getConversation(fromUserId, toUserId);

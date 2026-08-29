@@ -33,7 +33,7 @@ export interface WalkSuggestion {
 
 const INTERESTS_PATH = join(process.cwd(), 'server', 'data', 'walk-interests.json');
 const DISMISSALS_PATH = join(process.cwd(), 'server', 'data', 'walk-proximity-dismissals.json');
-const WALK_RADIUS_M = 120;
+const WALK_RADIUS_M = 500;
 
 function isAtHome(user: WalkUser): boolean {
   const home = user.homeLocation;
@@ -42,10 +42,9 @@ function isAtHome(user: WalkUser): boolean {
   return calculateDistance(loc.lat, loc.lon, home.lat, home.lon) <= HOME_RADIUS_M;
 }
 
-/** Visible on nearby only when manual switch is on AND user is at home. */
+/** Visible nearby when the user has not turned visibility off. */
 export function isNearbyVisible(user: WalkUser): boolean {
-  if (user.nearbyDiscoverable !== true) return false;
-  return isAtHome(user);
+  return user.nearbyDiscoverable !== false;
 }
 
 export function userIsAtHome(user: WalkUser): boolean {
@@ -55,18 +54,13 @@ export function userIsAtHome(user: WalkUser): boolean {
 export function syncNearbyOnLocation(userId: string, lat: number, lon: number): Promise<User | null> {
   return getUserById(userId).then(async (user) => {
     if (!user) return null;
-    const home = user.homeLocation;
-    let nearbyDiscoverable = user.nearbyDiscoverable;
-    if (home) {
-      const atHome = calculateDistance(lat, lon, home.lat, home.lon) <= HOME_RADIUS_M;
-      if (!atHome && nearbyDiscoverable) {
-        nearbyDiscoverable = false;
-      }
-    }
-    return updateUserProfile(userId, {
+    const updates: Partial<User> = {
       location: { lat, lon, updatedAt: new Date() },
-      ...(nearbyDiscoverable !== user.nearbyDiscoverable ? { nearbyDiscoverable } : {}),
-    });
+    };
+    if (user.nearbyDiscoverable === undefined && user.outdoorWalkEnabled !== false) {
+      updates.nearbyDiscoverable = true;
+    }
+    return updateUserProfile(userId, updates);
   });
 }
 
@@ -307,7 +301,9 @@ export async function getWalkSuggestions(
     const distance = calculateDistance(lat, lon, other.location.lat, other.location.lon);
     if (distance > radiusM) continue;
 
-    const isOnline = isNearbyVisible(other as WalkUser);
+    const isOnline =
+      other.location?.updatedAt != null &&
+      Date.now() - new Date(other.location.updatedAt as string).getTime() < 8 * 60 * 1000;
 
     const { score, reason, tags } = scorePair(viewer, other);
     const proximityBoost = Math.max(0, 25 - Math.floor(distance / 5));

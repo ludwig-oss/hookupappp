@@ -10,9 +10,7 @@ import {
   getUserAge,
   dismissWalkSuggestion,
   syncNearbyOnLocation,
-  userIsAtHome,
 } from '../models/walkMatch.js';
-import { HOME_RADIUS_M } from '../models/walkMatchUtils.js';
 import { getUserById } from '../models/user.js';
 import { ensureMatchConversation } from '../models/chat.js';
 
@@ -23,7 +21,7 @@ export const getSuggestions = async (req: Request, res: Response) => {
 
     const lat = parseFloat(req.query.lat as string);
     const lon = parseFloat(req.query.lon as string);
-    const radius = parseInt(req.query.radius as string, 10) || 120;
+    const radius = parseInt(req.query.radius as string, 10) || 500;
 
     if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
       return res.status(400).json({ error: 'lat and lon are required' });
@@ -44,8 +42,8 @@ export const getSuggestions = async (req: Request, res: Response) => {
       suggestions,
       needsLifeQuiz: needsQuiz,
       outdoorWalkEnabled: viewer.outdoorWalkEnabled !== false,
-      nearbyDiscoverable: viewer.nearbyDiscoverable === true,
-      atHome: userIsAtHome(viewer as any),
+      nearbyDiscoverable: viewer.nearbyDiscoverable !== false,
+      atHome: true,
       homeSet: Boolean(viewer.homeLocation),
     });
   } catch (e) {
@@ -78,18 +76,18 @@ export const postInterest = async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'toUserId required' });
     }
     const result = await sendWalkInterest(userId, toUserId);
-    const opener = result.mutual
-      ? "You're matched nearby! Say hi and start chatting 💬"
-      : "I'm nearby and interested — say hi when you're ready 💬";
-    try {
-      await ensureMatchConversation(userId, toUserId, opener);
-    } catch (chatErr) {
-      console.error('Walk interest chat seed failed (interest still saved):', chatErr);
+    if (result.mutual) {
+      const opener = "You're matched nearby! Reply within 24 hours or the match ends — say hi! 💬";
+      try {
+        await ensureMatchConversation(userId, toUserId, opener);
+      } catch (chatErr) {
+        console.error('Walk interest chat seed failed (interest still saved):', chatErr);
+      }
     }
     res.json({
-      message: result.mutual ? "It's a match! Opening chat…" : 'Added to your chats — say hi!',
+      message: result.mutual ? "It's a match! Opening chat…" : 'Interest sent — waiting for them to say yes.',
       ...result,
-      chatUserId: toUserId,
+      chatUserId: result.mutual ? toUserId : undefined,
     });
   } catch (e: any) {
     console.error('Walk interest error:', e);
@@ -107,7 +105,11 @@ export const postRespondInterest = async (req: Request, res: Response) => {
     const result = await respondWalkInterest(userId, interestId, accept !== false);
     if (result.mutual && result.chatUserId) {
       try {
-        await ensureMatchConversation(userId, result.chatUserId);
+        await ensureMatchConversation(
+          userId,
+          result.chatUserId,
+          "You're matched nearby! Reply within 24 hours or the match ends — say hi! 💬"
+        );
       } catch (chatErr) {
         console.error('Walk respond chat seed failed:', chatErr);
       }
@@ -211,20 +213,6 @@ export const patchWalkSettings = async (req: Request, res: Response) => {
     }
 
     if (typeof nearbyDiscoverable === 'boolean') {
-      if (nearbyDiscoverable) {
-        const home = (updates.homeLocation as { lat: number; lon: number } | undefined) || viewer.homeLocation;
-        const loc = viewer.location;
-        if (!home) {
-          return res.status(400).json({ error: 'Set your home location first.' });
-        }
-        if (!loc) {
-          return res.status(400).json({ error: 'Enable location so we know you are home.' });
-        }
-        const { calculateDistance } = await import('../models/walkMatchUtils.js');
-        if (calculateDistance(loc.lat, loc.lon, home.lat, home.lon) > HOME_RADIUS_M) {
-          return res.status(400).json({ error: 'You can only go visible when you are at home.' });
-        }
-      }
       updates.nearbyDiscoverable = nearbyDiscoverable;
     }
 

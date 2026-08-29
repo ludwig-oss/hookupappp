@@ -2,15 +2,22 @@ import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { activityAPI } from '../../api/activity';
 import { openChatWithUser } from '../../lib/openChat';
+import { filterWheelUsers, markWheelUserActed } from '../../lib/wheelEncounter';
 import './WheelOutcomeFlow.css';
+
+const MATCH_24H_RULE =
+  'You both need to reply within 24 hours after each message or the match ends.';
 
 async function sendInterestOpenChat(toUserId: string, onOpenChat?: (userId: string) => void) {
   const res = await activityAPI.sendInterest(toUserId);
+  markWheelUserActed(toUserId);
   const chatId = (res as { chatUserId?: string }).chatUserId;
+  const mutual = Boolean((res as { openChat?: boolean }).openChat);
   if (chatId) {
     openChatWithUser(chatId);
     onOpenChat?.(chatId);
   }
+  return { mutual, message: res.message || (mutual ? "It's a match!" : 'Interest sent') };
 }
 
 const NOMINATIM_REVERSE = 'https://nominatim.openstreetmap.org/reverse';
@@ -62,7 +69,7 @@ export default function WheelOutcomeFlow({ segment, country, city, onClose, onOp
     setError(null);
     activityAPI
       .getRegionUsers(effectiveCountry || '', effectiveCity || undefined)
-      .then((r) => setRegionUsers(shuffle(r.users)))
+      .then((r) => setRegionUsers(shuffle(filterWheelUsers(r.users))))
       .catch(() => setError('Could not load users. Try again later.'))
       .finally(() => setLoading(false));
   }, [effectiveCountry, effectiveCity]);
@@ -419,7 +426,8 @@ function CompatibilityRushFlow({ users, onClose, onOpenChat }: { users: UserInfo
   const [compatPercent, setCompatPercent] = useState(0);
   const [countdown, setCountdown] = useState(10);
   const [sent, setSent] = useState(false);
-  const finalPercent = 72 + Math.floor(Math.random() * 18);
+  const [resultMessage, setResultMessage] = useState('');
+  const [finalPercent] = useState(() => 72 + Math.floor(Math.random() * 18));
 
   useEffect(() => {
     if (step !== 'calculating') return;
@@ -458,7 +466,25 @@ function CompatibilityRushFlow({ users, onClose, onOpenChat }: { users: UserInfo
   }
 
   const handleYes = () => {
-    sendInterestOpenChat(target.id, onOpenChat).then(() => setSent(true)).catch(() => setSent(true));
+    if (!target) return;
+    sendInterestOpenChat(target.id, onOpenChat)
+      .then(({ mutual, message }) => {
+        setResultMessage(
+          mutual
+            ? `${message} You're in Communications — ${MATCH_24H_RULE}`
+            : `${message} When they say yes too, you'll both land in Communications. ${MATCH_24H_RULE}`
+        );
+        setSent(true);
+      })
+      .catch(() => {
+        setResultMessage('Could not send — try again from their profile.');
+        setSent(true);
+      });
+  };
+
+  const handlePass = () => {
+    if (target) markWheelUserActed(target.id);
+    onClose();
   };
 
   const content = (
@@ -490,11 +516,11 @@ function CompatibilityRushFlow({ users, onClose, onOpenChat }: { users: UserInfo
             {!sent ? (
               <div className="wheel-outcome-actions">
                 <button type="button" className="wheel-outcome-btn" onClick={handleYes}>Yes, send request</button>
-                <button type="button" className="wheel-outcome-btn secondary" onClick={onClose}>Pass</button>
+                <button type="button" className="wheel-outcome-btn secondary" onClick={handlePass}>Pass</button>
               </div>
             ) : (
               <>
-                <p className="wheel-outcome-msg">Request sent! When they accept you can chat in Communication.</p>
+                <p className="wheel-outcome-msg">{resultMessage || `Request sent! ${MATCH_24H_RULE}`}</p>
                 <button type="button" className="wheel-outcome-btn" onClick={onClose}>OK</button>
               </>
             )}

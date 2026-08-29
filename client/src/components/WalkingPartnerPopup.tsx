@@ -19,8 +19,7 @@ export default function WalkingPartnerPopup({ onOpenChat, hideBar }: Props) {
   const [showQuiz, setShowQuiz] = useState(false);
   const [loading, setLoading] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [nearbyDiscoverable, setNearbyDiscoverable] = useState(false);
-  const [atHome, setAtHome] = useState(false);
+  const [nearbyDiscoverable, setNearbyDiscoverable] = useState(true);
   const [homeSet, setHomeSet] = useState(false);
   const coordsRef = useRef<{ lat: number; lon: number } | null>(null);
   const watchIdRef = useRef<number | null>(null);
@@ -49,11 +48,10 @@ export default function WalkingPartnerPopup({ onOpenChat, hideBar }: Props) {
       setIncoming(null);
 
       const data = await walkMatchAPI.getSuggestions(lat, lon);
-      setNearbyDiscoverable(data.nearbyDiscoverable);
-      setAtHome(data.atHome);
+      setNearbyDiscoverable(data.nearbyDiscoverable !== false);
       setHomeSet(data.homeSet);
-      if (data.nearbyDiscoverable !== user.nearbyDiscoverable) {
-        updateUser({ nearbyDiscoverable: data.nearbyDiscoverable });
+      if (data.nearbyDiscoverable !== false && user.nearbyDiscoverable === false) {
+        updateUser({ nearbyDiscoverable: true });
       }
 
       if (data.needsLifeQuiz) {
@@ -61,7 +59,7 @@ export default function WalkingPartnerPopup({ onOpenChat, hideBar }: Props) {
         return;
       }
 
-      if (!data.nearbyDiscoverable || !data.atHome) {
+      if (data.nearbyDiscoverable === false) {
         setSuggestion(null);
         return;
       }
@@ -120,14 +118,10 @@ export default function WalkingPartnerPopup({ onOpenChat, hideBar }: Props) {
         updateUser({ homeLocation: { lat, lon } });
       }
       const res = await walkMatchAPI.updateSettings({ nearbyDiscoverable: next, lat, lon });
-      const visible = res.user?.nearbyDiscoverable === true;
+      const visible = res.user?.nearbyDiscoverable !== false;
       setNearbyDiscoverable(visible);
       updateUser({ nearbyDiscoverable: visible, homeLocation: res.user?.homeLocation ?? user?.homeLocation });
-      if (next && !visible) {
-        setActionError('You can only go visible when you are at home.');
-      } else {
-        poll();
-      }
+      poll();
     } catch (err: unknown) {
       setActionError(formatAxiosError(err, 'Could not update nearby visibility'));
     } finally {
@@ -147,7 +141,16 @@ export default function WalkingPartnerPopup({ onOpenChat, hideBar }: Props) {
       const res = await walkMatchAPI.sendInterest(targetId);
       hidePerson('walk-suggest', targetId);
       setSuggestion(null);
-      onOpenChat(res.chatUserId || targetId);
+      if (res.mutual && res.chatUserId) {
+        onOpenChat(res.chatUserId);
+        window.alert(
+          "It's a match — you're both in Communications! Reply within 24 hours after each message or the match ends."
+        );
+      } else {
+        window.alert(
+          'Interest sent! When they say yes too, you\'ll both land in Communications. Reply within 24 hours once you match.'
+        );
+      }
     } catch (err: unknown) {
       setActionError(formatAxiosError(err, 'Could not connect — try again'));
     } finally {
@@ -179,6 +182,11 @@ export default function WalkingPartnerPopup({ onOpenChat, hideBar }: Props) {
         hidePerson('walk-incoming', incoming.fromUserId);
         setIncoming(null);
         if (res.chatUserId) onOpenChat(res.chatUserId);
+        if (res.mutual) {
+          window.alert(
+            "It's a match — you're both in Communications! Reply within 24 hours after each message or the match ends."
+          );
+        }
       } else {
         await walkMatchAPI.respondInterest(incoming.id, false);
         hidePerson('walk-incoming', incoming.fromUserId);
@@ -197,17 +205,15 @@ export default function WalkingPartnerPopup({ onOpenChat, hideBar }: Props) {
         <div>
           <strong>Available nearby</strong>
           <p className="walk-nearby-hint">
-            {atHome
-              ? nearbyDiscoverable
-                ? 'You appear online at home only.'
-                : 'Off — turn on when you are home.'
-              : 'Away from home — visibility is off.'}
+            {nearbyDiscoverable
+              ? 'People nearby can see you — matches go to Communications.'
+              : 'Off — turn on to see who is near you.'}
           </p>
         </div>
         <button
           type="button"
           className={`walk-nearby-switch${nearbyDiscoverable ? ' on' : ''}`}
-          disabled={loading || !atHome}
+          disabled={loading}
           aria-pressed={nearbyDiscoverable}
           onClick={() => toggleNearby(!nearbyDiscoverable)}
         >
@@ -240,7 +246,7 @@ export default function WalkingPartnerPopup({ onOpenChat, hideBar }: Props) {
           <div className="walk-popup-card">
             <p className="walk-popup-badge">Someone is near</p>
             <h2>{incoming.fromUser?.name || 'A match'} is interested</h2>
-            <p className="walk-popup-sub">They are home and open to connect — say yes to start chatting.</p>
+            <p className="walk-popup-sub">They are nearby and interested — say yes to start chatting in Communications.</p>
             {incoming.fromUser?.profilePicture && (
               <img src={incoming.fromUser.profilePicture} alt="" className="walk-popup-avatar" />
             )}
@@ -282,7 +288,7 @@ export default function WalkingPartnerPopup({ onOpenChat, hideBar }: Props) {
               </h2>
               <p className="walk-popup-meta">
                 {suggestion.distance}m away
-                {suggestion.isOnline ? ' · at home now' : ''}
+                {suggestion.isOnline ? ' · online now' : ''}
               </p>
             </div>
           </div>

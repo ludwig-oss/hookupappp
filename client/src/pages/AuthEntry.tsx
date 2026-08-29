@@ -1,13 +1,12 @@
 import { useState, useContext, useMemo, useEffect, useCallback } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import axios from 'axios';
 import { AuthContext } from '../context/AuthContext';
 import { authAPI } from '../api/auth';
 import { discoverAPI } from '../api/discover';
 import { walkMatchAPI } from '../api/walkMatch';
 import { formatAxiosError } from '../lib/apiError';
 import { faceScanSupported } from '../lib/faceScan';
-import { loginWithPasskey, passkeysSupported, registerDeviceFaceId } from '../lib/passkeyAuth';
+import { loginWithPasskey, passkeysSupported } from '../lib/passkeyAuth';
 import FaceVerifyPanel from '../components/FaceVerifyPanel';
 import './Auth.css';
 import './Legal.css';
@@ -28,7 +27,7 @@ function normalizePhoneInput(value: string): string {
 
 type AuthMode = 'signup' | 'login';
 type LoginMethod = 'pin' | 'password' | 'phone' | 'face';
-type FacePanelMode = 'signup' | 'login' | null;
+type FacePanelMode = 'login' | null;
 
 type Props = { initialMode?: AuthMode };
 
@@ -100,23 +99,6 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
     navigate(user.profileSetupComplete ? '/home' : '/profile-setup', { replace: true });
   }, [login, navigate]);
 
-  const beginFaceSignup = () => {
-    if (!name.trim() || !username.trim()) {
-      setError('Enter your name and username first (or fill them in below).');
-      return;
-    }
-    if (!agreedToTerms) {
-      setError('Agree to Terms and Privacy to continue');
-      return;
-    }
-    if (!faceScanSupported()) {
-      setError('Face sign-up needs a front camera. Try on your phone.');
-      return;
-    }
-    setError('');
-    setFacePanel('signup');
-  };
-
   const beginFaceLogin = () => {
     if (!faceScanSupported()) {
       setError('Face sign-in needs a front camera. Try on your phone.');
@@ -126,48 +108,6 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
     setFacePanel('login');
   };
 
-  const onFaceSignupCaptured = useCallback(
-    async (descriptor: number[]) => {
-      setFacePanel(null);
-      setLoading(true);
-      try {
-        const response = await authAPI.signupWithFace({
-          name: name.trim(),
-          username: username.trim(),
-          email: email.trim() || undefined,
-          phoneNumber: phoneNumber.replace(/\D/g, '') || undefined,
-          password: password || undefined,
-          improvementCategories: [DEFAULT_SIGNUP_CATEGORY],
-          passwordHint1: passwordHint1.trim() || undefined,
-          passwordHint2: passwordHint2.trim() || undefined,
-          passwordHint3: passwordHint3.trim() || undefined,
-          faceDescriptor: descriptor,
-        });
-        const id = coerceUserId(response.user?.id);
-        if (!response.token || !id) throw new Error('Invalid server response');
-        localStorage.setItem('token', response.token);
-        axios.defaults.headers.common['Authorization'] = `Bearer ${response.token}`;
-        await registerDeviceFaceId(response.token);
-        login({ ...response.user, id }, response.token);
-        const ageNum = parseInt(age, 10);
-        if (!Number.isNaN(ageNum) && gender) {
-          walkMatchAPI.updateSettings({ age: ageNum, gender }).catch(() => {});
-        }
-        discoverAPI.setPreference({
-          orientation,
-          lookingFor: lookingFor as ('dating' | 'casual' | 'friends' | 'serious')[],
-          userId: id,
-        }).catch(() => {});
-        navigate('/profile-setup', { replace: true });
-      } catch (err: unknown) {
-        setError(formatAxiosError(err, 'Face sign-up failed'));
-      } finally {
-        setLoading(false);
-      }
-    },
-    [name, username, email, phoneNumber, password, passwordHint1, passwordHint2, passwordHint3, age, gender, orientation, lookingFor, login, navigate]
-  );
-
   const onFaceLoginCaptured = useCallback(
     async (descriptor: number[]) => {
       setFacePanel(null);
@@ -176,7 +116,7 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
         const hint = loginIdentifier.trim() || undefined;
         const identified = await authAPI.identifyFace(descriptor, hint);
         if (!passkeysSupported()) {
-          setError('Register Face ID on this device during sign-up, or use email/password here.');
+          setError('Register passkey sign-in in Settings after signing in with PIN or password.');
           return;
         }
         const res = await loginWithPasskey(identified.username);
@@ -321,12 +261,6 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
   return (
     <div className="auth-container">
       <FaceVerifyPanel
-        open={facePanel === 'signup'}
-        title="Sign up with Face ID"
-        onClose={() => setFacePanel(null)}
-        onCaptured={onFaceSignupCaptured}
-      />
-      <FaceVerifyPanel
         open={facePanel === 'login'}
         title="Sign in with Face ID"
         onClose={() => setFacePanel(null)}
@@ -356,7 +290,7 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
               <input id="name" value={name} onChange={(e) => setName(e.target.value)} autoComplete="name" required />
             </div>
             <div className="form-group">
-              <label htmlFor="username">Username (yours forever — like Instagram)</label>
+              <label htmlFor="username">Username (yours forever)</label>
               <input id="username" value={username} onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))} autoComplete="username" required />
               {usernameCheck && (
                 <p style={{ fontSize: 12, marginTop: 6, color: usernameCheck.startsWith('✓') ? '#10b981' : '#f59e0b' }}>{usernameCheck}</p>
@@ -364,7 +298,7 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
             </div>
             <div className="form-group">
               <label htmlFor="pin">6-digit PIN</label>
-              <input id="pin" type="password" inputMode="numeric" maxLength={6} value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 6))} autoComplete="new-password" required />
+              <input id="pin" type="password" inputMode="numeric" maxLength={6} value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 6))} autoComplete="off" required />
             </div>
             <div className="form-group">
               <label>PIN hints (if you forget — only you see these on recovery)</label>
@@ -379,7 +313,7 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                autoComplete="new-password"
+                autoComplete="off"
                 placeholder="8+ chars, upper, lower, number, symbol"
               />
             </div>
@@ -412,9 +346,6 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
             </div>
             <button type="submit" className="auth-button face-id-primary" disabled={loading}>
               {loading ? 'Creating…' : 'Create account'}
-            </button>
-            <button type="button" className="auth-button" disabled={loading} style={{ marginTop: 8 }} onClick={beginFaceSignup}>
-              Or sign up with Face ID
             </button>
           </form>
         ) : (

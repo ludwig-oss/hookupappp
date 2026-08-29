@@ -61,6 +61,8 @@ const ConnectionsWidget = () => {
   const [searchPlaceLocationName, setSearchPlaceLocationName] = useState<string | null>(null);
   const [searchPlaceMostConcentrated, setSearchPlaceMostConcentrated] = useState<PlaceCountOnly | null>(null);
   const [searchPlacesLoading, setSearchPlacesLoading] = useState(false);
+  const [locationDeclined, setLocationDeclined] = useState(false);
+  const [requestingLocation, setRequestingLocation] = useState(false);
 
   const fetchPlaceLabel = async (lat: number, lon: number) => {
     try {
@@ -100,17 +102,42 @@ const ConnectionsWidget = () => {
             accuracy: position.coords.accuracy,
           };
           setLocation(coords);
+          setLocationDeclined(false);
           setError('');
           fetchPlaceLabel(coords.lat, coords.lon);
           pushLocation(coords, true).catch(() => {});
           setConnectionsVisible(true);
           resolve(coords);
         },
-        () => reject(new Error('Location needed to see who\'s nearby. Allow it when your browser asks.')),
-        { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 }
+        (geoErr) => {
+          const code = geoErr?.code;
+          if (code === 1) {
+            reject(new Error('Location blocked. On iPhone: Settings → Safari → Location → Allow, then tap Yes again.'));
+          } else if (code === 2) {
+            reject(new Error('Could not find your location. Try again outdoors or with Wi‑Fi on.'));
+          } else if (code === 3) {
+            reject(new Error('Location timed out. Tap Yes to try again.'));
+          } else {
+            reject(new Error('Location needed to see who\'s nearby.'));
+          }
+        },
+        { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }
       );
     });
   }, [pushLocation]);
+
+  const requestLocationAccess = useCallback(async () => {
+    setRequestingLocation(true);
+    setError('');
+    setLocationDeclined(false);
+    try {
+      await ensureLocation();
+    } catch (err: unknown) {
+      setError(formatAxiosError(err, 'Could not get location'));
+    } finally {
+      setRequestingLocation(false);
+    }
+  }, [ensureLocation]);
 
   const loadBuzzes = useCallback(async () => {
     if (!user?.id) return;
@@ -164,7 +191,6 @@ const ConnectionsWidget = () => {
       connectionsAPI.getPrefs().then((p) => {
         setConnectionsVisible(p.connectionsVisible);
       }).catch(() => {});
-      ensureLocation().catch(() => {});
       loadBuzzes();
     }
     return () => {
@@ -172,7 +198,7 @@ const ConnectionsWidget = () => {
         clearInterval(locationIntervalRef.current);
       }
     };
-  }, [user?.id, ensureLocation, loadBuzzes]);
+  }, [user?.id, loadBuzzes]);
 
   useEffect(() => {
     if (location && user?.id) {
@@ -245,7 +271,10 @@ const ConnectionsWidget = () => {
     setError('');
     try {
       let coords = location;
-      if (!coords) coords = await ensureLocation();
+      if (!coords) {
+        setLocationDeclined(false);
+        coords = await ensureLocation();
+      }
       await refreshNearby(coords);
       await loadBuzzes();
       setView('nearby');
@@ -387,11 +416,58 @@ const ConnectionsWidget = () => {
     );
   };
 
+  const renderLocationPrompt = () => {
+    if (location) return null;
+    return (
+      <div
+        style={{
+          marginBottom: 14,
+          padding: '14px 12px',
+          borderRadius: 10,
+          border: '2px solid rgba(255, 107, 157, 0.5)',
+          background: 'rgba(255, 107, 157, 0.12)',
+        }}
+      >
+        <p style={{ margin: '0 0 8px', fontWeight: 700, color: '#fff', fontFamily: 'Orbitron, monospace', fontSize: 13 }}>
+          Use your location?
+        </p>
+        <p style={{ margin: '0 0 12px', fontSize: 12, color: '#d1d5db', lineHeight: 1.45 }}>
+          See who&apos;s nearby and match with people around you. Tap <strong>Yes</strong> — your phone will ask to allow location (you can say no there too).
+        </p>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            className="auth-button"
+            disabled={requestingLocation || loading}
+            onClick={requestLocationAccess}
+            style={{ flex: 1, minWidth: 120, margin: 0 }}
+          >
+            {requestingLocation ? 'Waiting…' : 'Yes, use location'}
+          </button>
+          <button
+            type="button"
+            className="auth-button secondary"
+            disabled={requestingLocation || loading}
+            onClick={() => setLocationDeclined(true)}
+            style={{ flex: 1, minWidth: 100, margin: 0, background: 'rgba(255,255,255,0.1)' }}
+          >
+            No thanks
+          </button>
+        </div>
+        {locationDeclined && (
+          <p style={{ margin: '10px 0 0', fontSize: 11, color: '#9ca3af' }}>
+            Location off — you can still browse. Tap &quot;Yes, use location&quot; anytime to turn it on.
+          </p>
+        )}
+      </div>
+    );
+  };
+
   const renderNearbyList = () => {
     if (!location) {
       return (
-        <p style={{ color: '#9ca3af', fontSize: '12px', fontFamily: 'Orbitron, monospace', textAlign: 'center', padding: '20px 0' }}>
-          Allow location to see who&apos;s nearby.
+        <p style={{ color: '#9ca3af', fontSize: '12px', fontFamily: 'Orbitron, monospace', textAlign: 'center', padding: '12px 0' }}>
+          Turn on location above to see who&apos;s nearby.
         </p>
       );
     }
@@ -513,6 +589,7 @@ const ConnectionsWidget = () => {
           <p style={{ marginBottom: '14px', color: '#9ca3af', fontFamily: 'Orbitron, monospace', fontSize: '12px' }}>
             Nearby people update automatically. Send interest and wait for their response — mutual interest adds you both to Communications.
           </p>
+          {renderLocationPrompt()}
           {buzzes.received.some((b) => b.status === 'pending') && (
             <div
               style={{

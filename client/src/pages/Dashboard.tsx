@@ -275,7 +275,6 @@ const Dashboard = () => {
         }}
       />
       <WalkingPartnerPopup
-        hideBar={!!openWidget}
         onOpenChat={(userId) => {
           setOpenChatWithUserId(userId);
           setOpenWidget('chat');

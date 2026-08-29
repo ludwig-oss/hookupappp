@@ -8,18 +8,15 @@ import './WalkingPartnerPopup.css';
 
 type Props = {
   onOpenChat: (userId: string) => void;
-  /** Hide home-only walk bar so it does not conflict with Connections visibility. */
-  hideBar?: boolean;
 };
 
-export default function WalkingPartnerPopup({ onOpenChat, hideBar }: Props) {
+export default function WalkingPartnerPopup({ onOpenChat }: Props) {
   const { user, updateUser } = useContext(AuthContext);
   const [suggestion, setSuggestion] = useState<WalkSuggestion | null>(null);
   const [incoming, setIncoming] = useState<WalkIncomingInterest | null>(null);
   const [showQuiz, setShowQuiz] = useState(false);
   const [loading, setLoading] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [nearbyDiscoverable, setNearbyDiscoverable] = useState(true);
   const [homeSet, setHomeSet] = useState(false);
   const coordsRef = useRef<{ lat: number; lon: number } | null>(null);
   const watchIdRef = useRef<number | null>(null);
@@ -48,7 +45,6 @@ export default function WalkingPartnerPopup({ onOpenChat, hideBar }: Props) {
       setIncoming(null);
 
       const data = await walkMatchAPI.getSuggestions(lat, lon);
-      setNearbyDiscoverable(data.nearbyDiscoverable !== false);
       setHomeSet(data.homeSet);
       if (data.nearbyDiscoverable !== false && user.nearbyDiscoverable === false) {
         updateUser({ nearbyDiscoverable: true });
@@ -102,32 +98,6 @@ export default function WalkingPartnerPopup({ onOpenChat, hideBar }: Props) {
       if (watchIdRef.current != null) navigator.geolocation.clearWatch(watchIdRef.current);
     };
   }, [user?.id, user?.outdoorWalkEnabled, poll]);
-
-  const toggleNearby = async (next: boolean) => {
-    if (!coordsRef.current) {
-      setActionError('Turn on location to use nearby.');
-      return;
-    }
-    const { lat, lon } = coordsRef.current;
-    setLoading(true);
-    setActionError(null);
-    try {
-      if (next && !homeSet) {
-        await walkMatchAPI.updateSettings({ setHome: true, lat, lon });
-        setHomeSet(true);
-        updateUser({ homeLocation: { lat, lon } });
-      }
-      const res = await walkMatchAPI.updateSettings({ nearbyDiscoverable: next, lat, lon });
-      const visible = res.user?.nearbyDiscoverable !== false;
-      setNearbyDiscoverable(visible);
-      updateUser({ nearbyDiscoverable: visible, homeLocation: res.user?.homeLocation ?? user?.homeLocation });
-      poll();
-    } catch (err: unknown) {
-      setActionError(formatAxiosError(err, 'Could not update nearby visibility'));
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleInterest = async (targetId: string) => {
     setLoading(true);
@@ -199,50 +169,22 @@ export default function WalkingPartnerPopup({ onOpenChat, hideBar }: Props) {
     }
   };
 
-  const nearbyToggleBar =
-    hideBar || user?.outdoorWalkEnabled === false ? null : (
-      <div className="walk-nearby-bar">
-        <div>
-          <strong>Available nearby</strong>
-          <p className="walk-nearby-hint">
-            {nearbyDiscoverable
-              ? 'People nearby can see you — matches go to Communications.'
-              : 'Off — turn on to see who is near you.'}
-          </p>
-        </div>
-        <button
-          type="button"
-          className={`walk-nearby-switch${nearbyDiscoverable ? ' on' : ''}`}
-          disabled={loading}
-          aria-pressed={nearbyDiscoverable}
-          onClick={() => toggleNearby(!nearbyDiscoverable)}
-        >
-          {nearbyDiscoverable ? 'On' : 'Off'}
-        </button>
-      </div>
-    );
-
   if (showQuiz) {
     return (
-      <>
-        {nearbyToggleBar}
-        <LifeQuizModal
-          onClose={() => setShowQuiz(false)}
-          onComplete={() => {
-            setShowQuiz(false);
-            updateUser({ lifeQuizCompleted: true });
-            poll();
-          }}
-        />
-      </>
+      <LifeQuizModal
+        onClose={() => setShowQuiz(false)}
+        onComplete={() => {
+          setShowQuiz(false);
+          updateUser({ lifeQuizCompleted: true });
+          poll();
+        }}
+      />
     );
   }
 
   if (incoming) {
     return (
-      <>
-        {nearbyToggleBar}
-        <div className="walk-popup-overlay" role="dialog" aria-modal="true">
+      <div className="walk-popup-overlay" role="dialog" aria-modal="true">
           <div className="walk-popup-card">
             <p className="walk-popup-badge">Someone is near</p>
             <h2>{incoming.fromUser?.name || 'A match'} is interested</h2>
@@ -259,20 +201,17 @@ export default function WalkingPartnerPopup({ onOpenChat, hideBar }: Props) {
                 Yes — let&apos;s chat
               </button>
             </div>
-          </div>
         </div>
-      </>
+      </div>
     );
   }
 
   if (!suggestion) {
-    return nearbyToggleBar;
+    return null;
   }
 
   return (
-    <>
-      {nearbyToggleBar}
-      <div className="walk-popup-overlay" role="dialog" aria-modal="true">
+    <div className="walk-popup-overlay" role="dialog" aria-modal="true">
         <div className="walk-popup-card">
           <p className="walk-popup-badge">Someone is near</p>
           <div className="walk-popup-profile">
@@ -304,6 +243,5 @@ export default function WalkingPartnerPopup({ onOpenChat, hideBar }: Props) {
           </div>
         </div>
       </div>
-    </>
   );
 }

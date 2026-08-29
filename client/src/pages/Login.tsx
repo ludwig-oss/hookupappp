@@ -236,16 +236,18 @@ const Login = () => {
           >
             Continue with Facebook
           </button>
-          <button type="button" className="auth-button" style={{ background: 'rgba(255,107,157,0.2)' }} onClick={() => setShowQr(true)}>
-            📱 Show QR code → Sign up
+          <button type="button" className="auth-button signup-qr-desktop" style={{ background: 'rgba(255,107,157,0.2)' }} onClick={() => setShowQr(true)}>
+            Sign up on mobile
           </button>
         </div>
 
         {showQr && (
           <div className="love-feed-modal-overlay" style={{ zIndex: 50 }} onClick={() => setShowQr(false)}>
             <div className="auth-card" style={{ maxWidth: 320, textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
-              <h2 className="auth-title" style={{ fontSize: 20 }}>Scan to Sign Up</h2>
-              <p className="auth-subtitle" style={{ fontSize: 13 }}>Friends scan this QR → open Hook Up sign-up and enter their details.</p>
+              <h2 className="auth-title" style={{ fontSize: 20 }}>Sign up on mobile</h2>
+              <p className="auth-subtitle" style={{ fontSize: 13 }}>
+                Scan with your phone camera to open the sign-up page.
+              </p>
               <img src={qrSrc} alt="Sign up QR code" width={220} height={220} style={{ margin: '12px auto', display: 'block', borderRadius: 8, background: '#fff', padding: 8 }} />
               <p style={{ fontSize: 11, wordBreak: 'break-all', opacity: 0.8 }}>{signupUrl}</p>
               <button type="button" className="auth-button" onClick={() => setShowQr(false)}>Close</button>

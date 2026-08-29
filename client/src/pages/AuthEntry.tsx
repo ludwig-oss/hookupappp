@@ -7,7 +7,6 @@ import { walkMatchAPI } from '../api/walkMatch';
 import { API_BASE } from '../api/config';
 import { formatAxiosError } from '../lib/apiError';
 import { redirectToOAuth, type OAuthProvider } from '../lib/oauth';
-import QrScannerPanel from '../components/QrScannerPanel';
 import { loginWithPasskey, passkeysSupported } from '../lib/passkeyAuth';
 import './Auth.css';
 import './Legal.css';
@@ -79,7 +78,7 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
   }, []);
 
   const qrSrc = useMemo(
-    () => `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(signupShareUrl)}`,
+    () => `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(signupShareUrl)}`,
     [signupShareUrl]
   );
 
@@ -226,32 +225,23 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
     }
   };
 
-  const onQrScan = (url: string) => {
-    try {
-      const parsed = new URL(url, window.location.origin);
-      if (parsed.pathname.includes('signup')) {
-        window.location.href = parsed.toString();
-      } else {
-        setMessage('QR scanned — open the link in your browser if needed.');
-      }
-    } catch {
-      setMessage(url);
-    }
-  };
-
   return (
     <div className="auth-container">
       <div className="auth-card" style={{ maxWidth: 720 }}>
         <Link to="/" className="back-link">← Back</Link>
         <h1 className="auth-title">{mode === 'signup' ? 'Join Hook Up' : 'Welcome Back'}</h1>
-        <p className="auth-subtitle">Google · Apple · Email · Phone · QR — all on one screen</p>
+        <p className="auth-subtitle">
+          {mode === 'signup'
+            ? 'Create your account with Google, Apple, or email.'
+            : 'Sign in with Google, Apple, email, or phone.'}
+        </p>
 
         {error && <div className="error-message">{error}</div>}
         {message && <div className="success-message">{message}</div>}
         {oauthLoading && (
           <div className="oauth-wait-banner">
             <div className="oauth-spinner" aria-hidden />
-            <span>Connecting to server…</span>
+            <span>Connecting…</span>
           </div>
         )}
 
@@ -325,7 +315,7 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
           <>
             <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
               <button type="button" className="auth-button" style={{ flex: 1, minWidth: 100, opacity: loginMethod === 'email' ? 1 : 0.65 }} onClick={() => setLoginMethod('email')}>Email / username</button>
-              <button type="button" className="auth-button" style={{ flex: 1, minWidth: 100, opacity: loginMethod === 'phone' ? 1 : 0.65 }} onClick={() => setLoginMethod('phone')}>Phone + code</button>
+              <button type="button" className="auth-button" style={{ flex: 1, minWidth: 100, opacity: loginMethod === 'phone' ? 1 : 0.65 }} onClick={() => setLoginMethod('phone')}>Phone (SMS)</button>
               <button type="button" className="auth-button" style={{ flex: 1, minWidth: 100, opacity: loginMethod === 'passkey' ? 1 : 0.65 }} onClick={() => setLoginMethod('passkey')}>Face / Touch ID</button>
             </div>
             {loginMethod === 'email' ? (
@@ -378,17 +368,14 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
           </>
         )}
 
-        <section style={{ marginTop: 24, paddingTop: 16, borderTop: '1px solid rgba(255,255,255,0.15)' }}>
-          <h2 className="auth-title" style={{ fontSize: 18 }}>QR sign-up</h2>
-          <p className="auth-subtitle" style={{ fontSize: 13 }}>Share or scan to open this sign-up page</p>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'flex-start' }}>
-            <img src={qrSrc} alt="Sign-up QR" width={180} height={180} style={{ background: '#fff', padding: 8, borderRadius: 8 }} />
-            <div style={{ flex: 1, minWidth: 200 }}>
-              <p style={{ fontSize: 11, wordBreak: 'break-all', opacity: 0.85 }}>{signupShareUrl}</p>
-              <QrScannerPanel onScan={onQrScan} onError={setError} />
-            </div>
-          </div>
-        </section>
+        <div className="signup-qr-card signup-qr-desktop">
+          <p className="signup-qr-label">Sign up on your phone</p>
+          <p className="signup-qr-hint">
+            On a computer? Scan with your phone camera to open the sign-up page on mobile.
+          </p>
+          <img src={qrSrc} alt="Sign-up QR code" width={200} height={200} />
+          <p className="signup-qr-link">{signupShareUrl.replace(/^https?:\/\//, '')}</p>
+        </div>
 
         <p className="auth-switch" style={{ marginTop: 16 }}>
           {mode === 'signup' ? (

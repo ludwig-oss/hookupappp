@@ -361,6 +361,54 @@
   }
 }
 
+.signup-qr-card {
+  text-align: center;
+  margin-top: 24px;
+  padding: 16px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+}
+
+.signup-qr-desktop {
+  display: none;
+}
+
+@media (min-width: 768px) {
+  .signup-qr-desktop {
+    display: block;
+  }
+}
+
+.signup-qr-card img {
+  background: #fff;
+  padding: 8px;
+  border-radius: 8px;
+  margin: 0 auto;
+  display: block;
+}
+
+.signup-qr-label {
+  margin: 12px 0 4px;
+  font-family: 'Orbitron', monospace;
+  font-size: 15px;
+  color: #ff6b9d;
+}
+
+.signup-qr-hint {
+  margin: 0 0 12px;
+  font-size: 13px;
+  opacity: 0.85;
+  line-height: 1.4;
+}
+
+.signup-qr-link {
+  margin: 10px 0 0;
+  font-size: 11px;
+  opacity: 0.75;
+  word-break: break-all;
+}
+
 
 
 

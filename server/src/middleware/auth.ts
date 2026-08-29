@@ -14,6 +14,7 @@ function getJwtSecret(): string {
 
 export interface AuthRequest extends Request {
   userId?: string;
+  userEmail?: string;
 }
 
 export const authenticateToken = async (req: AuthRequest, res: Response, next: NextFunction) => {
@@ -46,6 +47,7 @@ export const authenticateToken = async (req: AuthRequest, res: Response, next: N
     }
 
     req.userId = uid;
+    req.userEmail = decoded.email ? String(decoded.email).toLowerCase() : undefined;
     if (req.body && typeof req.body === 'object') {
       if ('userId' in req.body) req.body.userId = uid;
       if ('fromUserId' in req.body) req.body.fromUserId = uid;

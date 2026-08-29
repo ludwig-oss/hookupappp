@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import {
   getUserById,
+  getUserByEmail,
   updateUserProfile,
   addHighlight,
   removeHighlight,
@@ -12,6 +13,8 @@ import {
   pruneExpiredStories,
 } from '../models/user.js';
 import { getActiveRelationship } from '../models/relationship.js';
+import { runWithSystem } from '../db/context.js';
+import type { AuthRequest } from '../middleware/auth.js';
 import { readFile, writeFile } from 'fs/promises';
 import { join } from 'path';
 import { v4 as uuidv4 } from 'uuid';
@@ -116,20 +119,27 @@ export const submitPhotoVerification = async (req: Request, res: Response) => {
 
 export const getUserProfile = async (req: Request, res: Response) => {
   try {
+    const authUserId = (req as AuthRequest).userId as string;
+    const authEmail = (req as AuthRequest).userEmail;
+    const paramId = req.params.userId;
     const profileUserId =
-      req.params.userId === 'me' || !req.params.userId ? (req as any).userId : req.params.userId;
+      paramId === 'me' || !paramId ? authUserId : paramId;
     if (!profileUserId) {
       return res.status(401).json({ error: 'Unauthorized. Send Authorization: Bearer <token> for /me' });
     }
 
     await pruneExpiredStories(profileUserId);
-    const user = await getUserById(profileUserId);
+    let user = await getUserById(profileUserId);
+    const viewingOwnProfile = authUserId === profileUserId;
+    if (!user && viewingOwnProfile) {
+      user = await runWithSystem(() => getUserById(profileUserId));
+      if (!user && authEmail) {
+        user = await runWithSystem(() => getUserByEmail(authEmail));
+      }
+    }
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
-
-    const authUserId = (req as any).userId as string;
-    const viewingOwnProfile = authUserId === profileUserId;
     const now = Date.now();
     const ownerCloseFriends = user.closeFriendIds || [];
     const visibleStories = (user.stories || []).filter((s) => {

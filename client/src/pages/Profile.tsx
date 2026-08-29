@@ -114,6 +114,21 @@ const Profile = () => {
 
   const loadProfile = async () => {
     if (!user?.id) return;
+    setLoading(true);
+    setError('');
+    const buildFallbackProfile = (): ProfileData => ({
+      id: user.id,
+      email: user.email || '',
+      name: user.name || '',
+      username: user.username || '',
+      profilePicture: user.profilePicture ?? null,
+      profileSetupComplete: Boolean(user.profileSetupComplete),
+      highlights: [],
+      stories: [],
+      disappearingPhotos: [],
+      gender: user.gender,
+      photoVerifiedAt: user.photoVerifiedAt ?? null,
+    });
     try {
       const profileData = await profileAPI.getCurrentUser();
       setProfile(profileData);
@@ -149,10 +164,12 @@ const Profile = () => {
       setOverallRating(revData.overall ?? null);
     } catch (err: any) {
       const status = err?.response?.status;
-      if (status === 401) {
-        setError('Could not refresh profile right now. You are still signed in — try again or reload.');
-      } else if (status === 404) {
-        setError('Could not load profile. Tap refresh or try again — you are still signed in.');
+      if (status === 404 || status === 401 || status === 502 || status === 503) {
+        setProfile(buildFallbackProfile());
+        setAge(String(user.age ?? ''));
+        setCountry(String(user.country ?? ''));
+        setCity(String(user.city ?? ''));
+        setError('');
       } else {
         setError('Failed to load profile');
       }

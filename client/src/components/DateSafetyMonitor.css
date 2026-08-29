@@ -112,3 +112,12 @@
   color: #00d4ff;
   margin-left: auto;
 }
+
+.date-safety-voice-wrap {
+  position: fixed;
+  bottom: 80px;
+  left: 12px;
+  right: 12px;
+  max-width: 420px;
+  z-index: 9000;
+}

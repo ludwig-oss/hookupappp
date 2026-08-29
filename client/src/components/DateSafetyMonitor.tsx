@@ -1,6 +1,8 @@
 import { useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { AuthContext } from '../context/AuthContext';
 import { safetyAPI, MeetupPlan } from '../api/safety';
+import { voiceRecordingAPI } from '../api/voiceRecording';
+import VoiceSafetyPanel from './VoiceSafetyPanel';
 import './DateSafetyMonitor.css';
 
 function playAmberAlert() {
@@ -30,6 +32,8 @@ export default function DateSafetyMonitor() {
   const [trailView, setTrailView] = useState<{ planId: string; trail: Array<{ lat: number; lon: number; dwellMinutes?: number; label?: string }>; daterName?: string } | null>(null);
   const [ok360, setOk360] = useState('');
   const [loading, setLoading] = useState(false);
+  const [emergencyPin, setEmergencyPin] = useState('');
+  const [emergencyAudio, setEmergencyAudio] = useState<Array<{ id: string; audioDataUrl?: string | null }>>([]);
   const watchRef = useRef<number | null>(null);
 
   const poll = useCallback(async () => {
@@ -103,8 +107,30 @@ export default function DateSafetyMonitor() {
     }
   };
 
+  const unlockEmergencyRecording = async (planId: string) => {
+    if (!emergencyPin.trim()) {
+      alert('Enter the PIN your contact gave you.');
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await voiceRecordingAPI.emergencyAccess(planId, emergencyPin.trim());
+      setEmergencyAudio(res.chunks.filter((c) => c.audioDataUrl));
+      alert(res.message);
+    } catch (e: unknown) {
+      alert((e as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Access denied');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <>
+      {activePlanId && (
+        <div className="date-safety-voice-wrap">
+          <VoiceSafetyPanel mode="date" planId={activePlanId} />
+        </div>
+      )}
       {dueCheckIn && (
         <div className="date-safety-overlay">
           <div className="date-safety-card">
@@ -137,11 +163,27 @@ export default function DateSafetyMonitor() {
 
       {dangerAlerts.map((p) => (
         <div key={p.id} className="date-safety-amber">
-          <p className="amber-title">⚠ AMBER ALERT — Date safety</p>
+          <p className="amber-title">Safety signal — date help</p>
           <p>Your contact may need help. View their safety trail (red dots = stops).</p>
           <button type="button" disabled={loading} onClick={() => openTrail(p.id)}>
             View safety trail
           </button>
+          <div style={{ marginTop: 10 }}>
+            <p style={{ fontSize: 12 }}>Voice recording (PIN required — missing/emergency only):</p>
+            <input
+              type="password"
+              placeholder="Emergency PIN"
+              value={emergencyPin}
+              onChange={(e) => setEmergencyPin(e.target.value)}
+              style={{ marginRight: 8, padding: 6 }}
+            />
+            <button type="button" disabled={loading} onClick={() => unlockEmergencyRecording(p.id)}>
+              Unlock recording
+            </button>
+            {emergencyAudio.map((c) =>
+              c.audioDataUrl ? <audio key={c.id} controls src={c.audioDataUrl} style={{ display: 'block', width: '100%', marginTop: 6 }} /> : null
+            )}
+          </div>
         </div>
       ))}
 

@@ -8,6 +8,8 @@ export interface EmergencyContact {
   phone: string;
   email?: string;
   relationship?: string;
+  /** PIN hash for emergency contact to unlock date voice recordings */
+  recordingPinHash?: string | null;
   createdAt: Date | string;
 }
 
@@ -82,6 +84,10 @@ export interface MeetupPlan {
   dangerTriggeredVia?: 'button' | 'safe_word' | null;
   missingReportedAt?: string | null;
   emergencyContactNotifiedAt?: string | null;
+  /** Live date voice recording (Twitch-style VOD) */
+  voiceRecordingSessionId?: string | null;
+  voiceRecordingEnabled?: boolean;
+  emergencyRecordingPinHash?: string | null;
   createdAt: Date | string;
 }
 

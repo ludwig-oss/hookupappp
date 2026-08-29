@@ -21,7 +21,7 @@ import WalkingPartnerPopup from '../components/WalkingPartnerPopup';
 import CoachVoteSwipePopup from '../components/CoachVoteSwipePopup';
 import DateSafetyMonitor from '../components/DateSafetyMonitor';
 import SchoolDailyNotification from '../components/SchoolDailyNotification';
-import WomenSafetySOS from '../components/WomenSafetySOS';
+import PersonalSafetyShield from '../components/PersonalSafetyShield';
 import MensDatingTipPopup from '../components/MensDatingTipPopup';
 import WomensDatingTipPopup from '../components/WomensDatingTipPopup';
 import MensRespectSafetyPopup from '../components/MensRespectSafetyPopup';
@@ -285,7 +285,7 @@ const Dashboard = () => {
       <MensDatingTipPopup />
       <WomensDatingTipPopup />
       <MensRespectSafetyPopup />
-      {!openWidget && <WomenSafetySOS />}
+      {!openWidget && <PersonalSafetyShield />}
       <div className="stars-background" aria-hidden>
         <div className="love-bg-hearts" />
         <div className="love-bg-float">

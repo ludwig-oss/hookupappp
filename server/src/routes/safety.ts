@@ -32,6 +32,40 @@ import {
   getBlockedUsers,
   unblockUser,
 } from '../controllers/safetyController.js';
+import {
+  createDateRecordingHandler,
+  advanceConsentHandler,
+  uploadChunkHandler,
+  muteSensitiveHandler,
+  unmuteSensitiveHandler,
+  endRecordingHandler,
+  deleteRecordingHandler,
+  homeReviewHandler,
+  partnerDeleteHandler,
+  emergencyAccessHandler,
+  policeRequestHandler,
+  setContactPinHandler,
+  setPlanPinHandler,
+  getDateRecordingHandler,
+  voiceGuardSettingsHandler,
+  toggleVoiceGuardHandler,
+  voiceGuardConsentHandler,
+  startGatheringRecordingHandler,
+  detectGatheringHandler,
+  listenChunksHandler,
+  pollVoiceHandler,
+} from '../controllers/dateVoiceController.js';
+import {
+  getShieldSettingsHandler,
+  updateShieldSettingsHandler,
+  armShieldHandler,
+  disarmShieldHandler,
+  triggerSafetySignalHandler,
+  cancelFalseAlarmHandler,
+  resolveSignalHandler,
+  pollSafetySignalsHandler,
+  checkActivationPhraseHandler,
+} from '../controllers/personalSafetyController.js';
 import { authenticateToken } from '../middleware/auth.js';
 import type { AuthRequest } from '../middleware/auth.js';
 import { isAdminUserId } from '../middleware/requireAdmin.js';
@@ -70,6 +104,40 @@ router.post('/meetup-plan/:planId/ok-rest', okRestOfDateHandler);
 router.post('/meetup-plan/:planId/end-date', endDateSessionHandler);
 router.get('/emergency-trail/:planId', getEmergencyTrailHandler);
 router.post('/date-safe-word', setDateSafeWordHandler);
+
+// Date voice recording (Twitch-style VOD safety) + relationship gathering guard
+router.get('/voice-recording/poll', pollVoiceHandler);
+router.get('/voice-recording/date/:planId', getDateRecordingHandler);
+router.post('/voice-recording/date/:planId/create', createDateRecordingHandler);
+router.post('/voice-recording/date/:planId/pin', setPlanPinHandler);
+router.post('/voice-recording/:sessionId/consent', advanceConsentHandler);
+router.post('/voice-recording/:sessionId/chunk', uploadChunkHandler);
+router.post('/voice-recording/:sessionId/mute-sensitive', muteSensitiveHandler);
+router.post('/voice-recording/:sessionId/unmute-sensitive', unmuteSensitiveHandler);
+router.post('/voice-recording/:sessionId/end', endRecordingHandler);
+router.delete('/voice-recording/:sessionId', deleteRecordingHandler);
+router.post('/voice-recording/:sessionId/home-review', homeReviewHandler);
+router.post('/voice-recording/:sessionId/partner-delete', partnerDeleteHandler);
+router.post('/voice-recording/emergency-access/:planId', emergencyAccessHandler);
+router.post('/voice-recording/police-request/:recordingId', policeRequestHandler);
+router.post('/voice-recording/emergency-contact-pin', setContactPinHandler);
+router.get('/voice-recording/guard/:partnerUserId', voiceGuardSettingsHandler);
+router.post('/voice-recording/guard/toggle', toggleVoiceGuardHandler);
+router.post('/voice-recording/guard/consent', voiceGuardConsentHandler);
+router.post('/voice-recording/guard/start', startGatheringRecordingHandler);
+router.post('/voice-recording/guard/detect-gathering', detectGatheringHandler);
+router.get('/voice-recording/listen/:sessionId', listenChunksHandler);
+
+// Personal safety shield (not "amber alert") — configurable triggers + persistent server alerts
+router.get('/shield', getShieldSettingsHandler);
+router.put('/shield', updateShieldSettingsHandler);
+router.post('/shield/arm', armShieldHandler);
+router.post('/shield/disarm', disarmShieldHandler);
+router.post('/shield/trigger', triggerSafetySignalHandler);
+router.post('/shield/cancel-false-alarm', cancelFalseAlarmHandler);
+router.post('/shield/resolve', resolveSignalHandler);
+router.get('/shield/poll', pollSafetySignalsHandler);
+router.post('/shield/check-phrase', checkActivationPhraseHandler);
 
 // Date Sharing
 router.post('/share-date', shareDateWithContacts);

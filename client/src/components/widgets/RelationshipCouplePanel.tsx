@@ -172,6 +172,9 @@ export default function RelationshipCouplePanel({
 
   if (!hub) return null;
 
+  const extraGames = (hub.extraActivities || []).filter((a) => a.category === 'game');
+  const extraBonding = (hub.extraActivities || []).filter((a) => a.category === 'bonding');
+
   const embed = watchUrl ? youtubeEmbed(watchUrl) : null;
   const health = hub.health as {
     score: number;
@@ -298,12 +301,30 @@ export default function RelationshipCouplePanel({
               <span style={{ display: 'block', fontSize: 10, color: '#9ca3af', marginTop: 4 }}>{act.prompt}</span>
             </button>
           ))}
+          {extraBonding.length > 0 && (
+            <>
+              <p style={{ fontSize: 10, color: '#c4b5fd', marginTop: 4 }}>More ways to connect</p>
+              {extraBonding.map((act) => (
+                <button
+                  key={act.id}
+                  type="button"
+                  className="chat-back-btn"
+                  style={{ textAlign: 'left', padding: 10, fontSize: 12 }}
+                  onClick={() => runBondingActivity(act)}
+                >
+                  <span style={{ marginRight: 6 }}>{act.emoji}</span>
+                  <strong>{act.title}</strong>
+                  <span style={{ display: 'block', fontSize: 10, color: '#9ca3af', marginTop: 4 }}>{act.prompt}</span>
+                </button>
+              ))}
+            </>
+          )}
         </div>
       )}
 
       {tab === 'games' && (
         <div>
-          <p style={{ fontSize: 11, marginBottom: 8 }}>Games add +8–12 health when you play together.</p>
+          <p style={{ fontSize: 11, marginBottom: 8 }}>Games add +7–12 health when you play together.</p>
           {!xoChallenge && (
             <button type="button" className="select-user-btn" style={{ width: '100%', marginBottom: 10, fontSize: 12 }} onClick={startXo}>
               ⭕ Tic-Tac-Toe (+12 health)
@@ -321,6 +342,25 @@ export default function RelationshipCouplePanel({
                   {cell}
                 </button>
               ))}
+            </div>
+          )}
+          {extraGames.length > 0 && (
+            <div style={{ marginBottom: 12 }}>
+              <p style={{ fontSize: 10, color: '#c4b5fd', marginBottom: 6 }}>Quick couple games</p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {extraGames.map((act) => (
+                  <button
+                    key={act.id}
+                    type="button"
+                    className="chat-back-btn"
+                    style={{ textAlign: 'left', padding: 8, fontSize: 11 }}
+                    onClick={() => runBondingActivity(act)}
+                  >
+                    {act.emoji} <strong>{act.title}</strong>
+                    <span style={{ display: 'block', fontSize: 10, color: '#9ca3af', marginTop: 2 }}>{act.prompt}</span>
+                  </button>
+                ))}
+              </div>
             </div>
           )}
           {hub.coupleQuiz[quizIdx] && (

@@ -16,7 +16,17 @@ export type CoupleActivityType =
   | 'cook_together'
   | 'memory_share'
   | 'future_dream'
-  | 'voice_love';
+  | 'voice_love'
+  | 'would_you_rather'
+  | 'this_or_that'
+  | 'two_truths_lie'
+  | 'emoji_story'
+  | 'love_language'
+  | 'song_dedication'
+  | 'date_night_plan'
+  | 'compliment_duel'
+  | 'bucket_list'
+  | 'deep_question';
 
 export interface CoupleHealthBoost {
   id: string;
@@ -44,6 +54,16 @@ export const ACTIVITY_POINTS: Record<CoupleActivityType, number> = {
   memory_share: 8,
   future_dream: 9,
   voice_love: 10,
+  would_you_rather: 8,
+  this_or_that: 7,
+  two_truths_lie: 9,
+  emoji_story: 8,
+  love_language: 10,
+  song_dedication: 8,
+  date_night_plan: 9,
+  compliment_duel: 9,
+  bucket_list: 8,
+  deep_question: 7,
 };
 
 export const ACTIVITY_LABELS: Record<CoupleActivityType, string> = {
@@ -62,6 +82,16 @@ export const ACTIVITY_LABELS: Record<CoupleActivityType, string> = {
   memory_share: 'Shared memory',
   future_dream: 'Future dream date',
   voice_love: 'Voice love note',
+  would_you_rather: 'Would you rather',
+  this_or_that: 'This or that',
+  two_truths_lie: 'Two truths & a lie',
+  emoji_story: 'Emoji story',
+  love_language: 'Love language check-in',
+  song_dedication: 'Song dedication',
+  date_night_plan: 'Date night plan',
+  compliment_duel: 'Compliment duel',
+  bucket_list: 'Couple bucket list',
+  deep_question: 'Deep question',
 };
 
 /** Quick actions shown in couple hub — each raises the health bar. */
@@ -123,6 +153,102 @@ export const COUPLE_BONDING_ACTIVITIES: Array<{
   },
 ];
 
+/** 10 extra couple games & bonding ideas (app picks — raises health bar). */
+export const COUPLE_EXTRA_ACTIVITIES: Array<{
+  id: CoupleActivityType;
+  category: 'game' | 'bonding';
+  emoji: string;
+  title: string;
+  prompt: string;
+  messageTemplate: string;
+}> = [
+  {
+    id: 'would_you_rather',
+    category: 'game',
+    emoji: '🎲',
+    title: 'Would you rather',
+    prompt: 'Pick one — your partner answers next.',
+    messageTemplate:
+      '🎲 Would you rather: always know what I am thinking, OR never have a boring day together again?',
+  },
+  {
+    id: 'this_or_that',
+    category: 'game',
+    emoji: '⚡',
+    title: 'This or that',
+    prompt: 'Fast choices — learn tiny preferences about each other.',
+    messageTemplate: '⚡ This or that: sunrise date 🌅 or stargazing night 🌙?',
+  },
+  {
+    id: 'two_truths_lie',
+    category: 'game',
+    emoji: '🃏',
+    title: 'Two truths & a lie',
+    prompt: 'Share 3 statements — partner guesses the lie.',
+    messageTemplate:
+      '🃏 Two truths & a lie: 1) … 2) … 3) … — which one is the lie?',
+  },
+  {
+    id: 'emoji_story',
+    category: 'game',
+    emoji: '😄',
+    title: 'Emoji story',
+    prompt: 'Tell a mini love story using only emojis.',
+    messageTemplate: '😄 Emoji story about us: 💑☕🌧️🏠❤️ — your turn!',
+  },
+  {
+    id: 'love_language',
+    category: 'bonding',
+    emoji: '💬',
+    title: 'Love language moment',
+    prompt: 'Say how you feel loved — words, time, touch, gifts, or acts of service.',
+    messageTemplate:
+      '💬 Love language check-in: I feel most loved when you … — what about you?',
+  },
+  {
+    id: 'song_dedication',
+    category: 'bonding',
+    emoji: '🎵',
+    title: 'Song dedication',
+    prompt: 'Send a song link or title that reminds you of them.',
+    messageTemplate: '🎵 This song reminds me of you: … — listen when you can?',
+  },
+  {
+    id: 'date_night_plan',
+    category: 'bonding',
+    emoji: '🌙',
+    title: 'Plan date night',
+    prompt: 'Suggest a concrete plan — day, time, and vibe.',
+    messageTemplate: '🌙 Date night plan: this … at … — dress code: cozy / fancy / adventure?',
+  },
+  {
+    id: 'compliment_duel',
+    category: 'bonding',
+    emoji: '💕',
+    title: 'Compliment duel',
+    prompt: 'Trade three genuine compliments — no repeats.',
+    messageTemplate:
+      '💕 Compliment duel — my three for you: 1) … 2) … 3) … — hit me back with yours!',
+  },
+  {
+    id: 'bucket_list',
+    category: 'bonding',
+    emoji: '📝',
+    title: 'Bucket list item',
+    prompt: 'Add one thing you want to do together this year.',
+    messageTemplate: '📝 Couple bucket list: I want us to … before the year ends. Add yours!',
+  },
+  {
+    id: 'deep_question',
+    category: 'bonding',
+    emoji: '🔮',
+    title: 'Deep question',
+    prompt: 'One thoughtful question to go beyond small talk.',
+    messageTemplate:
+      '🔮 Deep question: What is one dream you have not told me about yet — big or small?',
+  },
+];
+
 const BOOSTS_PATH = join(process.cwd(), 'server', 'data', 'relationship-health-boosts.json');
 
 async function readBoosts(): Promise<CoupleHealthBoost[]> {
@@ -158,12 +284,18 @@ export async function recordHealthBoost(params: {
     return { boost: recentSame[recentSame.length - 1], totalBoostPoints: total };
   }
 
+  const points = ACTIVITY_POINTS[params.activity];
+  if (points == null) {
+    const total = sumBoostPoints(list, params.relationshipId);
+    throw new Error(`Unknown activity: ${params.activity}`);
+  }
+
   const boost: CoupleHealthBoost = {
     id: Date.now().toString() + Math.random().toString(36).slice(2, 5),
     relationshipId: params.relationshipId,
     userId: params.userId,
     activity: params.activity,
-    points: ACTIVITY_POINTS[params.activity],
+    points,
     label: ACTIVITY_LABELS[params.activity],
     createdAt: new Date().toISOString(),
   };
@@ -208,7 +340,21 @@ const MESSAGE_ACTIVITY_RULES: Array<{ pattern: RegExp; activity: CoupleActivityT
   { pattern: /walk together/i, activity: 'walk_together' },
   { pattern: /cook the same recipe/i, activity: 'cook_together' },
   { pattern: /voice love note/i, activity: 'voice_love' },
+  { pattern: /^🎲 would you rather/i, activity: 'would_you_rather' },
+  { pattern: /^⚡ this or that/i, activity: 'this_or_that' },
+  { pattern: /^🃏 two truths/i, activity: 'two_truths_lie' },
+  { pattern: /^😄 emoji story/i, activity: 'emoji_story' },
+  { pattern: /^💬 love language check-in/i, activity: 'love_language' },
+  { pattern: /^🎵 this song reminds me/i, activity: 'song_dedication' },
+  { pattern: /^🌙 date night plan/i, activity: 'date_night_plan' },
+  { pattern: /^💕 compliment duel/i, activity: 'compliment_duel' },
+  { pattern: /^📝 couple bucket list/i, activity: 'bucket_list' },
+  { pattern: /^🔮 deep question/i, activity: 'deep_question' },
 ];
+
+export function isValidCoupleActivity(activity: string): activity is CoupleActivityType {
+  return activity in ACTIVITY_POINTS;
+}
 
 /** Sync boosts from chat messages so health rises when convo gets good again. */
 export async function syncBoostsFromMessages(

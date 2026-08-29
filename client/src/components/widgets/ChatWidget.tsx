@@ -12,6 +12,8 @@ import ExperienceReviewModal from '../ExperienceReviewModal';
 import { speedDateAPI, SpeedDate } from '../../api/speedDate';
 import { connectionJourneyAPI, ConnectionJourneyResponse } from '../../api/connectionJourney';
 import RelationshipCouplePanel from './RelationshipCouplePanel';
+import VoiceSafetyPanel from '../VoiceSafetyPanel';
+import { voiceRecordingAPI } from '../../api/voiceRecording';
 import '../../pages/Dashboard.css';
 
 const formatMessageTime = (createdAt: string | Date) => {
@@ -117,6 +119,7 @@ const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId, onOpenGuides }: Ch
   // Check-in reminder (when expectedBackAt is reached)
   const [checkInPlan, setCheckInPlan] = useState<EnrichedMeetupPlan | null>(null);
   const [meetupPlans, setMeetupPlans] = useState<EnrichedMeetupPlan[]>([]);
+  const [showVoiceGuardPanel, setShowVoiceGuardPanel] = useState(false);
 
   // Search friends
   const [searchQuery, setSearchQuery] = useState('');
@@ -477,6 +480,9 @@ const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId, onOpenGuides }: Ch
       if (!content.startsWith('data:') && !meetupDismissedForChat && MEETUP_KEYWORDS.test(content)) {
         if (!boundariesDismissedForChat) setShowBoundariesModal(true);
         else setShowMeetupPopup(true);
+      }
+      if (relationship?.status === 'active' && selectedUserId === relationship.partnerUserId && !content.startsWith('data:')) {
+        voiceRecordingAPI.detectGathering(selectedUserId, content).catch(() => {});
       }
     } catch (e: any) {
       const msg = e.response?.data?.error || 'Failed to send';
@@ -1097,7 +1103,24 @@ const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId, onOpenGuides }: Ch
             {menuOpen && (
               <div className="chat-dropdown">
                 {relationship?.status === 'active' && selectedUserId === relationship.partnerUserId && (
-                  <button type="button" onClick={() => { setMenuOpen(false); if (window.confirm('Confirm you\'re no longer dating? Your partner will need to confirm too.')) handleConfirmEnd(true); }}>We&apos;re no longer dating</button>
+                  <>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        setMenuOpen(false);
+                        const next = !showVoiceGuardPanel;
+                        setShowVoiceGuardPanel(next);
+                        if (next) {
+                          await voiceRecordingAPI.toggleGuard(selectedUserId, true).catch(() => {});
+                        } else {
+                          await voiceRecordingAPI.toggleGuard(selectedUserId, false).catch(() => {});
+                        }
+                      }}
+                    >
+                      {showVoiceGuardPanel ? 'Disable gathering voice guard' : 'Enable gathering voice guard'}
+                    </button>
+                    <button type="button" onClick={() => { setMenuOpen(false); if (window.confirm('Confirm you\'re no longer dating? Your partner will need to confirm too.')) handleConfirmEnd(true); }}>We&apos;re no longer dating</button>
+                  </>
                 )}
                 <button type="button" onClick={handleEndChatAndRate}>End chat &amp; Rate</button>
                 <button type="button" onClick={handleStartSpeedDate}>Start speed date (5 days)</button>
@@ -1674,13 +1697,16 @@ const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId, onOpenGuides }: Ch
                       onClick={async () => {
                         const word = prompt('Type your safe word or leave blank for danger button:') || undefined;
                         await safetyAPI.triggerDanger(plan.id, word);
-                        alert('Emergency contact alerted (amber alert).');
+                        alert('Emergency contact notified (safety signal).');
                       }}
                     >
                       I&apos;m in danger
                     </button>
                   )}
                 </div>
+                {plan.dateSessionStatus === 'active' && (
+                  <VoiceSafetyPanel mode="date" planId={plan.id} compact />
+                )}
               </div>
             );
           })()}
@@ -1793,6 +1819,9 @@ const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId, onOpenGuides }: Ch
               <span className="chat-convo-prompt-label">Conversation idea:</span> {convoPrompt}
               <button type="button" className="chat-convo-use" onClick={() => setInputText(convoPrompt || '')}>Use this</button>
             </div>
+          )}
+          {isRelationshipThread && showVoiceGuardPanel && user?.id && selectedUserId && (
+            <VoiceSafetyPanel mode="relationship" partnerUserId={selectedUserId} partnerName={selectedName || 'partner'} />
           )}
           {isRelationshipThread && user?.id && selectedUserId && (
             <RelationshipCouplePanel

@@ -12,7 +12,7 @@ const ALGO = 'aes-256-gcm';
 const IV_LEN = 12;
 const TAG_LEN = 16;
 
-export type VaultKind = 'id_front' | 'id_back' | 'safety_video' | 'ok360';
+export type VaultKind = 'id_front' | 'id_back' | 'safety_video' | 'ok360' | 'date_voice' | 'police_doc';
 
 function vaultKey(): Buffer {
   const raw = process.env.ID_VAULT_KEY?.trim();
@@ -89,6 +89,8 @@ export async function readSensitive(ref: string | null | undefined): Promise<Buf
 /** MIME guess for admin preview */
 export function mimeFromVaultKind(kind: VaultKind): string {
   if (kind === 'safety_video' || kind === 'ok360') return 'video/webm';
+  if (kind === 'date_voice') return 'audio/webm';
+  if (kind === 'police_doc') return 'application/pdf';
   return 'image/jpeg';
 }
 

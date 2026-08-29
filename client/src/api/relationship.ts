@@ -97,6 +97,7 @@ export const relationshipAPI = {
       games: Array<{ type: string; name: string; description: string }>;
       coupleQuiz: Array<{ q: string; a: string; b: string }>;
       bondingActivities?: Array<{ id: string; emoji: string; title: string; prompt: string; messageTemplate: string }>;
+      extraActivities?: Array<{ id: string; category: 'game' | 'bonding'; emoji: string; title: string; prompt: string; messageTemplate: string }>;
       relationshipId: string;
     };
   },

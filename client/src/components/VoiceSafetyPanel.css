@@ -1,0 +1,113 @@
+.voice-safety-panel {
+  margin: 8px 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(15, 23, 42, 0.85);
+  border: 1px solid rgba(59, 130, 246, 0.35);
+  font-size: 12px;
+}
+
+.voice-safety-panel.relationship {
+  border-color: rgba(236, 72, 153, 0.35);
+}
+
+.voice-safety-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.voice-live-dot {
+  font-size: 10px;
+  color: #ef4444;
+  animation: voice-pulse 1.2s infinite;
+}
+
+.voice-guard-on {
+  font-size: 10px;
+  color: #86efac;
+}
+
+@keyframes voice-pulse {
+  50% { opacity: 0.4; }
+}
+
+.voice-safety-hint {
+  color: #9ca3af;
+  margin: 0 0 8px;
+  line-height: 1.4;
+}
+
+.voice-safety-btn {
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(59, 130, 246, 0.5);
+  background: rgba(59, 130, 246, 0.15);
+  color: #fff;
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.voice-safety-btn.secondary {
+  border-color: rgba(234, 179, 8, 0.5);
+  background: rgba(234, 179, 8, 0.12);
+}
+
+.voice-safety-btn.danger {
+  border-color: rgba(239, 68, 68, 0.5);
+  background: rgba(239, 68, 68, 0.12);
+}
+
+.voice-safety-btn.voice-consent {
+  border-color: rgba(34, 197, 94, 0.5);
+  background: rgba(34, 197, 94, 0.12);
+}
+
+.voice-safety-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.voice-safety-msg {
+  margin-top: 8px;
+  color: #86efac;
+  font-size: 11px;
+}
+
+.voice-safety-pin-row {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.voice-safety-pin-row input {
+  flex: 1;
+  min-width: 140px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid #374151;
+  background: #111827;
+  color: #fff;
+}
+
+.voice-listen-block {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.voice-listen-block audio {
+  width: 100%;
+  margin-top: 4px;
+}
+
+.voice-muted-chunk {
+  color: #9ca3af;
+  font-style: italic;
+}

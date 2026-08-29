@@ -14,10 +14,10 @@ import CompatibilityQuiz from './CompatibilityQuiz';
 import BadgeGallery from './BadgeGallery';
 import ReportModal from './ReportModal';
 import { safetyAPI } from '../../api/safety';
+import { personalSafetyAPI } from '../../api/personalSafety';
 import { authAPI } from '../../api/auth';
 import { walletAPI, GuideWalletSummary } from '../../api/improvement';
 import { registerPasskey, getPasskeyStatus, passkeysSupported } from '../../lib/passkeyAuth';
-import { safetyAPI } from '../../api/safety';
 import { LANGUAGES } from '../../constants/languages';
 import { setStoredLanguage } from '../../i18n/languageStorage';
 import './Widget.css';
@@ -1746,7 +1746,7 @@ const SettingsWidgetFull = () => {
           <div style={{ marginBottom: '30px' }}>
             <h4 style={{ marginBottom: '12px' }}>Date safe word</h4>
             <p style={{ fontSize: '13px', color: '#6b7280', marginBottom: '8px' }}>
-              During an active date, saying or typing this word alerts your emergency contact (amber alert).
+              During an active date, saying or typing this word sends a safety signal to your emergency contact.
             </p>
             <input
               type="text"
@@ -1758,6 +1758,28 @@ const SettingsWidgetFull = () => {
                 if (v.length < 3) return;
                 try {
                   await safetyAPI.setDateSafeWord(v);
+                } catch {
+                  /* ignore */
+                }
+              }}
+            />
+          </div>
+
+          <div style={{ marginBottom: '30px' }}>
+            <h4 style={{ marginBottom: '12px' }}>Personal safety shield</h4>
+            <p style={{ fontSize: '13px', color: '#6b7280', marginBottom: '8px' }}>
+              Configure secret activate/cancel phrases, what you are wearing, and triggers (help button, screen taps, volume ×3, secret word). Use the shield button on the home screen when going out.
+            </p>
+            <input
+              type="text"
+              placeholder="What you usually wear (e.g. red jacket, white sneakers)"
+              maxLength={300}
+              style={{ width: '100%', padding: '10px', marginBottom: '8px' }}
+              onBlur={async (e) => {
+                const v = e.target.value.trim();
+                if (!v) return;
+                try {
+                  await personalSafetyAPI.updateSettings({ appearanceDescription: v });
                 } catch {
                   /* ignore */
                 }

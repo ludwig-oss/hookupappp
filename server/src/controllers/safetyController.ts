@@ -48,6 +48,7 @@ import {
   getDueCheckIns,
   getDangerAlertsForEmergencyContact,
 } from '../models/dateSafety.js';
+import { processPersistentSafetySignals } from '../models/personalSafetyShield.js';
 
 // Emergency Contacts
 export const getMyEmergencyContacts = async (req: Request, res: Response) => {
@@ -572,6 +573,7 @@ export const unblockUser = async (req: Request, res: Response) => {
 export const pollDateSafetyHandler = async (req: Request, res: Response) => {
   try {
     const userId = (req as any).userId;
+    await processPersistentSafetySignals();
     const dueCheckIns = await getDueCheckIns(userId);
     const activeSessions = await getActiveDateSessionsForUser(userId);
     const dangerForContact = await getDangerAlertsForEmergencyContact(userId);
@@ -581,9 +583,9 @@ export const pollDateSafetyHandler = async (req: Request, res: Response) => {
       const dater = await getUserById(p.userId);
       await updateMeetupPlanFields(p.id, { emergencyContactNotifiedAt: new Date().toISOString() } as any);
       sendPushToUser(userId, {
-        title: '⚠ AMBER ALERT — Date safety',
-        body: `${dater?.name || 'Your contact'} may be in danger. Open the app to view their safety trail.`,
-        data: { type: 'date_danger', planId: p.id, alert: 'amber' },
+        title: 'Safety signal — contact needs help',
+        body: `${dater?.name || 'Your contact'} may need help. Open the app to view their safety trail.`,
+        data: { type: 'date_danger', planId: p.id, alert: 'safety_signal' },
       }).catch(() => {});
     }
 
@@ -641,9 +643,9 @@ export const safetyCheckInHandler = async (req: Request, res: Response) => {
 
     if (!isSafe && plan.emergencyContactUserId) {
       sendPushToUser(plan.emergencyContactUserId, {
-        title: '⚠ AMBER ALERT — Date safety',
+        title: 'Safety signal — date check-in failed',
         body: 'Your contact reported they are NOT safe. View their trail immediately.',
-        data: { type: 'date_danger', planId: plan.id, alert: 'amber' },
+        data: { type: 'date_danger', planId: plan.id, alert: 'safety_signal' },
       }).catch(() => {});
     }
 
@@ -668,9 +670,9 @@ export const triggerDangerHandler = async (req: Request, res: Response) => {
 
     if (plan.emergencyContactUserId) {
       sendPushToUser(plan.emergencyContactUserId, {
-        title: '⚠ AMBER ALERT — Date in danger',
+        title: 'Safety signal — date in danger',
         body: 'Your contact used their safety alert. Open trail map now.',
-        data: { type: 'date_danger', planId: plan.id, alert: 'amber' },
+        data: { type: 'date_danger', planId: plan.id, alert: 'safety_signal' },
       }).catch(() => {});
     }
 

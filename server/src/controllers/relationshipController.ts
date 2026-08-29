@@ -30,6 +30,8 @@ import {
   getRecentBoosts,
   syncBoostsFromMessages,
   COUPLE_BONDING_ACTIVITIES,
+  COUPLE_EXTRA_ACTIVITIES,
+  isValidCoupleActivity,
   type CoupleActivityType,
 } from '../models/relationshipBoosts.js';
 
@@ -280,6 +282,7 @@ export const getCoupleHub = async (req: Request, res: Response) => {
       ),
       coupleQuiz: COUPLE_QUIZ,
       bondingActivities: COUPLE_BONDING_ACTIVITIES,
+      extraActivities: COUPLE_EXTRA_ACTIVITIES,
       cheatWarning: CHEAT_WARNING,
       relationshipId: rel.id,
     });
@@ -329,6 +332,9 @@ export const recordHealthBoostHandler = async (req: Request, res: Response) => {
     const { relationshipId, activity } = req.body as { relationshipId?: string; activity?: CoupleActivityType };
     if (!relationshipId || !activity) {
       return res.status(400).json({ error: 'relationshipId and activity required' });
+    }
+    if (!isValidCoupleActivity(activity)) {
+      return res.status(400).json({ error: 'Unknown activity' });
     }
     const rel = await getActiveRelationship(userId);
     if (!rel || rel.id !== relationshipId) {

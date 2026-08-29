@@ -8,9 +8,11 @@ import './WalkingPartnerPopup.css';
 
 type Props = {
   onOpenChat: (userId: string) => void;
+  /** Hide home-only walk bar so it does not conflict with Connections visibility. */
+  hideBar?: boolean;
 };
 
-export default function WalkingPartnerPopup({ onOpenChat }: Props) {
+export default function WalkingPartnerPopup({ onOpenChat, hideBar }: Props) {
   const { user, updateUser } = useContext(AuthContext);
   const [suggestion, setSuggestion] = useState<WalkSuggestion | null>(null);
   const [incoming, setIncoming] = useState<WalkIncomingInterest | null>(null);
@@ -190,7 +192,7 @@ export default function WalkingPartnerPopup({ onOpenChat }: Props) {
   };
 
   const nearbyToggleBar =
-    user?.outdoorWalkEnabled !== false ? (
+    hideBar || user?.outdoorWalkEnabled === false ? null : (
       <div className="walk-nearby-bar">
         <div>
           <strong>Available nearby</strong>
@@ -212,7 +214,7 @@ export default function WalkingPartnerPopup({ onOpenChat }: Props) {
           {nearbyDiscoverable ? 'On' : 'Off'}
         </button>
       </div>
-    ) : null;
+    );
 
   if (showQuiz) {
     return (

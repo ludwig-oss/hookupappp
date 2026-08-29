@@ -5,7 +5,7 @@ import { openChatWithUser } from '../../lib/openChat';
 import { formatAxiosError } from '../../lib/apiError';
 import './Widget.css';
 
-const NEARBY_DISCOVERY_RADIUS_M = 50;
+const NEARBY_DISCOVERY_RADIUS_M = 500;
 
 const VENUE_RADIUS_OPTIONS = [
   { value: 500, label: '500 m' },
@@ -52,6 +52,8 @@ const ConnectionsWidget = () => {
   const [error, setError] = useState('');
   const [comfortingMessage, setComfortingMessage] = useState<string | null>(null);
   const locationIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const buzzInitializedRef = useRef(false);
+  const knownBuzzIdsRef = useRef<Set<string>>(new Set());
 
   const [searchPlaceQuery, setSearchPlaceQuery] = useState('');
   const [searchPlaceType, setSearchPlaceType] = useState('bar');
@@ -115,6 +117,25 @@ const ConnectionsWidget = () => {
     try {
       const response = await connectionsAPI.getMyBuzzes(user.id);
       setBuzzes(response);
+      const pending = response.received.filter((b) => b.status === 'pending');
+      const pendingIds = new Set(pending.map((b) => b.id));
+      if (buzzInitializedRef.current) {
+        const newBuzzes = pending.filter((b) => !knownBuzzIdsRef.current.has(b.id));
+        if (newBuzzes.length > 0) {
+          setComfortingMessage('Someone nearby showed interest — respond below.');
+          setTimeout(() => setComfortingMessage(null), 6000);
+          if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+            try {
+              new Notification('Hook Up', { body: 'Someone nearby wants to connect!' });
+            } catch {
+              /* ignore */
+            }
+          }
+        }
+      } else {
+        buzzInitializedRef.current = true;
+      }
+      knownBuzzIdsRef.current = pendingIds;
     } catch (err) {
       console.error('Failed to load buzzes:', err);
     }
@@ -192,7 +213,7 @@ const ConnectionsWidget = () => {
     const nearbyPoll = setInterval(() => {
       refreshNearby(location);
       loadBuzzes();
-    }, 25000);
+    }, 15000);
     return () => clearInterval(nearbyPoll);
   }, [location, user?.id, refreshNearby, loadBuzzes]);
 
@@ -490,8 +511,26 @@ const ConnectionsWidget = () => {
             </p>
           )}
           <p style={{ marginBottom: '14px', color: '#9ca3af', fontFamily: 'Orbitron, monospace', fontSize: '12px' }}>
-            Tap below to browse who&apos;s nearby, send interest, and wait for their response. Mutual interest adds you both to Communications.
+            Nearby people update automatically. Send interest and wait for their response — mutual interest adds you both to Communications.
           </p>
+          {buzzes.received.some((b) => b.status === 'pending') && (
+            <div
+              style={{
+                marginBottom: 14,
+                padding: '10px 12px',
+                borderRadius: 10,
+                border: '2px solid #ff00ff',
+                background: 'rgba(255, 0, 255, 0.15)',
+                color: '#ff00ff',
+                fontSize: 12,
+                fontFamily: 'Orbitron, monospace',
+                fontWeight: 700,
+              }}
+            >
+              🔔 {buzzes.received.filter((b) => b.status === 'pending').length} nearby interest
+              {buzzes.received.filter((b) => b.status === 'pending').length === 1 ? '' : 's'} — respond below
+            </div>
+          )}
           <div
             style={{
               display: 'flex',
@@ -532,6 +571,15 @@ const ConnectionsWidget = () => {
             </button>
           </div>
 
+          <div style={{ marginBottom: 14 }}>
+            <strong style={{ color: '#00d4ff', fontSize: 13, fontFamily: 'Orbitron, monospace', display: 'block', marginBottom: 8 }}>
+              Nearby now{buzzes.received.filter((b) => b.status === 'pending').length > 0 || nearbyUsers.length > 0
+                ? ` · ${nearbyUsers.length} visible${buzzes.received.filter((b) => b.status === 'pending').length > 0 ? ` · ${buzzes.received.filter((b) => b.status === 'pending').length} buzz` : ''}`
+                : ''}
+            </strong>
+            {renderNearbyList()}
+          </div>
+
           <button
             type="button"
             onClick={openNearbyList}
@@ -540,25 +588,16 @@ const ConnectionsWidget = () => {
             style={{
               width: '100%',
               marginBottom: 14,
-              background: 'rgba(0, 212, 255, 0.15)',
-              border: '2px solid #00d4ff',
+              background: 'rgba(0, 212, 255, 0.08)',
+              border: '1px solid rgba(0, 212, 255, 0.45)',
               color: '#00d4ff',
               fontFamily: 'Orbitron, monospace',
               fontWeight: 'bold',
-              boxShadow: '0 0 15px rgba(0, 212, 255, 0.3)',
+              fontSize: 12,
             }}
           >
-            {loading ? 'Loading…' : `👥 See who's nearby${nearbyUsers.length > 0 ? ` (${nearbyUsers.length})` : ''}`}
+            {loading ? 'Refreshing…' : '↻ Refresh nearby list'}
           </button>
-
-          {(buzzes.received.some((b) => b.status === 'pending') || nearbyUsers.length > 0) && (
-            <p style={{ margin: '0 0 14px', fontSize: '11px', color: '#10b981', fontFamily: 'Orbitron, monospace' }}>
-              {buzzes.received.filter((b) => b.status === 'pending').length > 0
-                ? `${buzzes.received.filter((b) => b.status === 'pending').length} waiting for your response · `
-                : ''}
-              {nearbyUsers.length > 0 ? `${nearbyUsers.length} nearby now` : 'Updating nearby list…'}
-            </p>
-          )}
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
             <div>

@@ -101,6 +101,21 @@ app.use(
           callback(null, true);
           return;
         }
+        if (host === 'hookupapp.dev' || host.endsWith('.hookupapp.dev')) {
+          callback(null, true);
+          return;
+        }
+        if (frontendUrl) {
+          try {
+            const allowedHost = new URL(frontendUrl).hostname.toLowerCase();
+            if (host === allowedHost || host.endsWith(`.${allowedHost}`)) {
+              callback(null, true);
+              return;
+            }
+          } catch {
+            /* ignore */
+          }
+        }
         callback(new Error('Not allowed by CORS'));
       } catch {
         callback(new Error('Not allowed by CORS'));

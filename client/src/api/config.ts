@@ -9,11 +9,8 @@ function normalizeApiBase(raw: string | undefined): string {
   return s.replace(/\/+$/, '');
 }
 
-/** Production Render API — used when VITE_API_URL is unset (avoids broken Vercel self-proxy). */
-const PRODUCTION_API_FALLBACK = 'https://hookupappp.onrender.com';
-
-// On Vercel, same-origin `/api/...` is proxied by `api/[...path].js` to BACKEND_URL.
-// Direct Render calls are more reliable for auth (CORS allows *.vercel.app).
+// On Vercel, same-origin `/api/...` is proxied by `api/[...path].js` to BACKEND_URL (no CORS issues on custom domains).
+// Set VITE_API_URL only if you need direct Render calls (must allow your domain in server CORS).
 export const API_BASE = import.meta.env.PROD
-  ? normalizeApiBase(import.meta.env.VITE_API_URL) || PRODUCTION_API_FALLBACK
+  ? normalizeApiBase(import.meta.env.VITE_API_URL)
   : '';

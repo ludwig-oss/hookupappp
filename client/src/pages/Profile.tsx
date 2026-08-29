@@ -26,6 +26,31 @@ async function reverseGeocodeFromBrowser(lat: number, lon: number): Promise<{ co
   return { country, city };
 }
 
+function buildSessionProfile(user: {
+  id: string;
+  email?: string;
+  name?: string;
+  username?: string;
+  profilePicture?: string | null;
+  profileSetupComplete?: boolean;
+  gender?: string;
+  photoVerifiedAt?: string | null;
+}): ProfileData {
+  return {
+    id: user.id,
+    email: user.email || '',
+    name: user.name || '',
+    username: user.username || '',
+    profilePicture: user.profilePicture ?? null,
+    profileSetupComplete: Boolean(user.profileSetupComplete),
+    highlights: [],
+    stories: [],
+    disappearingPhotos: [],
+    gender: user.gender,
+    photoVerifiedAt: user.photoVerifiedAt ?? null,
+  };
+}
+
 const Profile = () => {
   const { user, logout, updateUser } = useContext(AuthContext);
   const { t } = useTranslation();
@@ -71,6 +96,7 @@ const Profile = () => {
   const [showAddTest, setShowAddTest] = useState(false);
   const [newTest, setNewTest] = useState<Partial<HealthTest>>({ condition: '', result: 'clear', doctorName: '', doctorClinic: '', verificationInfo: '', approvedByDoctor: false, testedAt: new Date().toISOString().slice(0, 10) });
   const [showPhotoVerification, setShowPhotoVerification] = useState(false);
+  const [syncWarning, setSyncWarning] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const highlightInputRef = useRef<HTMLInputElement>(null);
   const storyInputRef = useRef<HTMLInputElement>(null);
@@ -81,7 +107,18 @@ const Profile = () => {
   const pendingProfileRef = useRef<{ age: string; country: string; city: string }>({ age: '', country: '', city: '' });
 
   useEffect(() => {
-    if (user?.id) loadProfile();
+    if (!user?.id) {
+      setLoading(false);
+      return;
+    }
+    setProfile(buildSessionProfile(user));
+    setAge(String(user.age ?? ''));
+    setCountry(String(user.country ?? ''));
+    setCity(String(user.city ?? ''));
+    setError('');
+    setSyncWarning('');
+    setLoading(false);
+    loadProfileFromServer();
   }, [user?.id]);
 
   useEffect(() => {
@@ -112,36 +149,37 @@ const Profile = () => {
     return () => clearTimeout(tid);
   }, [viewingStories]);
 
-  const loadProfile = async () => {
+  const applyProfileFields = (profileData: ProfileData & Record<string, unknown>) => {
+    setAge(String(profileData.age ?? ''));
+    setCountry(String(profileData.country ?? ''));
+    setCity(String(profileData.city ?? ''));
+    setPublicFigureLevel(String(profileData.publicFigureLevel ?? ''));
+    setPublicFigureProof(String(profileData.publicFigureProof ?? ''));
+    setPublicFigureIdImage(String(profileData.publicFigureIdImage ?? ''));
+    setPublicFigureUniqueImage(String(profileData.publicFigureUniqueImage ?? ''));
+    setCelebChatDisappearMode(String(profileData.celebChatDisappearMode ?? 'none'));
+    setCelebChatDisappearSeconds(Number(profileData.celebChatDisappearSeconds ?? 60));
+    setCelebMessagesOnlyWhenOpened(!!profileData.celebMessagesOnlyWhenOpened);
+  };
+
+  const loadProfileFromServer = async () => {
     if (!user?.id) return;
-    setLoading(true);
-    setError('');
-    const buildFallbackProfile = (): ProfileData => ({
-      id: user.id,
-      email: user.email || '',
-      name: user.name || '',
-      username: user.username || '',
-      profilePicture: user.profilePicture ?? null,
-      profileSetupComplete: Boolean(user.profileSetupComplete),
-      highlights: [],
-      stories: [],
-      disappearingPhotos: [],
-      gender: user.gender,
-      photoVerifiedAt: user.photoVerifiedAt ?? null,
-    });
     try {
       const profileData = await profileAPI.getCurrentUser();
+      if (!profileData?.id) throw new Error('Invalid profile response');
       setProfile(profileData);
-      setAge(String((profileData as any).age ?? ''));
-      setCountry(String((profileData as any).country ?? ''));
-      setCity(String((profileData as any).city ?? ''));
-      setPublicFigureLevel((profileData as any).publicFigureLevel ?? '');
-      setPublicFigureProof((profileData as any).publicFigureProof ?? '');
-      setPublicFigureIdImage((profileData as any).publicFigureIdImage ?? '');
-      setPublicFigureUniqueImage((profileData as any).publicFigureUniqueImage ?? '');
-      setCelebChatDisappearMode((profileData as any).celebChatDisappearMode ?? 'none');
-      setCelebChatDisappearSeconds((profileData as any).celebChatDisappearSeconds ?? 60);
-      setCelebMessagesOnlyWhenOpened(!!(profileData as any).celebMessagesOnlyWhenOpened);
+      applyProfileFields(profileData as ProfileData & Record<string, unknown>);
+      setSyncWarning('');
+      updateUser({
+        name: profileData.name,
+        username: profileData.username,
+        profilePicture: profileData.profilePicture,
+        profileSetupComplete: profileData.profileSetupComplete,
+        photoVerifiedAt: (profileData as any).photoVerifiedAt ?? null,
+        age: (profileData as any).age,
+        country: (profileData as any).country,
+        city: (profileData as any).city,
+      });
       if ((profileData as any).publicFigureVerified && user?.id) {
         activityAPI.getMyInterests().then(({ sent, received }) => {
           const accepted = [...sent, ...received].filter((i: any) => i.status === 'accepted');
@@ -163,20 +201,19 @@ const Profile = () => {
       setReviews(revData.reviews);
       setOverallRating(revData.overall ?? null);
     } catch (err: any) {
-      const status = err?.response?.status;
-      if (status === 404 || status === 401 || status === 502 || status === 503) {
-        setProfile(buildFallbackProfile());
-        setAge(String(user.age ?? ''));
-        setCountry(String(user.country ?? ''));
-        setCity(String(user.city ?? ''));
-        setError('');
-      } else {
-        setError('Failed to load profile');
+      console.warn('Profile sync failed (showing saved session):', err?.response?.status || err?.message);
+      if (!localStorage.getItem('token')) {
+        setProfile(null);
+        setError('Session expired. Please sign in again.');
+        return;
       }
-    } finally {
-      setLoading(false);
+      setProfile((prev) => prev ?? buildSessionProfile(user));
+      setSyncWarning('Could not refresh from server. Showing your saved profile — tap Retry to sync.');
     }
   };
+
+  /** Backwards-compatible alias used by save/upload handlers. */
+  const loadProfile = loadProfileFromServer;
 
   useEffect(() => {
     pendingProfileRef.current = { age, country, city };
@@ -424,35 +461,16 @@ const Profile = () => {
   }
 
   if (!profile) {
-    const isRedirecting = error?.includes('Logging out') || error?.includes('Session expired');
     return (
       <div className="dashboard-container">
         <div className="stars-background" aria-hidden>
           <div className="love-bg-hearts" />
-          <div className="love-bg-float">
-            <span className="love-float-1">👼</span>
-            <span className="love-float-2">💘</span>
-            <span className="love-float-3">💑</span>
-            <span className="love-float-4">💏</span>
-            <span className="love-float-5">💘</span>
-            <span className="love-float-6">👫</span>
-            <span className="love-float-7">❤️</span>
-            <span className="love-float-8">💕</span>
-          </div>
         </div>
         <div style={{ position: 'relative', zIndex: 1, textAlign: 'center', padding: '60px 24px', color: '#ffb3c6' }}>
-          <p style={{ marginBottom: 24 }}>{error || 'Failed to load profile'}</p>
-          {!isRedirecting && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, alignItems: 'center' }}>
-              <button type="button" className="profile-save-btn" onClick={() => { setError(''); setLoading(true); loadProfile(); }} style={{ marginTop: 0 }}>
-                Retry
-              </button>
-              <Link to="/home" className="dashboard-back-link" style={{ marginTop: 8 }}>← Back to Home</Link>
-              <button type="button" className="profile-location-btn" onClick={() => { logout(); navigate('/login'); }} style={{ marginTop: 8 }}>
-                Log in again
-              </button>
-            </div>
-          )}
+          <p style={{ marginBottom: 24 }}>{error || 'You need to sign in to view your profile.'}</p>
+          <Link to="/login" className="profile-save-btn" style={{ display: 'inline-block', textDecoration: 'none' }}>
+            Sign in
+          </Link>
         </div>
       </div>
     );
@@ -483,6 +501,21 @@ const Profile = () => {
         <Link to="/home" className="dashboard-back-link">← {t('backToHome')}</Link>
         <Link to="/settings" className="dashboard-back-link">⚙️ {t('settings')}</Link>
       </div>
+
+      {syncWarning && (
+        <div style={{ maxWidth: 520, margin: '0 auto 12px', padding: '10px 14px', borderRadius: 10, background: 'rgba(255,143,171,0.15)', border: '1px solid rgba(255,143,171,0.4)', color: '#ffb3c6', fontSize: 13, textAlign: 'center' }}>
+          {syncWarning}{' '}
+          <button type="button" className="profile-location-btn" style={{ marginLeft: 8, padding: '4px 10px', fontSize: 12 }} onClick={() => { setSyncWarning(''); loadProfileFromServer(); }}>
+            Retry
+          </button>
+        </div>
+      )}
+
+      {error && (
+        <div style={{ maxWidth: 520, margin: '0 auto 12px', padding: '10px 14px', borderRadius: 10, background: 'rgba(255,80,80,0.12)', border: '1px solid rgba(255,80,80,0.35)', color: '#ffb3c6', fontSize: 13, textAlign: 'center' }}>
+          {error}
+        </div>
+      )}
 
       <div className="dashboard-panels" style={{ gridTemplateColumns: '1fr', maxWidth: '520px', margin: '0 auto' }}>
         <div className="holographic-panel left-panel" style={{ maxHeight: 'none' }}>

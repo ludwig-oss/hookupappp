@@ -154,7 +154,7 @@ module.exports = async function handler(req, res) {
   try {
     let upstream = await fetch(target, fetchOpts);
     // Render free tier cold start — retry once after a short pause
-    if ((upstream.status === 502 || upstream.status === 503 || upstream.status === 504) && method === 'POST') {
+    if ((upstream.status === 502 || upstream.status === 503 || upstream.status === 504) && method !== 'OPTIONS') {
       await sleep(2500);
       upstream = await fetch(target, fetchOpts);
     }

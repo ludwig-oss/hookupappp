@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import {
   getUserById,
   getUserByEmail,
+  getUserByUsername,
   updateUserProfile,
   addHighlight,
   removeHighlight,
@@ -128,18 +129,25 @@ export const getUserProfile = async (req: Request, res: Response) => {
       return res.status(401).json({ error: 'Unauthorized. Send Authorization: Bearer <token> for /me' });
     }
 
-    await pruneExpiredStories(profileUserId);
     let user = await getUserById(profileUserId);
-    const viewingOwnProfile = authUserId === profileUserId;
-    if (!user && viewingOwnProfile) {
+    const isOwnProfileRequest = paramId === 'me' || !paramId || authUserId === profileUserId;
+    if (!user && isOwnProfileRequest) {
       user = await runWithSystem(() => getUserById(profileUserId));
       if (!user && authEmail) {
         user = await runWithSystem(() => getUserByEmail(authEmail));
+      }
+      if (!user && authEmail?.endsWith('@noreply.local')) {
+        const uname = authEmail.split('@')[0]?.trim();
+        if (uname) {
+          user = await runWithSystem(() => getUserByUsername(uname));
+        }
       }
     }
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
+    await pruneExpiredStories(user.id);
+    const viewingOwnProfile = isOwnProfileRequest || authUserId === user.id;
     const now = Date.now();
     const ownerCloseFriends = user.closeFriendIds || [];
     const visibleStories = (user.stories || []).filter((s) => {

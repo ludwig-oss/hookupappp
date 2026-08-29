@@ -26,13 +26,35 @@ function frontendBase(): string {
   return (process.env.FRONTEND_URL || 'http://localhost:5173').replace(/\/+$/, '');
 }
 
-/** Public URL Google/Facebook redirect back to (Vercel proxy or Render). */
+function isRenderHost(url: string): boolean {
+  try {
+    const host = new URL(url.startsWith('http') ? url : `https://${url}`).hostname.toLowerCase();
+    return host.includes('onrender.com');
+  } catch {
+    return false;
+  }
+}
+
+/** Public app URL — never send users to Render's cold-start splash for OAuth. */
 function oauthCallbackBase(req: Request): string {
-  const configured = (process.env.OAUTH_CALLBACK_BASE || process.env.FRONTEND_URL || '').replace(/\/+$/, '');
-  if (configured) return configured;
+  const frontend = (process.env.FRONTEND_URL || '').replace(/\/+$/, '');
+  if (frontend && !isRenderHost(frontend)) return frontend;
+
   const proto = (req.headers['x-forwarded-proto'] as string) || req.protocol || 'https';
-  const host = (req.headers['x-forwarded-host'] as string) || req.headers.host || 'localhost:5000';
-  return `${proto}://${host}`.replace(/\/+$/, '');
+  const host = (req.headers['x-forwarded-host'] as string) || req.headers.host || '';
+  const inferred = host ? `${proto}://${host}`.replace(/\/+$/, '') : '';
+  if (inferred && !isRenderHost(inferred)) return inferred;
+
+  const configured = (process.env.OAUTH_CALLBACK_BASE || '').replace(/\/+$/, '');
+  if (configured && !isRenderHost(configured)) return configured;
+  if (configured) return configured;
+
+  return inferred || frontend || frontendBase();
+}
+
+/** OAuth providers redirect here (Vercel app) — bridge page wakes API then hits /api/auth/.../callback */
+function oauthReturnRedirectUri(provider: 'google' | 'facebook' | 'apple', req: Request): string {
+  return `${oauthCallbackBase(req)}/auth/oauth-return/${provider}`;
 }
 
 function toClientUser(user: User) {
@@ -170,7 +192,7 @@ export function startGoogle(req: Request, res: Response) {
   if (!clientId || !secret) {
     return redirectError(res, 'Google sign-in is not configured yet. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET on Render.');
   }
-  const redirectUri = `${oauthCallbackBase(req)}/api/auth/google/callback`;
+  const redirectUri = oauthReturnRedirectUri('google', req);
   const state = uuidv4();
   const url = new URL('https://accounts.google.com/o/oauth2/v2/auth');
   url.searchParams.set('client_id', clientId);
@@ -195,7 +217,7 @@ export async function googleCallback(req: Request, res: Response) {
     if (err) return redirectError(res, err);
     if (!code) return redirectError(res, 'Google did not return a code.');
 
-    const redirectUri = `${oauthCallbackBase(req)}/api/auth/google/callback`;
+    const redirectUri = oauthReturnRedirectUri('google', req);
     const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -244,7 +266,7 @@ export function startFacebook(req: Request, res: Response) {
   if (!appId || !secret) {
     return redirectError(res, 'Facebook sign-in is not configured yet. Set FACEBOOK_APP_ID and FACEBOOK_APP_SECRET on Render.');
   }
-  const redirectUri = `${oauthCallbackBase(req)}/api/auth/facebook/callback`;
+  const redirectUri = oauthReturnRedirectUri('facebook', req);
   const url = new URL('https://www.facebook.com/v19.0/dialog/oauth');
   url.searchParams.set('client_id', appId);
   url.searchParams.set('redirect_uri', redirectUri);
@@ -265,7 +287,7 @@ export async function facebookCallback(req: Request, res: Response) {
     if (err) return redirectError(res, err);
     if (!code) return redirectError(res, 'Facebook did not return a code.');
 
-    const redirectUri = `${oauthCallbackBase(req)}/api/auth/facebook/callback`;
+    const redirectUri = oauthReturnRedirectUri('facebook', req);
     const tokenUrl = new URL('https://graph.facebook.com/v19.0/oauth/access_token');
     tokenUrl.searchParams.set('client_id', appId);
     tokenUrl.searchParams.set('client_secret', secret);
@@ -309,7 +331,7 @@ export function startApple(req: Request, res: Response) {
   if (!clientId || !teamId) {
     return redirectError(res, 'Apple Sign-In is not configured yet. Set APPLE_CLIENT_ID and APPLE_TEAM_ID on Render.');
   }
-  const redirectUri = `${oauthCallbackBase(req)}/api/auth/apple/callback`;
+  const redirectUri = oauthReturnRedirectUri('apple', req);
   const url = new URL('https://appleid.apple.com/auth/authorize');
   url.searchParams.set('client_id', clientId);
   url.searchParams.set('redirect_uri', redirectUri);
@@ -339,7 +361,7 @@ export async function appleCallback(req: Request, res: Response) {
       return redirectError(res, 'Apple Sign-In needs APPLE_KEY_ID and APPLE_PRIVATE_KEY on the server. See OAUTH-SETUP.md.');
     }
 
-    const redirectUri = `${oauthCallbackBase(req)}/api/auth/apple/callback`;
+    const redirectUri = oauthReturnRedirectUri('apple', req);
     const clientSecret = jwt.sign({}, privateKey, {
       algorithm: 'ES256',
       expiresIn: '5m',

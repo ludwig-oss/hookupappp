@@ -162,15 +162,15 @@ const ProfileSetup = () => {
         setRawVideoBlob(blob);
         setVideoDuration(MAX_CLIP_SEC);
         setTrimStart(0);
-        setTrimEnd(Math.min(MAX_CLIP_SEC, 6));
-        await applyVideoTrim(blob, 0, Math.min(MAX_CLIP_SEC, 6));
+        setTrimEnd(MAX_CLIP_SEC);
+        await applyVideoTrim(blob, 0, MAX_CLIP_SEC);
       };
       recorderRef.current = recorder;
       recorder.start(200);
       setRecording(true);
       recordTimerRef.current = window.setTimeout(() => stopRecording(), MAX_CLIP_SEC * 1000);
     } catch {
-      setError('Camera access needed to record a short clip');
+      setError('Camera access needed to record a GIF-length clip');
     }
   };
 
@@ -191,14 +191,14 @@ const ProfileSetup = () => {
     <div className="profile-setup-container">
       <div className="profile-setup-card">
         <h1 className="setup-title">Complete Your Profile</h1>
-        <p className="setup-subtitle">Add a photo or short clip so people recognize you — or skip for now</p>
+        <p className="setup-subtitle">Add a photo or GIF-length clip (max {MAX_CLIP_SEC}s) — or skip for now</p>
 
         <div className="setup-mode-tabs">
           <button type="button" className={mediaMode === 'photo' ? 'active' : ''} onClick={() => switchMode('photo')}>
             Photo
           </button>
           <button type="button" className={mediaMode === 'clip' ? 'active' : ''} onClick={() => switchMode('clip')}>
-            Short clip
+            GIF clip
           </button>
         </div>
 
@@ -220,7 +220,7 @@ const ProfileSetup = () => {
             ) : (
               <div className="placeholder-circle">
                 <span>+</span>
-                <p>{mediaMode === 'photo' ? 'Upload Photo' : 'Add clip'}</p>
+                <p>{mediaMode === 'photo' ? 'Upload Photo' : 'Add GIF clip'}</p>
               </div>
             )}
           </button>
@@ -235,7 +235,7 @@ const ProfileSetup = () => {
                 Upload video
               </button>
               <button type="button" className="upload-button clip-record" disabled={loading || recording} onClick={recording ? stopRecording : startRecording}>
-                {recording ? 'Stop recording…' : 'Record clip'}
+                {recording ? 'Stop…' : `Record ${MAX_CLIP_SEC}s clip`}
               </button>
             </div>
           )}

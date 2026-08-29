@@ -4,6 +4,7 @@ import { AuthContext } from '../context/AuthContext';
 import { authAPI } from '../api/auth';
 import { API_BASE } from '../api/config';
 import { formatAxiosError } from '../lib/apiError';
+import { redirectToOAuth, type OAuthProvider } from '../lib/oauth';
 import './Auth.css';
 import './Legal.css';
 
@@ -21,6 +22,7 @@ const Login = () => {
   const [pattern, setPattern] = useState<number[]>([]);
   const [showQr, setShowQr] = useState(false);
   const [oauth, setOauth] = useState<{ google: boolean; facebook: boolean }>({ google: false, facebook: false });
+  const [oauthLoading, setOauthLoading] = useState(false);
   const { login } = useContext(AuthContext);
   const navigate = useNavigate();
 
@@ -97,8 +99,15 @@ const Login = () => {
     setError('Passkeys (Face ID / Touch ID) need to be registered in Settings after you sign in with password once. Use password for now.');
   };
 
-  const startOAuth = (provider: 'google' | 'facebook') => {
-    window.location.href = `${API_BASE}/api/auth/${provider}`;
+  const startOAuth = async (provider: OAuthProvider) => {
+    setError('');
+    setOauthLoading(true);
+    try {
+      await redirectToOAuth(provider);
+    } catch (e: unknown) {
+      setOauthLoading(false);
+      setError(e instanceof Error ? e.message : 'Could not start sign-in. Try again.');
+    }
   };
 
   return (
@@ -109,6 +118,12 @@ const Login = () => {
         <p className="auth-subtitle">Sign in with username, email, phone, Google, or Facebook</p>
 
         {error && <div className="error-message">{error}</div>}
+        {oauthLoading && (
+          <div className="oauth-wait-banner">
+            <div className="oauth-spinner" aria-hidden />
+            <span>Connecting to server…</span>
+          </div>
+        )}
 
         <div className="auth-method-tabs" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
           <button type="button" className="auth-button" style={{ flex: 1, padding: '8px', fontSize: 12, opacity: method === 'account' ? 1 : 0.7 }} onClick={() => setMethod('account')}>Password</button>
@@ -206,18 +221,20 @@ const Login = () => {
           <button
             type="button"
             className="auth-button"
+            disabled={oauthLoading}
             style={{ background: 'rgba(66,133,244,0.25)', border: '1px solid #4285f4' }}
             onClick={() => startOAuth('google')}
           >
-            {oauth.google ? 'Continue with Google' : 'Continue with Google'}
+            Continue with Google
           </button>
           <button
             type="button"
             className="auth-button"
+            disabled={oauthLoading}
             style={{ background: 'rgba(24,119,242,0.25)', border: '1px solid #1877f2' }}
             onClick={() => startOAuth('facebook')}
           >
-            {oauth.facebook ? 'Continue with Facebook' : 'Continue with Facebook'}
+            Continue with Facebook
           </button>
           <button type="button" className="auth-button" style={{ background: 'rgba(255,107,157,0.2)' }} onClick={() => setShowQr(true)}>
             📱 Show QR code → Sign up

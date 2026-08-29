@@ -6,6 +6,7 @@ import { discoverAPI } from '../api/discover';
 import { walkMatchAPI } from '../api/walkMatch';
 import { API_BASE } from '../api/config';
 import { formatAxiosError } from '../lib/apiError';
+import { redirectToOAuth, type OAuthProvider } from '../lib/oauth';
 import QrScannerPanel from '../components/QrScannerPanel';
 import { loginWithPasskey, passkeysSupported } from '../lib/passkeyAuth';
 import './Auth.css';
@@ -35,6 +36,7 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
   const [mode, setMode] = useState<AuthMode>(initialMode);
   const [loginMethod, setLoginMethod] = useState<LoginMethod>('email');
   const [oauth, setOauth] = useState({ google: false, facebook: false, apple: false });
+  const [oauthLoading, setOauthLoading] = useState(false);
 
   const [name, setName] = useState('');
   const [username, setUsername] = useState('');
@@ -88,8 +90,15 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
     navigate(user.profileSetupComplete ? '/home' : '/profile-setup', { replace: true });
   };
 
-  const startOAuth = (provider: 'google' | 'facebook' | 'apple') => {
-    window.location.href = `${API_BASE}/api/auth/${provider}`;
+  const startOAuth = async (provider: OAuthProvider) => {
+    setError('');
+    setOauthLoading(true);
+    try {
+      await redirectToOAuth(provider);
+    } catch (e: unknown) {
+      setOauthLoading(false);
+      setError(e instanceof Error ? e.message : 'Could not start sign-in. Try again.');
+    }
   };
 
   const handleSignup = async (e: React.FormEvent) => {
@@ -239,15 +248,21 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
 
         {error && <div className="error-message">{error}</div>}
         {message && <div className="success-message">{message}</div>}
+        {oauthLoading && (
+          <div className="oauth-wait-banner">
+            <div className="oauth-spinner" aria-hidden />
+            <span>Connecting to server…</span>
+          </div>
+        )}
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
-          <button type="button" className="auth-button" style={{ background: 'rgba(66,133,244,0.25)', border: '1px solid #4285f4' }} onClick={() => startOAuth('google')}>
+          <button type="button" className="auth-button" disabled={oauthLoading} style={{ background: 'rgba(66,133,244,0.25)', border: '1px solid #4285f4' }} onClick={() => startOAuth('google')}>
             Continue with Google
           </button>
-          <button type="button" className="auth-button" style={{ background: 'rgba(0,0,0,0.5)', border: '1px solid #fff' }} onClick={() => startOAuth('apple')}>
+          <button type="button" className="auth-button" disabled={oauthLoading} style={{ background: 'rgba(0,0,0,0.5)', border: '1px solid #fff' }} onClick={() => startOAuth('apple')}>
             Continue with Apple ID
           </button>
-          <button type="button" className="auth-button" style={{ background: 'rgba(24,119,242,0.25)', border: '1px solid #1877f2' }} onClick={() => startOAuth('facebook')}>
+          <button type="button" className="auth-button" disabled={oauthLoading} style={{ background: 'rgba(24,119,242,0.25)', border: '1px solid #1877f2' }} onClick={() => startOAuth('facebook')}>
             Continue with Facebook
           </button>
         </div>

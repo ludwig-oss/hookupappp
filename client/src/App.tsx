@@ -4,6 +4,7 @@ import axios from 'axios';
 import { GuestOnly, RequireAuth, LandingOrRedirect } from './components/AuthRouteGuards';
 import AuthEntry from './pages/AuthEntry';
 import AuthCallback from './pages/AuthCallback';
+import OAuthReturn from './pages/OAuthReturn';
 import SignupWithImprovement from './pages/SignupWithImprovement';
 import Landing from './pages/Landing';
 import TermsOfService from './pages/TermsOfService';
@@ -232,6 +233,7 @@ function App() {
         <Routes>
           <Route path="/login" element={<GuestOnly><AuthEntry initialMode="login" /></GuestOnly>} />
           <Route path="/auth/callback" element={<AuthCallback />} />
+          <Route path="/auth/oauth-return/:provider" element={<OAuthReturn />} />
           <Route path="/signup" element={<GuestOnly><AuthEntry initialMode="signup" /></GuestOnly>} />
           <Route path="/terms" element={<TermsOfService />} />
           <Route path="/privacy" element={<PrivacyPolicy />} />

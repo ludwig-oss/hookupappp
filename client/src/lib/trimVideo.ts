@@ -1,4 +1,5 @@
-const MAX_CLIP_SEC = 8;
+const MAX_CLIP_SEC = 3;
+const GIF_FPS = 12;
 
 export function clampClipRange(duration: number, start: number, end: number): { start: number; end: number } {
   const maxEnd = Math.min(duration, MAX_CLIP_SEC);
@@ -45,8 +46,8 @@ export async function trimVideoToDataUrl(
 
     if (!mime) throw new Error('Video recording not supported on this device');
 
-    const stream = canvas.captureStream(24);
-    const recorder = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 800_000 });
+    const stream = canvas.captureStream(GIF_FPS);
+    const recorder = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 350_000 });
     const chunks: Blob[] = [];
     recorder.ondataavailable = (e) => {
       if (e.data.size > 0) chunks.push(e.data);

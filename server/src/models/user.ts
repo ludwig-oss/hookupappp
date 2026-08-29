@@ -109,6 +109,8 @@ export interface User {
   passwordHint1?: string;
   passwordHint2?: string;
   passwordHint3?: string;
+  /** Optional backup password hash (PIN accounts sign in with username + password via this). */
+  backupPasswordHash?: string | null;
   /** Public figure / celebrity verification */
   publicFigureLevel?: 'world' | 'community' | 'country' | null;
   publicFigureProof?: string | null; // Instagram, Facebook, TikTok links (social proof)

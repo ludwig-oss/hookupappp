@@ -27,7 +27,7 @@ function normalizePhoneInput(value: string): string {
 }
 
 type AuthMode = 'signup' | 'login';
-type LoginMethod = 'pin' | 'email' | 'phone' | 'face';
+type LoginMethod = 'pin' | 'password' | 'phone' | 'face';
 type FacePanelMode = 'signup' | 'login' | null;
 
 type Props = { initialMode?: AuthMode };
@@ -37,7 +37,6 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
   const [mode, setMode] = useState<AuthMode>(initialMode);
   const [loginMethod, setLoginMethod] = useState<LoginMethod>('pin');
   const [facePanel, setFacePanel] = useState<FacePanelMode>(null);
-  const [showPasswordSignup, setShowPasswordSignup] = useState(false);
   const [pin, setPin] = useState('');
   const [loginPin, setLoginPin] = useState('');
   const [usernameCheck, setUsernameCheck] = useState('');
@@ -223,6 +222,7 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
         email: email.trim() || undefined,
         phoneNumber: phoneNumber.replace(/\D/g, '') || undefined,
         improvementCategories: [DEFAULT_SIGNUP_CATEGORY],
+        password: password.trim() || undefined,
       });
       const id = coerceUserId(response.user?.id);
       if (!response.token || !id) throw new Error('Invalid server response');
@@ -262,62 +262,18 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
     }
   };
 
-  const handleSignup = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!name.trim() || !username.trim() || !password) {
-      setError('Name, username, and password are required for password sign-up');
-      return;
-    }
-    if (!agreedToTerms) {
-      setError('Agree to Terms and Privacy to continue');
-      return;
-    }
-    setError('');
-    setLoading(true);
-    try {
-      const response = await authAPI.signup({
-        name: name.trim(),
-        username: username.trim(),
-        password,
-        email: email.trim() || undefined,
-        improvementCategories: [DEFAULT_SIGNUP_CATEGORY],
-        passwordHint1: passwordHint1.trim(),
-        passwordHint2: passwordHint2.trim(),
-        passwordHint3: passwordHint3.trim(),
-        phoneNumber: phoneNumber.replace(/\D/g, '') || undefined,
-      });
-      const id = coerceUserId(response.user?.id);
-      if (!response.token || !id) throw new Error('Invalid server response');
-      login({ ...response.user, id }, response.token);
-      const ageNum = parseInt(age, 10);
-      if (!Number.isNaN(ageNum) && gender) {
-        walkMatchAPI.updateSettings({ age: ageNum, gender }).catch(() => {});
-      }
-      discoverAPI.setPreference({
-        orientation,
-        lookingFor: lookingFor as ('dating' | 'casual' | 'friends' | 'serious')[],
-        userId: id,
-      }).catch(() => {});
-      navigate('/profile-setup', { replace: true });
-    } catch (err: unknown) {
-      setError(formatAxiosError(err, 'Signup failed'));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleEmailLogin = async (e: React.FormEvent) => {
+  const handlePasswordLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setLoading(true);
     try {
       const id = loginIdentifier.trim();
-      if (!id || !loginPassword) throw new Error('Enter email/username/phone and password');
-      const response = await authAPI.login({ identifier: id, username: id, password: loginPassword });
+      if (!id || !loginPassword) throw new Error('Enter username and password');
+      const response = await authAPI.login({ username: id, password: loginPassword });
       if (!response.token || !response.user) throw new Error('Invalid login response');
       finishAuth(response.user, response.token);
     } catch (err: unknown) {
-      setError(formatAxiosError(err, 'Invalid credentials'));
+      setError(formatAxiosError(err, 'Invalid username or password'));
     } finally {
       setLoading(false);
     }
@@ -381,8 +337,8 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
         <h1 className="auth-title">{mode === 'signup' ? 'Join Hook Up' : 'Welcome Back'}</h1>
         <p className="auth-subtitle">
           {mode === 'signup'
-            ? 'Pick a username forever, a 6-digit PIN, and 3 hints — or use Face ID below.'
-            : 'Username + PIN is fastest. Face ID and email also work.'}
+            ? 'Pick a username forever, a 6-digit PIN, and 3 hints — add an optional password for sign-in too.'
+            : 'Username + PIN is fastest. Password, Face ID, and phone code also work.'}
         </p>
 
         {error && <div className="error-message">{error}</div>}
@@ -417,6 +373,17 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
               <input type="text" value={passwordHint3} onChange={(e) => setPasswordHint3(e.target.value)} placeholder="Hint 3" maxLength={200} required />
             </div>
             <div className="form-group">
+              <label htmlFor="backup-password">Password (optional — sign in with username + password)</label>
+              <input
+                id="backup-password"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoComplete="new-password"
+                placeholder="8+ chars, upper, lower, number, symbol"
+              />
+            </div>
+            <div className="form-group">
               <label htmlFor="email">Email (optional)</label>
               <input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" placeholder="you@email.com" />
             </div>
@@ -449,29 +416,13 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
             <button type="button" className="auth-button" disabled={loading} style={{ marginTop: 8 }} onClick={beginFaceSignup}>
               Or sign up with Face ID
             </button>
-            {showPasswordSignup && (
-              <>
-                <div className="form-group" style={{ marginTop: 12 }}>
-                  <label htmlFor="password">Password (optional backup)</label>
-                  <input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
-                </div>
-                <button type="button" className="auth-button" disabled={loading || !password} style={{ marginTop: 8, opacity: 0.85 }} onClick={() => void handleSignup({ preventDefault: () => {} } as React.FormEvent)}>
-                  Create with password instead
-                </button>
-              </>
-            )}
-            {!showPasswordSignup && (
-              <button type="button" className="auth-button" style={{ marginTop: 8, opacity: 0.75, fontSize: 13 }} onClick={() => setShowPasswordSignup(true)}>
-                Use password instead of PIN
-              </button>
-            )}
           </form>
         ) : (
           <>
             <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
               <button type="button" className="auth-button" style={{ flex: 1, minWidth: 80, opacity: loginMethod === 'pin' ? 1 : 0.65 }} onClick={() => setLoginMethod('pin')}>Username + PIN</button>
               <button type="button" className="auth-button" style={{ flex: 1, minWidth: 80, opacity: loginMethod === 'face' ? 1 : 0.65 }} onClick={() => setLoginMethod('face')}>Face ID</button>
-              <button type="button" className="auth-button" style={{ flex: 1, minWidth: 80, opacity: loginMethod === 'email' ? 1 : 0.65 }} onClick={() => setLoginMethod('email')}>Email</button>
+              <button type="button" className="auth-button" style={{ flex: 1, minWidth: 80, opacity: loginMethod === 'password' ? 1 : 0.65 }} onClick={() => setLoginMethod('password')}>Password</button>
               <button type="button" className="auth-button" style={{ flex: 1, minWidth: 80, opacity: loginMethod === 'phone' ? 1 : 0.65 }} onClick={() => setLoginMethod('phone')}>Phone</button>
             </div>
             {loginMethod === 'pin' ? (
@@ -502,18 +453,18 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
                   {loading ? 'Verifying…' : 'Sign in with Face ID'}
                 </button>
               </div>
-            ) : loginMethod === 'email' ? (
-              <form onSubmit={handleEmailLogin} className="auth-form">
+            ) : loginMethod === 'password' ? (
+              <form onSubmit={handlePasswordLogin} className="auth-form">
                 <div className="form-group">
-                  <label>Email, username, or phone</label>
-                  <input value={loginIdentifier} onChange={(e) => setLoginIdentifier(e.target.value)} autoComplete="username" required />
+                  <label>Username</label>
+                  <input value={loginIdentifier} onChange={(e) => setLoginIdentifier(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))} autoComplete="username" required />
                 </div>
                 <div className="form-group">
                   <label>Password</label>
                   <input type="password" value={loginPassword} onChange={(e) => setLoginPassword(e.target.value)} autoComplete="current-password" required />
                 </div>
                 <Link to="/forgot-password" className="forgot-link">Forgot password?</Link>
-                <button type="submit" className="auth-button" disabled={loading}>{loading ? 'Signing in…' : 'Sign in'}</button>
+                <button type="submit" className="auth-button face-id-primary" disabled={loading}>{loading ? 'Signing in…' : 'Sign in'}</button>
               </form>
             ) : loginMethod === 'phone' ? (
               <form onSubmit={handlePhoneCodeLogin} className="auth-form">

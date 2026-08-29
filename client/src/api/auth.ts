@@ -60,6 +60,7 @@ export const authAPI = {
     email?: string;
     phoneNumber?: string;
     improvementCategories?: string[];
+    password?: string;
   }): Promise<AuthResponse> => {
     const response = await axios.post(`${API_URL}/signup-pin`, data);
     return response.data;

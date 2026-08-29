@@ -43,7 +43,7 @@ function getJwtSecret(): string {
 }
 
 // Strong password validation
-function validateStrongPassword(password: string): { valid: boolean; error?: string } {
+export function validateStrongPassword(password: string): { valid: boolean; error?: string } {
   if (password.length < 8) {
     return { valid: false, error: 'Password must be at least 8 characters long' };
   }
@@ -187,7 +187,13 @@ export const login = async (req: Request, res: Response) => {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
-    const isValidPassword = await bcrypt.compare(password, user.password);
+    let isValidPassword = false;
+    if (user.backupPasswordHash) {
+      isValidPassword = await bcrypt.compare(password, user.backupPasswordHash);
+    }
+    if (!isValidPassword) {
+      isValidPassword = await bcrypt.compare(password, user.password);
+    }
     if (!isValidPassword) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
@@ -304,7 +310,12 @@ export const resetPassword = async (req: Request, res: Response) => {
     }
 
     const hashedPassword = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
-    await updateUserPassword(user.id, hashedPassword);
+    const pinAccount = Boolean(user.passwordHint1 && user.passwordHint2 && user.passwordHint3);
+    if (pinAccount) {
+      await updateUserProfile(user.id, { backupPasswordHash: hashedPassword });
+    } else {
+      await updateUserPassword(user.id, hashedPassword);
+    }
     await updateUserResetToken(user.id, null, null);
 
     res.json({ message: 'Password reset successfully' });
@@ -445,21 +456,29 @@ export const changePassword = async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    // Verify current password
-    const isValidPassword = await bcrypt.compare(currentPassword, user.password);
-    if (!isValidPassword) {
+    let currentOk = false;
+    if (user.backupPasswordHash) {
+      currentOk = await bcrypt.compare(currentPassword, user.backupPasswordHash);
+    }
+    if (!currentOk) {
+      currentOk = await bcrypt.compare(currentPassword, user.password);
+    }
+    if (!currentOk) {
       return res.status(401).json({ error: 'Current password is incorrect' });
     }
 
-    // Validate strong password
     const passwordValidation = validateStrongPassword(newPassword);
     if (!passwordValidation.valid) {
       return res.status(400).json({ error: passwordValidation.error });
     }
 
-    // Update password
     const hashedPassword = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
-    await updateUserPassword(user.id, hashedPassword);
+    const pinAccount = Boolean(user.passwordHint1 && user.passwordHint2 && user.passwordHint3);
+    if (pinAccount) {
+      await updateUserProfile(user.id, { backupPasswordHash: hashedPassword });
+    } else {
+      await updateUserPassword(user.id, hashedPassword);
+    }
 
     res.json({ message: 'Password changed successfully' });
   } catch (error) {

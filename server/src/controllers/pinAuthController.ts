@@ -17,6 +17,7 @@ import {
 import { assertUsernameAvailable, reserveUsername, checkUsernameAvailable, normalizeUsernameKey } from '../models/usernameRegistry.js';
 import { getUserConversations } from '../models/chat.js';
 import { sanitizeName, sanitizeUsername, sanitizeForStorage, LIMITS } from '../utils/sanitize.js';
+import { validateStrongPassword } from './authController.js';
 
 const BCRYPT_ROUNDS = process.env.NODE_ENV === 'production' ? 12 : 10;
 const JWT_EXPIRES_IN = '7d';
@@ -86,7 +87,7 @@ export async function usernameAvailability(req: Request, res: Response) {
 
 export async function signupWithPin(req: Request, res: Response) {
   try {
-    let { name, username, pin, pinHint1, pinHint2, pinHint3, email, phoneNumber, improvementCategories } = req.body;
+    let { name, username, pin, pinHint1, pinHint2, pinHint3, email, phoneNumber, improvementCategories, password } = req.body;
 
     name = sanitizeName(name);
     username = sanitizeUsername(username);
@@ -136,6 +137,16 @@ export async function signupWithPin(req: Request, res: Response) {
       return res.status(400).json({ error: 'Phone number is already registered' });
     }
 
+    const optionalPassword = password ? String(password).trim() : '';
+    let backupPasswordHash: string | undefined;
+    if (optionalPassword) {
+      const passwordCheck = validateStrongPassword(optionalPassword);
+      if (!passwordCheck.valid) {
+        return res.status(400).json({ error: passwordCheck.error });
+      }
+      backupPasswordHash = await bcrypt.hash(optionalPassword, BCRYPT_ROUNDS);
+    }
+
     const hashedPin = await bcrypt.hash(pinStr, BCRYPT_ROUNDS);
     const user = await createUser({
       email: signupEmail,
@@ -149,7 +160,10 @@ export async function signupWithPin(req: Request, res: Response) {
     });
 
     await reserveUsername(username, user.id);
-    await updateUserProfile(user.id, { emailVerified: false });
+    await updateUserProfile(user.id, {
+      emailVerified: false,
+      ...(backupPasswordHash ? { backupPasswordHash } : {}),
+    });
     if (normalizedPhone) {
       await updateUserProfile(user.id, { phoneNumber: normalizedPhone });
     }

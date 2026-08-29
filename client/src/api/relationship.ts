@@ -75,4 +75,41 @@ export const relationshipAPI = {
     const response = await axios.get(`${API_URL}/status/${userId}`);
     return response.data;
   },
+
+  getCoupleHub: async (partnerUserId: string) => {
+    const response = await axios.get(`${API_URL}/couple-hub/${partnerUserId}`);
+    return response.data as {
+      health: {
+        score: number;
+        level: string;
+        label: string;
+        message: string;
+        needsChargeUp: boolean;
+        selfControlTip: string | null;
+      };
+      blindDate: string | null;
+      surprises: { forYou: string; forPartner: string };
+      suggestGuide: boolean;
+      guideMessage: string;
+      games: Array<{ type: string; name: string; description: string }>;
+      coupleQuiz: Array<{ q: string; a: string; b: string }>;
+      relationshipId: string;
+    };
+  },
+
+  acceptBlindDate: async (relationshipId: string, idea: string) => {
+    const response = await axios.post(`${API_URL}/blind-date`, { relationshipId, idea });
+    return response.data;
+  },
+
+  getCheatWarning: async (otherUserId: string) => {
+    const response = await axios.get(`${API_URL}/cheat-warning/${otherUserId}`);
+    return response.data as {
+      shouldWarn: boolean;
+      title?: string;
+      body?: string;
+      risks?: string[];
+      selfControl?: string;
+    };
+  },
 };

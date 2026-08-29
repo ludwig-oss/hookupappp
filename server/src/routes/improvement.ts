@@ -41,6 +41,7 @@ import {
 import {
   getMyWallet,
   updateWalletPaypal,
+  updateWalletBank,
   createWithdrawal,
   getPaymentSplitInfo,
 } from '../controllers/guideWalletController.js';
@@ -105,6 +106,7 @@ router.post('/coach-votes/:campaignId/swipe', submitPopupSwipe);
 // Guide wallet & OnlyFans-style payouts
 router.get('/wallet', getMyWallet);
 router.put('/wallet/paypal', updateWalletPaypal);
+router.put('/wallet/bank', updateWalletBank);
 router.post('/wallet/withdraw', createWithdrawal);
 router.get('/payments/split-info', getPaymentSplitInfo);
 

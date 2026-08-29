@@ -11,6 +11,7 @@ import { reviewsAPI, ReviewAttributes, REVIEW_ATTRIBUTE_LABELS } from '../../api
 import ExperienceReviewModal from '../ExperienceReviewModal';
 import { speedDateAPI, SpeedDate } from '../../api/speedDate';
 import { connectionJourneyAPI, ConnectionJourneyResponse } from '../../api/connectionJourney';
+import RelationshipCouplePanel from './RelationshipCouplePanel';
 import '../../pages/Dashboard.css';
 
 const formatMessageTime = (createdAt: string | Date) => {
@@ -54,9 +55,10 @@ export interface EnrichedMeetupPlan extends MeetupPlan {
 interface ChatWidgetProps {
   initialOtherUserId?: string | null;
   onOpenedWithUserId?: () => void;
+  onOpenGuides?: () => void;
 }
 
-const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId }: ChatWidgetProps) => {
+const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId, onOpenGuides }: ChatWidgetProps) => {
   const { user } = useContext(AuthContext);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
@@ -146,6 +148,15 @@ const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId }: ChatWidgetProps)
   const [checkInProblem, setCheckInProblem] = useState('');
   const [checkInSolutions, setCheckInSolutions] = useState<string[]>([]);
   const [showConflictSolutions, setShowConflictSolutions] = useState<string[]>([]);
+  const [cheatWarning, setCheatWarning] = useState<{
+    userId: string;
+    name: string;
+    profilePicture: string | null;
+    title?: string;
+    body?: string;
+    risks?: string[];
+    selfControl?: string;
+  } | null>(null);
 
   // NDA (celebrity / public figure): must sign before chatting
   const [ndaModal, setNdaModal] = useState<{ otherUserId: string; otherName: string; otherAvatar: string | null; interestId: string; agreementText: string } | null>(null);
@@ -608,6 +619,30 @@ const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId }: ChatWidgetProps)
     setSelectedAvatar(u.profilePicture);
     setMessages([]);
     loadMessages(u.id, u.name, u.profilePicture);
+  };
+
+  const tryOpenChatFromList = async (c: Conversation) => {
+    if (focus && focus.daysLeft > 0 && c.userId !== focus.partnerUserId) return;
+    if (relationship?.status === 'active' && c.userId !== relationship.partnerUserId) {
+      try {
+        const w = await relationshipAPI.getCheatWarning(c.userId);
+        if (w.shouldWarn) {
+          setCheatWarning({
+            userId: c.userId,
+            name: c.name,
+            profilePicture: c.profilePicture,
+            title: w.title,
+            body: w.body,
+            risks: w.risks,
+            selfControl: w.selfControl,
+          });
+          return;
+        }
+      } catch {
+        /* open anyway if check fails */
+      }
+    }
+    openThreadWithUser({ id: c.userId, name: c.name, username: '', profilePicture: c.profilePicture }, true);
   };
 
   const confirmStartFocus = async () => {
@@ -1139,6 +1174,39 @@ const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId }: ChatWidgetProps)
         </div>
       )}
 
+      {cheatWarning && (
+        <div className="chat-meetup-overlay" onClick={() => setCheatWarning(null)}>
+          <div className="chat-meetup-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 420 }}>
+            <h3>{cheatWarning.title || 'You are in a relationship'}</h3>
+            <p style={{ fontSize: 13 }}>{cheatWarning.body}</p>
+            <ul style={{ fontSize: 12, paddingLeft: 18, margin: '12px 0' }}>
+              {(cheatWarning.risks || []).map((r, i) => (
+                <li key={i} style={{ marginBottom: 6 }}>{r}</li>
+              ))}
+            </ul>
+            {cheatWarning.selfControl && (
+              <p style={{ fontSize: 12, color: '#fbbf24', marginBottom: 12 }}>🛡️ {cheatWarning.selfControl}</p>
+            )}
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button type="button" className="chat-compare-fifa-btn" onClick={() => setCheatWarning(null)}>
+                Stay faithful — go back
+              </button>
+              <button
+                type="button"
+                className="chat-back-btn"
+                onClick={() => {
+                  const u = { id: cheatWarning.userId, name: cheatWarning.name, username: '', profilePicture: cheatWarning.profilePicture };
+                  setCheatWarning(null);
+                  openThreadWithUser(u, true);
+                }}
+              >
+                I understand the risk — open anyway
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {ndaModal && (
         <div className="chat-focus-confirm-overlay">
           <div className="chat-focus-confirm-modal" style={{ maxWidth: 480 }}>
@@ -1354,10 +1422,8 @@ const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId }: ChatWidgetProps)
                         openThreadWithUser({ id: c.userId, name: c.name, username: '', profilePicture: c.profilePicture }, true);
                       } else if (focus && focus.daysLeft > 0) {
                         return;
-                      } else if (relationship?.status === 'active' && c.userId !== relationship.partnerUserId) {
-                        openThreadWithUser({ id: c.userId, name: c.name, username: '', profilePicture: c.profilePicture }, true);
                       } else {
-                        toggleCompare(c.userId);
+                        tryOpenChatFromList(c);
                       }
                     }}
                   >
@@ -1727,6 +1793,15 @@ const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId }: ChatWidgetProps)
               <span className="chat-convo-prompt-label">Conversation idea:</span> {convoPrompt}
               <button type="button" className="chat-convo-use" onClick={() => setInputText(convoPrompt || '')}>Use this</button>
             </div>
+          )}
+          {isRelationshipThread && user?.id && selectedUserId && (
+            <RelationshipCouplePanel
+              partnerUserId={selectedUserId}
+              partnerName={selectedName || 'partner'}
+              userId={user.id}
+              onSendMessage={(text) => { sendContent(text); }}
+              onOpenGuides={onOpenGuides}
+            />
           )}
           {isRelationshipThread && relationshipTip && (
             <div className="chat-convo-prompt chat-relationship-tip">

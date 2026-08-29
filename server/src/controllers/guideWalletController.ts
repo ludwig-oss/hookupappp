@@ -3,6 +3,7 @@ import {
   getWalletSummary,
   requestWithdrawal,
   setWalletPaypalEmail,
+  setWalletBankLabel,
   GUIDE_EARNINGS_PERCENT,
   PLATFORM_FEE_PERCENT,
   MIN_WITHDRAWAL_EUR,
@@ -28,6 +29,18 @@ export async function getMyWallet(req: Request, res: Response) {
     });
   } catch (e: any) {
     res.status(500).json({ error: e.message || 'Failed' });
+  }
+}
+
+export async function updateWalletBank(req: Request, res: Response) {
+  try {
+    const userId = (req as any).userId as string;
+    const { bankAccountLabel } = req.body as { bankAccountLabel?: string };
+    if (!bankAccountLabel?.trim()) return res.status(400).json({ error: 'bankAccountLabel is required' });
+    const wallet = await setWalletBankLabel(userId, bankAccountLabel.trim());
+    res.json({ message: 'Bank / payout details saved', wallet });
+  } catch (e: any) {
+    res.status(400).json({ error: e.message || 'Failed' });
   }
 }
 

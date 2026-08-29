@@ -289,6 +289,7 @@ export interface GuideWalletSummary {
     totalEarnedEur: number;
     totalWithdrawnEur: number;
     paypalEmail: string | null;
+    bankAccountLabel?: string | null;
   };
   recentTransactions: Array<{ id: string; type: string; amountEur: number; note?: string; createdAt: string }>;
   pendingWithdrawals: Array<{ id: string; amountEur: number; status: string }>;
@@ -333,6 +334,9 @@ export const walletAPI = {
   },
   setPaypalEmail: async (paypalEmail: string) => {
     await axios.put(`${API_URL}/wallet/paypal`, { paypalEmail });
+  },
+  setBankLabel: async (bankAccountLabel: string) => {
+    await axios.put(`${API_URL}/wallet/bank`, { bankAccountLabel });
   },
   withdraw: async (amountEur: number, paypalEmail?: string) => {
     const res = await axios.post(`${API_URL}/wallet/withdraw`, { amountEur, paypalEmail });

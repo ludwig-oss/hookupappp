@@ -14,6 +14,8 @@ import WheelOutcomeFlow from '../components/widgets/WheelOutcomeFlow.tsx';
 import LoveFeedWidget from '../components/widgets/LoveFeedWidget';
 import EventsWidget from '../components/widgets/EventsWidget';
 import HelpWidget from '../components/widgets/HelpWidget';
+import DatingAdviceWidget from '../components/widgets/DatingAdviceWidget';
+import ConfessionBoothWidget from '../components/widgets/ConfessionBoothWidget';
 import type { HelpNavTarget } from '../data/helpFaq';
 import WalkingPartnerPopup from '../components/WalkingPartnerPopup';
 import CoachVoteSwipePopup from '../components/CoachVoteSwipePopup';
@@ -46,7 +48,7 @@ const Dashboard = () => {
   const [uploading, setUploading] = useState(false);
   const [selectedHighlightId, setSelectedHighlightId] = useState<string | null>(null);
   const [viewingHighlight, setViewingHighlight] = useState<any | null>(null);
-  type WidgetId = 'activity' | 'compatibility' | 'connections' | 'highlights' | 'lovefeed' | 'chat' | 'events' | 'help' | null;
+  type WidgetId = 'activity' | 'compatibility' | 'connections' | 'highlights' | 'lovefeed' | 'advice' | 'confession' | 'chat' | 'events' | 'help' | null;
   const [openWidget, setOpenWidget] = useState<WidgetId>(null);
   const [openChatWithUserId, setOpenChatWithUserId] = useState<string | null>(null);
   const [loveFeedBlowingUpCount, setLoveFeedBlowingUpCount] = useState(0);
@@ -333,6 +335,14 @@ const Dashboard = () => {
               <span className="widget-card-badge" title="Breaking / blowing up posts">{loveFeedBlowingUpCount}</span>
             )}
           </div>
+          <div className="widget-card" onClick={() => setOpenWidget('advice')} role="button" tabIndex={0} onKeyDown={(e) => e.key === 'Enter' && setOpenWidget('advice')}>
+            <div className="widget-card-icon">💬</div>
+            <div className="widget-card-title">Dating Advice</div>
+          </div>
+          <div className="widget-card" onClick={() => setOpenWidget('confession')} role="button" tabIndex={0} onKeyDown={(e) => e.key === 'Enter' && setOpenWidget('confession')}>
+            <div className="widget-card-icon">⛪</div>
+            <div className="widget-card-title">Confession Booth</div>
+          </div>
           <div className="widget-card" onClick={() => setOpenWidget('chat')} role="button" tabIndex={0} onKeyDown={(e) => e.key === 'Enter' && setOpenWidget('chat')}>
             <div className="widget-card-icon">◉</div>
             <div className="widget-card-title">{t('communication')}</div>
@@ -385,6 +395,8 @@ const Dashboard = () => {
             {openWidget === 'lovefeed' && (
               <LoveFeedWidget onShareToFriends={() => setOpenWidget('chat')} />
             )}
+            {openWidget === 'advice' && <DatingAdviceWidget />}
+            {openWidget === 'confession' && <ConfessionBoothWidget />}
             {openWidget === 'events' && <EventsWidget />}
             {openWidget === 'help' && (
               <HelpWidget
@@ -403,7 +415,13 @@ const Dashboard = () => {
                 }}
               />
             )}
-            {openWidget === 'chat' && <ChatWidget initialOtherUserId={openChatWithUserId} onOpenedWithUserId={() => setOpenChatWithUserId(null)} />}
+            {openWidget === 'chat' && (
+              <ChatWidget
+                initialOtherUserId={openChatWithUserId}
+                onOpenedWithUserId={() => setOpenChatWithUserId(null)}
+                onOpenGuides={() => setOpenWidget('compatibility')}
+              />
+            )}
           </div>
         </div>
       )}

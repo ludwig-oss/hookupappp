@@ -16,6 +16,15 @@ import {
   getDateIdea,
   getSolutionsForProblem,
 } from '../data/relationshipTips.js';
+import {
+  computeRelationshipHealth,
+  pickBlindDate,
+  pickSurpriseIdeas,
+  CHEAT_WARNING,
+  COUPLE_QUIZ,
+} from '../models/relationshipHealth.js';
+import { recordBlindDate } from '../models/relationship.js';
+import { CHAT_CHALLENGES } from '../models/chatEngagement.js';
 
 export const getMyRelationship = async (req: Request, res: Response) => {
   try {
@@ -209,6 +218,83 @@ export const getRelationshipStatus = async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error('Relationship status error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+/** Relationship health bar + couple hub (games, blind date, surprises, guide nudge). */
+export const getCoupleHub = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).userId;
+    const { partnerUserId } = req.params;
+    if (!userId || !partnerUserId) return res.status(400).json({ error: 'partnerUserId required' });
+
+    const rel = await getActiveRelationship(userId);
+    if (!rel || rel.status !== 'active') {
+      return res.status(403).json({ error: 'Active relationship required' });
+    }
+    const partnerId = getPartnerId(rel, userId);
+    if (partnerId !== partnerUserId) {
+      return res.status(403).json({ error: 'Not your partner' });
+    }
+
+    const messages = await getConversation(userId, partnerUserId);
+    const health = computeRelationshipHealth(messages, rel);
+    const blindDate = pickBlindDate(rel.blindDateHistory || []);
+    const surprises = pickSurpriseIdeas();
+    const shouldSuggestBlindDate =
+      health.needsChargeUp ||
+      !rel.lastBlindDateAt ||
+      Date.now() - new Date(rel.lastBlindDateAt).getTime() > 10 * 24 * 60 * 60 * 1000;
+
+    res.json({
+      health,
+      blindDate: shouldSuggestBlindDate ? blindDate : null,
+      surprises,
+      suggestGuide: health.suggestGuide,
+      guideMessage:
+        'Couples grow when they keep learning. Book a relationship guide under Compatibility → Expert — communication, conflict, intimacy & more.',
+      games: CHAT_CHALLENGES.filter((g) =>
+        ['xo', 'would-you-rather', 'this-or-that', 'compatibility-quiz', 'two-truths-lie', 'emoji-story'].includes(g.type)
+      ),
+      coupleQuiz: COUPLE_QUIZ,
+      cheatWarning: CHEAT_WARNING,
+      relationshipId: rel.id,
+    });
+  } catch (error) {
+    console.error('Couple hub error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+export const acceptBlindDate = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).userId;
+    const { relationshipId, idea } = req.body as { relationshipId?: string; idea?: string };
+    if (!relationshipId || !idea) return res.status(400).json({ error: 'relationshipId and idea required' });
+    const rel = await getActiveRelationship(userId);
+    if (!rel || rel.id !== relationshipId) return res.status(403).json({ error: 'Not your relationship' });
+    await recordBlindDate(relationshipId, idea);
+    res.json({ message: 'Blind date saved — surprise your partner!', idea });
+  } catch (error) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+export const getCheatWarning = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).userId;
+    const { otherUserId } = req.params;
+    const rel = await getActiveRelationship(userId);
+    if (!rel || rel.status !== 'active') {
+      return res.json({ shouldWarn: false });
+    }
+    const partnerId = getPartnerId(rel, userId);
+    if (otherUserId === partnerId) {
+      return res.json({ shouldWarn: false });
+    }
+    res.json({ shouldWarn: true, ...CHEAT_WARNING });
+  } catch (error) {
     res.status(500).json({ error: 'Internal server error' });
   }
 };

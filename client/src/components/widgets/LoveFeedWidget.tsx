@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useContext, useCallback } from 'react';
 import { AuthContext } from '../../context/AuthContext';
-import { postsAPI, DatingPost } from '../../api/posts';
+import { postsAPI, DatingPost, FeedMode } from '../../api/posts';
 import { formatAxiosError } from '../../lib/apiError';
 import './Widget.css';
 
@@ -259,6 +259,10 @@ function VideoPostPlayer({ dataUrl, onOpenFullScreen }: { dataUrl: string; onOpe
 export default function LoveFeedWidget({ onShareToFriends }: { onShareToFriends?: (post: DatingPost) => void }) {
   const { user } = useContext(AuthContext);
   const [posts, setPosts] = useState<DatingPost[]>([]);
+  const [recommendations, setRecommendations] = useState<DatingPost[]>([]);
+  const [trendingTags, setTrendingTags] = useState<string[]>([]);
+  const [feedMode, setFeedMode] = useState<FeedMode>('for_you');
+  const [feedDescription, setFeedDescription] = useState('');
   const [loading, setLoading] = useState(true);
   const [feedError, setFeedError] = useState<string | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -268,6 +272,7 @@ export default function LoveFeedWidget({ onShareToFriends }: { onShareToFriends?
   const [contentType, setContentType] = useState<'text' | 'image' | 'video'>('text');
   const [postContent, setPostContent] = useState('');
   const [postTitle, setPostTitle] = useState('');
+  const [postTags, setPostTags] = useState('');
   const [mediaData, setMediaData] = useState<string | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [selectedMediaType, setSelectedMediaType] = useState<'image' | 'video' | null>(null);
@@ -282,6 +287,7 @@ export default function LoveFeedWidget({ onShareToFriends }: { onShareToFriends?
   const MAX_VIDEO_MB = 25;
   const MAX_VIDEO_BYTES = MAX_VIDEO_MB * 1024 * 1024;
   const feedRef = useRef<HTMLDivElement>(null);
+  const viewedPostsRef = useRef<Set<string>>(new Set());
 
   const closeCreateModal = () => {
     revokePreview();
@@ -289,6 +295,7 @@ export default function LoveFeedWidget({ onShareToFriends }: { onShareToFriends?
     setSelectedMediaType(null);
     setPostContent('');
     setPostTitle('');
+    setPostTags('');
     setShowCreateModal(false);
   };
   const revokePreview = () => {
@@ -299,15 +306,21 @@ export default function LoveFeedWidget({ onShareToFriends }: { onShareToFriends?
   };
 
   useEffect(() => {
-    loadFeed();
-  }, []);
+    loadFeed(feedMode);
+  }, [feedMode]);
 
-  const loadFeed = async () => {
+  const loadFeed = async (mode: FeedMode = feedMode) => {
     setFeedError(null);
     setLoading(true);
     try {
-      const res = await postsAPI.getFeed();
-      setPosts(Array.isArray(res.posts) ? res.posts : []);
+      const [feedRes, recRes] = await Promise.all([
+        postsAPI.getFeed(mode),
+        mode === 'for_you' ? postsAPI.getRecommendations().catch(() => ({ recommendations: [], trendingTags: [] })) : Promise.resolve({ recommendations: [], trendingTags: [] }),
+      ]);
+      setPosts(Array.isArray(feedRes.posts) ? feedRes.posts : []);
+      setRecommendations(recRes.recommendations || []);
+      setTrendingTags(feedRes.feedMeta?.trendingTags || recRes.trendingTags || []);
+      setFeedDescription(feedRes.feedMeta?.description || '');
     } catch (err) {
       console.error('Failed to load feed', err);
       setPosts([]);
@@ -316,6 +329,28 @@ export default function LoveFeedWidget({ onShareToFriends }: { onShareToFriends?
       setLoading(false);
     }
   };
+
+  const trackPostView = useCallback((postId: string) => {
+    if (!user || viewedPostsRef.current.has(postId)) return;
+    viewedPostsRef.current.add(postId);
+    postsAPI.recordView(postId).catch(() => {});
+  }, [user]);
+
+  useEffect(() => {
+    if (!user || !feedRef.current) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (!entry.isIntersecting) return;
+          const id = (entry.target as HTMLElement).dataset.postId;
+          if (id) trackPostView(id);
+        });
+      },
+      { threshold: 0.45, root: feedRef.current }
+    );
+    feedRef.current.querySelectorAll('[data-post-id]').forEach((el) => observer.observe(el));
+    return () => observer.disconnect();
+  }, [posts, recommendations, user, trackPostView]);
 
   const handleCreatePost = async () => {
     if (!postContent.trim() && !mediaData) {
@@ -338,9 +373,13 @@ export default function LoveFeedWidget({ onShareToFriends }: { onShareToFriends?
         contentType: resolvedContentType,
         content,
         title: postTitle || undefined,
+        tags: postTags
+          .split(/[,\s#]+/)
+          .map((t) => t.trim())
+          .filter(Boolean),
       });
       closeCreateModal();
-      await loadFeed();
+      await loadFeed(feedMode);
     } catch (err: any) {
       console.error('Failed to create post', err);
       const status = err?.response?.status;
@@ -360,7 +399,7 @@ export default function LoveFeedWidget({ onShareToFriends }: { onShareToFriends?
   const handleLike = async (postId: string) => {
     try {
       await postsAPI.likePost(postId);
-      await loadFeed();
+      await loadFeed(feedMode);
     } catch (err: any) {
       console.error('Failed to like', err);
       if (err?.response?.status === 401) alert('Please sign in to like posts.');
@@ -373,7 +412,7 @@ export default function LoveFeedWidget({ onShareToFriends }: { onShareToFriends?
     try {
       await postsAPI.commentOnPost(postId, text);
       setCommentDraft((prev) => ({ ...prev, [postId]: '' }));
-      await loadFeed();
+      await loadFeed(feedMode);
     } catch (err: any) {
       console.error('Failed to comment', err);
       if (err?.response?.status === 401) alert('Please sign in to comment.');
@@ -383,7 +422,7 @@ export default function LoveFeedWidget({ onShareToFriends }: { onShareToFriends?
   const handleShare = async (post: DatingPost) => {
     try {
       await postsAPI.sharePost(post.id);
-      await loadFeed();
+      await loadFeed(feedMode);
       onShareToFriends?.(post);
     } catch (err: any) {
       console.error('Failed to share', err);
@@ -395,7 +434,7 @@ export default function LoveFeedWidget({ onShareToFriends }: { onShareToFriends?
     if (!window.confirm('Delete this post?')) return;
     try {
       await postsAPI.deletePost(postId);
-      await loadFeed();
+      await loadFeed(feedMode);
     } catch (err: any) {
       console.error('Failed to delete post', err);
       const msg = err?.response?.data?.error || err?.message || 'Failed to delete post';
@@ -462,8 +501,8 @@ export default function LoveFeedWidget({ onShareToFriends }: { onShareToFriends?
     .filter((p) => (p.likes || 0) > 0);
   const blowingUpPosts = posts.filter((p) => (p.likes || 0) >= BLOWING_UP_LIKES);
 
-  const renderPostCard = (post: DatingPost) => (
-    <article key={post.id} className="love-feed-card">
+  const renderPostCard = (post: DatingPost, opts?: { compact?: boolean }) => (
+    <article key={post.id} className="love-feed-card" data-post-id={post.id}>
       {isPostAuthor(post) && (
         <div className="love-feed-card-own-toolbar">
           <button
@@ -520,8 +559,20 @@ export default function LoveFeedWidget({ onShareToFriends }: { onShareToFriends?
               <span className="love-feed-verified" aria-hidden>✓</span>
             </span>
             <span className="love-feed-card-date">{formatDate(post.createdAt)}</span>
+            {post.feedReason && !opts?.compact && (
+              <span style={{ display: 'block', fontSize: 11, color: '#f472b6', marginTop: 2 }}>✦ {post.feedReason}</span>
+            )}
           </div>
         </div>
+        {(post.tags?.length ?? 0) > 0 && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 6 }}>
+            {post.tags!.slice(0, 5).map((tag) => (
+              <span key={tag} style={{ fontSize: 11, padding: '2px 8px', borderRadius: 999, background: 'rgba(236,72,153,0.15)', color: '#fbcfe8' }}>
+                #{tag.replace(/^#/, '')}
+              </span>
+            ))}
+          </div>
+        )}
         <p className="love-feed-card-headline">
           {post.title ? `"${post.title}"` : post.contentType === 'text' ? `"${post.content.slice(0, 120)}${post.content.length > 120 ? '…' : ''}"` : post.contentType === 'video' ? 'Shared a video' : 'Shared a post'}
         </p>
@@ -598,8 +649,44 @@ export default function LoveFeedWidget({ onShareToFriends }: { onShareToFriends?
       </div>
 
       <p className="love-feed-hint">
-        Post text thoughts, photos, or videos about dating & relationships. Like, comment, and share inside the app — most-liked posts rise to the top.
+        Post tweets, photos &amp; videos — our feed mixes <strong>YouTube-style recommendations</strong>, <strong>Twitter trending</strong>, and <strong>TikTok viral ranking</strong>. Likes, views &amp; tags train what you see next.
       </p>
+
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
+        {([
+          ['for_you', 'For You'],
+          ['trending', 'Trending'],
+          ['videos', 'Videos'],
+          ['following', 'Following'],
+        ] as const).map(([mode, label]) => (
+          <button
+            key={mode}
+            type="button"
+            onClick={() => setFeedMode(mode)}
+            style={{
+              padding: '6px 12px',
+              borderRadius: 999,
+              border: feedMode === mode ? '2px solid #ec4899' : '1px solid rgba(255,255,255,0.2)',
+              background: feedMode === mode ? 'rgba(236,72,153,0.2)' : 'transparent',
+              color: '#fff',
+              fontSize: 12,
+              cursor: 'pointer',
+            }}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {feedDescription && !loading && (
+        <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.55)', marginBottom: 10 }}>{feedDescription}</p>
+      )}
+
+      {trendingTags.length > 0 && !loading && (
+        <div style={{ marginBottom: 12, fontSize: 12, color: '#9ca3af' }}>
+          Trending: {trendingTags.map((t) => `#${t}`).join(' · ')}
+        </div>
+      )}
 
       {!user && (
         <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.7)', marginBottom: 12, padding: '0 4px' }}>Sign in to post, like, comment and share.</p>
@@ -612,8 +699,15 @@ export default function LoveFeedWidget({ onShareToFriends }: { onShareToFriends?
         {!loading && feedError && (
           <div className="love-feed-error">
             <p>{feedError}</p>
-            <button type="button" className="love-feed-create-btn" onClick={() => loadFeed()}>Retry</button>
+            <button type="button" className="love-feed-create-btn" onClick={() => loadFeed(feedMode)}>Retry</button>
           </div>
+        )}
+        {!loading && !feedError && feedMode === 'for_you' && recommendations.length > 0 && (
+          <section className="love-feed-trending" style={{ marginBottom: 16 }}>
+            <h3 className="love-feed-trending-title">✨ Recommended for you</h3>
+            <p className="love-feed-trending-sub">YouTube-style picks based on what you watch, like &amp; comment on.</p>
+            {recommendations.slice(0, 3).map((post) => renderPostCard(post, { compact: true }))}
+          </section>
         )}
         {!loading && !feedError && blowingUpPosts.length > 0 && (
           <section className="love-feed-trending">
@@ -655,7 +749,7 @@ export default function LoveFeedWidget({ onShareToFriends }: { onShareToFriends?
           type={fullScreenMedia.type}
           src={fullScreenMedia.src}
           onClose={() => setFullScreenMedia(null)}
-          onLike={user ? () => { handleLike(fullScreenMedia.postId); loadFeed(); } : undefined}
+          onLike={user ? () => { handleLike(fullScreenMedia.postId); loadFeed(feedMode); } : undefined}
         />
       )}
 
@@ -678,6 +772,10 @@ export default function LoveFeedWidget({ onShareToFriends }: { onShareToFriends?
               <label>
                 Headline (optional)
                 <input type="text" placeholder="e.g. How we made long-distance work" value={postTitle} onChange={(e) => setPostTitle(e.target.value)} />
+              </label>
+              <label>
+                Tags (helps recommendations)
+                <input type="text" placeholder="e.g. longdistance, firstdate, redflags" value={postTags} onChange={(e) => setPostTags(e.target.value)} />
               </label>
               <label>
                 Statement

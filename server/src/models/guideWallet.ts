@@ -13,13 +13,14 @@ export interface GuideWallet {
   totalEarnedEur: number;
   totalWithdrawnEur: number;
   paypalEmail: string | null;
+  bankAccountLabel?: string | null;
   updatedAt: string;
 }
 
 export interface WalletTransaction {
   id: string;
   userId: string;
-  type: 'session_earning' | 'platform_fee' | 'withdrawal' | 'withdrawal_refund';
+  type: 'session_earning' | 'platform_fee' | 'withdrawal' | 'withdrawal_refund' | 'advice_prize' | 'platform_fee_deduct';
   amountEur: number;
   netToGuideEur?: number;
   platformFeeEur?: number;
@@ -104,6 +105,7 @@ export async function getOrCreateWallet(userId: string): Promise<GuideWallet> {
       totalEarnedEur: 0,
       totalWithdrawnEur: 0,
       paypalEmail: null,
+      bankAccountLabel: null,
       updatedAt: new Date().toISOString(),
     };
     wallets.push(w);
@@ -168,7 +170,69 @@ export async function creditGuideSessionPayment(params: {
     createdAt: now,
   });
   await writeTransactions(txs);
+
+  const { sendPushToUser } = await import('../realtime/push.js');
+  const { notifyWalletUpdate } = await import('../realtime/notifications.js');
+  notifyWalletUpdate(params.guideUserId, {
+    amountEur: guideShare,
+    reason: `Session prepay (€${platformFee} platform fee deducted)`,
+  });
+  sendPushToUser(params.guideUserId, {
+    title: '€' + guideShare + ' added to your balance',
+    body: `Client prepaid session. Platform fee €${platformFee} (OnlyFans-style). Withdraw in Settings → Account balance.`,
+    data: { type: 'wallet_credit', amountEur: String(guideShare) },
+  }).catch(() => {});
+
   return { guideShare, platformFee };
+}
+
+/** Monthly dating advice prize — €5 to balance. */
+export async function creditAdvicePrize(
+  userId: string,
+  amountEur: number,
+  answerId: string,
+  cohort: string,
+  monthKey: string
+): Promise<void> {
+  const w = await getOrCreateWallet(userId);
+  const wallets = await readWallets();
+  w.availableBalanceEur = Math.round((w.availableBalanceEur + amountEur) * 100) / 100;
+  w.totalEarnedEur = Math.round((w.totalEarnedEur + amountEur) * 100) / 100;
+  w.updatedAt = new Date().toISOString();
+  const idx = wallets.findIndex((x) => x.userId === userId);
+  if (idx >= 0) wallets[idx] = w;
+  await writeWallets(wallets);
+
+  const txs = await readTransactions();
+  txs.push({
+    id: Date.now().toString() + '-advice',
+    userId,
+    type: 'advice_prize',
+    amountEur,
+    note: `Best advice ${monthKey} (${cohort})`,
+    createdAt: new Date().toISOString(),
+  });
+  await writeTransactions(txs);
+
+  const { sendPushToUser } = await import('../realtime/push.js');
+  const { notifyWalletUpdate } = await import('../realtime/notifications.js');
+  notifyWalletUpdate(userId, { amountEur, reason: 'Monthly advice prize' });
+  sendPushToUser(userId, {
+    title: 'You won €' + amountEur + ' for best advice!',
+    body: 'Prize added to your balance. Withdraw via PayPal or bank details in Settings.',
+    data: { type: 'advice_prize', amountEur: String(amountEur) },
+  }).catch(() => {});
+}
+
+export async function setWalletBankLabel(userId: string, bankAccountLabel: string): Promise<GuideWallet> {
+  const wallets = await readWallets();
+  const w = await getOrCreateWallet(userId);
+  w.bankAccountLabel = bankAccountLabel.trim() || null;
+  w.updatedAt = new Date().toISOString();
+  const idx = wallets.findIndex((x) => x.userId === userId);
+  if (idx >= 0) wallets[idx] = w;
+  await writeWallets(wallets);
+  return w;
 }
 
 export async function getWalletSummary(userId: string): Promise<{

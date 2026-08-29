@@ -52,21 +52,25 @@ async function readPosts(): Promise<DatingPost[]> {
   }
 }
 
-/** Engagement-weighted feed (TikTok/Instagram style): score = likes*2 + comments + recency decay */
-export async function getFeedPosts(): Promise<DatingPost[]> {
-  if (usePostgres()) return pgPosts.getFeedPosts();
+/** Hybrid YouTube + Twitter + TikTok feed ranking (personalized when userId provided). */
+export async function getFeedPosts(options?: {
+  userId?: string | null;
+  mode?: import('./feedAlgorithm.js').FeedMode;
+}): Promise<import('./feedAlgorithm.js').RankedPost[]> {
+  if (usePostgres()) return pgPosts.getFeedPosts(options);
+  const { attachViewCounts } = await import('./feedEngagement.js');
+  const { rankFeedPosts } = await import('./feedAlgorithm.js');
+  const { getUserFeedProfile } = await import('./feedEngagement.js');
+
   const posts = await readPosts();
-  const now = Date.now();
-  return posts
-    .map((p) => {
-      const ageHours = (now - new Date(p.createdAt).getTime()) / (1000 * 60 * 60);
-      const recency = Math.max(0, 1 - ageHours / 168); // decay over ~1 week
-      const engagement = (p.likes || 0) * 2 + (p.comments?.length || 0) * 3;
-      const score = engagement + recency * 20;
-      return { ...p, _score: score };
-    })
-    .sort((a, b) => (b as any)._score - (a as any)._score)
-    .map(({ _score, ...p }) => p);
+  const withViews = await attachViewCounts(posts);
+  const profile = options?.userId ? await getUserFeedProfile(options.userId) : null;
+  const { posts: ranked } = rankFeedPosts(withViews, {
+    userId: options?.userId,
+    profile,
+    mode: options?.mode || 'for_you',
+  });
+  return ranked;
 }
 
 export async function getBlowingUpCount(): Promise<number> {

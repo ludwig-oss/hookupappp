@@ -13,6 +13,22 @@ import {
 import { getUserById } from '../models/user.js';
 import { checkContent } from '../utils/moderation.js';
 import { sanitizeMessageContent, sanitizeForStorage, sanitizeTags, LIMITS } from '../utils/sanitize.js';
+import {
+  recordFeedLike,
+  recordFeedComment,
+  recordFeedShare,
+  recordFeedView,
+  getUserFeedProfile,
+} from '../models/feedEngagement.js';
+import { rankFeedPosts, getRecommendedPosts, type FeedMode } from '../models/feedAlgorithm.js';
+import { attachViewCounts } from '../models/feedEngagement.js';
+import type { AuthRequest } from '../middleware/auth.js';
+
+function parseFeedMode(raw: unknown): FeedMode {
+  const m = typeof raw === 'string' ? raw : 'for_you';
+  if (m === 'trending' || m === 'videos' || m === 'following' || m === 'for_you') return m;
+  return 'for_you';
+}
 
 export const createDatingPost = async (req: Request, res: Response) => {
   try {
@@ -45,7 +61,6 @@ export const createDatingPost = async (req: Request, res: Response) => {
       tags,
     });
 
-    // Get user info for the post
     const user = await getUserById(userId);
     if (user) {
       (post as any).user = {
@@ -74,19 +89,68 @@ export const getDatingPosts = async (req: Request, res: Response) => {
   }
 };
 
-/** Feed sorted by engagement + recency (TikTok/Instagram style) */
-export const getFeed = async (req: Request, res: Response) => {
+/** Hybrid feed: YouTube recommendations + Twitter recency + TikTok viral velocity */
+export const getFeed = async (req: AuthRequest, res: Response) => {
   try {
-    const posts = await getFeedPosts();
+    const mode = parseFeedMode(req.query.mode);
+    const userId = req.userId || null;
+    const posts = await getFeedPosts({ userId, mode });
     const enrichedPosts = await enrichPostsWithUser(posts);
-    res.json({ posts: enrichedPosts });
+    const trendingTags = posts.length ? (await import('../models/feedAlgorithm.js')).extractTrendingTags(
+      await getAllPosts()
+    ) : [];
+
+    res.json({
+      posts: enrichedPosts,
+      feedMeta: {
+        mode,
+        algorithm: 'youtube-twitter-tiktok-hybrid',
+        personalized: !!userId,
+        trendingTags,
+        description:
+          mode === 'for_you'
+            ? 'Personalized mix of trending, fresh posts, and videos you might like'
+            : mode === 'trending'
+              ? 'Twitter-style — what is rising right now'
+              : mode === 'videos'
+                ? 'TikTok-style — short videos ranked by engagement velocity'
+                : 'Creators you like, comment on, or share',
+      },
+    });
   } catch (error) {
     console.error('Get feed error:', error);
-    res.json({ posts: [] });
+    res.json({ posts: [], feedMeta: { mode: 'for_you', personalized: false, trendingTags: [] } });
   }
 };
 
-/** Count of posts that have "blown up" (likes >= threshold) for badge */
+/** Top recommended posts for carousel / sidebar */
+export const getRecommendations = async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.userId || null;
+    const all = await attachViewCounts(await getAllPosts());
+    const profile = userId ? await getUserFeedProfile(userId) : null;
+    const { posts: ranked, trendingTags } = rankFeedPosts(all, { userId, profile, mode: 'for_you' });
+    const picks = getRecommendedPosts(ranked, 8);
+    const enriched = await enrichPostsWithUser(picks);
+    res.json({ recommendations: enriched, trendingTags });
+  } catch (error) {
+    console.error('Recommendations error:', error);
+    res.json({ recommendations: [], trendingTags: [] });
+  }
+};
+
+export const recordPostView = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).userId as string;
+    const { postId } = req.params;
+    const views = await recordFeedView(userId, postId);
+    res.json({ views });
+  } catch (error) {
+    console.error('Record view error:', error);
+    res.status(500).json({ error: 'Failed to record view' });
+  }
+};
+
 export const getBlowingUpCountHandler = async (_req: Request, res: Response) => {
   try {
     const count = await getBlowingUpCount();
@@ -99,8 +163,11 @@ export const getBlowingUpCountHandler = async (_req: Request, res: Response) => 
 
 export const shareDatingPost = async (req: Request, res: Response) => {
   try {
+    const userId = (req as any).userId as string;
     const { postId } = req.params;
     await sharePost(postId);
+    const post = await getPostById(postId);
+    if (post && userId) await recordFeedShare(userId, post);
     res.json({ message: 'Post shared' });
   } catch (error) {
     console.error('Share post error:', error);
@@ -132,8 +199,11 @@ async function enrichPostsWithUser(posts: any[]) {
 
 export const likeDatingPost = async (req: Request, res: Response) => {
   try {
+    const userId = (req as any).userId as string;
     const { postId } = req.params;
     await likePost(postId);
+    const post = await getPostById(postId);
+    if (post && userId) await recordFeedLike(userId, post);
     res.json({ message: 'Post liked' });
   } catch (error) {
     console.error('Like post error:', error);
@@ -143,7 +213,7 @@ export const likeDatingPost = async (req: Request, res: Response) => {
 
 export const commentOnPost = async (req: Request, res: Response) => {
   try {
-    const userId = (req as any).userId;
+    const userId = (req as any).userId as string;
     const { postId } = req.params;
     const content = sanitizeMessageContent(req.body.content, LIMITS.COMMENT);
 
@@ -167,6 +237,9 @@ export const commentOnPost = async (req: Request, res: Response) => {
       content,
     });
 
+    const post = await getPostById(postId);
+    if (post) await recordFeedComment(userId, post);
+
     res.json({ message: 'Comment added' });
   } catch (error) {
     console.error('Comment on post error:', error);
@@ -176,7 +249,7 @@ export const commentOnPost = async (req: Request, res: Response) => {
 
 export const deleteDatingPost = async (req: Request, res: Response) => {
   try {
-    const userId = (req as any).userId;
+    const userId = (req as any).userId as string;
     const { postId } = req.params;
 
     const deleted = await deletePost(postId, userId);
@@ -189,7 +262,3 @@ export const deleteDatingPost = async (req: Request, res: Response) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 };
-
-
-
-

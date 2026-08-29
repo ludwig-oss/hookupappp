@@ -56,6 +56,24 @@ export const authenticateToken = async (req: AuthRequest, res: Response, next: N
   }
 };
 
+/** Sets userId when a valid token is present; continues without auth otherwise. */
+export const optionalAuthenticateToken = async (req: AuthRequest, _res: Response, next: NextFunction) => {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
+  if (!token) return next();
+  try {
+    const decoded = jwt.verify(token, getJwtSecret()) as { userId?: string | number };
+    const uid = decoded.userId != null ? String(decoded.userId) : '';
+    if (uid) {
+      req.userId = uid;
+      return dbContext.run({ mode: 'user', userId: uid }, () => next());
+    }
+  } catch {
+    /* anonymous feed */
+  }
+  next();
+};
+
 
 
 

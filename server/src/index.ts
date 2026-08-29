@@ -51,6 +51,8 @@ import notificationsRoutes from './routes/notifications.js';
 import walkMatchRoutes from './routes/walkMatch.js';
 import schoolRoutes from './routes/school.js';
 import adminRoutes from './routes/admin.js';
+import datingAdviceRoutes from './routes/datingAdvice.js';
+import anonymousConfessionRoutes from './routes/anonymousConfession.js';
 import { runSchema } from './db/index.js';
 import { runWithSystem } from './db/context.js';
 import { apiLimiter } from './middleware/rateLimit.js';
@@ -137,6 +139,8 @@ app.use('/api/connection-journey', connectionJourneyRoutes);
 app.use('/api/notifications', notificationsRoutes);
 app.use('/api/walk-match', walkMatchRoutes);
 app.use('/api/school', schoolRoutes);
+app.use('/api/advice', datingAdviceRoutes);
+app.use('/api/confession', anonymousConfessionRoutes);
 app.use('/api/admin', adminRoutes);
 
 app.get('/api/health', (req, res) => {

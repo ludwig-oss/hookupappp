@@ -35,7 +35,10 @@ function rowToPost(row: {
   };
 }
 
-export async function getFeedPosts(): Promise<DatingPost[]> {
+export async function getFeedPosts(options?: {
+  userId?: string | null;
+  mode?: import('../models/feedAlgorithm.js').FeedMode;
+}): Promise<import('../models/feedAlgorithm.js').RankedPost[]> {
   const res = await query<{
     id: string;
     user_id: string;
@@ -50,17 +53,17 @@ export async function getFeedPosts(): Promise<DatingPost[]> {
     created_at: Date;
   }>('SELECT * FROM dating_posts ORDER BY created_at DESC');
   const posts = res.rows.map(rowToPost);
-  const now = Date.now();
-  return posts
-    .map((p) => {
-      const ageHours = (now - new Date(p.createdAt).getTime()) / (1000 * 60 * 60);
-      const recency = Math.max(0, 1 - ageHours / 168);
-      const engagement = (p.likes || 0) * 2 + (p.comments?.length || 0) * 3;
-      const score = engagement + recency * 20;
-      return { ...p, _score: score };
-    })
-    .sort((a, b) => (b as any)._score - (a as any)._score)
-    .map(({ _score, ...p }) => p);
+  const { attachViewCounts } = await import('../models/feedEngagement.js');
+  const { rankFeedPosts } = await import('../models/feedAlgorithm.js');
+  const { getUserFeedProfile } = await import('../models/feedEngagement.js');
+  const withViews = await attachViewCounts(posts);
+  const profile = options?.userId ? await getUserFeedProfile(options.userId) : null;
+  const { posts: ranked } = rankFeedPosts(withViews, {
+    userId: options?.userId,
+    profile,
+    mode: options?.mode || 'for_you',
+  });
+  return ranked;
 }
 
 export async function getBlowingUpCount(): Promise<number> {

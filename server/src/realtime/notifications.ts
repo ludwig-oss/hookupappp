@@ -69,12 +69,47 @@ export function notifyCoachVoteResult(
   list.forEach((res) => sendEvent(res, 'coach_vote_result', data));
 }
 
-/** Pending coach vote for opposite-gender voters. */
+/** Notify pending coach vote for opposite-gender voters. */
 export function notifyCoachVoteAvailable(recipientUserId: string, payload: { campaignId: string; applicantName: string }): void {
   const list = connections.get(recipientUserId);
   if (!list?.length) return;
   const data = { type: 'coach_vote_available', ...payload };
   list.forEach((res) => sendEvent(res, 'coach_vote_available', data));
+}
+
+/** Someone answered your dating advice question. */
+export function notifyNewAdviceAnswer(
+  recipientUserId: string,
+  payload: { questionId: string; fromUserId: string; preview: string }
+): void {
+  const list = connections.get(recipientUserId);
+  if (!list?.length) return;
+  const data = { type: 'advice_answer', ...payload };
+  list.forEach((res) => sendEvent(res, 'advice_answer', data));
+}
+
+/** Wallet balance updated (guide earnings, advice prize, etc.). */
+export function notifyWalletUpdate(recipientUserId: string, payload: { amountEur: number; reason: string }): void {
+  const list = connections.get(recipientUserId);
+  if (!list?.length) return;
+  const data = { type: 'wallet_update', ...payload };
+  list.forEach((res) => sendEvent(res, 'wallet_update', data));
+}
+
+/** Anonymous confession assigned to guide. */
+export function notifyConfessionRequest(recipientUserId: string, payload: { sessionId: string }): void {
+  const list = connections.get(recipientUserId);
+  if (!list?.length) return;
+  const data = { type: 'confession_request', ...payload };
+  list.forEach((res) => sendEvent(res, 'confession_request', data));
+}
+
+/** New message in anonymous confession session. */
+export function notifyConfessionMessage(recipientUserId: string, payload: { sessionId: string; preview: string }): void {
+  const list = connections.get(recipientUserId);
+  if (!list?.length) return;
+  const data = { type: 'confession_message', ...payload };
+  list.forEach((res) => sendEvent(res, 'confession_message', data));
 }
 
 /** Someone sent an interest request (Discover). Recipient has 24h to respond. */

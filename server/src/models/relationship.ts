@@ -15,6 +15,8 @@ export interface Relationship {
   user1ConfirmedEnd?: boolean;
   user2ConfirmedEnd?: boolean;
   lastCheckInAt?: string;
+  blindDateHistory?: string[];
+  lastBlindDateAt?: string;
   createdAt: string;
 }
 
@@ -37,6 +39,25 @@ async function writeRelationships(rows: Relationship[]): Promise<void> {
   const dir = join(process.cwd(), 'server', 'data');
   await import('fs/promises').then(fs => fs.mkdir(dir, { recursive: true }));
   await writeFile(DB_PATH, JSON.stringify(rows, null, 2));
+}
+
+async function syncProfileRelationshipStatus(userId: string, status: string): Promise<void> {
+  try {
+    const { updateUserProfile } = await import('./user.js');
+    await updateUserProfile(userId, { relationshipStatus: status });
+  } catch {
+    /* ignore profile sync errors */
+  }
+}
+
+async function applyActiveProfileStatus(rel: Relationship): Promise<void> {
+  await syncProfileRelationshipStatus(rel.userId1, 'In a relationship');
+  await syncProfileRelationshipStatus(rel.userId2, 'In a relationship');
+}
+
+async function applySingleProfileStatus(rel: Relationship): Promise<void> {
+  await syncProfileRelationshipStatus(rel.userId1, 'Single');
+  await syncProfileRelationshipStatus(rel.userId2, 'Single');
 }
 
 /** Get active or pending relationship for a user (if any). */
@@ -85,6 +106,9 @@ export async function confirmDating(userId: string, partnerUserId: string): Prom
     }
   }
   await writeRelationships(rows);
+  if (rel.status === 'active') {
+    await applyActiveProfileStatus(rel);
+  }
   return rel;
 }
 
@@ -100,6 +124,7 @@ export async function confirmEndRelationship(userId: string, partnerUserId: stri
   if (rel.user1ConfirmedEnd && rel.user2ConfirmedEnd) {
     rel.status = 'ended';
     rel.endedAt = now;
+    await applySingleProfileStatus(rel);
   }
   await writeRelationships(rows);
   return rel;
@@ -137,4 +162,14 @@ export async function setLastCheckIn(relationshipId: string): Promise<void> {
     r.lastCheckInAt = new Date().toISOString();
     await writeRelationships(rows);
   }
+}
+
+export async function recordBlindDate(relationshipId: string, idea: string): Promise<Relationship | null> {
+  const rows = await readRelationships();
+  const r = rows.find((x) => x.id === relationshipId);
+  if (!r) return null;
+  r.blindDateHistory = [...(r.blindDateHistory || []), idea].slice(-20);
+  r.lastBlindDateAt = new Date().toISOString();
+  await writeRelationships(rows);
+  return r;
 }

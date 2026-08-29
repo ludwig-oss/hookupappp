@@ -15,6 +15,7 @@ import BadgeGallery from './BadgeGallery';
 import ReportModal from './ReportModal';
 import { safetyAPI } from '../../api/safety';
 import { authAPI } from '../../api/auth';
+import { walletAPI, GuideWalletSummary } from '../../api/improvement';
 import { registerPasskey, getPasskeyStatus, passkeysSupported } from '../../lib/passkeyAuth';
 import { safetyAPI } from '../../api/safety';
 import { LANGUAGES } from '../../constants/languages';
@@ -91,6 +92,14 @@ const SettingsWidgetFull = () => {
   const [passkeyMessage, setPasskeyMessage] = useState('');
   const [passkeyError, setPasskeyError] = useState('');
 
+  const [walletSummary, setWalletSummary] = useState<GuideWalletSummary | null>(null);
+  const [walletPaypal, setWalletPaypal] = useState('');
+  const [walletBank, setWalletBank] = useState('');
+  const [withdrawAmount, setWithdrawAmount] = useState('');
+  const [walletLoading, setWalletLoading] = useState(false);
+  const [walletMessage, setWalletMessage] = useState('');
+  const [walletError, setWalletError] = useState('');
+
   const formatPhoneNumber = (phone: string) => {
     if (!phone) return '';
     const cleaned = phone.replace(/[^\d+]/g, '');
@@ -108,6 +117,20 @@ const SettingsWidgetFull = () => {
       loadAllData();
     }
   }, [user?.id]);
+
+  useEffect(() => {
+    if (activeTab !== 'account') return;
+    setWalletLoading(true);
+    walletAPI
+      .getMyWallet()
+      .then((s) => {
+        setWalletSummary(s);
+        setWalletPaypal(s.wallet.paypalEmail || '');
+        setWalletBank(s.wallet.bankAccountLabel || '');
+      })
+      .catch(() => setWalletSummary(null))
+      .finally(() => setWalletLoading(false));
+  }, [activeTab]);
 
   const loadAllData = async () => {
     try {
@@ -1472,6 +1495,149 @@ const SettingsWidgetFull = () => {
             <p style={{ margin: '4px 0', color: '#6b7280' }}><strong>Email:</strong> {user?.email}</p>
             <p style={{ margin: '4px 0', color: '#6b7280' }}><strong>Phone:</strong> {userPhoneNumber || 'Not set'}</p>
             <p style={{ margin: '4px 0', color: '#6b7280' }}><strong>Member since:</strong> {user?.id ? new Date(parseInt(user.id)).toLocaleDateString() : 'N/A'}</p>
+          </div>
+
+          <div style={{ marginBottom: '30px', padding: '20px', background: 'linear-gradient(135deg, #fdf2f8, #f5f3ff)', borderRadius: '12px', border: '1px solid #fbcfe8' }}>
+            <h4 style={{ marginBottom: '8px' }}>Account balance</h4>
+            <p style={{ fontSize: 13, color: '#6b7280', marginBottom: 16 }}>
+              Earn from guide sessions (80% after platform fee), monthly dating advice prizes (€5), and more.
+              Withdraw to PayPal or bank details at month end — min €{walletSummary?.split.minWithdrawalEur ?? 20}.
+            </p>
+            {walletError && <div className="error-message" style={{ marginBottom: 12 }}>{walletError}</div>}
+            {walletMessage && (
+              <div style={{ padding: 12, background: '#d1fae5', color: '#065f46', borderRadius: 8, marginBottom: 12, fontSize: 14 }}>
+                {walletMessage}
+              </div>
+            )}
+            {walletLoading ? (
+              <p style={{ color: '#6b7280' }}>Loading balance…</p>
+            ) : walletSummary ? (
+              <>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12, marginBottom: 16 }}>
+                  <div style={{ padding: 12, background: '#fff', borderRadius: 8 }}>
+                    <div style={{ fontSize: 11, color: '#6b7280' }}>Available</div>
+                    <div style={{ fontSize: 22, fontWeight: 700 }}>€{walletSummary.wallet.availableBalanceEur.toFixed(2)}</div>
+                  </div>
+                  <div style={{ padding: 12, background: '#fff', borderRadius: 8 }}>
+                    <div style={{ fontSize: 11, color: '#6b7280' }}>Pending withdrawal</div>
+                    <div style={{ fontSize: 18, fontWeight: 600 }}>€{walletSummary.wallet.pendingBalanceEur.toFixed(2)}</div>
+                  </div>
+                  <div style={{ padding: 12, background: '#fff', borderRadius: 8 }}>
+                    <div style={{ fontSize: 11, color: '#6b7280' }}>Total earned</div>
+                    <div style={{ fontSize: 18, fontWeight: 600 }}>€{walletSummary.wallet.totalEarnedEur.toFixed(2)}</div>
+                  </div>
+                </div>
+
+                <div className="form-group" style={{ marginBottom: 12 }}>
+                  <label style={{ display: 'block', marginBottom: 6, fontWeight: 600, fontSize: 14 }}>PayPal email (withdrawals)</label>
+                  <input
+                    type="email"
+                    value={walletPaypal}
+                    onChange={(e) => setWalletPaypal(e.target.value)}
+                    placeholder="you@paypal.com"
+                    style={{ width: '100%', padding: 12, border: '2px solid #e5e7eb', borderRadius: 8 }}
+                  />
+                </div>
+                <button
+                  type="button"
+                  className="select-user-btn"
+                  style={{ marginBottom: 16 }}
+                  onClick={async () => {
+                    setWalletError('');
+                    setWalletMessage('');
+                    try {
+                      await walletAPI.setPaypalEmail(walletPaypal);
+                      setWalletMessage('PayPal email saved.');
+                      walletAPI.getMyWallet().then(setWalletSummary);
+                    } catch (err: any) {
+                      setWalletError(err.response?.data?.error || 'Failed to save PayPal');
+                    }
+                  }}
+                >
+                  Save PayPal
+                </button>
+
+                <div className="form-group" style={{ marginBottom: 12 }}>
+                  <label style={{ display: 'block', marginBottom: 6, fontWeight: 600, fontSize: 14 }}>Bank / payout details</label>
+                  <input
+                    type="text"
+                    value={walletBank}
+                    onChange={(e) => setWalletBank(e.target.value)}
+                    placeholder="IBAN, account nickname, or payment method label"
+                    style={{ width: '100%', padding: 12, border: '2px solid #e5e7eb', borderRadius: 8 }}
+                  />
+                </div>
+                <button
+                  type="button"
+                  className="select-user-btn"
+                  style={{ marginBottom: 16 }}
+                  onClick={async () => {
+                    setWalletError('');
+                    setWalletMessage('');
+                    try {
+                      await walletAPI.setBankLabel(walletBank);
+                      setWalletMessage('Bank / payout details saved.');
+                      walletAPI.getMyWallet().then(setWalletSummary);
+                    } catch (err: any) {
+                      setWalletError(err.response?.data?.error || 'Failed to save bank details');
+                    }
+                  }}
+                >
+                  Save bank details
+                </button>
+
+                <div className="form-group" style={{ marginBottom: 12 }}>
+                  <label style={{ display: 'block', marginBottom: 6, fontWeight: 600, fontSize: 14 }}>Withdraw amount (€)</label>
+                  <input
+                    type="number"
+                    min={walletSummary.split.minWithdrawalEur}
+                    step="0.01"
+                    value={withdrawAmount}
+                    onChange={(e) => setWithdrawAmount(e.target.value)}
+                    placeholder={`Min €${walletSummary.split.minWithdrawalEur}`}
+                    style={{ width: '100%', padding: 12, border: '2px solid #e5e7eb', borderRadius: 8 }}
+                  />
+                </div>
+                <button
+                  type="button"
+                  className="select-user-btn"
+                  onClick={async () => {
+                    setWalletError('');
+                    setWalletMessage('');
+                    const amt = parseFloat(withdrawAmount);
+                    if (!amt || amt < walletSummary.split.minWithdrawalEur) {
+                      setWalletError(`Minimum withdrawal is €${walletSummary.split.minWithdrawalEur}`);
+                      return;
+                    }
+                    try {
+                      await walletAPI.withdraw(amt, walletPaypal || walletSummary.wallet.paypalEmail || undefined);
+                      setWalletMessage('Withdrawal requested. Payouts processed within a few business days.');
+                      setWithdrawAmount('');
+                      walletAPI.getMyWallet().then(setWalletSummary);
+                    } catch (err: any) {
+                      setWalletError(err.response?.data?.error || 'Withdrawal failed');
+                    }
+                  }}
+                >
+                  Request withdrawal
+                </button>
+
+                {walletSummary.recentTransactions.length > 0 && (
+                  <div style={{ marginTop: 20 }}>
+                    <h5 style={{ marginBottom: 8, fontSize: 14 }}>Recent activity</h5>
+                    <ul style={{ listStyle: 'none', padding: 0, margin: 0, fontSize: 13, color: '#4b5563' }}>
+                      {walletSummary.recentTransactions.slice(0, 8).map((tx) => (
+                        <li key={tx.id} style={{ padding: '6px 0', borderBottom: '1px solid #e5e7eb' }}>
+                          {tx.note || tx.type}: €{tx.amountEur.toFixed(2)} · {new Date(tx.createdAt).toLocaleDateString()}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </>
+            ) : (
+              <p style={{ color: '#6b7280' }}>Could not load balance. Try again later.</p>
+            )}
           </div>
 
           <div style={{ marginBottom: '30px', padding: '20px', background: '#fff', border: '2px solid #e5e7eb', borderRadius: '12px' }}>

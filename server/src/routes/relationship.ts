@@ -11,6 +11,9 @@ import {
   submitCheckIn,
   getSolutions,
   getRelationshipStatus,
+  getCoupleHub,
+  acceptBlindDate,
+  getCheatWarning,
 } from '../controllers/relationshipController.js';
 import { authenticateToken } from '../middleware/auth.js';
 
@@ -27,5 +30,8 @@ router.get('/check-in-prompt', authenticateToken, getCheckInPrompt);
 router.post('/check-in', authenticateToken, submitCheckIn);
 router.get('/solutions', authenticateToken, getSolutions);
 router.get('/status/:userId', authenticateToken, getRelationshipStatus);
+router.get('/couple-hub/:partnerUserId', authenticateToken, getCoupleHub);
+router.post('/blind-date', authenticateToken, acceptBlindDate);
+router.get('/cheat-warning/:otherUserId', authenticateToken, getCheatWarning);
 
 export default router;

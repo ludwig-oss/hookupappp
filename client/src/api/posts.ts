@@ -12,6 +12,8 @@ function getAuthHeaders(): Record<string, string> {
   return {};
 }
 
+export type FeedMode = 'for_you' | 'trending' | 'videos' | 'following';
+
 export interface DatingPost {
   id: string;
   userId: string;
@@ -22,6 +24,9 @@ export interface DatingPost {
   tags?: string[];
   likes: number;
   shares?: number;
+  views?: number;
+  feedScore?: number;
+  feedReason?: string;
   comments: Array<{
     id: string;
     userId: string;
@@ -44,9 +49,21 @@ export const postsAPI = {
     return response.data;
   },
 
-  getFeed: async (): Promise<{ posts: DatingPost[] }> => {
-    const response = await axios.get(`${API_URL}/feed`, { timeout: FEED_TIMEOUT_MS });
+  getFeed: async (mode: FeedMode = 'for_you'): Promise<{
+    posts: DatingPost[];
+    feedMeta?: { mode: string; personalized: boolean; trendingTags: string[]; description?: string };
+  }> => {
+    const response = await axios.get(`${API_URL}/feed`, { params: { mode }, timeout: FEED_TIMEOUT_MS, headers: getAuthHeaders() });
     return response.data;
+  },
+
+  getRecommendations: async (): Promise<{ recommendations: DatingPost[]; trendingTags: string[] }> => {
+    const response = await axios.get(`${API_URL}/recommendations`, { headers: getAuthHeaders() });
+    return response.data;
+  },
+
+  recordView: async (postId: string): Promise<void> => {
+    await axios.post(`${API_URL}/${postId}/view`, {}, { headers: getAuthHeaders() });
   },
 
   getBlowingUpCount: async (): Promise<{ count: number }> => {

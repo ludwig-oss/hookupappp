@@ -102,10 +102,10 @@ export function sanitizeHttpUrl(input: unknown): string {
   }
 }
 
-/** Sanitize username: alphanumeric + underscore only, length 3–20. Returns empty if invalid. */
+/** Sanitize username: lowercase letters, numbers, underscore; length 3–20. Returns empty if invalid. */
 export function sanitizeUsername(input: unknown): string {
-  const s = String(input ?? '').trim().slice(0, LIMITS.USERNAME);
-  return /^[a-zA-Z0-9_]{3,20}$/.test(s) ? s : '';
+  const s = String(input ?? '').trim().toLowerCase().slice(0, LIMITS.USERNAME);
+  return /^[a-z0-9_]{3,20}$/.test(s) ? s : '';
 }
 
 /** Display name: trim, strip control chars, limit length. */

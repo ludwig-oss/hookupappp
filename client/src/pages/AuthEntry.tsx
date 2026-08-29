@@ -5,6 +5,7 @@ import { authAPI } from '../api/auth';
 import { discoverAPI } from '../api/discover';
 import { walkMatchAPI } from '../api/walkMatch';
 import { formatAxiosError } from '../lib/apiError';
+import { normalizeUsernameInput, USERNAME_HINT, USERNAME_MAX, USERNAME_MIN } from '../lib/username';
 import './Auth.css';
 import './Legal.css';
 
@@ -107,7 +108,7 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
     try {
       const response = await authAPI.signupWithPin({
         name: name.trim(),
-        username: username.trim(),
+        username: normalizeUsernameInput(username),
         pin,
         pinHint1: passwordHint1.trim(),
         pinHint2: passwordHint2.trim(),
@@ -146,7 +147,7 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
         throw new Error('Enter username and 6-digit PIN');
       }
       const response = await authAPI.loginWithPin(
-        loginIdentifier.trim().toLowerCase().replace(/[^a-z0-9_]/g, ''),
+        normalizeUsernameInput(loginIdentifier),
         loginPin
       );
       if (!response.token || !response.user) throw new Error('Invalid login response');
@@ -166,7 +167,7 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
       const id = loginIdentifier.trim();
       if (!id || !loginPassword) throw new Error('Enter username and password');
       const response = await authAPI.login({
-        username: id.includes('@') ? id : id.toLowerCase().replace(/[^a-z0-9_@.+-]/g, ''),
+        username: id.includes('@') ? id : normalizeUsernameInput(id),
         password: loginPassword,
       });
       if (!response.token || !response.user) throw new Error('Invalid login response');
@@ -244,7 +245,18 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
             </div>
             <div className="form-group">
               <label htmlFor="username">Username (yours forever)</label>
-              <input id="username" value={username} onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))} autoComplete="username" required />
+              <input
+                id="username"
+                value={username}
+                onChange={(e) => setUsername(normalizeUsernameInput(e.target.value))}
+                autoComplete="username"
+                required
+                minLength={USERNAME_MIN}
+                maxLength={USERNAME_MAX}
+                pattern="[a-z0-9_]{3,20}"
+                placeholder="e.g. cool_user"
+              />
+              <p style={{ fontSize: 12, marginTop: 6, color: '#9ca3af' }}>{USERNAME_HINT}</p>
               {usernameCheck && (
                 <p style={{ fontSize: 12, marginTop: 6, color: usernameCheck.startsWith('✓') ? '#10b981' : '#f59e0b' }}>{usernameCheck}</p>
               )}
@@ -312,7 +324,7 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
               <form onSubmit={handlePinLogin} className="auth-form">
                 <div className="form-group">
                   <label>Username</label>
-                  <input value={loginIdentifier} onChange={(e) => setLoginIdentifier(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))} autoComplete="username" required />
+                  <input value={loginIdentifier} onChange={(e) => setLoginIdentifier(normalizeUsernameInput(e.target.value))} autoComplete="username" required />
                 </div>
                 <div className="form-group">
                   <label>6-digit PIN</label>
@@ -327,7 +339,7 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
               <form onSubmit={handlePasswordLogin} className="auth-form">
                 <div className="form-group">
                   <label>Username</label>
-                  <input value={loginIdentifier} onChange={(e) => setLoginIdentifier(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))} autoComplete="username" required />
+                  <input value={loginIdentifier} onChange={(e) => setLoginIdentifier(normalizeUsernameInput(e.target.value))} autoComplete="username" required />
                 </div>
                 <div className="form-group">
                   <label>Password</label>

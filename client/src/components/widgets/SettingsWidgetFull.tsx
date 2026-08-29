@@ -16,6 +16,7 @@ import ReportModal from './ReportModal';
 import { safetyAPI } from '../../api/safety';
 import { personalSafetyAPI } from '../../api/personalSafety';
 import { authAPI } from '../../api/auth';
+import { normalizeUsernameInput, USERNAME_HINT } from '../../lib/username';
 import { walletAPI, GuideWalletSummary } from '../../api/improvement';
 import { LANGUAGES } from '../../constants/languages';
 import { setStoredLanguage } from '../../i18n/languageStorage';
@@ -232,7 +233,7 @@ const SettingsWidgetFull = () => {
       const cleanPhoneNumber = userPhoneNumber.replace(/\D/g, '') || null;
       await profileAPI.updateProfile({
         name,
-        username,
+        username: normalizeUsernameInput(username),
         phoneNumber: cleanPhoneNumber ?? undefined,
         bio: bio || undefined,
         age: age === '' ? undefined : Number(age),
@@ -417,7 +418,8 @@ const SettingsWidgetFull = () => {
 
           <div className="form-group" style={{ marginBottom: '20px' }}>
             <label style={{ display: 'block', marginBottom: '8px', fontWeight: 600 }}>Username</label>
-            <input type="text" value={username} onChange={(e) => setUsername(e.target.value)} style={{ width: '100%', padding: '12px', border: '2px solid #e5e7eb', borderRadius: '8px', fontSize: '16px' }} />
+            <input type="text" value={username} onChange={(e) => setUsername(normalizeUsernameInput(e.target.value))} placeholder="e.g. cool_user" style={{ width: '100%', padding: '12px', border: '2px solid #e5e7eb', borderRadius: '8px', fontSize: '16px' }} />
+            <p style={{ fontSize: 12, color: '#6b7280', marginTop: 6 }}>{USERNAME_HINT}</p>
           </div>
 
           <div className="form-group" style={{ marginBottom: '20px' }}>

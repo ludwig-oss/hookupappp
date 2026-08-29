@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { authAPI } from '../api/auth';
+import { normalizeUsernameInput } from '../lib/username';
 import './Auth.css';
 
 /** Allow full international numbers: + and digits. */
@@ -52,7 +53,7 @@ const ForgotPassword = () => {
         return;
       }
       const response = await authAPI.forgotPassword(
-        method === 'username' ? username.trim().toLowerCase().replace(/[^a-z0-9_]/g, '') : undefined,
+        method === 'username' ? normalizeUsernameInput(username) : undefined,
         method === 'phone' ? cleanPhoneNumber : undefined,
         method === 'email' ? email.trim().toLowerCase() : undefined
       );
@@ -133,7 +134,7 @@ const ForgotPassword = () => {
           {method === 'username' && (
             <div className="form-group">
               <label htmlFor="username">Username</label>
-              <input type="text" id="username" value={username} onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))} required placeholder="Enter your username" autoComplete="username" />
+              <input type="text" id="username" value={username} onChange={(e) => setUsername(normalizeUsernameInput(e.target.value))} required placeholder="Enter your username" autoComplete="username" />
             </div>
           )}
           {method === 'email' && (

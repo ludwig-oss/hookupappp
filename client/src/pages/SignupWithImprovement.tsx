@@ -4,6 +4,7 @@ import { AuthContext } from '../context/AuthContext';
 import { authAPI } from '../api/auth';
 import { discoverAPI } from '../api/discover';
 import { formatAxiosError } from '../lib/apiError';
+import { normalizeUsernameInput, USERNAME_HINT, USERNAME_MAX, USERNAME_MIN } from '../lib/username';
 import { walkMatchAPI } from '../api/walkMatch';
 import './Auth.css';
 import './Legal.css';
@@ -92,7 +93,7 @@ const SignupWithImprovement = () => {
     try {
       const response = await authAPI.signup({
         name: name.trim(),
-        username: username.trim(),
+        username: normalizeUsernameInput(username),
         password,
         improvementCategories: [DEFAULT_SIGNUP_CATEGORY],
         passwordHint1: passwordHint1.trim(),
@@ -185,12 +186,15 @@ const SignupWithImprovement = () => {
               type="text"
               id="username"
               value={username}
-              onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))}
+              onChange={(e) => setUsername(normalizeUsernameInput(e.target.value))}
               autoComplete="username"
-              placeholder="Choose a unique username (3-20 chars)"
+              minLength={USERNAME_MIN}
+              maxLength={USERNAME_MAX}
+              pattern="[a-z0-9_]{3,20}"
+              placeholder="e.g. cool_user"
             />
             <small style={{ color: '#9ca3af', fontSize: '12px', fontFamily: 'Orbitron, monospace' }}>
-              Only letters, numbers, and underscores allowed
+              {USERNAME_HINT}
             </small>
           </div>
 

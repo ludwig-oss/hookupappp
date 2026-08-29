@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
 import { authAPI } from '../api/auth';
 import { formatAxiosError } from '../lib/apiError';
+import { normalizeUsernameInput, USERNAME_HINT, USERNAME_MAX, USERNAME_MIN } from '../lib/username';
 import './Auth.css';
 
 const Signup = () => {
@@ -21,7 +22,7 @@ const Signup = () => {
     setLoading(true);
 
     try {
-      const response = await authAPI.signup({ name, username, email, password });
+      const response = await authAPI.signup({ name, username: normalizeUsernameInput(username), email, password });
       if (!response.token || !response.user) throw new Error('Invalid signup response');
       login(response.user, response.token);
       navigate('/profile-setup');
@@ -60,15 +61,15 @@ const Signup = () => {
               type="text"
               id="username"
               value={username}
-              onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))}
+              onChange={(e) => setUsername(normalizeUsernameInput(e.target.value))}
               required
-              minLength={3}
-              maxLength={20}
-              pattern="[a-zA-Z0-9_]{3,20}"
-              placeholder="Choose a unique username (3-20 chars)"
+              minLength={USERNAME_MIN}
+              maxLength={USERNAME_MAX}
+              pattern="[a-z0-9_]{3,20}"
+              placeholder="e.g. cool_user"
             />
             <small style={{ color: '#6b7280', fontSize: '12px' }}>
-              Only letters, numbers, and underscores allowed
+              {USERNAME_HINT}
             </small>
           </div>
 

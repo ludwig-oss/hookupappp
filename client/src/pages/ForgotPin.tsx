@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { authAPI } from '../api/auth';
 import { formatAxiosError } from '../lib/apiError';
+import { normalizeUsernameInput } from '../lib/username';
 import './Auth.css';
 
 type Step = 'username' | 'hints' | 'last-chat' | 'three-names' | 'new-pin';
@@ -125,7 +126,7 @@ const ForgotPin = () => {
           <form onSubmit={loadHints} className="auth-form">
             <div className="form-group">
               <label>Username</label>
-              <input value={username} onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))} required autoComplete="username" />
+              <input value={username} onChange={(e) => setUsername(normalizeUsernameInput(e.target.value))} required autoComplete="username" />
             </div>
             <button type="submit" className="auth-button" disabled={loading}>
               {loading ? 'Loading…' : 'Show my PIN hints'}

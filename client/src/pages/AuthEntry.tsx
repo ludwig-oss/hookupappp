@@ -77,16 +77,6 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
     return () => clearTimeout(t);
   }, [username, mode]);
 
-  const signupShareUrl = useMemo(() => {
-    if (typeof window === 'undefined') return 'https://hookupappp.vercel.app/signup';
-    return `${window.location.origin}/signup`;
-  }, []);
-
-  const qrSrc = useMemo(
-    () => `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(signupShareUrl)}`,
-    [signupShareUrl]
-  );
-
   const finishAuth = useCallback((user: { profileSetupComplete?: boolean }, token: string) => {
     const id = coerceUserId((user as { id?: unknown }).id);
     if (!id) throw new Error('Invalid user');
@@ -369,15 +359,6 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
             ) : null}
           </>
         )}
-
-        <div className="signup-qr-card signup-qr-desktop">
-          <p className="signup-qr-label">Sign up on your phone</p>
-          <p className="signup-qr-hint">
-            On a computer? Scan with your phone camera to open the sign-up page on mobile.
-          </p>
-          <img src={qrSrc} alt="Sign-up QR code" width={200} height={200} />
-          <p className="signup-qr-link">{signupShareUrl.replace(/^https?:\/\//, '')}</p>
-        </div>
 
         <p className="auth-switch" style={{ marginTop: 16 }}>
           {mode === 'signup' ? (

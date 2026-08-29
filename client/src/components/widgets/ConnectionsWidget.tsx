@@ -40,7 +40,7 @@ const PLACE_TYPES = [
 
 const ConnectionsWidget = () => {
   const { user, updateUser } = useContext(AuthContext);
-  const [view, setView] = useState<'main' | 'venues' | 'buzzes' | 'search_places'>('main');
+  const [view, setView] = useState<'main' | 'nearby' | 'venues' | 'buzzes' | 'search_places'>('main');
   const [venues, setVenues] = useState<VenueCount[]>([]);
   const [nearbyUsers, setNearbyUsers] = useState<NearbyUser[]>([]);
   const [buzzes, setBuzzes] = useState<{ received: Buzz[]; sent: Buzz[] }>({ received: [], sent: [] });
@@ -218,6 +218,23 @@ const ConnectionsWidget = () => {
     }
   };
 
+  const openNearbyList = async () => {
+    if (!user?.id) return;
+    setLoading(true);
+    setError('');
+    try {
+      let coords = location;
+      if (!coords) coords = await ensureLocation();
+      await refreshNearby(coords);
+      await loadBuzzes();
+      setView('nearby');
+    } catch (err: unknown) {
+      setError(formatAxiosError(err, 'Could not load nearby'));
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const loadVenues = async () => {
     if (!location || !user?.id) return;
     setLoading(true);
@@ -349,6 +366,99 @@ const ConnectionsWidget = () => {
     );
   };
 
+  const renderNearbyList = () => {
+    if (!location) {
+      return (
+        <p style={{ color: '#9ca3af', fontSize: '12px', fontFamily: 'Orbitron, monospace', textAlign: 'center', padding: '20px 0' }}>
+          Allow location to see who&apos;s nearby.
+        </p>
+      );
+    }
+    if (nearbyUsers.length === 0 && pendingBuzzNotNearby.length === 0) {
+      return (
+        <p style={{ color: '#9ca3af', fontSize: '12px', fontFamily: 'Orbitron, monospace', textAlign: 'center', padding: '20px 0' }}>
+          No one nearby right now. The list updates automatically — check again in a moment.
+        </p>
+      );
+    }
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', maxHeight: '420px', overflowY: 'auto' }}>
+        {pendingBuzzNotNearby.map((buzz) => (
+          <div
+            key={buzz.id}
+            style={{
+              padding: '12px',
+              border: '2px solid rgba(255, 0, 255, 0.45)',
+              borderRadius: '12px',
+              display: 'flex',
+              gap: '12px',
+              alignItems: 'center',
+              background: 'rgba(0, 0, 0, 0.4)',
+            }}
+          >
+            <div style={{ width: '48px', height: '48px', borderRadius: '50%', overflow: 'hidden', border: '2px solid rgba(255, 0, 255, 0.5)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(255, 0, 255, 0.1)' }}>
+              {buzz.fromUserProfilePicture ? (
+                <img src={buzz.fromUserProfilePicture} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              ) : (
+                <span style={{ fontSize: '20px', color: '#ff00ff' }}>?</span>
+              )}
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#fff', fontFamily: 'Orbitron, monospace' }}>Someone interested</div>
+              <div style={{ fontSize: '11px', color: '#ff00ff', marginTop: 4 }}>Wants to connect — respond below</div>
+            </div>
+            {renderPersonActions(buzz.fromUserId, buzz)}
+          </div>
+        ))}
+        {nearbyUsers.map((nearbyUser) => (
+          <div
+            key={nearbyUser.id}
+            style={{
+              padding: '12px',
+              border: '2px solid rgba(0, 212, 255, 0.3)',
+              borderRadius: '12px',
+              display: 'flex',
+              gap: '12px',
+              alignItems: 'center',
+              background: 'rgba(0, 0, 0, 0.4)',
+              boxShadow: '0 0 15px rgba(0, 212, 255, 0.2)',
+            }}
+          >
+            <div className="user-avatar" style={{ width: '56px', height: '56px', flexShrink: 0, borderRadius: '50%', overflow: 'hidden', border: '2px solid rgba(255, 0, 255, 0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', background: 'rgba(255, 0, 255, 0.1)' }}>
+              {nearbyUser.profilePicture ? (
+                <img src={nearbyUser.profilePicture} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              ) : (
+                <span style={{ fontSize: '24px', color: '#ff00ff' }}>?</span>
+              )}
+              {nearbyUser.isOnline && (
+                <div style={{
+                  position: 'absolute',
+                  bottom: 0,
+                  right: 0,
+                  width: '12px',
+                  height: '12px',
+                  background: '#10b981',
+                  border: '2px solid #0a0a1a',
+                  borderRadius: '50%',
+                  boxShadow: '0 0 10px rgba(16, 185, 129, 0.6)',
+                }} />
+              )}
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: '15px', fontWeight: 'bold', color: '#fff', fontFamily: 'Orbitron, monospace' }}>
+                {nearbyUser.name}
+              </div>
+              <div style={{ fontSize: '11px', color: nearbyUser.isOnline ? '#10b981' : '#9ca3af', marginTop: 4 }}>
+                {nearbyUser.isOnline ? 'Active nearby' : 'Recently nearby'}
+              </div>
+            </div>
+            {renderPersonActions(nearbyUser.id)}
+          </div>
+        ))}
+      </div>
+    );
+  };
+
   return (
     <div className="widget">
       <h2 className="widget-title">
@@ -380,7 +490,7 @@ const ConnectionsWidget = () => {
             </p>
           )}
           <p style={{ marginBottom: '14px', color: '#9ca3af', fontFamily: 'Orbitron, monospace', fontSize: '12px' }}>
-            People nearby update automatically. Show interest — if you both are, you&apos;re added to Communications.
+            Tap below to browse who&apos;s nearby, send interest, and wait for their response. Mutual interest adds you both to Communications.
           </p>
           <div
             style={{
@@ -422,95 +532,33 @@ const ConnectionsWidget = () => {
             </button>
           </div>
 
-          <div style={{ marginBottom: 16 }}>
-            <h3 style={{ margin: '0 0 10px', fontSize: '15px', color: '#00d4ff', fontFamily: 'Orbitron, monospace' }}>
-              People nearby {nearbyUsers.length > 0 ? `(${nearbyUsers.length})` : ''}
-            </h3>
-            {!location ? (
-              <p style={{ color: '#9ca3af', fontSize: '12px', fontFamily: 'Orbitron, monospace' }}>
-                Waiting for location… allow GPS to see who&apos;s nearby.
-              </p>
-            ) : nearbyUsers.length === 0 && pendingBuzzNotNearby.length === 0 ? (
-              <p style={{ color: '#9ca3af', fontSize: '12px', fontFamily: 'Orbitron, monospace' }}>
-                No one nearby right now — list refreshes automatically.
-              </p>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', maxHeight: '320px', overflowY: 'auto' }}>
-                {pendingBuzzNotNearby.map((buzz) => (
-                  <div
-                    key={buzz.id}
-                    style={{
-                      padding: '12px',
-                      border: '2px solid rgba(255, 0, 255, 0.45)',
-                      borderRadius: '12px',
-                      display: 'flex',
-                      gap: '12px',
-                      alignItems: 'center',
-                      background: 'rgba(0, 0, 0, 0.4)',
-                    }}
-                  >
-                    <div style={{ width: '48px', height: '48px', borderRadius: '50%', overflow: 'hidden', border: '2px solid rgba(255, 0, 255, 0.5)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(255, 0, 255, 0.1)' }}>
-                      {buzz.fromUserProfilePicture ? (
-                        <img src={buzz.fromUserProfilePicture} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                      ) : (
-                        <span style={{ fontSize: '20px', color: '#ff00ff' }}>?</span>
-                      )}
-                    </div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#fff', fontFamily: 'Orbitron, monospace' }}>Someone interested</div>
-                      <div style={{ fontSize: '11px', color: '#ff00ff', marginTop: 4 }}>Wants to connect</div>
-                    </div>
-                    {renderPersonActions(buzz.fromUserId, buzz)}
-                  </div>
-                ))}
-                {nearbyUsers.map((nearbyUser) => (
-                  <div
-                    key={nearbyUser.id}
-                    style={{
-                      padding: '12px',
-                      border: '2px solid rgba(0, 212, 255, 0.3)',
-                      borderRadius: '12px',
-                      display: 'flex',
-                      gap: '12px',
-                      alignItems: 'center',
-                      background: 'rgba(0, 0, 0, 0.4)',
-                      boxShadow: '0 0 15px rgba(0, 212, 255, 0.2)',
-                    }}
-                  >
-                    <div className="user-avatar" style={{ width: '56px', height: '56px', flexShrink: 0, borderRadius: '50%', overflow: 'hidden', border: '2px solid rgba(255, 0, 255, 0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', background: 'rgba(255, 0, 255, 0.1)' }}>
-                      {nearbyUser.profilePicture ? (
-                        <img src={nearbyUser.profilePicture} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                      ) : (
-                        <span style={{ fontSize: '24px', color: '#ff00ff' }}>?</span>
-                      )}
-                      {nearbyUser.isOnline && (
-                        <div style={{
-                          position: 'absolute',
-                          bottom: 0,
-                          right: 0,
-                          width: '12px',
-                          height: '12px',
-                          background: '#10b981',
-                          border: '2px solid #0a0a1a',
-                          borderRadius: '50%',
-                          boxShadow: '0 0 10px rgba(16, 185, 129, 0.6)',
-                        }} />
-                      )}
-                    </div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: '15px', fontWeight: 'bold', color: '#fff', fontFamily: 'Orbitron, monospace' }}>
-                        {nearbyUser.name}
-                      </div>
-                      <div style={{ fontSize: '11px', color: nearbyUser.isOnline ? '#10b981' : '#9ca3af', marginTop: 4 }}>
-                        {nearbyUser.isOnline ? 'Active nearby' : 'Recently nearby'}
-                      </div>
-                    </div>
-                    {renderPersonActions(nearbyUser.id)}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+          <button
+            type="button"
+            onClick={openNearbyList}
+            className="select-user-btn"
+            disabled={loading}
+            style={{
+              width: '100%',
+              marginBottom: 14,
+              background: 'rgba(0, 212, 255, 0.15)',
+              border: '2px solid #00d4ff',
+              color: '#00d4ff',
+              fontFamily: 'Orbitron, monospace',
+              fontWeight: 'bold',
+              boxShadow: '0 0 15px rgba(0, 212, 255, 0.3)',
+            }}
+          >
+            {loading ? 'Loading…' : `👥 See who's nearby${nearbyUsers.length > 0 ? ` (${nearbyUsers.length})` : ''}`}
+          </button>
+
+          {(buzzes.received.some((b) => b.status === 'pending') || nearbyUsers.length > 0) && (
+            <p style={{ margin: '0 0 14px', fontSize: '11px', color: '#10b981', fontFamily: 'Orbitron, monospace' }}>
+              {buzzes.received.filter((b) => b.status === 'pending').length > 0
+                ? `${buzzes.received.filter((b) => b.status === 'pending').length} waiting for your response · `
+                : ''}
+              {nearbyUsers.length > 0 ? `${nearbyUsers.length} nearby now` : 'Updating nearby list…'}
+            </p>
+          )}
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
             <div>
@@ -699,6 +747,26 @@ const ConnectionsWidget = () => {
               ))}
             </div>
           )}
+        </div>
+      )}
+
+      {view === 'nearby' && (
+        <div className="improvement-content">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+            <button type="button" onClick={() => setView('main')} className="back-btn" style={{
+              background: 'rgba(0, 0, 0, 0.4)',
+              border: '2px solid #00d4ff',
+              color: '#00d4ff',
+              fontFamily: 'Orbitron, monospace',
+              padding: '8px 16px',
+              borderRadius: '6px',
+            }}>← Back</button>
+            <h3 style={{ margin: 0, fontSize: '18px', color: '#00d4ff', fontFamily: 'Orbitron, monospace' }}>People nearby</h3>
+          </div>
+          <p style={{ margin: '0 0 14px', fontSize: '12px', color: '#9ca3af', fontFamily: 'Orbitron, monospace' }}>
+            Scroll the list, tap <strong style={{ color: '#ff00ff' }}>Show interest</strong>, then wait for Yes or No. Both interested → Communications.
+          </p>
+          {renderNearbyList()}
         </div>
       )}
 

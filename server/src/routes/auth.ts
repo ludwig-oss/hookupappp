@@ -20,6 +20,7 @@ import {
   passkeyStatus,
   passkeySupported,
 } from '../controllers/passkeyController.js';
+import { signupWithFace, identifyFaceForLogin } from '../controllers/faceAuthController.js';
 
 const router = express.Router();
 
@@ -27,6 +28,8 @@ const router = express.Router();
 router.use((req, res, next) => runWithSystem(() => next()));
 
 router.post('/signup', signupLimiter, signup);
+router.post('/signup-face', signupLimiter, signupWithFace);
+router.post('/face/identify', loginLimiter, identifyFaceForLogin);
 router.post('/login', loginLimiter, login);
 router.post('/send-login-code', loginLimiter, sendLoginCode);
 router.post('/login-with-code', loginLimiter, loginWithCode);

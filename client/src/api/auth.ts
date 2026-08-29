@@ -5,7 +5,7 @@ const API_URL = API_BASE + '/api/auth';
 
 export interface SignupData {
   name: string;
-  password: string;
+  password?: string;
   username: string;
   email?: string;
   improvementCategories?: string[];
@@ -13,6 +13,7 @@ export interface SignupData {
   passwordHint2?: string;
   passwordHint3?: string;
   phoneNumber?: string;
+  faceDescriptor?: number[];
 }
 
 export interface LoginData {
@@ -41,6 +42,16 @@ export interface AuthResponse {
 export const authAPI = {
   signup: async (data: SignupData): Promise<AuthResponse> => {
     const response = await axios.post(`${API_URL}/signup`, data);
+    return response.data;
+  },
+
+  signupWithFace: async (data: SignupData & { faceDescriptor: number[] }): Promise<AuthResponse> => {
+    const response = await axios.post(`${API_URL}/signup-face`, data);
+    return response.data;
+  },
+
+  identifyFace: async (faceDescriptor: number[], username?: string): Promise<{ userId: string; username: string; message: string }> => {
+    const response = await axios.post(`${API_URL}/face/identify`, { faceDescriptor, username: username?.trim() || undefined });
     return response.data;
   },
 

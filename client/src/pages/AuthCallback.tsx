@@ -55,7 +55,7 @@ const AuthCallback = () => {
     <div className="auth-container">
       <div className="auth-card">
         <h1 className="auth-title">Signing you in…</h1>
-        <p className="auth-subtitle">One moment while we finish Google / Facebook login.</p>
+        <p className="auth-subtitle">One moment while we finish sign-in.</p>
       </div>
     </div>
   );

@@ -59,7 +59,7 @@ export async function passkeyRegisterOptions(req: Request, res: Response) {
       })),
       authenticatorSelection: {
         residentKey: 'preferred',
-        userVerification: 'preferred',
+        userVerification: 'required',
         authenticatorAttachment: 'platform',
       },
     });
@@ -86,7 +86,7 @@ export async function passkeyRegisterVerify(req: Request, res: Response) {
       expectedChallenge,
       expectedOrigin: getWebAuthnOrigin(),
       expectedRPID: getWebAuthnRpId(),
-      requireUserVerification: false,
+      requireUserVerification: true,
     });
 
     regChallenges.delete(userId);
@@ -141,7 +141,7 @@ export async function passkeyLoginOptions(req: Request, res: Response) {
         id: pk.credentialId,
         transports: pk.transports as ('usb' | 'nfc' | 'ble' | 'internal' | 'hybrid')[] | undefined,
       })),
-      userVerification: 'preferred',
+      userVerification: 'required',
     });
 
     authChallenges.set(user.id, options.challenge);
@@ -174,7 +174,7 @@ export async function passkeyLoginVerify(req: Request, res: Response) {
       expectedChallenge,
       expectedOrigin: getWebAuthnOrigin(),
       expectedRPID: getWebAuthnRpId(),
-      requireUserVerification: false,
+      requireUserVerification: true,
       authenticator: {
         credentialID: passkey.credentialId,
         credentialPublicKey: Buffer.from(passkey.publicKey, 'base64url'),

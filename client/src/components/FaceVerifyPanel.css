@@ -1,0 +1,75 @@
+.face-verify-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: rgba(0, 0, 0, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.face-verify-card {
+  width: 100%;
+  max-width: 360px;
+  background: linear-gradient(145deg, #1a1a2e, #16213e);
+  border: 1px solid rgba(0, 212, 255, 0.35);
+  border-radius: 16px;
+  padding: 20px;
+  text-align: center;
+}
+
+.face-verify-card h2 {
+  margin: 0 0 8px;
+  font-family: 'Orbitron', monospace;
+  color: #fff;
+  font-size: 1.1rem;
+}
+
+.face-verify-hint {
+  margin: 0 0 16px;
+  color: #00d4ff;
+  font-size: 14px;
+  min-height: 1.4em;
+}
+
+.face-verify-ring {
+  width: 220px;
+  height: 220px;
+  margin: 0 auto 16px;
+  border-radius: 50%;
+  overflow: hidden;
+  border: 3px solid rgba(0, 212, 255, 0.4);
+  position: relative;
+}
+
+.face-verify-ready,
+.face-verify-capturing,
+.face-verify-done {
+  border-color: #10b981;
+  box-shadow: 0 0 20px rgba(16, 185, 129, 0.45);
+}
+
+.face-verify-eyes_closed {
+  border-color: #f59e0b;
+}
+
+.face-verify-video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scaleX(-1);
+}
+
+.face-verify-note {
+  font-size: 12px;
+  opacity: 0.8;
+  line-height: 1.4;
+  margin: 0 0 12px;
+}
+
+.face-verify-actions {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+}

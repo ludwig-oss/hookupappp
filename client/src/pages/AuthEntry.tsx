@@ -1,13 +1,14 @@
-import { useState, useContext, useMemo, useEffect } from 'react';
+import { useState, useContext, useMemo, useEffect, useCallback } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import axios from 'axios';
 import { AuthContext } from '../context/AuthContext';
 import { authAPI } from '../api/auth';
 import { discoverAPI } from '../api/discover';
 import { walkMatchAPI } from '../api/walkMatch';
-import { API_BASE } from '../api/config';
 import { formatAxiosError } from '../lib/apiError';
-import { redirectToOAuth, type OAuthProvider } from '../lib/oauth';
-import { loginWithPasskey, passkeysSupported } from '../lib/passkeyAuth';
+import { faceScanSupported } from '../lib/faceScan';
+import { loginWithPasskey, passkeysSupported, registerDeviceFaceId } from '../lib/passkeyAuth';
+import FaceVerifyPanel from '../components/FaceVerifyPanel';
 import './Auth.css';
 import './Legal.css';
 
@@ -26,16 +27,17 @@ function normalizePhoneInput(value: string): string {
 }
 
 type AuthMode = 'signup' | 'login';
-type LoginMethod = 'email' | 'phone' | 'passkey';
+type LoginMethod = 'email' | 'phone' | 'face';
+type FacePanelMode = 'signup' | 'login' | null;
 
 type Props = { initialMode?: AuthMode };
 
 const AuthEntry = ({ initialMode = 'signup' }: Props) => {
   const [searchParams] = useSearchParams();
   const [mode, setMode] = useState<AuthMode>(initialMode);
-  const [loginMethod, setLoginMethod] = useState<LoginMethod>('email');
-  const [oauth, setOauth] = useState({ google: false, facebook: false, apple: false });
-  const [oauthLoading, setOauthLoading] = useState(false);
+  const [loginMethod, setLoginMethod] = useState<LoginMethod>('face');
+  const [facePanel, setFacePanel] = useState<FacePanelMode>(null);
+  const [showPasswordSignup, setShowPasswordSignup] = useState(false);
 
   const [name, setName] = useState('');
   const [username, setUsername] = useState('');
@@ -64,12 +66,6 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
   useEffect(() => {
     const m = searchParams.get('mode');
     if (m === 'login') setMode('login');
-    const oauthErr = searchParams.get('oauth_error');
-    if (oauthErr) setError(oauthErr);
-    fetch(`${API_BASE}/api/auth/oauth/status`)
-      .then((r) => r.json())
-      .then((d) => setOauth({ google: !!d.google, facebook: !!d.facebook, apple: !!d.apple }))
-      .catch(() => {});
   }, [searchParams]);
 
   const signupShareUrl = useMemo(() => {
@@ -82,28 +78,108 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
     [signupShareUrl]
   );
 
-  const finishAuth = (user: { profileSetupComplete?: boolean }, token: string) => {
+  const finishAuth = useCallback((user: { profileSetupComplete?: boolean }, token: string) => {
     const id = coerceUserId((user as { id?: unknown }).id);
     if (!id) throw new Error('Invalid user');
     login({ ...user, id }, token);
     navigate(user.profileSetupComplete ? '/home' : '/profile-setup', { replace: true });
+  }, [login, navigate]);
+
+  const beginFaceSignup = () => {
+    if (!name.trim() || !username.trim()) {
+      setError('Enter your name and username first (or fill them in below).');
+      return;
+    }
+    if (!agreedToTerms) {
+      setError('Agree to Terms and Privacy to continue');
+      return;
+    }
+    if (!faceScanSupported()) {
+      setError('Face sign-up needs a front camera. Try on your phone.');
+      return;
+    }
+    setError('');
+    setFacePanel('signup');
   };
 
-  const startOAuth = async (provider: OAuthProvider) => {
-    setError('');
-    setOauthLoading(true);
-    try {
-      await redirectToOAuth(provider);
-    } catch (e: unknown) {
-      setOauthLoading(false);
-      setError(e instanceof Error ? e.message : 'Could not start sign-in. Try again.');
+  const beginFaceLogin = () => {
+    if (!faceScanSupported()) {
+      setError('Face sign-in needs a front camera. Try on your phone.');
+      return;
     }
+    setError('');
+    setFacePanel('login');
   };
+
+  const onFaceSignupCaptured = useCallback(
+    async (descriptor: number[]) => {
+      setFacePanel(null);
+      setLoading(true);
+      try {
+        const response = await authAPI.signupWithFace({
+          name: name.trim(),
+          username: username.trim(),
+          email: email.trim() || undefined,
+          phoneNumber: phoneNumber.replace(/\D/g, '') || undefined,
+          password: password || undefined,
+          improvementCategories: [DEFAULT_SIGNUP_CATEGORY],
+          passwordHint1: passwordHint1.trim() || undefined,
+          passwordHint2: passwordHint2.trim() || undefined,
+          passwordHint3: passwordHint3.trim() || undefined,
+          faceDescriptor: descriptor,
+        });
+        const id = coerceUserId(response.user?.id);
+        if (!response.token || !id) throw new Error('Invalid server response');
+        localStorage.setItem('token', response.token);
+        axios.defaults.headers.common['Authorization'] = `Bearer ${response.token}`;
+        await registerDeviceFaceId(response.token);
+        login({ ...response.user, id }, response.token);
+        const ageNum = parseInt(age, 10);
+        if (!Number.isNaN(ageNum) && gender) {
+          walkMatchAPI.updateSettings({ age: ageNum, gender }).catch(() => {});
+        }
+        discoverAPI.setPreference({
+          orientation,
+          lookingFor: lookingFor as ('dating' | 'casual' | 'friends' | 'serious')[],
+          userId: id,
+        }).catch(() => {});
+        navigate('/profile-setup', { replace: true });
+      } catch (err: unknown) {
+        setError(formatAxiosError(err, 'Face sign-up failed'));
+      } finally {
+        setLoading(false);
+      }
+    },
+    [name, username, email, phoneNumber, password, passwordHint1, passwordHint2, passwordHint3, age, gender, orientation, lookingFor, login, navigate]
+  );
+
+  const onFaceLoginCaptured = useCallback(
+    async (descriptor: number[]) => {
+      setFacePanel(null);
+      setLoading(true);
+      try {
+        const hint = loginIdentifier.trim() || undefined;
+        const identified = await authAPI.identifyFace(descriptor, hint);
+        if (!passkeysSupported()) {
+          setError('Register Face ID on this device during sign-up, or use email/password here.');
+          return;
+        }
+        const res = await loginWithPasskey(identified.username);
+        if (!res.token || !res.user) throw new Error('Face ID on device failed');
+        finishAuth(res.user as { profileSetupComplete?: boolean; id?: unknown }, res.token);
+      } catch (err: unknown) {
+        setError(formatAxiosError(err, 'Face sign-in failed'));
+      } finally {
+        setLoading(false);
+      }
+    },
+    [loginIdentifier, finishAuth]
+  );
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim() || !username.trim() || !password) {
-      setError('Name, username, and password are required');
+      setError('Name, username, and password are required for password sign-up');
       return;
     }
     if (!agreedToTerms) {
@@ -200,64 +276,42 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
     }
   };
 
-  const [passkeyUsername, setPasskeyUsername] = useState('');
-
-  const handlePasskeyLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!passkeysSupported()) {
-      setError('Face ID / Touch ID is not supported in this browser.');
-      return;
-    }
-    if (!passkeyUsername.trim()) {
-      setError('Enter your username to use Face ID / passkey');
-      return;
-    }
-    setError('');
-    setLoading(true);
-    try {
-      const res = await loginWithPasskey(passkeyUsername.trim());
-      if (!res.token || !res.user) throw new Error('Invalid passkey response');
-      finishAuth(res.user as { profileSetupComplete?: boolean; id?: unknown }, res.token);
-    } catch (err: unknown) {
-      setError(formatAxiosError(err, 'Passkey sign-in failed'));
-    } finally {
-      setLoading(false);
-    }
-  };
-
   return (
     <div className="auth-container">
+      <FaceVerifyPanel
+        open={facePanel === 'signup'}
+        title="Sign up with Face ID"
+        onClose={() => setFacePanel(null)}
+        onCaptured={onFaceSignupCaptured}
+      />
+      <FaceVerifyPanel
+        open={facePanel === 'login'}
+        title="Sign in with Face ID"
+        onClose={() => setFacePanel(null)}
+        onCaptured={onFaceLoginCaptured}
+      />
       <div className="auth-card" style={{ maxWidth: 720 }}>
         <Link to="/" className="back-link">← Back</Link>
         <h1 className="auth-title">{mode === 'signup' ? 'Join Hook Up' : 'Welcome Back'}</h1>
         <p className="auth-subtitle">
           {mode === 'signup'
-            ? 'Create your account with Google, Apple, or email.'
-            : 'Sign in with Google, Apple, email, or phone.'}
+            ? 'Scan your face (both eyes open) or type your details below.'
+            : 'Sign in with Face ID or use email / phone.'}
         </p>
 
         {error && <div className="error-message">{error}</div>}
         {message && <div className="success-message">{message}</div>}
-        {oauthLoading && (
-          <div className="oauth-wait-banner">
-            <div className="oauth-spinner" aria-hidden />
-            <span>Connecting…</span>
-          </div>
-        )}
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
-          <button type="button" className="auth-button" disabled={oauthLoading} style={{ background: 'rgba(66,133,244,0.25)', border: '1px solid #4285f4' }} onClick={() => startOAuth('google')}>
-            Continue with Google
-          </button>
-          <button type="button" className="auth-button" disabled={oauthLoading} style={{ background: 'rgba(0,0,0,0.5)', border: '1px solid #fff' }} onClick={() => startOAuth('apple')}>
-            Continue with Apple ID
-          </button>
-          <button type="button" className="auth-button" disabled={oauthLoading} style={{ background: 'rgba(24,119,242,0.25)', border: '1px solid #1877f2' }} onClick={() => startOAuth('facebook')}>
-            Continue with Facebook
-          </button>
-        </div>
+        <button
+          type="button"
+          className="auth-button face-id-primary"
+          disabled={loading}
+          onClick={mode === 'signup' ? beginFaceSignup : beginFaceLogin}
+        >
+          {loading ? 'Please wait…' : mode === 'signup' ? 'Sign up with Face ID' : 'Sign in with Face ID'}
+        </button>
 
-        <div className="auth-method-tabs" style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+        <div className="auth-method-tabs" style={{ display: 'flex', gap: 8, marginBottom: 16, marginTop: 16 }}>
           <button type="button" className="auth-button" style={{ flex: 1, opacity: mode === 'signup' ? 1 : 0.65 }} onClick={() => setMode('signup')}>Sign up</button>
           <button type="button" className="auth-button" style={{ flex: 1, opacity: mode === 'login' ? 1 : 0.65 }} onClick={() => setMode('login')}>Sign in</button>
         </div>
@@ -281,15 +335,24 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
               <input id="phone" type="tel" value={phoneNumber} onChange={(e) => setPhoneNumber(normalizePhoneInput(e.target.value))} autoComplete="tel" placeholder="+1 234 567 8901" />
             </div>
             <div className="form-group">
-              <label htmlFor="password">Password</label>
-              <input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" required />
+              <label htmlFor="password">Password (optional with Face ID)</label>
+              <input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" />
             </div>
-            <div className="form-group">
-              <label>Password hints (for recovery)</label>
-              <input type="text" value={passwordHint1} onChange={(e) => setPasswordHint1(e.target.value)} placeholder="Hint 1" maxLength={200} style={{ marginBottom: 6 }} />
-              <input type="text" value={passwordHint2} onChange={(e) => setPasswordHint2(e.target.value)} placeholder="Hint 2" maxLength={200} style={{ marginBottom: 6 }} />
-              <input type="text" value={passwordHint3} onChange={(e) => setPasswordHint3(e.target.value)} placeholder="Hint 3" maxLength={200} />
-            </div>
+            {showPasswordSignup && (
+              <>
+                <div className="form-group">
+                  <label>Password hints (only if you set a password)</label>
+                  <input type="text" value={passwordHint1} onChange={(e) => setPasswordHint1(e.target.value)} placeholder="Hint 1" maxLength={200} style={{ marginBottom: 6 }} />
+                  <input type="text" value={passwordHint2} onChange={(e) => setPasswordHint2(e.target.value)} placeholder="Hint 2" maxLength={200} style={{ marginBottom: 6 }} />
+                  <input type="text" value={passwordHint3} onChange={(e) => setPasswordHint3(e.target.value)} placeholder="Hint 3" maxLength={200} />
+                </div>
+              </>
+            )}
+            {!showPasswordSignup && (
+              <button type="button" className="auth-button" style={{ marginBottom: 12, opacity: 0.85 }} onClick={() => setShowPasswordSignup(true)}>
+                Add password & recovery hints (optional)
+              </button>
+            )}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
               <div className="form-group">
                 <label htmlFor="age">Age</label>
@@ -309,16 +372,36 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
               <input type="checkbox" id="agree-terms" checked={agreedToTerms} onChange={(e) => setAgreedToTerms(e.target.checked)} />
               <label htmlFor="agree-terms">I agree to the <Link to="/terms">Terms</Link> and <Link to="/privacy">Privacy</Link>. 18+.</label>
             </div>
-            <button type="submit" className="auth-button" disabled={loading}>{loading ? 'Creating…' : 'Create account'}</button>
+            <button type="button" className="auth-button" disabled={loading} onClick={beginFaceSignup}>
+              {loading ? 'Please wait…' : 'Sign up with Face ID'}
+            </button>
+            {password && (
+              <button type="submit" className="auth-button" disabled={loading} style={{ marginTop: 8, opacity: 0.9 }}>
+                {loading ? 'Creating…' : 'Or create account with password'}
+              </button>
+            )}
           </form>
         ) : (
           <>
             <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+              <button type="button" className="auth-button" style={{ flex: 1, minWidth: 100, opacity: loginMethod === 'face' ? 1 : 0.65 }} onClick={() => setLoginMethod('face')}>Face ID</button>
               <button type="button" className="auth-button" style={{ flex: 1, minWidth: 100, opacity: loginMethod === 'email' ? 1 : 0.65 }} onClick={() => setLoginMethod('email')}>Email / username</button>
               <button type="button" className="auth-button" style={{ flex: 1, minWidth: 100, opacity: loginMethod === 'phone' ? 1 : 0.65 }} onClick={() => setLoginMethod('phone')}>Phone (SMS)</button>
-              <button type="button" className="auth-button" style={{ flex: 1, minWidth: 100, opacity: loginMethod === 'passkey' ? 1 : 0.65 }} onClick={() => setLoginMethod('passkey')}>Face / Touch ID</button>
             </div>
-            {loginMethod === 'email' ? (
+            {loginMethod === 'face' ? (
+              <div className="auth-form">
+                <p className="auth-subtitle" style={{ fontSize: 13, marginBottom: 12 }}>
+                  Open both eyes for the scan, then confirm with Face ID on your device. Optional: enter username if you have a look-alike.
+                </p>
+                <div className="form-group">
+                  <label>Username (optional)</label>
+                  <input value={loginIdentifier} onChange={(e) => setLoginIdentifier(e.target.value)} autoComplete="username" placeholder="Only if needed" />
+                </div>
+                <button type="button" className="auth-button" disabled={loading} onClick={beginFaceLogin}>
+                  {loading ? 'Verifying…' : 'Sign in with Face ID'}
+                </button>
+              </div>
+            ) : loginMethod === 'email' ? (
               <form onSubmit={handleEmailLogin} className="auth-form">
                 <div className="form-group">
                   <label>Email, username, or phone</label>
@@ -351,20 +434,7 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
                   </>
                 )}
               </form>
-            ) : (
-              <form onSubmit={handlePasskeyLogin} className="auth-form">
-                <p className="auth-subtitle" style={{ fontSize: 13, marginBottom: 12 }}>
-                  Register Face ID / Touch ID in Settings after your first password login.
-                </p>
-                <div className="form-group">
-                  <label>Username</label>
-                  <input value={passkeyUsername} onChange={(e) => setPasskeyUsername(e.target.value)} autoComplete="username" required />
-                </div>
-                <button type="submit" className="auth-button" disabled={loading || !passkeysSupported()}>
-                  {loading ? 'Verifying…' : 'Continue with Face / Touch ID'}
-                </button>
-              </form>
-            )}
+            ) : null}
           </>
         )}
 

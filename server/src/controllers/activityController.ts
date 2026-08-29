@@ -15,6 +15,9 @@ import { ensureMatchConversation } from '../models/chat.js';
 import { maskUserForViewer } from '../lib/celebMask.js';
 import { getNDAByInterest, hasSignedNDA, signNDA } from '../models/nda.js';
 import { preCommFieldsWithDefaults, sanitizeForStorage, LIMITS } from '../utils/sanitize.js';
+import { notifyNewInterest, notifyNewMatch } from '../realtime/notifications.js';
+import { sendPushToUser } from '../realtime/push.js';
+import { getUserSettings } from '../models/settings.js';
 
 export async function getRegionUsers(req: Request, res: Response) {
   try {
@@ -71,14 +74,42 @@ export async function sendInterestHandler(req: Request, res: Response) {
     const interest = await sendInterest(fromUserId, toUserId);
     if ((interest as { mutual?: boolean }).mutual) {
       await ensureMatchConversation(fromUserId, toUserId);
+      notifyNewMatch(toUserId, { fromUserId, interestId: interest.id });
+      notifyNewMatch(fromUserId, { fromUserId: toUserId, interestId: interest.id });
       return res.json({
-        message: "It's a match! You can chat now.",
+        message: "It's a match! You're both in Communications — reply within 24 hours or the match ends.",
         interest,
         openChat: true,
         chatUserId: toUserId,
+        mutual: true,
       });
     }
-    res.json({ message: 'Interest sent', interest });
+
+    notifyNewInterest(toUserId, { fromUserId, interestId: interest.id });
+    try {
+      const toSettings = await getUserSettings(toUserId);
+      const fromUser = await getUserById(fromUserId);
+      if (toSettings.notifications.push && toSettings.notifications.interestAlerts) {
+        await sendPushToUser(toUserId, {
+          title: 'Someone liked you on the wheel',
+          body: fromUser
+            ? `${fromUser.name} sent interest — open Activity to respond (24 hours)`
+            : 'Open the app to accept or decline (24 hours)',
+          data: {
+            type: 'new_interest',
+            interestId: interest.id,
+            fromUserId,
+          },
+        });
+      }
+    } catch {
+      /* push optional */
+    }
+
+    res.json({
+      message: 'Interest sent! When they say yes too, you\'ll both land in Communications.',
+      interest,
+    });
   } catch (e: any) {
     console.error('Send interest error:', e);
     res.status(400).json({ error: e.message || 'Bad request' });
@@ -93,7 +124,12 @@ export async function acceptInterestHandler(req: Request, res: Response) {
     if (!interestId) return res.status(400).json({ error: 'interestId is required' });
     const accepted = await acceptInterest(interestId, toUserId);
     await ensureMatchConversation(toUserId, accepted.fromUserId);
-    res.json({ message: 'Interest accepted', openChat: true, chatUserId: accepted.fromUserId });
+    notifyNewMatch(accepted.fromUserId, { fromUserId: toUserId, interestId });
+    res.json({
+      message: 'Interest accepted — you\'re in Communications. Reply within 24 hours or the match ends.',
+      openChat: true,
+      chatUserId: accepted.fromUserId,
+    });
   } catch (e: any) {
     console.error('Accept interest error:', e);
     res.status(400).json({ error: e.message || 'Bad request' });

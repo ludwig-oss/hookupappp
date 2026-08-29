@@ -3,21 +3,31 @@ import { createPortal } from 'react-dom';
 import { activityAPI } from '../../api/activity';
 import { openChatWithUser } from '../../lib/openChat';
 import { filterWheelUsers, markWheelUserActed } from '../../lib/wheelEncounter';
+import { formatAxiosError } from '../../lib/apiError';
 import './WheelOutcomeFlow.css';
 
 const MATCH_24H_RULE =
-  'You both need to reply within 24 hours after each message or the match ends.';
+  'Reply within 24 hours after each message or the match ends.';
 
 async function sendInterestOpenChat(toUserId: string, onOpenChat?: (userId: string) => void) {
   const res = await activityAPI.sendInterest(toUserId);
   markWheelUserActed(toUserId);
   const chatId = (res as { chatUserId?: string }).chatUserId;
-  const mutual = Boolean((res as { openChat?: boolean }).openChat);
+  const mutual = Boolean((res as { openChat?: boolean; mutual?: boolean }).openChat);
   if (chatId) {
     openChatWithUser(chatId);
     onOpenChat?.(chatId);
   }
   return { mutual, message: res.message || (mutual ? "It's a match!" : 'Interest sent') };
+}
+
+function interestResultMessage(mutual: boolean, message: string, targetName?: string): string {
+  if (mutual) {
+    return `${message} You're in Communications — ${MATCH_24H_RULE}`;
+  }
+  return targetName
+    ? `Interest sent to ${targetName}! When they say yes in Activity, you'll both land in Communications. ${MATCH_24H_RULE}`
+    : `${message} When they say yes too, you'll both land in Communications. ${MATCH_24H_RULE}`;
 }
 
 const NOMINATIM_REVERSE = 'https://nominatim.openstreetmap.org/reverse';
@@ -469,15 +479,11 @@ function CompatibilityRushFlow({ users, onClose, onOpenChat }: { users: UserInfo
     if (!target) return;
     sendInterestOpenChat(target.id, onOpenChat)
       .then(({ mutual, message }) => {
-        setResultMessage(
-          mutual
-            ? `${message} You're in Communications — ${MATCH_24H_RULE}`
-            : `${message} When they say yes too, you'll both land in Communications. ${MATCH_24H_RULE}`
-        );
+        setResultMessage(interestResultMessage(mutual, message, target.name));
         setSent(true);
       })
-      .catch(() => {
-        setResultMessage('Could not send — try again from their profile.');
+      .catch((err: unknown) => {
+        setResultMessage(formatAxiosError(err, 'Could not send interest — try again'));
         setSent(true);
       });
   };
@@ -540,6 +546,8 @@ function LuckyLikeFlow({ users, onClose, onOpenChat }: { users: UserInfo[]; onCl
   const [peekHint] = useState(() => LUCKY_PEEK_HINTS[Math.floor(Math.random() * LUCKY_PEEK_HINTS.length)]);
   const [sent, setSent] = useState(false);
   const [passed, setPassed] = useState(false);
+  const [resultMessage, setResultMessage] = useState('');
+  const [loading, setLoading] = useState(false);
 
   if (!target) {
     return createPortal(
@@ -555,7 +563,23 @@ function LuckyLikeFlow({ users, onClose, onOpenChat }: { users: UserInfo[]; onCl
   }
 
   const handleLike = () => {
-    sendInterestOpenChat(target.id, onOpenChat).then(() => setSent(true)).catch(() => setSent(true));
+    if (!target || loading) return;
+    setLoading(true);
+    sendInterestOpenChat(target.id, onOpenChat)
+      .then(({ mutual, message }) => {
+        setResultMessage(interestResultMessage(mutual, message, target.name));
+        setSent(true);
+      })
+      .catch((err: unknown) => {
+        setResultMessage(formatAxiosError(err, 'Could not send interest — try again'));
+        setSent(true);
+      })
+      .finally(() => setLoading(false));
+  };
+
+  const handlePass = () => {
+    if (target) markWheelUserActed(target.id);
+    setPassed(true);
   };
 
   const content = (
@@ -579,12 +603,14 @@ function LuckyLikeFlow({ users, onClose, onOpenChat }: { users: UserInfo[]; onCl
             <div className="wheel-outcome-peek-hint">💡 {peekHint}</div>
             {!sent && !passed ? (
               <div className="wheel-outcome-actions">
-                <button type="button" className="wheel-outcome-btn" onClick={handleLike}>Like</button>
-                <button type="button" className="wheel-outcome-btn secondary" onClick={() => setPassed(true)}>Pass</button>
+                <button type="button" className="wheel-outcome-btn" disabled={loading} onClick={handleLike}>
+                  {loading ? 'Sending…' : 'Like'}
+                </button>
+                <button type="button" className="wheel-outcome-btn secondary" disabled={loading} onClick={handlePass}>Pass</button>
               </div>
             ) : sent ? (
               <>
-                <p className="wheel-outcome-msg">Request sent to {target.name}! When they accept you can chat.</p>
+                <p className="wheel-outcome-msg">{resultMessage}</p>
                 <button type="button" className="wheel-outcome-btn" onClick={onClose}>OK</button>
               </>
             ) : (

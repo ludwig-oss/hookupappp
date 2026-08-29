@@ -1,6 +1,8 @@
 import { readFile, writeFile } from 'fs/promises';
 import { join } from 'path';
 import { getAllUsers } from './user.js';
+import { usePostgres } from '../db/index.js';
+import * as pgActivity from '../db/pg-activity.js';
 
 export interface Interest {
   id: string;
@@ -88,6 +90,8 @@ export async function sendInterest(
   fromUserId: string,
   toUserId: string
 ): Promise<Interest & { mutual?: boolean }> {
+  if (usePostgres()) return pgActivity.sendInterest(fromUserId, toUserId);
+
   const interests = await readInterests();
 
   const reversePending = interests.find(
@@ -112,6 +116,8 @@ export async function sendInterest(
   const existing = interests.find(
     (i) => i.fromUserId === fromUserId && i.toUserId === toUserId
   );
+  if (existing?.status === 'pending') return existing;
+  if (existing?.status === 'accepted') throw new Error('You are already connected with this user');
   if (existing) throw new Error('Interest already sent to this user');
   const blocked = interests.find(
     (i) => i.fromUserId === toUserId && i.toUserId === fromUserId && i.status !== 'rejected'
@@ -134,6 +140,7 @@ export async function sendInterest(
 }
 
 export async function acceptInterest(interestId: string, toUserId: string): Promise<{ fromUserId: string }> {
+  if (usePostgres()) return pgActivity.acceptInterest(interestId, toUserId);
   const interests = await readInterests();
   const interest = interests.find(i => i.id === interestId && i.toUserId === toUserId);
   if (!interest) throw new Error('Interest not found');
@@ -145,6 +152,7 @@ export async function acceptInterest(interestId: string, toUserId: string): Prom
 }
 
 export async function rejectInterest(interestId: string, toUserId: string): Promise<void> {
+  if (usePostgres()) return pgActivity.rejectInterest(interestId, toUserId);
   const interests = await readInterests();
   const interest = interests.find(i => i.id === interestId && i.toUserId === toUserId);
   if (!interest) throw new Error('Interest not found');
@@ -155,6 +163,7 @@ export async function rejectInterest(interestId: string, toUserId: string): Prom
 }
 
 export async function getInterestsForUser(userId: string): Promise<{ sent: Interest[]; received: Interest[] }> {
+  if (usePostgres()) return pgActivity.getInterestsForUser(userId);
   const interests = await readInterests();
   const sent = interests.filter(i => i.fromUserId === userId);
   const received = interests.filter(i => i.toUserId === userId);
@@ -162,6 +171,7 @@ export async function getInterestsForUser(userId: string): Promise<{ sent: Inter
 }
 
 export async function getInterestById(interestId: string): Promise<Interest | null> {
+  if (usePostgres()) return pgActivity.getInterestById(interestId);
   const interests = await readInterests();
   return interests.find(i => i.id === interestId) || null;
 }

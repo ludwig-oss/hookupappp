@@ -120,6 +120,18 @@ CREATE TABLE IF NOT EXISTS messages (
 );
 CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(from_user_id, to_user_id);
 CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages(created_at);
+
+CREATE TABLE IF NOT EXISTS activity_interests (
+  id TEXT PRIMARY KEY,
+  from_user_id TEXT NOT NULL,
+  to_user_id TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  responded_at TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS idx_activity_interests_to ON activity_interests(to_user_id, status);
+CREATE INDEX IF NOT EXISTS idx_activity_interests_from ON activity_interests(from_user_id);
+CREATE INDEX IF NOT EXISTS idx_activity_interests_pair ON activity_interests(from_user_id, to_user_id);
 `;
 
 /** Run schema to create tables if they don't exist. Safe to call on startup. */

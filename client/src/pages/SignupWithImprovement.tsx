@@ -1,4 +1,4 @@
-import { useState, useContext } from 'react';
+import { useState, useContext, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
 import { authAPI } from '../api/auth';
@@ -32,8 +32,19 @@ const SignupWithImprovement = () => {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [agreedToTerms, setAgreedToTerms] = useState(false);
+  const [showSignupQr, setShowSignupQr] = useState(false);
   const { login } = useContext(AuthContext);
   const navigate = useNavigate();
+
+  const signupShareUrl = useMemo(() => {
+    if (typeof window === 'undefined') return 'https://hookupappp.vercel.app/signup';
+    return `${window.location.origin}/signup`;
+  }, []);
+
+  const signupQrSrc = useMemo(
+    () => `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(signupShareUrl)}`,
+    [signupShareUrl]
+  );
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -353,6 +364,27 @@ const SignupWithImprovement = () => {
         <p className="auth-switch">
           Already have an account? <Link to="/login">Sign in</Link>
         </p>
+
+        <button
+          type="button"
+          className="auth-button"
+          style={{ marginTop: 12, background: 'rgba(255,107,157,0.2)' }}
+          onClick={() => setShowSignupQr(true)}
+        >
+          📱 Share sign-up QR code
+        </button>
+
+        {showSignupQr && (
+          <div className="love-feed-modal-overlay" style={{ zIndex: 50 }} onClick={() => setShowSignupQr(false)}>
+            <div className="auth-card" style={{ maxWidth: 320, textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
+              <h2 className="auth-title" style={{ fontSize: 20 }}>Scan to Sign Up</h2>
+              <p className="auth-subtitle" style={{ fontSize: 13 }}>Friends scan → open this sign-up page and create their account.</p>
+              <img src={signupQrSrc} alt="Sign up QR code" width={200} height={200} style={{ margin: '12px auto', display: 'block', borderRadius: 8, background: '#fff', padding: 8 }} />
+              <p style={{ fontSize: 11, wordBreak: 'break-all', opacity: 0.8 }}>{signupShareUrl}</p>
+              <button type="button" className="auth-button" onClick={() => setShowSignupQr(false)}>Close</button>
+            </div>
+          </div>
+        )}
 
         <div className="auth-legal-footer">
           <Link to="/terms">Terms of Service</Link>

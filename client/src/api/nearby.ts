@@ -42,7 +42,10 @@ export const nearbyAPI = {
     return response.data;
   },
 
-  sendBuzz: async (fromUserId: string, toUserId: string): Promise<{ buzz: BuzzRequest }> => {
+  sendBuzz: async (
+    fromUserId: string,
+    toUserId: string
+  ): Promise<{ buzz: BuzzRequest; openChat?: boolean; chatUserId?: string; message?: string }> => {
     const response = await axios.post(`${API_URL}/buzz`, { fromUserId, toUserId });
     return response.data;
   },
@@ -56,7 +59,7 @@ export const nearbyAPI = {
     userId: string,
     buzzId: string,
     responseValue: 'yes' | 'no' | 'later'
-  ): Promise<{ buzz: BuzzRequest }> => {
+  ): Promise<{ buzz: BuzzRequest; openChat?: boolean; chatUserId?: string }> => {
     const response = await axios.post(`${API_URL}/buzz/respond`, {
       userId,
       buzzId,

@@ -231,12 +231,19 @@ const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId }: ChatWidgetProps)
           loadConversations();
         });
     };
+    const onRefresh = () => {
+      loadConversations();
+    };
     window.addEventListener('chat:open', onOpen);
+    window.addEventListener('chat:refresh', onRefresh);
     const pending = localStorage.getItem('chatSelectedUserId');
     if (pending && user?.id) {
       window.dispatchEvent(new CustomEvent('chat:open', { detail: { userId: pending } }));
     }
-    return () => window.removeEventListener('chat:open', onOpen);
+    return () => {
+      window.removeEventListener('chat:open', onOpen);
+      window.removeEventListener('chat:refresh', onRefresh);
+    };
   }, [user?.id]);
 
   const fetchMeetupPlansAndCheckDue = async () => {

@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { getAllUsers, updateUserLocation } from '../models/user.js';
-import { createBuzz, getIncomingBuzz, getOutgoingBuzz, respondToBuzz } from '../models/nearby.js';
+import { createBuzz, getIncomingBuzz, getOutgoingBuzz, respondToBuzz, tryMutualNearbyBuzz } from '../models/nearby.js';
 import { ensureMatchConversation } from '../models/chat.js';
 
 function haversineMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -86,6 +86,18 @@ export const sendBuzz = async (req: Request, res: Response) => {
     if (toUserId === fromUserId) return res.status(400).json({ error: 'Cannot buzz yourself' });
 
     const buzz = await createBuzz(fromUserId, toUserId);
+
+    const mutual = await tryMutualNearbyBuzz(fromUserId, toUserId);
+    if (mutual.matched && mutual.chatUserId) {
+      await ensureMatchConversation(fromUserId, mutual.chatUserId);
+      return res.json({
+        buzz,
+        openChat: true,
+        chatUserId: mutual.chatUserId,
+        message: "It's a match! They're in your Communications.",
+      });
+    }
+
     res.json({ buzz });
   } catch (error) {
     console.error('Send buzz error:', error);

@@ -150,8 +150,7 @@ const Profile = () => {
     } catch (err: any) {
       const status = err?.response?.status;
       if (status === 401) {
-        setError('Session expired. Please sign in again.');
-        setTimeout(() => { logout(); navigate('/login'); }, 1500);
+        setError('Could not refresh profile right now. You are still signed in — try again or reload.');
       } else if (status === 404) {
         setError('Could not load profile. Tap refresh or try again — you are still signed in.');
       } else {
@@ -175,7 +174,8 @@ const Profile = () => {
   };
 
   const saveWithUpdates = async (updates: { age?: number; country?: string; city?: string }) => {
-    if (!user?.id || Object.keys(updates).length === 0) return;
+    const uid = userIdRef.current;
+    if (!uid || Object.keys(updates).length === 0) return;
     setSaveStatus('saving');
     setError('');
     try {
@@ -190,11 +190,7 @@ const Profile = () => {
       const status = e?.response?.status;
       const msg = e?.response?.data?.error || e?.message || 'Failed to save. Try again.';
       if (status === 401) {
-        setError('Session expired. Logging out…');
-        setTimeout(() => {
-          logout();
-          navigate('/login');
-        }, 1500);
+        setError('Could not save right now. Check your connection and try Save again.');
       } else {
         setError(msg);
         setTimeout(() => setSaveStatus('idle'), 3000);
@@ -203,7 +199,8 @@ const Profile = () => {
   };
 
   const flushSave = async () => {
-    if (!user?.id) return;
+    const uid = userIdRef.current;
+    if (!uid || !localStorage.getItem('token')) return;
     if (saveTimeoutRef.current) {
       clearTimeout(saveTimeoutRef.current);
       saveTimeoutRef.current = null;
@@ -258,9 +255,15 @@ const Profile = () => {
     saveTimeoutRef.current = setTimeout(flushSave, 600);
   };
 
+  const userIdRef = useRef(user?.id);
+  useEffect(() => {
+    userIdRef.current = user?.id;
+  }, [user?.id]);
+
   useEffect(() => {
     return () => {
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+      if (!localStorage.getItem('token') || !userIdRef.current) return;
       flushSave();
     };
   }, []);

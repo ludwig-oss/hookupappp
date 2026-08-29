@@ -84,12 +84,42 @@ export async function getActiveUsersByRegion(country: string, city?: string) {
   });
 }
 
-export async function sendInterest(fromUserId: string, toUserId: string): Promise<Interest> {
+export async function sendInterest(
+  fromUserId: string,
+  toUserId: string
+): Promise<Interest & { mutual?: boolean }> {
   const interests = await readInterests();
-  const existing = interests.find(
-    i => (i.fromUserId === fromUserId && i.toUserId === toUserId) || (i.fromUserId === toUserId && i.toUserId === fromUserId)
+
+  const reversePending = interests.find(
+    (i) => i.fromUserId === toUserId && i.toUserId === fromUserId && i.status === 'pending'
   );
-  if (existing) throw new Error('Interest already exists');
+  if (reversePending) {
+    reversePending.status = 'accepted';
+    reversePending.respondedAt = new Date();
+    const reciprocal: Interest = {
+      id: `${Date.now()}-r`,
+      fromUserId,
+      toUserId,
+      status: 'accepted',
+      createdAt: new Date(),
+      respondedAt: new Date(),
+    };
+    interests.push(reciprocal);
+    await writeInterests(interests);
+    return { ...reciprocal, mutual: true };
+  }
+
+  const existing = interests.find(
+    (i) => i.fromUserId === fromUserId && i.toUserId === toUserId
+  );
+  if (existing) throw new Error('Interest already sent to this user');
+  const blocked = interests.find(
+    (i) => i.fromUserId === toUserId && i.toUserId === fromUserId && i.status !== 'rejected'
+  );
+  if (blocked && blocked.status !== 'pending') {
+    throw new Error('Interest already exists between you');
+  }
+
   const interest: Interest = {
     id: Date.now().toString(),
     fromUserId,

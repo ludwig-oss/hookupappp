@@ -3,18 +3,19 @@ import { Link } from 'react-router-dom';
 import { authAPI } from '../api/auth';
 import './Auth.css';
 
-/** Allow full international numbers: + and digits, up to 30 digits. */
+/** Allow full international numbers: + and digits. */
 function normalizePhoneInput(value: string): string {
   const cleaned = value.replace(/[^\d+]/g, '');
   if (cleaned.startsWith('+')) {
-    return '+' + cleaned.slice(1).replace(/\D/g, '').slice(0, 18);
+    return '+' + cleaned.slice(1).replace(/\D/g, '').slice(0, 15);
   }
-  return cleaned.replace(/\D/g, '').slice(0, 18);
+  return cleaned.replace(/\D/g, '').slice(0, 15);
 }
 
 const ForgotPassword = () => {
-  const [method, setMethod] = useState<'username' | 'phone'>('username');
+  const [method, setMethod] = useState<'username' | 'phone' | 'email'>('username');
   const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
   const [message, setMessage] = useState('');
   const [resetLink, setResetLink] = useState('');
@@ -45,9 +46,15 @@ const ForgotPassword = () => {
         setLoading(false);
         return;
       }
+      if (method === 'email' && !email.includes('@')) {
+        setError('Enter a valid email address.');
+        setLoading(false);
+        return;
+      }
       const response = await authAPI.forgotPassword(
         method === 'username' ? username.trim() : undefined,
-        method === 'phone' ? cleanPhoneNumber : undefined
+        method === 'phone' ? cleanPhoneNumber : undefined,
+        method === 'email' ? email.trim().toLowerCase() : undefined
       );
       setMessage(response.message);
       setResetLink(response.resetLink || '');
@@ -67,7 +74,7 @@ const ForgotPassword = () => {
       <div className="auth-card">
         <Link to="/login" className="back-link">← Back to Sign in</Link>
         <h1 className="auth-title">Forgot Password</h1>
-        <p className="auth-subtitle">Enter your username or full phone number to get hints and a reset link</p>
+        <p className="auth-subtitle">Username, email, or full phone — get hints + a reset link</p>
 
         {error && <div className="error-message">{error}</div>}
         {message && (
@@ -80,7 +87,7 @@ const ForgotPassword = () => {
             )}
             {submitted && (hint1 || hint2 || hint3) && (
               <div style={{ marginTop: '20px', padding: '16px', background: 'rgba(255,255,255,0.1)', borderRadius: '8px', border: '1px solid rgba(0,0,0,0.1)' }}>
-                <p style={{ fontWeight: 600, marginBottom: '12px' }}>Your password hints (to help you remember):</p>
+                <p style={{ fontWeight: 600, marginBottom: '12px' }}>Your password hints:</p>
                 {hintsVisible >= 1 && hint1 && <p style={{ marginBottom: '8px' }}><strong>Hint 1:</strong> {hint1}</p>}
                 {hintsVisible >= 2 && hint2 && <p style={{ marginBottom: '8px' }}><strong>Hint 2:</strong> {hint2}</p>}
                 {hintsVisible >= 3 && hint3 && <p style={{ marginBottom: '8px' }}><strong>Hint 3:</strong> {hint3}</p>}
@@ -99,55 +106,43 @@ const ForgotPassword = () => {
           </div>
         )}
 
-        <div style={{ marginBottom: '20px', display: 'flex', gap: '12px' }}>
-          <button
-            type="button"
-            onClick={() => { setMethod('username'); setPhoneNumber(''); }}
-            style={{
-              flex: 1,
-              padding: '10px',
-              border: `2px solid ${method === 'username' ? '#ff6b9d' : '#e5e7eb'}`,
-              borderRadius: '8px',
-              background: method === 'username' ? '#fff5f8' : 'white',
-              cursor: 'pointer',
-              fontSize: '14px',
-              fontWeight: method === 'username' ? 600 : 400,
-            }}
-          >
-            👤 Username
-          </button>
-          <button
-            type="button"
-            onClick={() => { setMethod('phone'); setUsername(''); }}
-            style={{
-              flex: 1,
-              padding: '10px',
-              border: `2px solid ${method === 'phone' ? '#ff6b9d' : '#e5e7eb'}`,
-              borderRadius: '8px',
-              background: method === 'phone' ? '#fff5f8' : 'white',
-              cursor: 'pointer',
-              fontSize: '14px',
-              fontWeight: method === 'phone' ? 600 : 400,
-            }}
-          >
-            📱 Phone
-          </button>
+        <div style={{ marginBottom: '20px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+          {(['username', 'email', 'phone'] as const).map((m) => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => { setMethod(m); setUsername(''); setEmail(''); setPhoneNumber(''); }}
+              style={{
+                flex: 1,
+                minWidth: 90,
+                padding: '10px',
+                border: `2px solid ${method === m ? '#ff6b9d' : '#e5e7eb'}`,
+                borderRadius: '8px',
+                background: method === m ? '#fff5f8' : 'white',
+                cursor: 'pointer',
+                fontSize: '13px',
+                fontWeight: method === m ? 600 : 400,
+              }}
+            >
+              {m === 'username' ? '👤 Username' : m === 'email' ? '✉️ Email' : '📱 Phone'}
+            </button>
+          ))}
         </div>
 
         <form onSubmit={handleSubmit} className="auth-form">
-          {method === 'username' ? (
+          {method === 'username' && (
             <div className="form-group">
               <label htmlFor="username">Username</label>
-              <input
-                type="text"
-                id="username"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                required
-                placeholder="Enter your username"
-              />
+              <input type="text" id="username" value={username} onChange={(e) => setUsername(e.target.value)} required placeholder="Enter your username" />
             </div>
-          ) : (
+          )}
+          {method === 'email' && (
+            <div className="form-group">
+              <label htmlFor="email">Email</label>
+              <input type="email" id="email" value={email} onChange={(e) => setEmail(e.target.value)} required placeholder="you@example.com" autoComplete="email" />
+            </div>
+          )}
+          {method === 'phone' && (
             <div className="form-group">
               <label htmlFor="phone">Full phone number</label>
               <input
@@ -156,12 +151,12 @@ const ForgotPassword = () => {
                 value={phoneNumber}
                 onChange={(e) => setPhoneNumber(normalizePhoneInput(e.target.value))}
                 required
-                placeholder="+1 234 567 8901 or 2345678901"
+                placeholder="+1 234 567 8901"
                 autoComplete="tel"
                 inputMode="tel"
               />
               <small style={{ color: '#6b7280', fontSize: '12px' }}>
-                Use the same full number from your profile (country code + number). Digits only or with +.
+                Same full number from your profile (country code + number).
               </small>
             </div>
           )}

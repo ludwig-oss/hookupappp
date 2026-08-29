@@ -93,6 +93,12 @@ function rowToUser(row: { id: string; email: string; password: string; name: str
     schoolHomeHour: (data.schoolHomeHour as number) ?? undefined,
     schoolHomeMinute: (data.schoolHomeMinute as number) ?? undefined,
     schoolNotifyEnabled: (data.schoolNotifyEnabled as boolean) ?? undefined,
+    googleId: (data.googleId as string) ?? null,
+    facebookId: (data.facebookId as string) ?? null,
+    qualifiedCoach: Boolean(data.qualifiedCoach),
+    coachStarRating: typeof data.coachStarRating === 'number' ? data.coachStarRating : undefined,
+    loginCode: (data.loginCode as string) ?? null,
+    loginCodeExpiry: parseDate(data.loginCodeExpiry) as Date | string | null,
 
     // Enforcement
     suspensionUntil: (data.suspensionUntil as string) ?? null,
@@ -123,7 +129,9 @@ function userToData(u: Partial<User>): Record<string, unknown> {
     'suspensionUntil', 'suspensionReason',
     'meetupNoShowStrikes', 'meetupNoShowLastAt',
     'schoolSkipStreak', 'schoolSkipLastDate', 'schoolSkipTotal', 'schoolSkipExceptionLastDate',
-    'visibilityReducedUntil', 'visibilityReducedReason'] as const;
+    'visibilityReducedUntil', 'visibilityReducedReason',
+    'googleId', 'facebookId',
+    'qualifiedCoach', 'coachStarRating', 'loginCode', 'loginCodeExpiry'] as const;
   for (const k of keys) {
     if ((u as any)[k] !== undefined) data[k] = (u as any)[k];
   }
@@ -212,11 +220,21 @@ export async function getUserByUsername(username: string): Promise<User | null> 
 
 export async function getUserByPhone(phoneNumber: string): Promise<User | null> {
   const normalized = phoneNumber.replace(/\D/g, '');
-  const res = await query<{ id: string; email: string; password: string; name: string; username: string; data: unknown }>(
+  if (!normalized) return null;
+  let res = await query<{ id: string; email: string; password: string; name: string; username: string; data: unknown }>(
     `SELECT ${USER_COLS} FROM users WHERE data->>'phoneNumber' IS NOT NULL AND regexp_replace(data->>'phoneNumber', '\\D', '', 'g') = $1`,
     [normalized]
   );
-  return res.rows[0] ? rowToUser(res.rows[0]) : null;
+  if (res.rows[0]) return rowToUser(res.rows[0]);
+  if (normalized.length >= 10) {
+    const tail = normalized.slice(-10);
+    res = await query<{ id: string; email: string; password: string; name: string; username: string; data: unknown }>(
+      `SELECT ${USER_COLS} FROM users WHERE data->>'phoneNumber' IS NOT NULL AND right(regexp_replace(data->>'phoneNumber', '\\D', '', 'g'), 10) = $1 LIMIT 1`,
+      [tail]
+    );
+    if (res.rows[0]) return rowToUser(res.rows[0]);
+  }
+  return null;
 }
 
 export async function getUserById(userId: string): Promise<User | null> {
@@ -430,6 +448,18 @@ export async function getUserByEmailVerificationCode(code: string): Promise<User
 
 export async function updateEmailVerificationCode(userId: string, code: string | null, expiry: Date | null): Promise<void> {
   await updateUserProfile(userId, { emailVerificationCode: code, emailVerificationCodeExpiry: expiry });
+}
+
+export async function getUserByLoginCode(code: string): Promise<User | null> {
+  const res = await query<{ id: string; email: string; password: string; name: string; username: string; data: unknown }>(
+    `SELECT ${USER_COLS} FROM users WHERE data->>'loginCode' = $1`,
+    [code]
+  );
+  return res.rows[0] ? rowToUser(res.rows[0]) : null;
+}
+
+export async function updateLoginCode(userId: string, code: string | null, expiry: Date | null): Promise<void> {
+  await updateUserProfile(userId, { loginCode: code, loginCodeExpiry: expiry });
 }
 
 export async function blockUser(userId: string, blockedUserId: string): Promise<boolean> {

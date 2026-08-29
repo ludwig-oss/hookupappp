@@ -125,6 +125,18 @@ export interface User {
   celebMessagesOnlyWhenOpened?: boolean;
   /** Anti-catfish: user verified their profile photo with a selfie (look left/center/right scan). Shown as green badge. */
   photoVerifiedAt?: string | null;
+  /** OAuth provider ids (Google / Facebook). */
+  googleId?: string | null;
+  facebookId?: string | null;
+
+  /** Style/Problem Coach — set when admin approves guide application. */
+  qualifiedCoach?: boolean;
+  coachStarRating?: number;
+
+  /** One-time login verification code (email/SMS). */
+  loginCode?: string | null;
+  loginCodeExpiry?: Date | string | null;
+
   /** Outdoor walk matching: financial / life stage */
   financialTier?: 'building' | 'stable' | 'wealthy';
   lifeQuizCompleted?: boolean;
@@ -313,13 +325,25 @@ export async function getUserByUsername(username: string): Promise<User | null> 
 export async function getUserByPhone(phoneNumber: string): Promise<User | null> {
   if (usePostgres()) return pgUsers.getUserByPhone(phoneNumber);
   const users = await readUsers();
-  // Normalize phone numbers (remove formatting) for comparison
   const normalizedSearch = phoneNumber.replace(/\D/g, '');
-  return users.find(u => {
+  if (!normalizedSearch) return null;
+  const exact = users.find((u) => {
     if (!u.phoneNumber) return false;
-    const normalizedUser = u.phoneNumber.replace(/\D/g, '');
-    return normalizedUser === normalizedSearch;
-  }) || null;
+    return u.phoneNumber.replace(/\D/g, '') === normalizedSearch;
+  });
+  if (exact) return exact;
+  // Allow match on last 10 digits (country-code differences)
+  if (normalizedSearch.length >= 10) {
+    const tail = normalizedSearch.slice(-10);
+    return (
+      users.find((u) => {
+        if (!u.phoneNumber) return false;
+        const n = u.phoneNumber.replace(/\D/g, '');
+        return n.slice(-10) === tail;
+      }) || null
+    );
+  }
+  return null;
 }
 
 export async function getUserById(userId: string): Promise<User | null> {
@@ -646,6 +670,23 @@ export async function updateEmailVerificationCode(userId: string, code: string |
   if (userIndex !== -1) {
     users[userIndex].emailVerificationCode = code;
     users[userIndex].emailVerificationCodeExpiry = expiry;
+    await writeUsers(users);
+  }
+}
+
+export async function getUserByLoginCode(code: string): Promise<User | null> {
+  if (usePostgres()) return pgUsers.getUserByLoginCode(code);
+  const users = await readUsers();
+  return users.find(u => u.loginCode === code) || null;
+}
+
+export async function updateLoginCode(userId: string, code: string | null, expiry: Date | null): Promise<void> {
+  if (usePostgres()) return pgUsers.updateLoginCode(userId, code, expiry);
+  const users = await readUsers();
+  const userIndex = users.findIndex(u => u.id === userId);
+  if (userIndex !== -1) {
+    users[userIndex].loginCode = code;
+    users[userIndex].loginCodeExpiry = expiry;
     await writeUsers(users);
   }
 }

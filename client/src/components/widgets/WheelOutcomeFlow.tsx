@@ -1,7 +1,17 @@
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { activityAPI } from '../../api/activity';
+import { openChatWithUser } from '../../lib/openChat';
 import './WheelOutcomeFlow.css';
+
+async function sendInterestOpenChat(toUserId: string, onOpenChat?: (userId: string) => void) {
+  const res = await activityAPI.sendInterest(toUserId);
+  const chatId = (res as { chatUserId?: string }).chatUserId;
+  if (chatId) {
+    openChatWithUser(chatId);
+    onOpenChat?.(chatId);
+  }
+}
 
 const NOMINATIM_REVERSE = 'https://nominatim.openstreetmap.org/reverse';
 async function reverseGeocode(lat: number, lon: number): Promise<{ country: string; city: string }> {
@@ -202,7 +212,9 @@ function BlindDateFlow({ users, onClose, onOpenChat }: { users: UserInfo[]; onCl
 
   const handleAddToComm = () => {
     if (!match) return;
-    activityAPI.sendInterest(match.id).then(() => setStep('done')).catch(() => setStep('done'));
+    sendInterestOpenChat(match.id, onOpenChat)
+      .then(() => setStep('done'))
+      .catch(() => setStep('done'));
   };
 
   if (!match) {
@@ -331,10 +343,12 @@ function PicturePickFlow({ users, onClose, onOpenChat }: { users: UserInfo[]; on
 
   const handleSendRequest = () => {
     if (!picked) return;
-    activityAPI.sendInterest(picked.id).then(() => {
-      setRequestSent(true);
-      setShowMissed(true);
-    }).catch(() => setRequestSent(true));
+    sendInterestOpenChat(picked.id, onOpenChat)
+      .then(() => {
+        setRequestSent(true);
+        setShowMissed(true);
+      })
+      .catch(() => setRequestSent(true));
   };
 
   const content = (
@@ -444,7 +458,7 @@ function CompatibilityRushFlow({ users, onClose, onOpenChat }: { users: UserInfo
   }
 
   const handleYes = () => {
-    activityAPI.sendInterest(target.id).then(() => setSent(true)).catch(() => setSent(true));
+    sendInterestOpenChat(target.id, onOpenChat).then(() => setSent(true)).catch(() => setSent(true));
   };
 
   const content = (
@@ -515,7 +529,7 @@ function LuckyLikeFlow({ users, onClose, onOpenChat }: { users: UserInfo[]; onCl
   }
 
   const handleLike = () => {
-    activityAPI.sendInterest(target.id).then(() => setSent(true)).catch(() => setSent(true));
+    sendInterestOpenChat(target.id, onOpenChat).then(() => setSent(true)).catch(() => setSent(true));
   };
 
   const content = (
@@ -608,7 +622,7 @@ function SpeedPickFlow({ users, onClose, onOpenChat }: { users: UserInfo[]; onCl
 
   const handleSend = () => {
     if (!picked) return;
-    activityAPI.sendInterest(picked.id).then(() => setSent(true)).catch(() => setSent(true));
+    sendInterestOpenChat(picked.id, onOpenChat).then(() => setSent(true)).catch(() => setSent(true));
   };
 
   const content = (
@@ -685,7 +699,7 @@ function MysteryMessageFlow({ users, onClose, onOpenChat }: { users: UserInfo[];
   }
 
   const handleSend = () => {
-    activityAPI.sendInterest(target.id).then(() => setSent(true)).catch(() => setSent(true));
+    sendInterestOpenChat(target.id, onOpenChat).then(() => setSent(true)).catch(() => setSent(true));
   };
 
   const content = (

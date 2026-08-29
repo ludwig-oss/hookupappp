@@ -3,6 +3,7 @@ import { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { GuestOnly, RequireAuth, LandingOrRedirect } from './components/AuthRouteGuards';
 import Login from './pages/Login';
+import AuthCallback from './pages/AuthCallback';
 import SignupWithImprovement from './pages/SignupWithImprovement';
 import Landing from './pages/Landing';
 import TermsOfService from './pages/TermsOfService';
@@ -49,6 +50,26 @@ function App() {
   const refreshGen = useRef(0);
 
   useEffect(() => {
+    let cancelled = false;
+
+    const applyProfile = (fullProfile: unknown) => {
+      if (cancelled || !isValidUserShape(fullProfile)) return false;
+      const id = normalizeUserId((fullProfile as { id: unknown }).id);
+      if (!id) return false;
+      const normalized = { ...userForStorage(fullProfile as Record<string, unknown>), id };
+      setUser(normalized);
+      try {
+        localStorage.setItem('user', JSON.stringify(normalized));
+      } catch {
+        /* quota — token session still valid */
+      }
+      return true;
+    };
+
+    const finishBoot = () => {
+      if (!cancelled) setLoading(false);
+    };
+
     try {
       const token = localStorage.getItem('token');
       const userData = localStorage.getItem('user');
@@ -60,18 +81,58 @@ function App() {
         if (isValidUserShape(parsed)) {
           const id = normalizeUserId(parsed.id);
           setUser(id ? { ...userForStorage(parsed as Record<string, unknown>), id } : parsed);
-        } else {
-          localStorage.removeItem('token');
-          localStorage.removeItem('user');
-          delete axios.defaults.headers.common['Authorization'];
+          finishBoot();
+          return;
         }
+        localStorage.removeItem('user');
+      }
+      if (token) {
+        profileAPI
+          .getCurrentUser()
+          .then((fullProfile) => {
+            applyProfile(fullProfile);
+          })
+          .catch(() => {
+            /* keep token — user can sign in again without a phantom logout */
+          })
+          .finally(finishBoot);
+        return;
       }
     } catch {
-      localStorage.removeItem('token');
       localStorage.removeItem('user');
     }
-    setLoading(false);
+    finishBoot();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
+
+  // Mid-session: token present but user cleared — rebuild once from /me
+  useEffect(() => {
+    if (loading || user?.id) return;
+    const token = localStorage.getItem('token');
+    if (!token) return;
+    let cancelled = false;
+    profileAPI
+      .getCurrentUser()
+      .then((fullProfile) => {
+        if (cancelled || !isValidUserShape(fullProfile)) return;
+        const id = normalizeUserId((fullProfile as { id: unknown }).id);
+        if (!id) return;
+        const normalized = { ...userForStorage(fullProfile as unknown as Record<string, unknown>), id };
+        setUser(normalized);
+        try {
+          localStorage.setItem('user', JSON.stringify(normalized));
+        } catch {
+          /* ignore */
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [loading, user?.id]);
 
   // After load: refresh full profile from server so pictures, highlights, etc. are always current
   useEffect(() => {
@@ -104,17 +165,7 @@ function App() {
       })
       .catch((err: any) => {
         if (gen !== refreshGen.current) return;
-        const status = err?.response?.status;
-        if (status === 401) {
-          // Only hard-logout on explicit auth failure
-          localStorage.removeItem('token');
-          localStorage.removeItem('user');
-          delete axios.defaults.headers.common['Authorization'];
-          setUser(null);
-          hasRefreshedProfile.current = false;
-          return;
-        }
-        console.warn('Profile refresh failed after login:', err);
+        console.warn('Profile refresh failed (session kept):', err?.response?.status || err?.message);
       });
   }, [loading, user?.id]);
 
@@ -179,6 +230,7 @@ function App() {
       <AuthContext.Provider value={{ user, login, logout, updateUser }}>
         <Routes>
           <Route path="/login" element={<GuestOnly><Login /></GuestOnly>} />
+          <Route path="/auth/callback" element={<AuthCallback />} />
           <Route path="/signup" element={<GuestOnly><SignupWithImprovement /></GuestOnly>} />
           <Route path="/terms" element={<TermsOfService />} />
           <Route path="/privacy" element={<PrivacyPolicy />} />

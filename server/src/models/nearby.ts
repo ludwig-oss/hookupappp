@@ -35,6 +35,29 @@ async function writeBuzz(items: BuzzRequest[]): Promise<void> {
   await writeFile(DB_PATH, JSON.stringify(items, null, 2));
 }
 
+export async function tryMutualNearbyBuzz(
+  fromUserId: string,
+  toUserId: string
+): Promise<{ matched: boolean; chatUserId?: string }> {
+  const items = await readBuzz();
+  const reverse = items.find(
+    (b) => b.fromUserId === toUserId && b.toUserId === fromUserId && b.status === 'pending'
+  );
+  if (!reverse) return { matched: false };
+
+  reverse.status = 'accepted';
+  reverse.updatedAt = new Date();
+  const forward = items.find(
+    (b) => b.fromUserId === fromUserId && b.toUserId === toUserId && b.status === 'pending'
+  );
+  if (forward) {
+    forward.status = 'accepted';
+    forward.updatedAt = new Date();
+  }
+  await writeBuzz(items);
+  return { matched: true, chatUserId: toUserId };
+}
+
 export async function createBuzz(fromUserId: string, toUserId: string): Promise<BuzzRequest> {
   const items = await readBuzz();
 

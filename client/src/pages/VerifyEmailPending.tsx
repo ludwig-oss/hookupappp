@@ -1,11 +1,13 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useContext } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { authAPI } from '../api/auth';
+import { AuthContext } from '../context/AuthContext';
 import './Auth.css';
 
 const VerifyEmailPending = () => {
   const location = useLocation();
   const navigate = useNavigate();
+  const { login } = useContext(AuthContext);
   const [email, setEmail] = useState<string>(location.state?.email || localStorage.getItem('pendingVerificationEmail') || '');
   const [phoneNumber, setPhoneNumber] = useState<string>(location.state?.phoneNumber || localStorage.getItem('pendingVerificationPhone') || '');
   const [verificationMethod, setVerificationMethod] = useState<'email' | 'phone'>(
@@ -58,8 +60,7 @@ const VerifyEmailPending = () => {
       
       // Auto-login
       if (response.token && response.user) {
-        localStorage.setItem('token', response.token);
-        localStorage.setItem('user', JSON.stringify(response.user));
+        login(response.user, response.token);
         localStorage.removeItem('pendingVerificationEmail');
         setTimeout(() => {
           navigate(response.user.profileSetupComplete ? '/home' : '/profile-setup');

@@ -1,6 +1,7 @@
 import { useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { AuthContext } from '../../context/AuthContext';
 import { nearbyAPI, NearbyUser, BuzzRequest } from '../../api/nearby';
+import { openChatWithUser } from '../../lib/openChat';
 import './Widget.css';
 
 const Widget2 = () => {
@@ -109,8 +110,10 @@ const Widget2 = () => {
     setLoading(true);
     setToast('');
     try {
-      await nearbyAPI.sendBuzz(user.id, toUserId);
-      setToast('Buzz sent!');
+      const res = await nearbyAPI.sendBuzz(user.id, toUserId);
+      const chatId = (res as { chatUserId?: string }).chatUserId;
+      if (chatId) openChatWithUser(chatId);
+      setToast(chatId ? "It's a match! Open Communications to chat." : 'Buzz sent!');
       const b = await nearbyAPI.getBuzz(user.id);
       setIncoming(b.incoming);
       setOutgoing(b.outgoing);
@@ -136,13 +139,9 @@ const Widget2 = () => {
 
       // On yes/later: tell Chat widget who to open
       if (value === 'yes' || value === 'later') {
-        // Find the sender (fromUserId) and store
-        const senderId = incoming.find(b => b.id === buzzId)?.fromUserId;
-        if (senderId) {
-          localStorage.setItem('chatSelectedUserId', senderId);
-          // Let ChatWidget know immediately
-          window.dispatchEvent(new CustomEvent('chat:open', { detail: { userId: senderId } }));
-        }
+        const senderId = (res as { chatUserId?: string }).chatUserId
+          || incoming.find(b => b.id === buzzId)?.fromUserId;
+        if (senderId) openChatWithUser(senderId);
       }
 
       const b = await nearbyAPI.getBuzz(user.id);

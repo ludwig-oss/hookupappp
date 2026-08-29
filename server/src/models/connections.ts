@@ -166,6 +166,30 @@ export async function respondToBuzz(buzzId: string, response: RespondBuzzRespons
   return { buzz, comfortingMessage };
 }
 
+/** If they already sent you a pending buzz, accept both sides (mutual interest). */
+export async function tryMutualBuzzMatch(
+  fromUserId: string,
+  toUserId: string
+): Promise<{ matched: boolean; chatUserId?: string }> {
+  const buzzes = await readBuzzes();
+  const reverse = buzzes.find(
+    (b) => b.fromUserId === toUserId && b.toUserId === fromUserId && b.status === 'pending'
+  );
+  if (!reverse) return { matched: false };
+
+  reverse.status = 'accepted';
+  reverse.respondedAt = new Date();
+  const forward = buzzes.find(
+    (b) => b.fromUserId === fromUserId && b.toUserId === toUserId && b.status === 'pending'
+  );
+  if (forward) {
+    forward.status = 'accepted';
+    forward.respondedAt = new Date();
+  }
+  await writeBuzzes(buzzes);
+  return { matched: true, chatUserId: toUserId };
+}
+
 export async function getNearbyUsers(
   userId: string,
   lat: number,

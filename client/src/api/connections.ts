@@ -51,7 +51,7 @@ export const connectionsAPI = {
     toUserId: string;
     location?: { lat: number; lon: number; venue?: string; venueType?: string };
     userId: string;
-  }): Promise<{ message: string; buzz: Buzz }> => {
+  }): Promise<{ message: string; buzz: Buzz; openChat?: boolean; chatUserId?: string }> => {
     const response = await axios.post(`${API_URL}/buzz`, data);
     return response.data;
   },
@@ -64,7 +64,7 @@ export const connectionsAPI = {
   respondBuzz: async (data: {
     buzzId: string;
     response: 'accepted' | 'rejected' | 'talk_later';
-  }): Promise<{ buzz: Buzz; comfortingMessage?: string }> => {
+  }): Promise<{ buzz: Buzz; comfortingMessage?: string; openChat?: boolean; chatUserId?: string }> => {
     const res = await axios.post(`${API_URL}/buzz/respond`, data);
     return res.data;
   },

@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useContext } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { authAPI } from '../api/auth';
+import { AuthContext } from '../context/AuthContext';
 import './Auth.css';
 
 const VerifyEmail = () => {
@@ -10,6 +11,7 @@ const VerifyEmail = () => {
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+  const { login } = useContext(AuthContext);
 
   useEffect(() => {
     if (token) {
@@ -28,8 +30,7 @@ const VerifyEmail = () => {
       
       // Auto-login if token is provided
       if (response.token && response.user) {
-        localStorage.setItem('token', response.token);
-        localStorage.setItem('user', JSON.stringify(response.user));
+        login(response.user, response.token);
         localStorage.removeItem('pendingVerificationEmail');
         setTimeout(() => {
           navigate(response.user.profileSetupComplete ? '/home' : '/profile-setup');

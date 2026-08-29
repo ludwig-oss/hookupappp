@@ -1,6 +1,7 @@
 import { useState, useEffect, useContext } from 'react';
 import { AuthContext } from '../../context/AuthContext';
 import { activityAPI, fetchCountries, fetchCities, Interest, PreCommProfile } from '../../api/activity';
+import { openChatWithUser } from '../../lib/openChat';
 import './Widget.css';
 
 const SAFETY_WARNING = (
@@ -78,8 +79,13 @@ export default function ActivityStreamWidget({ onOpenChat }: { onOpenChat?: (use
     setLoading(true);
     setError('');
     try {
-      await activityAPI.sendInterest(toUserId);
+      const res = await activityAPI.sendInterest(toUserId);
       loadInterests();
+      const chatId = (res as { chatUserId?: string }).chatUserId;
+      if (chatId) {
+        openChatWithUser(chatId);
+        onOpenChat?.(chatId);
+      }
     } catch (e: any) {
       setError(e.response?.data?.error || 'Could not send interest');
     } finally {
@@ -91,8 +97,13 @@ export default function ActivityStreamWidget({ onOpenChat }: { onOpenChat?: (use
     setLoading(true);
     setError('');
     try {
-      await activityAPI.acceptInterest(interestId);
+      const res = await activityAPI.acceptInterest(interestId);
       loadInterests();
+      const chatId = (res as { chatUserId?: string }).chatUserId;
+      if (chatId) {
+        openChatWithUser(chatId);
+        onOpenChat?.(chatId);
+      }
     } catch (e: any) {
       setError(e.response?.data?.error || 'Failed');
     } finally {

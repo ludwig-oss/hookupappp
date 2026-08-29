@@ -1,6 +1,7 @@
 import { useState, useEffect, useContext, useRef } from 'react';
 import { AuthContext } from '../../context/AuthContext';
 import { connectionsAPI, NearbyUser, VenueCount, Buzz } from '../../api/connections';
+import { openChatWithUser } from '../../lib/openChat';
 import './Widget.css';
 
 const NEARBY_DISCOVERY_RADIUS_M = 50;
@@ -231,11 +232,15 @@ const ConnectionsWidget = () => {
   };
 
   const handleSendBuzz = async (toUserId: string) => {
-    if (!location || !user?.id) return;
+    if (!user?.id) return;
+    if (!location) {
+      setError('Turn on location (or wait a moment for GPS) to show interest to nearby people.');
+      return;
+    }
     setLoading(true);
     setError('');
     try {
-      await connectionsAPI.sendBuzz({
+      const result = await connectionsAPI.sendBuzz({
         toUserId,
         location: {
           lat: location.lat,
@@ -244,7 +249,13 @@ const ConnectionsWidget = () => {
         userId: user.id,
       });
       await loadBuzzes();
-      setComfortingMessage("Interest sent! They can respond with Yes, No, or Talk later.");
+      const chatId = (result as { chatUserId?: string }).chatUserId;
+      if (chatId) {
+        openChatWithUser(chatId);
+        setComfortingMessage("It's a match! They're in your Communications — start chatting.");
+      } else {
+        setComfortingMessage("Interest sent! When they respond Yes or Talk later, they'll appear in Communications.");
+      }
       setTimeout(() => setComfortingMessage(null), 4000);
     } catch (err: any) {
       setError(err.response?.data?.error || 'Failed to send buzz');
@@ -269,8 +280,7 @@ const ConnectionsWidget = () => {
           : "They're in your Communications. You can start chatting now!");
         setTimeout(() => setComfortingMessage(null), 5000);
         if (chatId) {
-          localStorage.setItem('chatSelectedUserId', chatId);
-          window.dispatchEvent(new CustomEvent('chat:open', { detail: { userId: chatId } }));
+          openChatWithUser(chatId);
         }
       }
       await loadBuzzes();

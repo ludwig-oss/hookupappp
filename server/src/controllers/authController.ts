@@ -26,6 +26,8 @@ function toClientUser(user: User) {
     age: user.age,
     country: user.country,
     city: user.city,
+    qualifiedCoach: Boolean(user.qualifiedCoach),
+    coachStarRating: typeof user.coachStarRating === 'number' ? user.coachStarRating : undefined,
   };
 }
 
@@ -188,22 +190,26 @@ export const login = async (req: Request, res: Response) => {
 
 export const forgotPassword = async (req: Request, res: Response) => {
   try {
-    const { username, phoneNumber } = req.body;
+    const { username, phoneNumber, email } = req.body;
 
-    if (!username && !phoneNumber) {
-      return res.status(400).json({ error: 'Username or phone number is required' });
+    if (!username && !phoneNumber && !email) {
+      return res.status(400).json({ error: 'Username, email, or phone number is required' });
     }
 
     let user = null;
     if (username) {
       user = await getUserByUsername((username || '').trim());
+    } else if (email) {
+      user = await getUserByEmail(String(email).trim().toLowerCase());
     } else if (phoneNumber) {
-      const normalizedPhone = phoneNumber.replace(/\D/g, '');
+      const normalizedPhone = String(phoneNumber).replace(/\D/g, '');
       user = await getUserByPhone(normalizedPhone);
     }
 
     if (!user) {
-      return res.json({ message: 'If the account exists, a password reset link has been sent' });
+      return res.json({
+        message: 'If the account exists, a password reset link has been sent. Check your email/SMS or use the link shown if available.',
+      });
     }
 
     const resetToken = uuidv4();
@@ -212,9 +218,24 @@ export const forgotPassword = async (req: Request, res: Response) => {
 
     const resetUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/reset-password?token=${resetToken}`;
 
-    if (phoneNumber && user.phoneNumber) {
-      const normalizedPhone = phoneNumber.replace(/\D/g, '');
-      await sendPasswordResetSMS(normalizedPhone, resetToken);
+    // Always try email when the account has a real inbox address
+    const realEmail = user.email && !user.email.endsWith('@noreply.local') && !user.email.endsWith('@oauth.local');
+    if (realEmail) {
+      try {
+        await sendPasswordResetEmail(user.email, resetToken);
+      } catch (e) {
+        console.error('Password reset email failed:', e);
+      }
+    }
+
+    // SMS when phone was used or account has a phone on file
+    const phoneDigits = (phoneNumber || user.phoneNumber || '').toString().replace(/\D/g, '');
+    if (phoneDigits.length >= 10) {
+      try {
+        await sendPasswordResetSMS(phoneDigits, resetToken);
+      } catch (e) {
+        console.error('Password reset SMS failed:', e);
+      }
     }
 
     const hint1 = user.passwordHint1 || '';
@@ -222,7 +243,8 @@ export const forgotPassword = async (req: Request, res: Response) => {
     const hint3 = user.passwordHint3 || '';
 
     res.json({
-      message: 'If the account exists, use your hints below to help remember your password. Use the reset link to set a new password.',
+      message:
+        'If the account exists, use your hints below and the reset link to set a new password. The link expires in 1 hour.',
       resetLink: resetUrl,
       hint1,
       hint2,

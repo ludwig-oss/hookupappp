@@ -8,6 +8,7 @@ import {
   getVenueCounts,
   getCountsForOsmVenues,
   getComfortingMessage,
+  tryMutualBuzzMatch,
 } from '../models/connections.js';
 import { updateUserLocation, getUserById } from '../models/user.js';
 import { ensureMatchConversation } from '../models/chat.js';
@@ -31,6 +32,18 @@ export const sendBuzz = async (req: Request, res: Response) => {
       toUserId,
       location: sanitizeBuzzLocation(location),
     });
+
+    // Mutual interest: they already sent you a pending buzz → match + chat now
+    const mutual = await tryMutualBuzzMatch(userId, toUserId);
+    if (mutual.matched && mutual.chatUserId) {
+      await ensureMatchConversation(userId, mutual.chatUserId);
+      return res.json({
+        message: "It's a match! They're in your Communications.",
+        buzz,
+        openChat: true,
+        chatUserId: mutual.chatUserId,
+      });
+    }
 
     res.json({ message: 'Buzz sent successfully', buzz });
   } catch (error: any) {
@@ -77,13 +90,17 @@ export const respondBuzz = async (req: Request, res: Response) => {
     }
 
     const result = await respondToBuzz(buzzId, response);
-    if (response === 'accepted' && result.buzz) {
-      const userId = (req as any).userId;
-      const otherId = result.buzz.fromUserId === userId ? result.buzz.toUserId : result.buzz.fromUserId;
-      if (userId && otherId) {
-        await ensureMatchConversation(userId, otherId);
-      }
-      return res.json({ ...result, openChat: true, chatUserId: otherId || result.buzz.fromUserId });
+    const userId = (req as any).userId;
+    const otherId =
+      result.buzz.fromUserId === userId ? result.buzz.toUserId : result.buzz.fromUserId;
+
+    if ((response === 'accepted' || response === 'talk_later') && result.buzz && userId && otherId) {
+      await ensureMatchConversation(userId, otherId);
+      return res.json({
+        ...result,
+        openChat: true,
+        chatUserId: otherId,
+      });
     }
     res.json(result);
   } catch (error: any) {

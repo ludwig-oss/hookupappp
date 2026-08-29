@@ -69,6 +69,15 @@ export async function sendInterestHandler(req: Request, res: Response) {
     const { toUserId } = req.body;
     if (!toUserId) return res.status(400).json({ error: 'toUserId is required' });
     const interest = await sendInterest(fromUserId, toUserId);
+    if ((interest as { mutual?: boolean }).mutual) {
+      await ensureMatchConversation(fromUserId, toUserId);
+      return res.json({
+        message: "It's a match! You can chat now.",
+        interest,
+        openChat: true,
+        chatUserId: toUserId,
+      });
+    }
     res.json({ message: 'Interest sent', interest });
   } catch (e: any) {
     console.error('Send interest error:', e);

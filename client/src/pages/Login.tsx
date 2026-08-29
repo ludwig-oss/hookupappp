@@ -1,7 +1,8 @@
-import { useMemo, useState, useContext } from 'react';
-import { Link } from 'react-router-dom';
+import { useMemo, useState, useContext, useEffect } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
 import { authAPI } from '../api/auth';
+import { API_BASE } from '../api/config';
 import { formatAxiosError } from '../lib/apiError';
 import './Auth.css';
 import './Legal.css';
@@ -11,6 +12,7 @@ type SignMethod = 'account' | 'pattern' | 'passkey';
 const PATTERN_CELLS = [1, 2, 3, 4, 5, 6, 7, 8, 9];
 
 const Login = () => {
+  const [searchParams] = useSearchParams();
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -18,7 +20,18 @@ const Login = () => {
   const [method, setMethod] = useState<SignMethod>('account');
   const [pattern, setPattern] = useState<number[]>([]);
   const [showQr, setShowQr] = useState(false);
+  const [oauth, setOauth] = useState<{ google: boolean; facebook: boolean }>({ google: false, facebook: false });
   const { login } = useContext(AuthContext);
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    const oauthErr = searchParams.get('oauth_error');
+    if (oauthErr) setError(oauthErr);
+    fetch(`${API_BASE}/api/auth/oauth/status`)
+      .then((r) => r.json())
+      .then((d) => setOauth({ google: !!d.google, facebook: !!d.facebook }))
+      .catch(() => {});
+  }, [searchParams]);
 
   const signupUrl = useMemo(() => {
     if (typeof window === 'undefined') return 'https://hookupappp.vercel.app/signup';
@@ -34,6 +47,8 @@ const Login = () => {
     const response = await authAPI.login({ identifier: id, username: id, password: pwd });
     if (!response.token || !response.user) throw new Error('Invalid login response');
     login(response.user, response.token);
+    const target = response.user.profileSetupComplete ? '/home' : '/profile-setup';
+    navigate(target, { replace: true });
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -82,8 +97,8 @@ const Login = () => {
     setError('Passkeys (Face ID / Touch ID) need to be registered in Settings after you sign in with password once. Use password for now.');
   };
 
-  const oauthNote = (provider: string) => {
-    setError(`${provider} sign-in will open when ${provider} keys are configured on the server. For now use username, email, or phone + password.`);
+  const startOAuth = (provider: 'google' | 'facebook') => {
+    window.location.href = `${API_BASE}/api/auth/${provider}`;
   };
 
   return (
@@ -91,7 +106,7 @@ const Login = () => {
       <div className="auth-card">
         <Link to="/" className="back-link">← Back</Link>
         <h1 className="auth-title">Welcome Back</h1>
-        <p className="auth-subtitle">Sign in with username, email, or phone</p>
+        <p className="auth-subtitle">Sign in with username, email, phone, Google, or Facebook</p>
 
         {error && <div className="error-message">{error}</div>}
 
@@ -188,11 +203,21 @@ const Login = () => {
         )}
 
         <div style={{ marginTop: 20, display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <button type="button" className="auth-button" style={{ background: 'rgba(66,133,244,0.25)', border: '1px solid #4285f4' }} onClick={() => oauthNote('Google')}>
-            Continue with Google
+          <button
+            type="button"
+            className="auth-button"
+            style={{ background: 'rgba(66,133,244,0.25)', border: '1px solid #4285f4' }}
+            onClick={() => startOAuth('google')}
+          >
+            {oauth.google ? 'Continue with Google' : 'Continue with Google'}
           </button>
-          <button type="button" className="auth-button" style={{ background: 'rgba(24,119,242,0.25)', border: '1px solid #1877f2' }} onClick={() => oauthNote('Facebook')}>
-            Continue with Facebook
+          <button
+            type="button"
+            className="auth-button"
+            style={{ background: 'rgba(24,119,242,0.25)', border: '1px solid #1877f2' }}
+            onClick={() => startOAuth('facebook')}
+          >
+            {oauth.facebook ? 'Continue with Facebook' : 'Continue with Facebook'}
           </button>
           <button type="button" className="auth-button" style={{ background: 'rgba(255,107,157,0.2)' }} onClick={() => setShowQr(true)}>
             📱 Show QR code → Sign up

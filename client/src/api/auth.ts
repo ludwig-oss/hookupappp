@@ -49,8 +49,8 @@ export const authAPI = {
     return response.data;
   },
 
-  forgotPassword: async (username?: string, phoneNumber?: string): Promise<{ message: string; resetLink?: string; hint1?: string; hint2?: string; hint3?: string }> => {
-    const response = await axios.post(`${API_URL}/forgot-password`, { username, phoneNumber });
+  forgotPassword: async (username?: string, phoneNumber?: string, email?: string): Promise<{ message: string; resetLink?: string; hint1?: string; hint2?: string; hint3?: string }> => {
+    const response = await axios.post(`${API_URL}/forgot-password`, { username, phoneNumber, email });
     return response.data;
   },
 

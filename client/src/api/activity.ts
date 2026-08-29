@@ -37,13 +37,14 @@ export const activityAPI = {
     return res.data;
   },
 
-  sendInterest: async (toUserId: string): Promise<{ interest: Interest }> => {
+  sendInterest: async (toUserId: string): Promise<{ interest: Interest; openChat?: boolean; chatUserId?: string }> => {
     const res = await axios.post(`${API_URL}/interest`, { toUserId });
     return res.data;
   },
 
-  acceptInterest: async (interestId: string): Promise<void> => {
-    await axios.post(`${API_URL}/interest/accept`, { interestId });
+  acceptInterest: async (interestId: string): Promise<{ message: string; openChat?: boolean; chatUserId?: string }> => {
+    const res = await axios.post(`${API_URL}/interest/accept`, { interestId });
+    return res.data;
   },
 
   rejectInterest: async (interestId: string): Promise<void> => {

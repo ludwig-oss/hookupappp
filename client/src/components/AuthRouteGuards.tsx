@@ -18,10 +18,31 @@ export function GuestOnly({ children }: { children: ReactNode }) {
 export function RequireAuth({ children }: { children: ReactNode }) {
   const { user } = useContext(AuthContext);
   const location = useLocation();
+  const hasToken =
+    typeof localStorage !== 'undefined' && !!localStorage.getItem('token');
 
   if (user) return <>{children}</>;
 
   if (location.pathname === '/login') return <>{children}</>;
+
+  // Token without React user yet — App is restoring /me; don't flash to login
+  if (hasToken) {
+    return (
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          minHeight: '100vh',
+          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+          color: '#fff',
+          fontSize: '18px',
+        }}
+      >
+        Restoring session…
+      </div>
+    );
+  }
 
   return <Navigate to="/login" replace state={{ from: location.pathname }} />;
 }

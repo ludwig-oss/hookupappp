@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
-import { SESSION_PRICE_EUR } from '../models/improvement.js';
-import { getRequestById, updateRequestPayment } from '../models/improvement.js';
+import { SESSION_PRICE_EUR, getRequestById, updateRequestPayment, getGuideById } from '../models/improvement.js';
+import { creditGuideSessionPayment } from '../models/guideWallet.js';
 
 const PAYPAL_API_BASE = process.env.PAYPAL_SANDBOX === 'false' ? 'https://api-m.paypal.com' : 'https://api-m.sandbox.paypal.com';
 const PAYPAL_CLIENT_ID = process.env.PAYPAL_CLIENT_ID || '';
@@ -114,7 +114,23 @@ export async function capturePayPalOrder(req: Request, res: Response) {
     }
 
     await updateRequestPayment(requestId, orderId);
-    res.json({ message: 'Payment successful', paid: true, requestId });
+
+    const guide = await getGuideById(guideRequest.guideId);
+    if (guide) {
+      await creditGuideSessionPayment({
+        guideUserId: guide.userId,
+        grossEur: SESSION_PRICE_EUR,
+        requestId,
+        paymentMethod: 'paypal',
+      });
+    }
+
+    res.json({
+      message: 'Payment successful — session is prepaid. Video recording is not allowed.',
+      paid: true,
+      requestId,
+      split: { guidePercent: 80, platformPercent: 20 },
+    });
   } catch (e: any) {
     console.error('Capture PayPal order error:', e);
     res.status(500).json({ error: e.message || 'Internal server error' });

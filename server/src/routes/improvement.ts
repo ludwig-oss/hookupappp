@@ -29,7 +29,21 @@ import {
   rateCourseCompletion,
   getUserImprovement,
 } from '../controllers/improvementController.js';
-import { createPaymentIntent, confirmPaymentWebhook } from '../controllers/paymentController.js';
+import { createPaymentIntent, confirmPaymentWebhook, createGuideRequestStripePayment, confirmGuideRequestStripePayment } from '../controllers/paymentController.js';
+import { createPayPalOrder, capturePayPalOrder } from '../controllers/paypalController.js';
+import {
+  getPendingVotes,
+  submitVote,
+  getMyVoteStatus,
+  getCoachVotePopup,
+  submitPopupSwipe,
+} from '../controllers/coachVoteController.js';
+import {
+  getMyWallet,
+  updateWalletPaypal,
+  createWithdrawal,
+  getPaymentSplitInfo,
+} from '../controllers/guideWalletController.js';
 import { authenticateToken } from '../middleware/auth.js';
 
 const router = express.Router();
@@ -81,7 +95,28 @@ router.post('/bookings/confirm-payment', confirmPayment);
 router.post('/courses/rate', rateCourseCompletion);
 router.get('/improvement', getUserImprovement);
 
-// Payments (Stripe for other flows)
+// Coach peer vote (opposite gender "baddie or not" — 48h, 80%)
+router.get('/coach-votes/pending', getPendingVotes);
+router.get('/coach-votes/popup', getCoachVotePopup);
+router.get('/coach-votes/my-status', getMyVoteStatus);
+router.post('/coach-votes/:campaignId/vote', submitVote);
+router.post('/coach-votes/:campaignId/swipe', submitPopupSwipe);
+
+// Guide wallet & OnlyFans-style payouts
+router.get('/wallet', getMyWallet);
+router.put('/wallet/paypal', updateWalletPaypal);
+router.post('/wallet/withdraw', createWithdrawal);
+router.get('/payments/split-info', getPaymentSplitInfo);
+
+// PayPal checkout (prepay before session)
+router.post('/payments/paypal/create-order', createPayPalOrder);
+router.post('/payments/paypal/capture', capturePayPalOrder);
+
+// Stripe checkout for guide request
+router.post('/payments/stripe/guide-request', createGuideRequestStripePayment);
+router.post('/payments/stripe/guide-request/confirm', confirmGuideRequestStripePayment);
+
+// Payments (Stripe for bookings)
 router.post('/payments/create-intent', createPaymentIntent);
 router.post('/payments/webhook', express.raw({ type: 'application/json' }), confirmPaymentWebhook);
 

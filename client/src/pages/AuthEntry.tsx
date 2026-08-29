@@ -7,6 +7,7 @@ import { walkMatchAPI } from '../api/walkMatch';
 import { API_BASE } from '../api/config';
 import { formatAxiosError } from '../lib/apiError';
 import QrScannerPanel from '../components/QrScannerPanel';
+import { loginWithPasskey, passkeysSupported } from '../lib/passkeyAuth';
 import './Auth.css';
 import './Legal.css';
 
@@ -25,7 +26,7 @@ function normalizePhoneInput(value: string): string {
 }
 
 type AuthMode = 'signup' | 'login';
-type LoginMethod = 'email' | 'phone';
+type LoginMethod = 'email' | 'phone' | 'passkey';
 
 type Props = { initialMode?: AuthMode };
 
@@ -191,6 +192,31 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
     }
   };
 
+  const [passkeyUsername, setPasskeyUsername] = useState('');
+
+  const handlePasskeyLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!passkeysSupported()) {
+      setError('Face ID / Touch ID is not supported in this browser.');
+      return;
+    }
+    if (!passkeyUsername.trim()) {
+      setError('Enter your username to use Face ID / passkey');
+      return;
+    }
+    setError('');
+    setLoading(true);
+    try {
+      const res = await loginWithPasskey(passkeyUsername.trim());
+      if (!res.token || !res.user) throw new Error('Invalid passkey response');
+      finishAuth(res.user as { profileSetupComplete?: boolean; id?: unknown }, res.token);
+    } catch (err: unknown) {
+      setError(formatAxiosError(err, 'Passkey sign-in failed'));
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const onQrScan = (url: string) => {
     try {
       const parsed = new URL(url, window.location.origin);
@@ -282,9 +308,10 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
           </form>
         ) : (
           <>
-            <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-              <button type="button" className="auth-button" style={{ flex: 1, opacity: loginMethod === 'email' ? 1 : 0.65 }} onClick={() => setLoginMethod('email')}>Email / username</button>
-              <button type="button" className="auth-button" style={{ flex: 1, opacity: loginMethod === 'phone' ? 1 : 0.65 }} onClick={() => setLoginMethod('phone')}>Phone + code</button>
+            <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+              <button type="button" className="auth-button" style={{ flex: 1, minWidth: 100, opacity: loginMethod === 'email' ? 1 : 0.65 }} onClick={() => setLoginMethod('email')}>Email / username</button>
+              <button type="button" className="auth-button" style={{ flex: 1, minWidth: 100, opacity: loginMethod === 'phone' ? 1 : 0.65 }} onClick={() => setLoginMethod('phone')}>Phone + code</button>
+              <button type="button" className="auth-button" style={{ flex: 1, minWidth: 100, opacity: loginMethod === 'passkey' ? 1 : 0.65 }} onClick={() => setLoginMethod('passkey')}>Face / Touch ID</button>
             </div>
             {loginMethod === 'email' ? (
               <form onSubmit={handleEmailLogin} className="auth-form">
@@ -299,7 +326,7 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
                 <Link to="/forgot-password" className="forgot-link">Forgot password?</Link>
                 <button type="submit" className="auth-button" disabled={loading}>{loading ? 'Signing in…' : 'Sign in'}</button>
               </form>
-            ) : (
+            ) : loginMethod === 'phone' ? (
               <form onSubmit={handlePhoneCodeLogin} className="auth-form">
                 <div className="form-group">
                   <label>Phone number</label>
@@ -318,6 +345,19 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
                     <button type="submit" className="auth-button" disabled={loading}>{loading ? 'Verifying…' : 'Sign in with code'}</button>
                   </>
                 )}
+              </form>
+            ) : (
+              <form onSubmit={handlePasskeyLogin} className="auth-form">
+                <p className="auth-subtitle" style={{ fontSize: 13, marginBottom: 12 }}>
+                  Register Face ID / Touch ID in Settings after your first password login.
+                </p>
+                <div className="form-group">
+                  <label>Username</label>
+                  <input value={passkeyUsername} onChange={(e) => setPasskeyUsername(e.target.value)} autoComplete="username" required />
+                </div>
+                <button type="submit" className="auth-button" disabled={loading || !passkeysSupported()}>
+                  {loading ? 'Verifying…' : 'Continue with Face / Touch ID'}
+                </button>
               </form>
             )}
           </>

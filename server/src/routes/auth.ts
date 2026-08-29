@@ -12,6 +12,14 @@ import {
 import { authenticateToken } from '../middleware/auth.js';
 import { signupLimiter, loginLimiter } from '../middleware/rateLimit.js';
 import { runWithSystem } from '../db/context.js';
+import {
+  passkeyRegisterOptions,
+  passkeyRegisterVerify,
+  passkeyLoginOptions,
+  passkeyLoginVerify,
+  passkeyStatus,
+  passkeySupported,
+} from '../controllers/passkeyController.js';
 
 const router = express.Router();
 
@@ -35,5 +43,12 @@ router.get('/facebook', startFacebook);
 router.get('/facebook/callback', facebookCallback);
 router.get('/apple', startApple);
 router.get('/apple/callback', appleCallback);
+
+router.get('/passkey/supported', passkeySupported);
+router.post('/passkey/login/options', loginLimiter, passkeyLoginOptions);
+router.post('/passkey/login/verify', loginLimiter, passkeyLoginVerify);
+router.get('/passkey/status', authenticateToken, passkeyStatus);
+router.post('/passkey/register/options', authenticateToken, passkeyRegisterOptions);
+router.post('/passkey/register/verify', authenticateToken, passkeyRegisterVerify);
 
 export default router;

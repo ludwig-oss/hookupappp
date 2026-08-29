@@ -15,6 +15,15 @@ import {
   getNearbyWomenSafetyAlerts,
   resolveWomenSafetySOSHandler,
   pollMeetupSafetyReminders,
+  pollDateSafetyHandler,
+  startDateTrackingHandler,
+  postLocationTrailHandler,
+  safetyCheckInHandler,
+  triggerDangerHandler,
+  okRestOfDateHandler,
+  endDateSessionHandler,
+  getEmergencyTrailHandler,
+  setDateSafeWordHandler,
   getAllTextingCoaches,
   registerAsTextingCoach,
   startCoachingSession,
@@ -52,6 +61,15 @@ router.post('/women-sos', triggerWomenSafetySOS);
 router.get('/women-sos/nearby', getNearbyWomenSafetyAlerts);
 router.post('/women-sos/resolve', resolveWomenSafetySOSHandler);
 router.get('/meetup-safety/poll', pollMeetupSafetyReminders);
+router.get('/date-safety/poll', pollDateSafetyHandler);
+router.post('/meetup-plan/:planId/start-date', startDateTrackingHandler);
+router.post('/meetup-plan/:planId/location', postLocationTrailHandler);
+router.post('/meetup-plan/:planId/check-in', safetyCheckInHandler);
+router.post('/meetup-plan/:planId/danger', triggerDangerHandler);
+router.post('/meetup-plan/:planId/ok-rest', okRestOfDateHandler);
+router.post('/meetup-plan/:planId/end-date', endDateSessionHandler);
+router.get('/emergency-trail/:planId', getEmergencyTrailHandler);
+router.post('/date-safe-word', setDateSafeWordHandler);
 
 // Date Sharing
 router.post('/share-date', shareDateWithContacts);

@@ -16,6 +16,8 @@ import EventsWidget from '../components/widgets/EventsWidget';
 import HelpWidget from '../components/widgets/HelpWidget';
 import type { HelpNavTarget } from '../data/helpFaq';
 import WalkingPartnerPopup from '../components/WalkingPartnerPopup';
+import CoachVoteSwipePopup from '../components/CoachVoteSwipePopup';
+import DateSafetyMonitor from '../components/DateSafetyMonitor';
 import SchoolDailyNotification from '../components/SchoolDailyNotification';
 import WomenSafetySOS from '../components/WomenSafetySOS';
 import MensDatingTipPopup from '../components/MensDatingTipPopup';
@@ -276,6 +278,8 @@ const Dashboard = () => {
           setOpenWidget('chat');
         }}
       />
+      <CoachVoteSwipePopup />
+      <DateSafetyMonitor />
       <MensDatingTipPopup />
       <WomensDatingTipPopup />
       <MensRespectSafetyPopup />

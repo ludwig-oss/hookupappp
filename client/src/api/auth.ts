@@ -83,5 +83,10 @@ export const authAPI = {
     const response = await axios.post(`${API_URL}/change-password`, { currentPassword, newPassword });
     return response.data;
   },
+
+  passkeyStatus: async (): Promise<{ registered: boolean; count: number }> => {
+    const response = await axios.get(`${API_URL}/passkey/status`);
+    return response.data;
+  },
 };
 

@@ -58,6 +58,25 @@ export function notifyNewMatch(recipientUserId: string, payload: { fromUserId: s
   list.forEach((res) => sendEvent(res, 'new_match', data));
 }
 
+/** Coach peer-vote result (passed or failed after 48h). */
+export function notifyCoachVoteResult(
+  recipientUserId: string,
+  payload: { passed: boolean; percent: number; totalVotes: number; hints: string[] }
+): void {
+  const list = connections.get(recipientUserId);
+  if (!list?.length) return;
+  const data = { type: 'coach_vote_result', ...payload };
+  list.forEach((res) => sendEvent(res, 'coach_vote_result', data));
+}
+
+/** Pending coach vote for opposite-gender voters. */
+export function notifyCoachVoteAvailable(recipientUserId: string, payload: { campaignId: string; applicantName: string }): void {
+  const list = connections.get(recipientUserId);
+  if (!list?.length) return;
+  const data = { type: 'coach_vote_available', ...payload };
+  list.forEach((res) => sendEvent(res, 'coach_vote_available', data));
+}
+
 /** Someone sent an interest request (Discover). Recipient has 24h to respond. */
 export function notifyNewInterest(recipientUserId: string, payload: { fromUserId: string; interestId: string }): void {
   const list = connections.get(recipientUserId);

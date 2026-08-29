@@ -116,9 +116,14 @@ export const applyAsGuide = async (req: Request, res: Response) => {
       proofPerCategory: sanitizedProof,
     });
 
+    const { startVoteForApplication } = await import('./coachVoteController.js');
+    await startVoteForApplication(application.id, userId);
+
     res.json({
-      message: 'Application submitted. Your application will be reviewed within 48 hours. You will get a response here.',
+      message:
+        'Application submitted. Your profile is now shown to the opposite gender for 48 hours — they vote if you qualify as a "baddie" coach. You need ~80% yes votes to become a guide.',
       application,
+      peerVoteStarted: true,
     });
   } catch (error) {
     console.error('Apply as guide error:', error);

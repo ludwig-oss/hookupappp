@@ -3,6 +3,7 @@ import { AuthContext } from '../../context/AuthContext';
 import {
   improvementAPI,
   paymentAPI,
+  walletAPI,
   SESSION_PRICE_EUR,
   ImprovementCategory,
   Guide,
@@ -10,7 +11,10 @@ import {
   AvailabilitySlot,
   GuideRequest,
   Booking,
+  GuideWalletSummary,
 } from '../../api/improvement';
+import CoachVoteWidget from './CoachVoteWidget';
+import GuidePrepayPanel from './GuidePrepayPanel';
 import './Widget.css';
 
 const VIDEO_CALL_BASE = 'https://meet.jit.si';
@@ -45,7 +49,7 @@ export default function CompatibilityWidget() {
   /** Wizard: want a guide → region → browse areas & pick an expert */
   const [guideSeekStep, setGuideSeekStep] = useState<GuideSeekStep>('choose');
   const [clientRegion, setClientRegion] = useState('');
-  const [expertTab, setExpertTab] = useState<'requests' | 'upcoming' | 'previous' | 'availability'>('requests');
+  const [expertTab, setExpertTab] = useState<'requests' | 'upcoming' | 'previous' | 'availability' | 'wallet'>('requests');
   const [myApplication, setMyApplication] = useState<GuideApplication | null>(null);
   const [myGuide, setMyGuide] = useState<Guide | null>(null);
   const [guideRequestsIncoming, setGuideRequestsIncoming] = useState<GuideRequest[]>([]);
@@ -77,6 +81,29 @@ export default function CompatibilityWidget() {
   // Expert set availability
   const [availStart, setAvailStart] = useState('');
   const [availEnd, setAvailEnd] = useState('');
+  const [walletSummary, setWalletSummary] = useState<GuideWalletSummary | null>(null);
+  const [withdrawAmount, setWithdrawAmount] = useState('');
+  const [walletPaypal, setWalletPaypal] = useState('');
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('paypal') === 'success' && params.get('requestId')) {
+      const requestId = params.get('requestId')!;
+      const orderId = params.get('token') || '';
+      if (orderId) {
+        paymentAPI
+          .capturePayPalOrder(orderId, requestId)
+          .then(() => {
+            alert('PayPal payment complete — session is prepaid. Recording is forbidden during your meeting.');
+            loadMyRequests();
+          })
+          .catch((err) => console.error('PayPal capture:', err))
+          .finally(() => {
+            window.history.replaceState({}, '', window.location.pathname);
+          });
+      }
+    }
+  }, []);
 
   useEffect(() => {
     loadCategories();
@@ -319,7 +346,7 @@ export default function CompatibilityWidget() {
       setApplyQualifications('');
       setApplyIdentificationUrl('');
       setApplyProofPerCategory({});
-      alert(res.message || 'Application submitted. You will get a response within 48 hours.');
+      alert(res.message || 'Application submitted. Opposite-gender users will vote for 48 hours — you need ~80% "baddie" votes.');
     } catch (err: any) {
       setError(err.response?.data?.error || 'Failed to submit application');
     } finally {
@@ -420,8 +447,7 @@ export default function CompatibilityWidget() {
       {list.map((guide) => {
         const pending = myRequests.find(r => r.guideId === guide.id && r.status === 'pending');
         const accepted = myRequests.find(r => r.guideId === guide.id && r.status === 'accepted');
-        const needSendProof = accepted && accepted.paymentStatus !== 'sent_pending_confirmation' && accepted.paymentStatus !== 'confirmed';
-        const waitingConfirmation = accepted && accepted.paymentStatus === 'sent_pending_confirmation';
+        const needSendProof = accepted && accepted.paymentStatus !== 'confirmed';
         const confirmed = accepted && accepted.paymentStatus === 'confirmed';
         const expertiseLabels = (guide.categories || [])
           .map((id) => categories.find((c) => c.id === id)?.name)
@@ -502,11 +528,8 @@ export default function CompatibilityWidget() {
                       cursor: 'pointer',
                     }}
                   >
-                    Send €{SESSION_PRICE_EUR} & proof
+                    Send €{SESSION_PRICE_EUR} — prepay session
                   </button>
-                )}
-                {waitingConfirmation && (
-                  <span style={{ fontSize: '11px', color: '#9ca3af' }}>Waiting confirmation (48h)</span>
                 )}
                 {confirmed && (
                   <button
@@ -734,7 +757,7 @@ export default function CompatibilityWidget() {
 
       {myApplication?.status === 'pending' && (
         <div style={{ marginBottom: '12px', padding: '12px', border: '2px solid rgba(251, 191, 36, 0.6)', borderRadius: '10px', background: 'rgba(251, 191, 36, 0.1)', color: '#fbbf24', fontSize: '13px' }}>
-          Your expert application is under review. You will get a response within 48 hours.
+          Your expert application is in peer review for 48 hours. Opposite-gender members vote if you qualify (~80% needed).
         </div>
       )}
       {myApplication?.status === 'rejected' && (
@@ -801,6 +824,7 @@ export default function CompatibilityWidget() {
 
       {view === 'main' && (guideSeekStep === 'ready' || guideSeekStep === 'skipped') && (
         <>
+          <CoachVoteWidget />
           <div style={{ marginBottom: '16px' }}>
             <label style={{ display: 'block', marginBottom: '8px', color: '#00d4ff', fontSize: '12px', fontFamily: 'Orbitron, monospace' }}>Search by problem</label>
             <div style={{ display: 'flex', gap: '8px' }}>
@@ -940,29 +964,20 @@ export default function CompatibilityWidget() {
       )}
 
       {view === 'send_proof' && selectedGuide && acceptedRequestForPay && (
-        <div>
-          <button type="button" onClick={() => { setView('guides'); setAcceptedRequestForPay(null); }} style={{ marginBottom: '12px', background: 'transparent', border: '2px solid #00d4ff', color: '#00d4ff', padding: '8px 14px', borderRadius: '8px', fontFamily: 'Orbitron, monospace', cursor: 'pointer' }}>← Back</button>
-          <div style={cardStyle()}>
-            <div style={{ marginBottom: '12px', color: '#00d4ff', fontFamily: 'Orbitron, monospace' }}>Send €{SESSION_PRICE_EUR} to trainer via PayPal</div>
-            <p style={{ fontSize: '12px', color: '#9ca3af', marginBottom: '8px' }}>1. Send €{SESSION_PRICE_EUR} to the trainer&apos;s PayPal below. 2. Then submit proof (e.g. transaction ID or screenshot URL) so they can confirm within 48 hours. Only after they confirm can you book an appointment.</p>
-            {selectedGuide.paypalInfo ? (
-              <div style={{ marginBottom: '16px', padding: '12px', background: 'rgba(0,0,0,0.4)', borderRadius: '8px', border: '1px solid rgba(0, 212, 255, 0.4)' }}>
-                <div style={{ fontSize: '11px', color: '#9ca3af', marginBottom: '4px' }}>Trainer&apos;s PayPal (send €{SESSION_PRICE_EUR} here):</div>
-                <div style={{ color: '#00d4ff', fontFamily: 'monospace', wordBreak: 'break-all' }}>{selectedGuide.paypalInfo}</div>
-              </div>
-            ) : (
-              <p style={{ color: '#fbbf24', fontSize: '12px', marginBottom: '12px' }}>This trainer has not set their PayPal info yet. Please contact them or try another trainer.</p>
-            )}
-            <label style={{ display: 'block', marginBottom: '6px', color: '#00d4ff', fontSize: '12px' }}>Proof of payment (required) *</label>
-            <textarea value={proofText} onChange={e => setProofText(e.target.value)} placeholder="e.g. Transaction ID, or note that you sent €50 to the PayPal above" rows={3} style={{ width: '100%', padding: '10px', marginBottom: '10px', background: 'rgba(0,0,0,0.5)', border: '2px solid rgba(0, 212, 255, 0.5)', borderRadius: '8px', color: '#fff', fontFamily: 'Orbitron, monospace' }} />
-            <label style={{ display: 'block', marginBottom: '6px', color: '#9ca3af', fontSize: '12px' }}>Proof image URL (optional)</label>
-            <input type="text" value={proofImageUrl} onChange={e => setProofImageUrl(e.target.value)} placeholder="https://... screenshot of payment" style={{ width: '100%', padding: '10px', marginBottom: '12px', background: 'rgba(0,0,0,0.5)', border: '2px solid rgba(0, 212, 255, 0.5)', borderRadius: '8px', color: '#fff', fontFamily: 'Orbitron, monospace' }} />
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <button type="button" onClick={handleSubmitProof} disabled={loading || !selectedGuide.paypalInfo} style={{ padding: '12px 18px', background: 'rgba(0, 212, 255, 0.3)', border: '2px solid #00d4ff', borderRadius: '8px', color: '#00d4ff', fontFamily: 'Orbitron, monospace', cursor: 'pointer' }}>{loading ? 'Submitting...' : 'Submit proof'}</button>
-              <button type="button" onClick={() => { setView('guides'); setAcceptedRequestForPay(null); }} style={{ padding: '8px 14px', background: 'transparent', border: '2px solid #00d4ff', color: '#00d4ff', borderRadius: '8px', fontFamily: 'Orbitron, monospace', cursor: 'pointer' }}>Cancel</button>
-            </div>
-          </div>
-        </div>
+        <GuidePrepayPanel
+          requestId={acceptedRequestForPay.id}
+          guideName={selectedGuide.user?.name || 'Guide'}
+          onPaid={() => {
+            setView('guides');
+            setAcceptedRequestForPay(null);
+            loadMyRequests();
+            alert('Payment complete! Book your session time next.');
+          }}
+          onBack={() => {
+            setView('guides');
+            setAcceptedRequestForPay(null);
+          }}
+        />
       )}
 
       {view === 'booking' && selectedGuide && acceptedRequestForPay && (
@@ -1054,11 +1069,16 @@ export default function CompatibilityWidget() {
           <button type="button" onClick={() => setView('main')} style={{ marginBottom: '12px', background: 'transparent', border: '2px solid #00d4ff', color: '#00d4ff', padding: '8px 14px', borderRadius: '8px', fontFamily: 'Orbitron, monospace', cursor: 'pointer' }}>← Back to Compatibility</button>
           <h3 style={{ color: '#22c55e', marginBottom: '12px', fontFamily: 'Orbitron, monospace' }}>Expert dashboard</h3>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '16px' }}>
-            {(['requests', 'upcoming', 'previous', 'availability'] as const).map(tab => (
+            {(['requests', 'upcoming', 'previous', 'availability', 'wallet'] as const).map(tab => (
               <button
                 key={tab}
                 type="button"
-                onClick={() => setExpertTab(tab)}
+                onClick={() => {
+                  setExpertTab(tab);
+                  if (tab === 'wallet') {
+                    walletAPI.getMyWallet().then(setWalletSummary).catch(() => {});
+                  }
+                }}
                 style={{
                   padding: '8px 14px',
                   background: expertTab === tab ? 'rgba(34, 197, 94, 0.3)' : 'rgba(0,0,0,0.3)',
@@ -1074,6 +1094,7 @@ export default function CompatibilityWidget() {
                 {tab === 'upcoming' && 'Upcoming'}
                 {tab === 'previous' && 'Previous clients'}
                 {tab === 'availability' && 'Set availability'}
+                {tab === 'wallet' && 'Earnings & withdraw'}
               </button>
             ))}
           </div>
@@ -1119,6 +1140,83 @@ export default function CompatibilityWidget() {
                     <div>{b.category} – {new Date(b.startTime).toLocaleDateString()}</div>
                   </div>
                 ))
+              )}
+            </div>
+          )}
+          {expertTab === 'wallet' && (
+            <div>
+              <p style={{ fontSize: 12, color: '#9ca3af', marginBottom: 12 }}>
+                OnlyFans-style split: you keep {walletSummary?.split.guidePercent ?? 80}% per session. Withdraw to PayPal when ready (min €
+                {walletSummary?.split.minWithdrawalEur ?? 20}).
+              </p>
+              {walletSummary ? (
+                <>
+                  <div style={cardStyle()}>
+                    <div>Available: €{walletSummary.wallet.availableBalanceEur.toFixed(2)}</div>
+                    <div style={{ fontSize: 11, color: '#9ca3af' }}>Pending withdrawal: €{walletSummary.wallet.pendingBalanceEur.toFixed(2)}</div>
+                    <div style={{ fontSize: 11, color: '#9ca3af' }}>Total earned: €{walletSummary.wallet.totalEarnedEur.toFixed(2)}</div>
+                  </div>
+                  <label style={{ display: 'block', marginTop: 12, marginBottom: 6, color: '#00d4ff', fontSize: 12 }}>PayPal email for payouts</label>
+                  <input
+                    type="text"
+                    value={walletPaypal || walletSummary.wallet.paypalEmail || ''}
+                    onChange={(e) => setWalletPaypal(e.target.value)}
+                    placeholder="you@email.com"
+                    style={{ width: '100%', padding: 10, marginBottom: 8, background: 'rgba(0,0,0,0.5)', border: '2px solid rgba(0, 212, 255, 0.5)', borderRadius: 8, color: '#fff' }}
+                  />
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      setLoading(true);
+                      try {
+                        await walletAPI.setPaypalEmail(walletPaypal || walletSummary.wallet.paypalEmail || '');
+                        alert('PayPal saved');
+                      } catch (err: unknown) {
+                        setError((err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Failed');
+                      } finally {
+                        setLoading(false);
+                      }
+                    }}
+                    style={{ padding: '8px 14px', marginBottom: 12, background: 'rgba(0,112,186,0.3)', border: '2px solid #0070ba', color: '#fff', borderRadius: 8, cursor: 'pointer' }}
+                  >
+                    Save PayPal
+                  </button>
+                  <label style={{ display: 'block', marginBottom: 6, color: '#00d4ff', fontSize: 12 }}>Withdraw amount (€)</label>
+                  <input
+                    type="number"
+                    min={walletSummary.split.minWithdrawalEur}
+                    value={withdrawAmount}
+                    onChange={(e) => setWithdrawAmount(e.target.value)}
+                    style={{ width: '100%', padding: 10, marginBottom: 8, background: 'rgba(0,0,0,0.5)', border: '2px solid rgba(0, 212, 255, 0.5)', borderRadius: 8, color: '#fff' }}
+                  />
+                  <button
+                    type="button"
+                    disabled={loading}
+                    onClick={async () => {
+                      const amt = parseFloat(withdrawAmount);
+                      if (!amt) return;
+                      setLoading(true);
+                      try {
+                        await walletAPI.withdraw(amt, walletPaypal || walletSummary.wallet.paypalEmail || undefined);
+                        alert('Withdrawal requested — processed via PayPal like OnlyFans payouts.');
+                        setWithdrawAmount('');
+                        walletAPI.getMyWallet().then(setWalletSummary);
+                      } catch (err: unknown) {
+                        setError((err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Withdrawal failed');
+                      } finally {
+                        setLoading(false);
+                      }
+                    }}
+                    style={{ padding: '10px 18px', background: 'rgba(34, 197, 94, 0.3)', border: '2px solid #22c55e', color: '#22c55e', borderRadius: 8, cursor: 'pointer' }}
+                  >
+                    Request withdrawal
+                  </button>
+                  <p style={{ fontSize: 11, color: '#fbbf24', marginTop: 12 }}>
+                    Session rules: no video recording. Share tips, not every secret — keep your edge as a guide.
+                  </p>
+                </>
+              ) : (
+                <p style={{ color: '#9ca3af' }}>Loading wallet…</p>
               )}
             </div>
           )}

@@ -251,6 +251,99 @@ export const improvementAPI = {
 
 export const SESSION_PRICE_EUR = 50;
 
+export interface CoachVoteCampaign {
+  id: string;
+  applicationId: string;
+  applicantUserId: string;
+  applicantGender: string;
+  profileName: string;
+  profilePicture: string | null;
+  profileBio: string | null;
+  profileAge: number | null;
+  status: 'voting' | 'passed' | 'failed';
+  startedAt: string;
+  expiresAt: string;
+  resolvedAt: string | null;
+  improvementHints: string[];
+}
+
+export interface CoachVoteStatusResponse {
+  campaign: CoachVoteCampaign | null;
+  stats?: {
+    total: number;
+    baddie: number;
+    baddiePercent: number;
+    minVotes: number;
+    thresholdPercent: number;
+    hoursLeft: number;
+  };
+  improvementHints?: string[];
+  application?: GuideApplication | null;
+}
+
+export interface GuideWalletSummary {
+  wallet: {
+    userId: string;
+    availableBalanceEur: number;
+    pendingBalanceEur: number;
+    totalEarnedEur: number;
+    totalWithdrawnEur: number;
+    paypalEmail: string | null;
+  };
+  recentTransactions: Array<{ id: string; type: string; amountEur: number; note?: string; createdAt: string }>;
+  pendingWithdrawals: Array<{ id: string; amountEur: number; status: string }>;
+  split: {
+    guidePercent: number;
+    platformPercent: number;
+    sessionPriceEur: number;
+    guideEarnsPerSession: number;
+    minWithdrawalEur: number;
+  };
+}
+
+export const coachVoteAPI = {
+  getPending: async (): Promise<{ campaigns: CoachVoteCampaign[]; feedbackTags: string[] }> => {
+    const res = await axios.get(`${API_URL}/coach-votes/pending`);
+    return res.data;
+  },
+  vote: async (campaignId: string, vote: 'baddie' | 'not', feedbackTags?: string[]) => {
+    const res = await axios.post(`${API_URL}/coach-votes/${campaignId}/vote`, { vote, feedbackTags });
+    return res.data;
+  },
+  getMyStatus: async (): Promise<CoachVoteStatusResponse> => {
+    const res = await axios.get(`${API_URL}/coach-votes/my-status`);
+    return res.data;
+  },
+  getPopup: async (params?: { skip?: string; country?: string; city?: string }) => {
+    const res = await axios.get(`${API_URL}/coach-votes/popup`, { params });
+    return res.data as {
+      campaign: (CoachVoteCampaign & { applicantCountry?: string; applicantCity?: string }) | null;
+      swipeLabel?: string;
+      helpText?: string;
+      regionalMatch?: boolean;
+      popupSeconds?: number;
+    };
+  },
+};
+
+export const walletAPI = {
+  getMyWallet: async (): Promise<GuideWalletSummary> => {
+    const res = await axios.get(`${API_URL}/wallet`);
+    return res.data;
+  },
+  setPaypalEmail: async (paypalEmail: string) => {
+    await axios.put(`${API_URL}/wallet/paypal`, { paypalEmail });
+  },
+  withdraw: async (amountEur: number, paypalEmail?: string) => {
+    const res = await axios.post(`${API_URL}/wallet/withdraw`, { amountEur, paypalEmail });
+    return res.data;
+  },
+  getSplitInfo: async () => {
+    const res = await axios.get(`${API_URL}/payments/split-info`);
+    return res.data;
+  },
+};
+
 export const paymentAPI = {
   createPaymentIntent: async (amount: number, bookingId: string): Promise<{ clientSecret: string; paymentIntentId: string }> => {
     const response = await axios.post(`${API_URL}/payments/create-intent`, { amount, bookingId });
@@ -271,6 +364,24 @@ export const paymentAPI = {
 
   confirmPaymentReceived: async (requestId: string): Promise<void> => {
     await axios.post(`${API_URL}/guides/requests/confirm-payment`, { requestId });
+  },
+
+  createPayPalOrder: async (requestId: string): Promise<{ orderId: string; approvalUrl?: string }> => {
+    const res = await axios.post(`${API_URL}/payments/paypal/create-order`, { requestId });
+    return res.data;
+  },
+
+  capturePayPalOrder: async (orderId: string, requestId: string): Promise<void> => {
+    await axios.post(`${API_URL}/payments/paypal/capture`, { orderId, requestId });
+  },
+
+  createGuideStripePayment: async (requestId: string): Promise<{ clientSecret: string; paymentIntentId: string }> => {
+    const res = await axios.post(`${API_URL}/payments/stripe/guide-request`, { requestId });
+    return res.data;
+  },
+
+  confirmGuideStripePayment: async (requestId: string, paymentIntentId: string): Promise<void> => {
+    await axios.post(`${API_URL}/payments/stripe/guide-request/confirm`, { requestId, paymentIntentId });
   },
 };
 

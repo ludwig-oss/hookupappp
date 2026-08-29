@@ -12,6 +12,7 @@ import {
   approveCoachApplicationAdmin,
   rejectCoachApplicationAdmin,
 } from '../controllers/adminCoachController.js';
+import { listWithdrawalsAdmin, completeWithdrawalAdmin } from '../controllers/guideWalletController.js';
 
 const router = express.Router();
 
@@ -26,5 +27,8 @@ router.post('/safety-reviews/:planId/decide', decideSafetyReview);
 router.get('/coach-applications', listCoachApplications);
 router.post('/coach-applications/approve', approveCoachApplicationAdmin);
 router.post('/coach-applications/reject', rejectCoachApplicationAdmin);
+
+router.get('/guide-withdrawals', listWithdrawalsAdmin);
+router.post('/guide-withdrawals/complete', completeWithdrawalAdmin);
 
 export default router;

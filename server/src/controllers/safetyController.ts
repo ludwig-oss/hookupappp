@@ -11,6 +11,7 @@ import {
   setMeetupPlanEmergencyVideoNotified,
   submitMeetupSafetyCheck,
   getDueMeetupPlansForEmergencyVideo,
+  updateMeetupPlanFields,
   getTextingCoaches,
   createTextingCoach,
   getActiveCoachingSession,
@@ -34,6 +35,19 @@ import {
 import { sendPushToUser } from '../realtime/push.js';
 import { storeSensitive, vaultRef } from '../utils/sensitiveVault.js';
 import { sanitizeMeetupPlanForClient } from '../models/safety.js';
+import {
+  verifyMeetupIdDocument,
+  startDateTracking,
+  appendLocationPoint,
+  respondSafetyCheckIn,
+  triggerDateDanger,
+  submitOkForRestOfDate,
+  endDateSession,
+  getTrailForEmergencyContact,
+  getActiveDateSessionsForUser,
+  getDueCheckIns,
+  getDangerAlertsForEmergencyContact,
+} from '../models/dateSafety.js';
 
 // Emergency Contacts
 export const getMyEmergencyContacts = async (req: Request, res: Response) => {
@@ -120,6 +134,12 @@ export const createMeetupPlanHandler = async (req: Request, res: Response) => {
     if (!idFrontImage || !idBackImage) {
       return res.status(400).json({ error: 'ID front and back images are required before meeting.' });
     }
+    if (!req.body.trackingConsent) {
+      return res.status(400).json({
+        error:
+          'You must consent to safety location tracking during the date (only while the date is active). This helps if something goes wrong.',
+      });
+    }
     const planId = Date.now().toString();
     const idFrontVaultRef = vaultRef(planId, 'id_front');
     const idBackVaultRef = vaultRef(planId, 'id_back');
@@ -140,13 +160,22 @@ export const createMeetupPlanHandler = async (req: Request, res: Response) => {
       idBackImage: null,
       idFrontVaultRef,
       idBackVaultRef,
+      idVerificationStatus: 'pending_review',
       safetyCheckStatus: 'none',
+      trackingConsent: Boolean(req.body.trackingConsent),
+      dateSessionStatus: 'scheduled',
       agreedVenueName: agreedVenueName != null ? sanitizeForStorage(agreedVenueName, LIMITS.LOCATION) : null,
     });
     if (chatPartnerUserId) {
       await markMetInPerson(userId, chatPartnerUserId);
     }
-    res.json({ plan });
+
+    const verified = await verifyMeetupIdDocument(plan.id, userId);
+    res.json({
+      plan: verified || plan,
+      message:
+        'ID submitted for safety scan. We verify it is legal and real for your region. You can meet once verified. Location tracking runs only during the date for your safety.',
+    });
   } catch (error) {
     console.error('Create meetup plan error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -536,6 +565,183 @@ export const unblockUser = async (req: Request, res: Response) => {
     res.json({ message: 'User unblocked' });
   } catch (error) {
     console.error('Unblock user error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+export const pollDateSafetyHandler = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).userId;
+    const dueCheckIns = await getDueCheckIns(userId);
+    const activeSessions = await getActiveDateSessionsForUser(userId);
+    const dangerForContact = await getDangerAlertsForEmergencyContact(userId);
+
+    for (const p of dangerForContact) {
+      if (p.emergencyContactNotifiedAt) continue;
+      const dater = await getUserById(p.userId);
+      await updateMeetupPlanFields(p.id, { emergencyContactNotifiedAt: new Date().toISOString() } as any);
+      sendPushToUser(userId, {
+        title: '⚠ AMBER ALERT — Date safety',
+        body: `${dater?.name || 'Your contact'} may be in danger. Open the app to view their safety trail.`,
+        data: { type: 'date_danger', planId: p.id, alert: 'amber' },
+      }).catch(() => {});
+    }
+
+    res.json({
+      dueCheckIns: dueCheckIns.map(sanitizeMeetupPlanForClient),
+      activeSessions: activeSessions.map(sanitizeMeetupPlanForClient),
+      dangerAlerts: dangerForContact.map(sanitizeMeetupPlanForClient),
+      checkInIntervalHours: 2,
+    });
+  } catch (error) {
+    console.error('Poll date safety error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+export const startDateTrackingHandler = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).userId;
+    const { planId } = req.params;
+    const plan = await startDateTracking(planId, userId);
+    if (!plan) return res.status(404).json({ error: 'Plan not found or ID not verified' });
+    res.json({
+      plan: sanitizeMeetupPlanForClient(plan),
+      message:
+        'Date tracking started for your safety. Red dots mark where you stop. Emergency contact can view trail only if you trigger danger or go missing.',
+    });
+  } catch (error: any) {
+    res.status(400).json({ error: error.message || 'Could not start tracking' });
+  }
+};
+
+export const postLocationTrailHandler = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).userId;
+    const { planId } = req.params;
+    const { lat, lon, accuracy, isIndoor } = req.body;
+    if (typeof lat !== 'number' || typeof lon !== 'number') {
+      return res.status(400).json({ error: 'lat and lon required' });
+    }
+    const point = await appendLocationPoint(planId, userId, { lat, lon, accuracy, isIndoor });
+    res.json({ point });
+  } catch (error) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+export const safetyCheckInHandler = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).userId;
+    const { planId } = req.params;
+    const { isSafe, datePartnerOk } = req.body;
+    if (typeof isSafe !== 'boolean') return res.status(400).json({ error: 'isSafe required' });
+    const plan = await respondSafetyCheckIn(planId, userId, { isSafe, datePartnerOk });
+    if (!plan) return res.status(404).json({ error: 'No active session' });
+
+    if (!isSafe && plan.emergencyContactUserId) {
+      sendPushToUser(plan.emergencyContactUserId, {
+        title: '⚠ AMBER ALERT — Date safety',
+        body: 'Your contact reported they are NOT safe. View their trail immediately.',
+        data: { type: 'date_danger', planId: plan.id, alert: 'amber' },
+      }).catch(() => {});
+    }
+
+    res.json({ plan: sanitizeMeetupPlanForClient(plan) });
+  } catch (error) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+export const triggerDangerHandler = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).userId;
+    const { planId } = req.params;
+    const { safeWord, via } = req.body as { safeWord?: string; via?: 'button' | 'safe_word' };
+    const user = await getUserById(userId);
+    let method: 'button' | 'safe_word' = via === 'safe_word' ? 'safe_word' : 'button';
+    if (safeWord && user?.dateSafeWord && safeWord.trim().toLowerCase() === user.dateSafeWord.trim().toLowerCase()) {
+      method = 'safe_word';
+    }
+    const plan = await triggerDateDanger(planId, userId, method);
+    if (!plan) return res.status(404).json({ error: 'Plan not found' });
+
+    if (plan.emergencyContactUserId) {
+      sendPushToUser(plan.emergencyContactUserId, {
+        title: '⚠ AMBER ALERT — Date in danger',
+        body: 'Your contact used their safety alert. Open trail map now.',
+        data: { type: 'date_danger', planId: plan.id, alert: 'amber' },
+      }).catch(() => {});
+    }
+
+    res.json({ plan: sanitizeMeetupPlanForClient(plan), message: 'Emergency contact alerted' });
+  } catch (error) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+export const okRestOfDateHandler = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).userId;
+    const { planId } = req.params;
+    const { ok360Video } = req.body;
+    if (!ok360Video) return res.status(400).json({ error: '360° video proof required' });
+    const okRef = vaultRef(planId, 'ok360');
+    await storeSensitive(okRef, String(ok360Video));
+    const plan = await submitOkForRestOfDate(planId, userId, okRef);
+    res.json({
+      plan: plan ? sanitizeMeetupPlanForClient(plan) : null,
+      message: 'OK for rest of date — no more check-in notifications until the date ends.',
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+export const endDateSessionHandler = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).userId;
+    const { planId } = req.params;
+    const plan = await endDateSession(planId, userId);
+    res.json({ plan: plan ? sanitizeMeetupPlanForClient(plan) : null });
+  } catch (error) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+export const getEmergencyTrailHandler = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).userId;
+    const { planId } = req.params;
+    const data = await getTrailForEmergencyContact(planId, userId);
+    if (!data) {
+      return res.status(403).json({
+        error: 'Trail is only available when your contact triggers a safety alert or goes missing.',
+      });
+    }
+    const dater = await getUserById(data.plan.userId);
+    res.json({
+      planId,
+      daterName: dater?.name,
+      trail: data.trail,
+      message: 'Red dots show stops; numbers are minutes at each spot (including indoors).',
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+export const setDateSafeWordHandler = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).userId;
+    const { safeWord } = req.body;
+    if (!safeWord || typeof safeWord !== 'string' || safeWord.length < 3) {
+      return res.status(400).json({ error: 'Safe word must be at least 3 characters' });
+    }
+    const { updateUserProfile } = await import('../models/user.js');
+    await updateUserProfile(userId, { dateSafeWord: sanitizeForStorage(safeWord, 64) });
+    res.json({ message: 'Safe word saved. Say or type it during a date to alert your emergency contact.' });
+  } catch (error) {
     res.status(500).json({ error: 'Internal server error' });
   }
 };

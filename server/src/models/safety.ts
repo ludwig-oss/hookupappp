@@ -48,6 +48,40 @@ export interface MeetupPlan {
   safetyReviewedAt?: string | null;
   safetyReviewedBy?: string | null;
   agreedVenueName?: string | null;
+  /** ID scan for legal/real verification before meetup */
+  idVerificationStatus?: 'none' | 'pending_review' | 'verified' | 'rejected';
+  idVerifiedAt?: string | null;
+  idVerificationCountry?: string | null;
+  /** Live date safety session */
+  dateSessionStatus?: 'scheduled' | 'active' | 'completed' | 'missing';
+  trackingStartedAt?: string | null;
+  trackingEndedAt?: string | null;
+  trackingConsent?: boolean;
+  locationTrail?: Array<{
+    id: string;
+    lat: number;
+    lon: number;
+    recordedAt: string;
+    dwellMinutes?: number;
+    isIndoor?: boolean;
+    accuracy?: number;
+    label?: string;
+  }>;
+  safetyCheckIns?: Array<{
+    id: string;
+    dueAt: string;
+    respondedAt?: string | null;
+    isSafe?: boolean | null;
+    datePartnerOk?: boolean | null;
+  }>;
+  nextSafetyCheckInAt?: string | null;
+  checkInIntervalHours?: number;
+  okForRestOfDate?: boolean;
+  ok360VaultRef?: string | null;
+  dangerAlertAt?: string | null;
+  dangerTriggeredVia?: 'button' | 'safe_word' | null;
+  missingReportedAt?: string | null;
+  emergencyContactNotifiedAt?: string | null;
   createdAt: Date | string;
 }
 

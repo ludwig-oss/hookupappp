@@ -137,6 +137,9 @@ export interface User {
   loginCode?: string | null;
   loginCodeExpiry?: Date | string | null;
 
+  /** Date safety: secret word triggers emergency alert during active date */
+  dateSafeWord?: string | null;
+
   /** Outdoor walk matching: financial / life stage */
   financialTier?: 'building' | 'stable' | 'wealthy';
   lifeQuizCompleted?: boolean;

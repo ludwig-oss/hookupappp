@@ -15,6 +15,8 @@ import BadgeGallery from './BadgeGallery';
 import ReportModal from './ReportModal';
 import { safetyAPI } from '../../api/safety';
 import { authAPI } from '../../api/auth';
+import { registerPasskey, getPasskeyStatus, passkeysSupported } from '../../lib/passkeyAuth';
+import { safetyAPI } from '../../api/safety';
 import { LANGUAGES } from '../../constants/languages';
 import { setStoredLanguage } from '../../i18n/languageStorage';
 import './Widget.css';
@@ -85,6 +87,10 @@ const SettingsWidgetFull = () => {
   // Gamification
   const [gamification, setGamification] = useState<any>(null);
 
+  const [passkeyRegistered, setPasskeyRegistered] = useState(false);
+  const [passkeyMessage, setPasskeyMessage] = useState('');
+  const [passkeyError, setPasskeyError] = useState('');
+
   const formatPhoneNumber = (phone: string) => {
     if (!phone) return '';
     const cleaned = phone.replace(/[^\d+]/g, '');
@@ -114,6 +120,11 @@ const SettingsWidgetFull = () => {
         loadCompatibility(),
         loadBlockedUsers(),
         loadGamification(),
+        passkeysSupported()
+          ? getPasskeyStatus()
+              .then((s) => setPasskeyRegistered(s.registered))
+              .catch(() => {})
+          : Promise.resolve(),
       ]);
       if (profileRes) {
         setBio((profileRes as any).bio ?? '');
@@ -1564,6 +1575,65 @@ const SettingsWidgetFull = () => {
             >
               {loading ? 'Changing Password...' : 'Change Password'}
             </button>
+          </div>
+
+          <div style={{ marginBottom: '30px' }}>
+            <h4 style={{ marginBottom: '12px' }}>Date safe word</h4>
+            <p style={{ fontSize: '13px', color: '#6b7280', marginBottom: '8px' }}>
+              During an active date, saying or typing this word alerts your emergency contact (amber alert).
+            </p>
+            <input
+              type="text"
+              placeholder="Your secret safe word"
+              maxLength={64}
+              style={{ width: '100%', padding: '10px', marginBottom: '8px' }}
+              onBlur={async (e) => {
+                const v = e.target.value.trim();
+                if (v.length < 3) return;
+                try {
+                  await safetyAPI.setDateSafeWord(v);
+                } catch {
+                  /* ignore */
+                }
+              }}
+            />
+          </div>
+
+          <div style={{ marginBottom: '30px' }}>
+            <h4 style={{ marginBottom: '12px' }}>Face ID / Touch ID (Passkey)</h4>
+            <p style={{ fontSize: '13px', color: '#6b7280', marginBottom: '12px' }}>
+              Sign in with Face ID, Touch ID, or Windows Hello on this device. Register after signing in with password once.
+            </p>
+            {passkeyError && <div className="error-message" style={{ marginBottom: '8px' }}>{passkeyError}</div>}
+            {passkeyMessage && <div className="success-message" style={{ marginBottom: '8px' }}>{passkeyMessage}</div>}
+            {passkeyRegistered ? (
+              <p style={{ color: '#059669', fontSize: '13px' }}>Passkey registered on this account.</p>
+            ) : passkeysSupported() ? (
+              <button
+                type="button"
+                className="select-user-btn"
+                disabled={loading}
+                style={{ width: '100%' }}
+                onClick={async () => {
+                  setPasskeyError('');
+                  setPasskeyMessage('');
+                  setLoading(true);
+                  try {
+                    const msg = await registerPasskey();
+                    setPasskeyMessage(msg);
+                    setPasskeyRegistered(true);
+                  } catch (err: unknown) {
+                    setPasskeyError((err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Could not register passkey');
+                  } finally {
+                    setLoading(false);
+                  }
+                }}
+              >
+                {loading ? 'Registering…' : 'Register Face ID / Touch ID'}
+              </button>
+            ) : (
+              <p style={{ fontSize: '13px', color: '#6b7280' }}>Passkeys are not supported in this browser.</p>
+            )}
           </div>
 
           <div style={{ marginBottom: '30px' }}>

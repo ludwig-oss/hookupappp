@@ -1,0 +1,129 @@
+.coach-vote-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10050;
+  background: rgba(0, 0, 0, 0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.coach-vote-card {
+  max-width: 360px;
+  width: 100%;
+  background: linear-gradient(145deg, #1a0a2e, #16213e);
+  border: 2px solid rgba(255, 0, 255, 0.5);
+  border-radius: 16px;
+  padding: 20px;
+  color: #fff;
+  transition: transform 0.1s ease-out;
+  box-shadow: 0 0 40px rgba(255, 0, 255, 0.25);
+}
+
+.coach-vote-badge {
+  font-family: Orbitron, monospace;
+  color: #ff00ff;
+  font-size: 12px;
+  margin: 0 0 8px;
+}
+
+.coach-vote-help {
+  font-size: 12px;
+  color: #d1d5db;
+  margin: 0 0 8px;
+  line-height: 1.4;
+}
+
+.coach-vote-region {
+  font-size: 11px;
+  color: #00d4ff;
+  margin: 0 0 12px;
+}
+
+.coach-vote-profile {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.coach-vote-avatar {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid #00d4ff;
+}
+
+.coach-vote-avatar-ph {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #374151;
+  font-size: 28px;
+}
+
+.coach-vote-meta {
+  font-size: 11px;
+  color: #9ca3af;
+}
+
+.coach-vote-question {
+  font-size: 14px;
+  color: #f9a8d4;
+  margin: 0 0 12px;
+  text-align: center;
+}
+
+.coach-vote-hints {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  margin-bottom: 12px;
+}
+
+.coach-vote-left {
+  color: #f87171;
+}
+.coach-vote-right {
+  color: #34d399;
+}
+
+.coach-vote-swipe-area {
+  display: flex;
+  gap: 16px;
+  justify-content: center;
+  touch-action: none;
+}
+
+.coach-vote-btn {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  border: none;
+  font-size: 24px;
+  cursor: pointer;
+}
+
+.coach-vote-btn.no {
+  background: rgba(248, 113, 113, 0.3);
+  border: 2px solid #f87171;
+  color: #f87171;
+}
+
+.coach-vote-btn.yes {
+  background: rgba(52, 211, 153, 0.3);
+  border: 2px solid #34d399;
+  color: #34d399;
+}
+
+.coach-vote-skip {
+  margin-top: 12px;
+  width: 100%;
+  background: transparent;
+  border: none;
+  color: #6b7280;
+  font-size: 12px;
+  cursor: pointer;
+}

@@ -103,6 +103,7 @@ const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId }: ChatWidgetProps)
   const [meetupSubmitting, setMeetupSubmitting] = useState(false);
   const [meetupWeek, setMeetupWeek] = useState<MeetupWeekStatus | null>(null);
   const [idVerificationConsent, setIdVerificationConsent] = useState(false);
+  const [trackingConsent, setTrackingConsent] = useState(false);
   const [idFrontImage, setIdFrontImage] = useState<string | null>(null);
   const [idBackImage, setIdBackImage] = useState<string | null>(null);
   const [agreedVenueName, setAgreedVenueName] = useState('');
@@ -975,6 +976,10 @@ const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId }: ChatWidgetProps)
       setError('Upload ID front and back before meeting.');
       return;
     }
+    if (!trackingConsent) {
+      setError('You must consent to safety tracking during the date (only while active).');
+      return;
+    }
     if (!agreedVenueName.trim()) {
       setError('You and your match must agree on a public date spot below first.');
       return;
@@ -995,6 +1000,7 @@ const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId }: ChatWidgetProps)
         emergencyContactId: contactId || undefined,
         chatPartnerUserId: selectedUserId,
         idVerificationConsent: true,
+        trackingConsent: true,
         idFrontImage,
         idBackImage,
         agreedVenueName,
@@ -1568,6 +1574,50 @@ const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId }: ChatWidgetProps)
               <span>{replyDeadline.ruleText}</span>
             </div>
           )}
+          {(() => {
+            const plan = meetupPlans.find(
+              (p) => p.chatPartnerUserId === selectedUserId && p.dateSessionStatus !== 'completed'
+            );
+            if (!plan) return null;
+            return (
+              <div className="chat-focus-banner" style={{ background: 'rgba(245,158,11,0.15)', border: '1px solid rgba(245,158,11,0.5)', marginBottom: 8, padding: '10px 12px', borderRadius: 8 }}>
+                <strong>Date safety</strong>
+                <p style={{ fontSize: 12, margin: '6px 0' }}>
+                  ID: {plan.idVerificationStatus === 'verified' ? '✓ verified' : plan.idVerificationStatus === 'pending_review' ? 'Scanning…' : 'Required before meetup'}
+                  {plan.dateSessionStatus === 'active' ? ' · Tracking active' : ''}
+                </p>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  {plan.idVerificationStatus === 'verified' && plan.dateSessionStatus === 'scheduled' && (
+                    <button
+                      type="button"
+                      className="chat-checkin-btn"
+                      onClick={async () => {
+                        await safetyAPI.startDateTracking(plan.id);
+                        const { plans } = await safetyAPI.getMeetupPlans();
+                        setMeetupPlans(plans as EnrichedMeetupPlan[]);
+                      }}
+                    >
+                      We&apos;ve met — start safety tracking
+                    </button>
+                  )}
+                  {plan.dateSessionStatus === 'active' && (
+                    <button
+                      type="button"
+                      className="chat-checkin-btn"
+                      style={{ borderColor: '#ef4444', color: '#fca5a5' }}
+                      onClick={async () => {
+                        const word = prompt('Type your safe word or leave blank for danger button:') || undefined;
+                        await safetyAPI.triggerDanger(plan.id, word);
+                        alert('Emergency contact alerted (amber alert).');
+                      }}
+                    >
+                      I&apos;m in danger
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
           {messages.some((m) => m.fromUserId === selectedUserId && m.content.includes('[Safety]')) && (
             <div className="chat-focus-banner" style={{ background: 'rgba(239,68,68,0.2)', border: '1px solid rgba(239,68,68,0.5)', marginBottom: 8, padding: '10px 12px', borderRadius: 8 }}>
               <strong>Your date has asked to keep distance and stay in public.</strong> Please respect their boundaries. Stay in a public place with people around and do not assume they are comfortable with anything beyond that.
@@ -2071,7 +2121,7 @@ const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId }: ChatWidgetProps)
                 💡 Before you meet, check your date&apos;s health results (tap their name in the chat header → Request to see health results).
               </p>
               <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.9)', marginBottom: 12, padding: 10, background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.4)', borderRadius: 8 }}>
-                <strong>Safety:</strong> Stay in a public place with people around. Add an emergency contact. ID is used only if your match does not check in with video evidence.
+                <strong>Safety:</strong> ID is scanned to confirm you are legal and real for your region. After verification you can meet. Location is tracked only during the date (red-dot trail if something goes wrong). Check-ins every 2 hours.
               </div>
               <label className="chat-meetup-checkbox">
                 <input
@@ -2079,7 +2129,15 @@ const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId }: ChatWidgetProps)
                   checked={idVerificationConsent}
                   onChange={(e) => setIdVerificationConsent(e.target.checked)}
                 />
-                I consent: my ID may be used to identify my match if they do not return safely and do not submit safety video check-in.
+                I consent: my ID will be scanned for safety before the meetup (legal/real verification for my region).
+              </label>
+              <label className="chat-meetup-checkbox">
+                <input
+                  type="checkbox"
+                  checked={trackingConsent}
+                  onChange={(e) => setTrackingConsent(e.target.checked)}
+                />
+                I consent: my location is tracked only during the date until it ends — for safety if something goes wrong. Emergency contact can view trail only if I alert danger.
               </label>
               <label>ID front (photo)</label>
               <input

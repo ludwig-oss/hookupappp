@@ -25,7 +25,12 @@ export interface MeetupPlan {
   notifiedAt?: string | null;
   emergencyContactVideoNotifiedAt?: string | null;
   idVerificationConsent?: boolean;
-  safetyCheckStatus?: 'none' | 'pending_review' | 'approved' | 'rejected';
+  idVerificationStatus?: 'none' | 'pending_review' | 'verified' | 'rejected';
+  dateSessionStatus?: 'scheduled' | 'active' | 'completed' | 'missing';
+  trackingConsent?: boolean;
+  okForRestOfDate?: boolean;
+  dangerAlertAt?: string | null;
+  nextSafetyCheckInAt?: string | null;
   hasIdOnFile?: boolean;
   hasSafetyVideo?: boolean;
   safetyCheckSubmittedAt?: string | null;
@@ -135,10 +140,11 @@ export const safetyAPI = {
     emergencyContactId?: string | null;
     chatPartnerUserId?: string | null;
     idVerificationConsent: boolean;
+    trackingConsent: boolean;
     idFrontImage: string;
     idBackImage: string;
     agreedVenueName?: string;
-  }): Promise<{ plan: MeetupPlan }> => {
+  }): Promise<{ plan: MeetupPlan; message?: string }> => {
     const response = await axios.post(`${API_URL}/meetup-plan`, data);
     return response.data;
   },
@@ -257,6 +263,55 @@ export const safetyAPI = {
 
   isAdmin: async (): Promise<{ isAdmin: boolean }> => {
     const response = await axios.get(`${API_URL}/is-admin`);
+    return response.data;
+  },
+
+  pollDateSafety: async (): Promise<{
+    dueCheckIns: MeetupPlan[];
+    activeSessions: MeetupPlan[];
+    dangerAlerts: MeetupPlan[];
+    checkInIntervalHours: number;
+  }> => {
+    const response = await axios.get(`${API_URL}/date-safety/poll`);
+    return response.data;
+  },
+
+  startDateTracking: async (planId: string) => {
+    const response = await axios.post(`${API_URL}/meetup-plan/${planId}/start-date`);
+    return response.data;
+  },
+
+  postLocation: async (planId: string, lat: number, lon: number, accuracy?: number, isIndoor?: boolean) => {
+    await axios.post(`${API_URL}/meetup-plan/${planId}/location`, { lat, lon, accuracy, isIndoor });
+  },
+
+  submitCheckIn: async (planId: string, isSafe: boolean, datePartnerOk?: boolean) => {
+    const response = await axios.post(`${API_URL}/meetup-plan/${planId}/check-in`, { isSafe, datePartnerOk });
+    return response.data;
+  },
+
+  triggerDanger: async (planId: string, safeWord?: string) => {
+    const response = await axios.post(`${API_URL}/meetup-plan/${planId}/danger`, { safeWord, via: safeWord ? 'safe_word' : 'button' });
+    return response.data;
+  },
+
+  submitOkRest: async (planId: string, ok360Video: string) => {
+    const response = await axios.post(`${API_URL}/meetup-plan/${planId}/ok-rest`, { ok360Video });
+    return response.data;
+  },
+
+  endDateSession: async (planId: string) => {
+    const response = await axios.post(`${API_URL}/meetup-plan/${planId}/end-date`);
+    return response.data;
+  },
+
+  getEmergencyTrail: async (planId: string) => {
+    const response = await axios.get(`${API_URL}/emergency-trail/${planId}`);
+    return response.data as { planId: string; daterName?: string; trail: Array<{ lat: number; lon: number; dwellMinutes?: number; label?: string }>; message: string };
+  },
+
+  setDateSafeWord: async (safeWord: string) => {
+    const response = await axios.post(`${API_URL}/date-safe-word`, { safeWord });
     return response.data;
   },
 };

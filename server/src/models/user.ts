@@ -153,6 +153,8 @@ export interface User {
   homeLocation?: { lat: number; lon: number } | null;
   /** Manual switch: show as nearby/online only when at home. Auto-off when user leaves home. */
   nearbyDiscoverable?: boolean;
+  /** Connections buzz — visible to nearby users when location is on (default on). */
+  connectionsVisible?: boolean;
   schoolHomeHour?: number;
   schoolHomeMinute?: number;
   schoolNotifyEnabled?: boolean;

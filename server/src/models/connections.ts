@@ -37,11 +37,11 @@ export interface NearbyUser {
   id: string;
   name: string;
   profilePicture: string | null;
-  distance: number; // in meters
-  location: { lat: number; lon: number };
-  orientation?: string;
   isOnline: boolean;
-  lastActiveAt: Date | string;
+}
+
+function isConnectionsVisible(user: { connectionsVisible?: boolean }): boolean {
+  return user.connectionsVisible !== false;
 }
 
 const BUZZES_PATH = join(process.cwd(), 'server', 'data', 'buzzes.json');
@@ -205,6 +205,7 @@ export async function getNearbyUsers(
 
   for (const otherUser of users) {
     if (otherUser.id === userId) continue;
+    if (!isConnectionsVisible(otherUser)) continue;
     if (user.blockedUsers?.includes(otherUser.id)) continue;
     if (user.unmatchedUsers?.includes(otherUser.id)) continue;
     if (!otherUser.location) continue;
@@ -226,22 +227,18 @@ export async function getNearbyUsers(
       const lastActive = otherUser.location.updatedAt 
         ? new Date(otherUser.location.updatedAt).getTime()
         : 0;
-      const isOnline = Date.now() - lastActive < 5 * 60 * 1000; // 5 minutes
+      const isOnline = Date.now() - lastActive < 8 * 60 * 1000;
 
       nearby.push({
         id: otherUser.id,
         name: otherUser.name,
         profilePicture: otherUser.profilePicture,
-        distance: Math.round(distance),
-        location: { lat: otherUser.location.lat, lon: otherUser.location.lon },
-        orientation: otherPref?.orientation,
         isOnline,
-        lastActiveAt: otherUser.location.updatedAt || new Date(),
       });
     }
   }
 
-  return nearby.sort((a, b) => a.distance - b.distance);
+  return nearby.sort((a, b) => (b.isOnline ? 1 : 0) - (a.isOnline ? 1 : 0));
 }
 
 function matchesOrientation(orientation1: string, orientation2: string): boolean {

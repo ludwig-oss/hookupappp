@@ -10,7 +10,7 @@ import {
   getComfortingMessage,
   tryMutualBuzzMatch,
 } from '../models/connections.js';
-import { updateUserLocation, getUserById } from '../models/user.js';
+import { updateUserLocation, getUserById, updateUserProfile } from '../models/user.js';
 import { ensureMatchConversation } from '../models/chat.js';
 import { fetchVenuesByType } from '../utils/overpass.js';
 import { sanitizeBuzzLocation } from '../utils/sanitize.js';
@@ -116,7 +116,7 @@ export const updateLocation = async (req: Request, res: Response) => {
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    const { lat, lon, accuracy, venue, venueType } = req.body;
+    const { lat, lon, accuracy, venue, venueType, connectionsVisible } = req.body;
     if (!lat || !lon) {
       return res.status(400).json({ error: 'Latitude and longitude are required' });
     }
@@ -127,9 +127,47 @@ export const updateLocation = async (req: Request, res: Response) => {
       accuracy: accuracy || 50,
     });
 
+    if (typeof connectionsVisible === 'boolean') {
+      await updateUserProfile(userId, { connectionsVisible });
+    } else {
+      const user = await getUserById(userId);
+      if (user && user.connectionsVisible === undefined) {
+        await updateUserProfile(userId, { connectionsVisible: true });
+      }
+    }
+
     res.json({ message: 'Location updated successfully' });
   } catch (error) {
     console.error('Update location error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+export const getConnectionPrefs = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).userId;
+    if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+    const user = await getUserById(userId);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    res.json({ connectionsVisible: user.connectionsVisible !== false });
+  } catch (error) {
+    console.error('Get connection prefs error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+export const patchConnectionVisibility = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).userId;
+    if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+    const { connectionsVisible } = req.body as { connectionsVisible?: boolean };
+    if (typeof connectionsVisible !== 'boolean') {
+      return res.status(400).json({ error: 'connectionsVisible boolean required' });
+    }
+    const user = await updateUserProfile(userId, { connectionsVisible });
+    res.json({ connectionsVisible: user?.connectionsVisible !== false });
+  } catch (error) {
+    console.error('Patch connection visibility error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 };

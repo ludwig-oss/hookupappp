@@ -1,7 +1,8 @@
-import { useState, useEffect, useContext, useRef } from 'react';
+import { useState, useEffect, useContext, useRef, useCallback } from 'react';
 import { AuthContext } from '../../context/AuthContext';
 import { connectionsAPI, NearbyUser, VenueCount, Buzz } from '../../api/connections';
 import { openChatWithUser } from '../../lib/openChat';
+import { formatAxiosError } from '../../lib/apiError';
 import './Widget.css';
 
 const NEARBY_DISCOVERY_RADIUS_M = 50;
@@ -38,12 +39,13 @@ const PLACE_TYPES = [
 ];
 
 const ConnectionsWidget = () => {
-  const { user } = useContext(AuthContext);
+  const { user, updateUser } = useContext(AuthContext);
   const [view, setView] = useState<'main' | 'venues' | 'nearby' | 'buzzes' | 'search_places'>('main');
   const [venues, setVenues] = useState<VenueCount[]>([]);
   const [nearbyUsers, setNearbyUsers] = useState<NearbyUser[]>([]);
   const [buzzes, setBuzzes] = useState<{ received: Buzz[]; sent: Buzz[] }>({ received: [], sent: [] });
   const [location, setLocation] = useState<{ lat: number; lon: number; accuracy?: number } | null>(null);
+  const [connectionsVisible, setConnectionsVisible] = useState(true);
   const [placeLabel, setPlaceLabel] = useState<string | null>(null);
   const [venueRadius, setVenueRadius] = useState(1000);
   const [loading, setLoading] = useState(false);
@@ -58,33 +60,6 @@ const ConnectionsWidget = () => {
   const [searchPlaceMostConcentrated, setSearchPlaceMostConcentrated] = useState<PlaceCountOnly | null>(null);
   const [searchPlacesLoading, setSearchPlacesLoading] = useState(false);
 
-  useEffect(() => {
-    if (user?.id) {
-      requestLocation();
-      loadBuzzes();
-    }
-    return () => {
-      if (locationIntervalRef.current) {
-        clearInterval(locationIntervalRef.current);
-      }
-    };
-  }, [user]);
-
-  useEffect(() => {
-    if (location && user?.id) {
-      // Update location every 30 seconds
-      updateLocation();
-      locationIntervalRef.current = setInterval(() => {
-        updateLocation();
-      }, 30000);
-    }
-    return () => {
-      if (locationIntervalRef.current) {
-        clearInterval(locationIntervalRef.current);
-      }
-    };
-  }, [location, user]);
-
   const fetchPlaceLabel = async (lat: number, lon: number) => {
     try {
       const { city, country, displayName } = await connectionsAPI.reverseGeocode(lat, lon);
@@ -96,67 +71,106 @@ const ConnectionsWidget = () => {
     }
   };
 
-  const loadNearbyWithCoords = async (lat: number, lon: number) => {
+  const pushLocation = useCallback(async (coords: { lat: number; lon: number; accuracy?: number }, visible?: boolean) => {
     if (!user?.id) return;
-    setLoading(true);
-    setError('');
-    try {
-      const response = await connectionsAPI.getNearby({
-        lat,
-        lon,
-        radius: NEARBY_DISCOVERY_RADIUS_M,
-        userId: user.id,
-      });
-      setNearbyUsers(response.users);
-      setView('nearby');
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to load nearby');
-    } finally {
-      setLoading(false);
-    }
-  };
+    const vis = visible ?? connectionsVisible;
+    await connectionsAPI.updateLocation({
+      lat: coords.lat,
+      lon: coords.lon,
+      accuracy: coords.accuracy,
+      userId: user.id,
+      connectionsVisible: vis,
+    });
+    updateUser({ connectionsVisible: vis });
+  }, [user?.id, connectionsVisible, updateUser]);
 
-  const requestLocation = () => {
-    setError('');
-    if (!navigator?.geolocation) return;
-    navigator.geolocation.getCurrentPosition(
+  const ensureLocation = useCallback((): Promise<{ lat: number; lon: number; accuracy?: number }> => {
+    return new Promise((resolve, reject) => {
+      if (!navigator?.geolocation) {
+        reject(new Error('Location is not supported on this device'));
+        return;
+      }
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const coords = {
+            lat: position.coords.latitude,
+            lon: position.coords.longitude,
+            accuracy: position.coords.accuracy,
+          };
+          setLocation(coords);
+          setError('');
+          fetchPlaceLabel(coords.lat, coords.lon);
+          pushLocation(coords, true).catch(() => {});
+          setConnectionsVisible(true);
+          resolve(coords);
+        },
+        () => reject(new Error('Location needed to see who\'s nearby. Allow it when your browser asks.')),
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 }
+      );
+    });
+  }, [pushLocation]);
+
+  useEffect(() => {
+    if (user?.id) {
+      connectionsAPI.getPrefs().then((p) => {
+        setConnectionsVisible(p.connectionsVisible);
+      }).catch(() => {});
+      ensureLocation().catch(() => {});
+      loadBuzzes();
+    }
+    return () => {
+      if (locationIntervalRef.current) {
+        clearInterval(locationIntervalRef.current);
+      }
+    };
+  }, [user?.id, ensureLocation]);
+
+  useEffect(() => {
+    if (location && user?.id) {
+      pushLocation(location).catch(() => {});
+      locationIntervalRef.current = setInterval(() => {
+        pushLocation(location).catch(() => {});
+      }, 30000);
+    }
+    return () => {
+      if (locationIntervalRef.current) {
+        clearInterval(locationIntervalRef.current);
+      }
+    };
+  }, [location, user?.id, pushLocation]);
+
+  useEffect(() => {
+    if (!navigator?.geolocation || !user?.id) return;
+    const watchId = navigator.geolocation.watchPosition(
       (position) => {
-        const lat = position.coords.latitude;
-        const lon = position.coords.longitude;
-        const newLocation = { lat, lon, accuracy: position.coords.accuracy };
-        setLocation(newLocation);
-        setError('');
-        fetchPlaceLabel(lat, lon);
-        loadNearbyWithCoords(lat, lon);
-      },
-      () => setError('Location needed to see who\'s nearby. Allow it when your browser asks.'),
-      { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 }
-    );
-    navigator.geolocation.watchPosition(
-      (position) => {
-        setLocation({
+        const coords = {
           lat: position.coords.latitude,
           lon: position.coords.longitude,
           accuracy: position.coords.accuracy,
-        });
-        fetchPlaceLabel(position.coords.latitude, position.coords.longitude);
+        };
+        setLocation(coords);
+        fetchPlaceLabel(coords.lat, coords.lon);
       },
       () => {},
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 5000 }
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 15000 }
     );
-  };
+    return () => navigator.geolocation.clearWatch(watchId);
+  }, [user?.id]);
 
-  const updateLocation = async () => {
-    if (!location || !user?.id) return;
+  const toggleVisibility = async () => {
+    if (!user?.id) return;
+    const next = !connectionsVisible;
+    setLoading(true);
+    setError('');
     try {
-      await connectionsAPI.updateLocation({
-        lat: location.lat,
-        lon: location.lon,
-        accuracy: location.accuracy,
-        userId: user.id,
-      });
+      await connectionsAPI.setVisibility(next);
+      setConnectionsVisible(next);
+      updateUser({ connectionsVisible: next });
+      if (next && location) await pushLocation(location, true);
     } catch (err) {
-      console.error('Failed to update location:', err);
+      setError(formatAxiosError(err, 'Could not update visibility'));
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -181,20 +195,23 @@ const ConnectionsWidget = () => {
   };
 
   const loadNearby = async () => {
-    if (!location || !user?.id) return;
+    if (!user?.id) return;
     setLoading(true);
     setError('');
     try {
+      let coords = location;
+      if (!coords) coords = await ensureLocation();
+      await pushLocation(coords, connectionsVisible);
       const response = await connectionsAPI.getNearby({
-        lat: location.lat,
-        lon: location.lon,
+        lat: coords.lat,
+        lon: coords.lon,
         radius: NEARBY_DISCOVERY_RADIUS_M,
         userId: user.id,
       });
       setNearbyUsers(response.users);
       setView('nearby');
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to load nearby users');
+    } catch (err: unknown) {
+      setError(formatAxiosError(err, 'Failed to load nearby'));
     } finally {
       setLoading(false);
     }
@@ -322,11 +339,50 @@ const ConnectionsWidget = () => {
             </p>
           )}
           <p style={{ marginBottom: '14px', color: '#9ca3af', fontFamily: 'Orbitron, monospace', fontSize: '12px' }}>
-            When you’re near someone (within 50 m), you’ll see them here. Tap to send interest.
+            When someone compatible is nearby, they show up here. Tap to send interest — exact distance is never shown for safety.
           </p>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 12,
+              marginBottom: 14,
+              padding: '10px 12px',
+              borderRadius: 10,
+              border: '1px solid rgba(0, 212, 255, 0.35)',
+              background: 'rgba(0,0,0,0.35)',
+            }}
+          >
+            <div>
+              <strong style={{ color: '#00d4ff', fontSize: 13, fontFamily: 'Orbitron, monospace' }}>Visible nearby</strong>
+              <p style={{ margin: '4px 0 0', fontSize: 11, color: '#9ca3af' }}>
+                {connectionsVisible ? 'Others can see you when location is on.' : 'Hidden — you can still browse.'}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={toggleVisibility}
+              disabled={loading}
+              style={{
+                minWidth: 52,
+                padding: '8px 12px',
+                borderRadius: 999,
+                border: connectionsVisible ? 'none' : '1px solid rgba(255,255,255,0.25)',
+                background: connectionsVisible ? 'linear-gradient(135deg, #00d4ff, #0891b2)' : 'rgba(255,255,255,0.1)',
+                color: '#fff',
+                fontWeight: 700,
+                fontSize: 12,
+                cursor: 'pointer',
+                fontFamily: 'Orbitron, monospace',
+              }}
+            >
+              {connectionsVisible ? 'On' : 'Off'}
+            </button>
+          </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
             <button
-              onClick={location ? loadNearby : requestLocation}
+              onClick={loadNearby}
               className="select-user-btn"
               disabled={loading}
               style={{
@@ -338,7 +394,7 @@ const ConnectionsWidget = () => {
                 boxShadow: '0 0 15px rgba(0, 212, 255, 0.3)',
               }}
             >
-              {loading ? 'Loading...' : location ? `👥 See who's nearby (${NEARBY_DISCOVERY_RADIUS_M} m)` : "👥 See who's nearby"}
+              {loading ? 'Loading...' : "👥 See who's nearby"}
             </button>
             <div>
               <label style={{ fontSize: '10px', color: '#9ca3af', fontFamily: 'Orbitron, monospace', display: 'block', marginBottom: '4px' }}>Venues radius</label>
@@ -540,11 +596,11 @@ const ConnectionsWidget = () => {
               padding: '8px 16px',
               borderRadius: '6px',
             }}>← Back</button>
-            <h3 style={{ margin: 0, fontSize: '18px', color: '#00d4ff', fontFamily: 'Orbitron, monospace', textShadow: '0 0 10px rgba(0, 212, 255, 0.5)' }}>Within 50 m</h3>
+            <h3 style={{ margin: 0, fontSize: '18px', color: '#00d4ff', fontFamily: 'Orbitron, monospace', textShadow: '0 0 10px rgba(0, 212, 255, 0.5)' }}>People nearby</h3>
           </div>
           {nearbyUsers.length === 0 ? (
             <p style={{ textAlign: 'center', color: '#9ca3af', padding: '20px', fontFamily: 'Orbitron, monospace' }}>
-              No one in range right now. Keep location on to appear for others.
+              No one nearby right now. Keep visibility on and location enabled.
             </p>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', maxHeight: '400px', overflowY: 'auto' }}>
@@ -586,7 +642,14 @@ const ConnectionsWidget = () => {
                         }} />
                       )}
                     </div>
-                    <div style={{ flex: 1, minWidth: 0 }} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: '15px', fontWeight: 'bold', color: '#fff', fontFamily: 'Orbitron, monospace' }}>
+                        {nearbyUser.name}
+                      </div>
+                      <div style={{ fontSize: '11px', color: nearbyUser.isOnline ? '#10b981' : '#9ca3af', marginTop: 4 }}>
+                        {nearbyUser.isOnline ? 'Active nearby' : 'Recently nearby'}
+                      </div>
+                    </div>
                     {receivedBuzz ? (
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                         <button onClick={() => handleRespondBuzz(receivedBuzz.id, 'accepted')} className="send-btn" disabled={loading} style={{ background: 'rgba(16, 185, 129, 0.2)', border: '2px solid #10b981', color: '#10b981', fontSize: '11px', padding: '6px 10px', fontFamily: 'Orbitron, monospace', fontWeight: 'bold' }}>Yes</button>

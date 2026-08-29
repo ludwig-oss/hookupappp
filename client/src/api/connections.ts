@@ -27,11 +27,7 @@ export interface NearbyUser {
   id: string;
   name: string;
   profilePicture: string | null;
-  distance: number;
-  location: { lat: number; lon: number };
-  orientation?: string;
   isOnline: boolean;
-  lastActiveAt: string;
 }
 
 export interface VenueCount {
@@ -76,8 +72,19 @@ export const connectionsAPI = {
     venue?: string;
     venueType?: string;
     userId: string;
+    connectionsVisible?: boolean;
   }): Promise<{ message: string }> => {
     const response = await axios.post(`${API_URL}/location`, data);
+    return response.data;
+  },
+
+  getPrefs: async (): Promise<{ connectionsVisible: boolean }> => {
+    const response = await axios.get(`${API_URL}/prefs`);
+    return response.data;
+  },
+
+  setVisibility: async (connectionsVisible: boolean): Promise<{ connectionsVisible: boolean }> => {
+    const response = await axios.patch(`${API_URL}/visibility`, { connectionsVisible });
     return response.data;
   },
 

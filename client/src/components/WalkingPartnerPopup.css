@@ -123,6 +123,61 @@
   margin-bottom: 12px;
 }
 
+.walk-nearby-bar {
+  position: fixed;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: min(420px, calc(100vw - 32px));
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(26, 16, 53, 0.94);
+  border: 1px solid rgba(255, 105, 180, 0.35);
+  color: #fff;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+}
+
+.walk-nearby-bar strong {
+  display: block;
+  font-size: 14px;
+  margin-bottom: 2px;
+}
+
+.walk-nearby-hint {
+  margin: 0;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.75);
+  line-height: 1.35;
+}
+
+.walk-nearby-switch {
+  flex-shrink: 0;
+  min-width: 52px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  font-weight: 700;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.walk-nearby-switch.on {
+  background: linear-gradient(135deg, #ff6b9d, #c44569);
+  border-color: transparent;
+}
+
+.walk-nearby-switch:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .walk-quiz-form label {
   display: block;
   margin-bottom: 14px;

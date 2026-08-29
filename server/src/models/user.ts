@@ -149,6 +149,10 @@ export interface User {
   profileImpressionCount?: number;
   styleScore?: number;
   outdoorWalkEnabled?: boolean;
+  /** Saved home coords — nearby visibility only works within ~150m of here. */
+  homeLocation?: { lat: number; lon: number } | null;
+  /** Manual switch: show as nearby/online only when at home. Auto-off when user leaves home. */
+  nearbyDiscoverable?: boolean;
   schoolHomeHour?: number;
   schoolHomeMinute?: number;
   schoolNotifyEnabled?: boolean;

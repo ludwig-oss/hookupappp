@@ -12,6 +12,7 @@ export interface WalkSuggestion {
   matchReason: string;
   matchScore: number;
   tags: string[];
+  /** True only when they are at home with nearby visibility turned on. */
   isOnline: boolean;
 }
 
@@ -24,14 +25,19 @@ export interface WalkIncomingInterest {
   fromUser?: { id: string; name: string; profilePicture: string | null };
 }
 
+export interface WalkSuggestionsResponse {
+  suggestions: WalkSuggestion[];
+  needsLifeQuiz: boolean;
+  outdoorWalkEnabled: boolean;
+  nearbyDiscoverable: boolean;
+  atHome: boolean;
+  homeSet: boolean;
+}
+
 export const walkMatchAPI = {
   getSuggestions: async (lat: number, lon: number, radius = 120) => {
     const res = await axios.get(`${API_URL}/suggestions`, { params: { lat, lon, radius } });
-    return res.data as {
-      suggestions: WalkSuggestion[];
-      needsLifeQuiz: boolean;
-      outdoorWalkEnabled: boolean;
-    };
+    return res.data as WalkSuggestionsResponse;
   },
 
   updateLocation: async (lat: number, lon: number, accuracy?: number) => {
@@ -77,8 +83,16 @@ export const walkMatchAPI = {
     return res.data as { message: string };
   },
 
-  updateSettings: async (data: { outdoorWalkEnabled?: boolean; gender?: string; age?: number }) => {
+  updateSettings: async (data: {
+    outdoorWalkEnabled?: boolean;
+    gender?: string;
+    age?: number;
+    nearbyDiscoverable?: boolean;
+    setHome?: boolean;
+    lat?: number;
+    lon?: number;
+  }) => {
     const res = await axios.patch(`${API_URL}/settings`, data);
-    return res.data;
+    return res.data as { user: Record<string, unknown> };
   },
 };

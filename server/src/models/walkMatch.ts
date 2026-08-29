@@ -4,7 +4,8 @@ import { getAllUsers, getUserById, updateUserProfile, type User } from './user.j
 
 type WalkUser = Omit<User, 'password' | 'resetToken' | 'resetTokenExpiry'>;
 import { getUserPreference } from './discover.js';
-import { calculateDistance } from './walkMatchUtils.js';
+import { calculateDistance, HOME_RADIUS_M } from './walkMatchUtils.js';
+import { runWithSystem } from '../db/context.js';
 
 export type FinancialTier = 'building' | 'stable' | 'wealthy';
 export type WalkInterestStatus = 'pending' | 'mutual' | 'declined';
@@ -33,6 +34,41 @@ export interface WalkSuggestion {
 const INTERESTS_PATH = join(process.cwd(), 'server', 'data', 'walk-interests.json');
 const DISMISSALS_PATH = join(process.cwd(), 'server', 'data', 'walk-proximity-dismissals.json');
 const WALK_RADIUS_M = 120;
+
+function isAtHome(user: WalkUser): boolean {
+  const home = user.homeLocation;
+  const loc = user.location;
+  if (!home || !loc) return false;
+  return calculateDistance(loc.lat, loc.lon, home.lat, home.lon) <= HOME_RADIUS_M;
+}
+
+/** Visible on nearby only when manual switch is on AND user is at home. */
+export function isNearbyVisible(user: WalkUser): boolean {
+  if (user.nearbyDiscoverable !== true) return false;
+  return isAtHome(user);
+}
+
+export function userIsAtHome(user: WalkUser): boolean {
+  return isAtHome(user);
+}
+
+export function syncNearbyOnLocation(userId: string, lat: number, lon: number): Promise<User | null> {
+  return getUserById(userId).then(async (user) => {
+    if (!user) return null;
+    const home = user.homeLocation;
+    let nearbyDiscoverable = user.nearbyDiscoverable;
+    if (home) {
+      const atHome = calculateDistance(lat, lon, home.lat, home.lon) <= HOME_RADIUS_M;
+      if (!atHome && nearbyDiscoverable) {
+        nearbyDiscoverable = false;
+      }
+    }
+    return updateUserProfile(userId, {
+      location: { lat, lon, updatedAt: new Date() },
+      ...(nearbyDiscoverable !== user.nearbyDiscoverable ? { nearbyDiscoverable } : {}),
+    });
+  });
+}
 
 export interface WalkProximityDismissal {
   userId: string;
@@ -248,6 +284,7 @@ export async function getWalkSuggestions(
   const viewerRaw = await getUserById(userId);
   if (!viewerRaw || viewerRaw.outdoorWalkEnabled === false) return [];
   const viewer = viewerRaw as WalkUser;
+  if (!isNearbyVisible(viewer)) return [];
 
   const users = await getAllUsers();
   const viewerPref = await getUserPreference(userId);
@@ -261,6 +298,7 @@ export async function getWalkSuggestions(
     if (viewer.blockedUsers?.includes(other.id)) continue;
     if (viewer.unmatchedUsers?.includes(other.id)) continue;
     if (other.outdoorWalkEnabled === false) continue;
+    if (!isNearbyVisible(other as WalkUser)) continue;
     if (!other.location) continue;
 
     const otherPref = await getUserPreference(other.id);
@@ -269,8 +307,7 @@ export async function getWalkSuggestions(
     const distance = calculateDistance(lat, lon, other.location.lat, other.location.lon);
     if (distance > radiusM) continue;
 
-    const lastActive = other.location.updatedAt ? new Date(other.location.updatedAt).getTime() : 0;
-    const isOnline = Date.now() - lastActive < 8 * 60 * 1000;
+    const isOnline = isNearbyVisible(other as WalkUser);
 
     const { score, reason, tags } = scorePair(viewer, other);
     const proximityBoost = Math.max(0, 25 - Math.floor(distance / 5));
@@ -293,19 +330,23 @@ export async function getWalkSuggestions(
 }
 
 export async function recordProfileImpression(targetUserId: string): Promise<void> {
-  const user = await getUserById(targetUserId);
-  if (!user) return;
-  await updateUserProfile(targetUserId, {
-    profileImpressionCount: (user.profileImpressionCount ?? 0) + 1,
+  await runWithSystem(async () => {
+    const user = await getUserById(targetUserId);
+    if (!user) return;
+    await updateUserProfile(targetUserId, {
+      profileImpressionCount: (user.profileImpressionCount ?? 0) + 1,
+    });
   });
 }
 
 export async function recordProfileClick(targetUserId: string): Promise<{ clickCount: number }> {
-  const user = await getUserById(targetUserId);
-  if (!user) throw new Error('User not found');
-  const clickCount = (user.profileClickCount ?? 0) + 1;
-  await updateUserProfile(targetUserId, { profileClickCount: clickCount });
-  return { clickCount };
+  return runWithSystem(async () => {
+    const user = await getUserById(targetUserId);
+    if (!user) throw new Error('User not found');
+    const clickCount = (user.profileClickCount ?? 0) + 1;
+    await updateUserProfile(targetUserId, { profileClickCount: clickCount });
+    return { clickCount };
+  });
 }
 
 export async function submitLifeQuiz(

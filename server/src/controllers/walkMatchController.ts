@@ -9,8 +9,10 @@ import {
   recordProfileImpression,
   getUserAge,
   dismissWalkSuggestion,
+  syncNearbyOnLocation,
+  userIsAtHome,
 } from '../models/walkMatch.js';
-import { updateUserLocation } from '../models/user.js';
+import { HOME_RADIUS_M } from '../models/walkMatchUtils.js';
 import { getUserById } from '../models/user.js';
 import { ensureMatchConversation } from '../models/chat.js';
 
@@ -42,6 +44,9 @@ export const getSuggestions = async (req: Request, res: Response) => {
       suggestions,
       needsLifeQuiz: needsQuiz,
       outdoorWalkEnabled: viewer.outdoorWalkEnabled !== false,
+      nearbyDiscoverable: viewer.nearbyDiscoverable === true,
+      atHome: userIsAtHome(viewer as any),
+      homeSet: Boolean(viewer.homeLocation),
     });
   } catch (e) {
     console.error('Walk suggestions error:', e);
@@ -57,7 +62,7 @@ export const updateWalkLocation = async (req: Request, res: Response) => {
     if (lat == null || lon == null) {
       return res.status(400).json({ error: 'lat and lon required' });
     }
-    await updateUserLocation(userId, { lat, lon, accuracy: accuracy ?? 50 });
+    await syncNearbyOnLocation(userId, Number(lat), Number(lon));
     res.json({ ok: true });
   } catch (e) {
     console.error('Walk location error:', e);
@@ -76,7 +81,11 @@ export const postInterest = async (req: Request, res: Response) => {
     const opener = result.mutual
       ? "You're matched nearby! Say hi and start chatting 💬"
       : "I'm nearby and interested — say hi when you're ready 💬";
-    await ensureMatchConversation(userId, toUserId, opener);
+    try {
+      await ensureMatchConversation(userId, toUserId, opener);
+    } catch (chatErr) {
+      console.error('Walk interest chat seed failed (interest still saved):', chatErr);
+    }
     res.json({
       message: result.mutual ? "It's a match! Opening chat…" : 'Added to your chats — say hi!',
       ...result,
@@ -97,7 +106,11 @@ export const postRespondInterest = async (req: Request, res: Response) => {
     }
     const result = await respondWalkInterest(userId, interestId, accept !== false);
     if (result.mutual && result.chatUserId) {
-      await ensureMatchConversation(userId, result.chatUserId);
+      try {
+        await ensureMatchConversation(userId, result.chatUserId);
+      } catch (chatErr) {
+        console.error('Walk respond chat seed failed:', chatErr);
+      }
     }
     res.json(result);
   } catch (e: any) {
@@ -183,12 +196,38 @@ export const patchWalkSettings = async (req: Request, res: Response) => {
   try {
     const userId = (req as any).userId;
     if (!userId) return res.status(401).json({ error: 'Unauthorized' });
-    const { outdoorWalkEnabled, gender, age } = req.body;
+    const { outdoorWalkEnabled, gender, age, nearbyDiscoverable, setHome, lat, lon } = req.body;
     const { updateUserProfile } = await import('../models/user.js');
+    const viewer = await getUserById(userId);
+    if (!viewer) return res.status(404).json({ error: 'User not found' });
+
     const updates: Record<string, unknown> = {};
     if (typeof outdoorWalkEnabled === 'boolean') updates.outdoorWalkEnabled = outdoorWalkEnabled;
     if (gender) updates.gender = String(gender).slice(0, 20);
     if (typeof age === 'number' && age >= 18 && age <= 99) updates.age = age;
+
+    if (setHome === true && lat != null && lon != null) {
+      updates.homeLocation = { lat: Number(lat), lon: Number(lon) };
+    }
+
+    if (typeof nearbyDiscoverable === 'boolean') {
+      if (nearbyDiscoverable) {
+        const home = (updates.homeLocation as { lat: number; lon: number } | undefined) || viewer.homeLocation;
+        const loc = viewer.location;
+        if (!home) {
+          return res.status(400).json({ error: 'Set your home location first.' });
+        }
+        if (!loc) {
+          return res.status(400).json({ error: 'Enable location so we know you are home.' });
+        }
+        const { calculateDistance } = await import('../models/walkMatchUtils.js');
+        if (calculateDistance(loc.lat, loc.lon, home.lat, home.lon) > HOME_RADIUS_M) {
+          return res.status(400).json({ error: 'You can only go visible when you are at home.' });
+        }
+      }
+      updates.nearbyDiscoverable = nearbyDiscoverable;
+    }
+
     const user = await updateUserProfile(userId, updates as any);
     res.json({ user });
   } catch (e) {

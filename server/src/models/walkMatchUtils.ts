@@ -1,3 +1,5 @@
+export const HOME_RADIUS_M = 150;
+
 export function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6371000;
   const dLat = ((lat2 - lat1) * Math.PI) / 180;

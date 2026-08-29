@@ -6,6 +6,7 @@ import { createUser, getUserByEmail, getUserByUsername, getUserByResetToken, upd
 import { sendPasswordResetEmail, sendVerificationEmail } from '../utils/email.js';
 import { sendPasswordResetSMS, sendVerificationSMS } from '../utils/sms.js';
 import { sanitizeName, sanitizeUsername, sanitizeForStorage, LIMITS } from '../utils/sanitize.js';
+import { assertUsernameAvailable, reserveUsername } from '../models/usernameRegistry.js';
 
 const JWT_EXPIRES_IN = '7d';
 
@@ -91,7 +92,13 @@ export const signup = async (req: Request, res: Response) => {
 
     const existingUserByUsername = await getUserByUsername(username);
     if (existingUserByUsername) {
-      return res.status(400).json({ error: 'Username is already taken' });
+      return res.status(400).json({ error: 'This username is taken forever — pick another one.' });
+    }
+
+    try {
+      await assertUsernameAvailable(username);
+    } catch (e: unknown) {
+      return res.status(400).json({ error: e instanceof Error ? e.message : 'Username not available' });
     }
 
     const hashedPassword = await bcrypt.hash(password, BCRYPT_ROUNDS);
@@ -125,6 +132,7 @@ export const signup = async (req: Request, res: Response) => {
       passwordHint2: sanitizeForStorage(passwordHint2, LIMITS.PASSWORD_HINT),
       passwordHint3: sanitizeForStorage(passwordHint3, LIMITS.PASSWORD_HINT),
     });
+    await reserveUsername(username, user.id);
     await updateUserProfile(user.id, { emailVerified: false });
 
     if (normalizedPhone) {
@@ -144,7 +152,7 @@ export const signup = async (req: Request, res: Response) => {
     console.error('Signup error:', error);
     const pgCode = (error as { code?: string })?.code;
     if (pgCode === '23505') {
-      return res.status(400).json({ error: 'Username is already taken. Pick another username.' });
+      return res.status(400).json({ error: 'This username is taken forever — pick another one.' });
     }
     if (pgCode === '23502') {
       return res.status(400).json({ error: 'Missing required account information. Check all fields and try again.' });

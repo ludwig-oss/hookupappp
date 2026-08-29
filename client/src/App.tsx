@@ -10,6 +10,7 @@ import Landing from './pages/Landing';
 import TermsOfService from './pages/TermsOfService';
 import PrivacyPolicy from './pages/PrivacyPolicy';
 import ForgotPassword from './pages/ForgotPassword';
+import ForgotPin from './pages/ForgotPin';
 import ResetPassword from './pages/ResetPassword';
 import VerifyEmail from './pages/VerifyEmail';
 import VerifyEmailPending from './pages/VerifyEmailPending';
@@ -238,6 +239,7 @@ function App() {
           <Route path="/terms" element={<TermsOfService />} />
           <Route path="/privacy" element={<PrivacyPolicy />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/forgot-pin" element={<ForgotPin />} />
           <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/verify-email" element={<VerifyEmail />} />
           <Route path="/verify-email-pending" element={<VerifyEmailPending />} />

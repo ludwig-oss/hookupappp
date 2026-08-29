@@ -27,7 +27,7 @@ function normalizePhoneInput(value: string): string {
 }
 
 type AuthMode = 'signup' | 'login';
-type LoginMethod = 'email' | 'phone' | 'face';
+type LoginMethod = 'pin' | 'email' | 'phone' | 'face';
 type FacePanelMode = 'signup' | 'login' | null;
 
 type Props = { initialMode?: AuthMode };
@@ -35,9 +35,12 @@ type Props = { initialMode?: AuthMode };
 const AuthEntry = ({ initialMode = 'signup' }: Props) => {
   const [searchParams] = useSearchParams();
   const [mode, setMode] = useState<AuthMode>(initialMode);
-  const [loginMethod, setLoginMethod] = useState<LoginMethod>('face');
+  const [loginMethod, setLoginMethod] = useState<LoginMethod>('pin');
   const [facePanel, setFacePanel] = useState<FacePanelMode>(null);
   const [showPasswordSignup, setShowPasswordSignup] = useState(false);
+  const [pin, setPin] = useState('');
+  const [loginPin, setLoginPin] = useState('');
+  const [usernameCheck, setUsernameCheck] = useState('');
 
   const [name, setName] = useState('');
   const [username, setUsername] = useState('');
@@ -67,6 +70,19 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
     const m = searchParams.get('mode');
     if (m === 'login') setMode('login');
   }, [searchParams]);
+
+  useEffect(() => {
+    if (mode !== 'signup' || username.length < 3) {
+      setUsernameCheck('');
+      return;
+    }
+    const t = window.setTimeout(() => {
+      authAPI.checkUsernameAvailable(username).then((r) => {
+        setUsernameCheck(r.available ? '✓ Available forever' : r.reason || 'Taken');
+      }).catch(() => setUsernameCheck(''));
+    }, 400);
+    return () => clearTimeout(t);
+  }, [username, mode]);
 
   const signupShareUrl = useMemo(() => {
     if (typeof window === 'undefined') return 'https://hookupappp.vercel.app/signup';
@@ -175,6 +191,76 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
     },
     [loginIdentifier, finishAuth]
   );
+
+  const handlePinSignup = async (e?: React.FormEvent) => {
+    e?.preventDefault();
+    if (!name.trim() || !username.trim()) {
+      setError('Name and username are required');
+      return;
+    }
+    if (pin.length !== 6) {
+      setError('Choose a 6-digit PIN');
+      return;
+    }
+    if (!passwordHint1.trim() || !passwordHint2.trim() || !passwordHint3.trim()) {
+      setError('Add 3 PIN hints so you can recover if you forget');
+      return;
+    }
+    if (!agreedToTerms) {
+      setError('Agree to Terms and Privacy to continue');
+      return;
+    }
+    setError('');
+    setLoading(true);
+    try {
+      const response = await authAPI.signupWithPin({
+        name: name.trim(),
+        username: username.trim(),
+        pin,
+        pinHint1: passwordHint1.trim(),
+        pinHint2: passwordHint2.trim(),
+        pinHint3: passwordHint3.trim(),
+        email: email.trim() || undefined,
+        phoneNumber: phoneNumber.replace(/\D/g, '') || undefined,
+        improvementCategories: [DEFAULT_SIGNUP_CATEGORY],
+      });
+      const id = coerceUserId(response.user?.id);
+      if (!response.token || !id) throw new Error('Invalid server response');
+      login({ ...response.user, id }, response.token);
+      const ageNum = parseInt(age, 10);
+      if (!Number.isNaN(ageNum) && gender) {
+        walkMatchAPI.updateSettings({ age: ageNum, gender }).catch(() => {});
+      }
+      discoverAPI.setPreference({
+        orientation,
+        lookingFor: lookingFor as ('dating' | 'casual' | 'friends' | 'serious')[],
+        userId: id,
+      }).catch(() => {});
+      navigate('/profile-setup', { replace: true });
+    } catch (err: unknown) {
+      setError(formatAxiosError(err, 'Sign-up failed'));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handlePinLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+    try {
+      if (!loginIdentifier.trim() || loginPin.length !== 6) {
+        throw new Error('Enter username and 6-digit PIN');
+      }
+      const response = await authAPI.loginWithPin(loginIdentifier.trim(), loginPin);
+      if (!response.token || !response.user) throw new Error('Invalid login response');
+      finishAuth(response.user, response.token);
+    } catch (err: unknown) {
+      setError(formatAxiosError(err, 'Wrong username or PIN'));
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -295,64 +381,49 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
         <h1 className="auth-title">{mode === 'signup' ? 'Join Hook Up' : 'Welcome Back'}</h1>
         <p className="auth-subtitle">
           {mode === 'signup'
-            ? 'Scan your face (both eyes open) or type your details below.'
-            : 'Sign in with Face ID or use email / phone.'}
+            ? 'Pick a username forever, a 6-digit PIN, and 3 hints — or use Face ID below.'
+            : 'Username + PIN is fastest. Face ID and email also work.'}
         </p>
 
         {error && <div className="error-message">{error}</div>}
         {message && <div className="success-message">{message}</div>}
 
-        <button
-          type="button"
-          className="auth-button face-id-primary"
-          disabled={loading}
-          onClick={mode === 'signup' ? beginFaceSignup : beginFaceLogin}
-        >
-          {loading ? 'Please wait…' : mode === 'signup' ? 'Sign up with Face ID' : 'Sign in with Face ID'}
-        </button>
-
-        <div className="auth-method-tabs" style={{ display: 'flex', gap: 8, marginBottom: 16, marginTop: 16 }}>
+        <div className="auth-method-tabs" style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
           <button type="button" className="auth-button" style={{ flex: 1, opacity: mode === 'signup' ? 1 : 0.65 }} onClick={() => setMode('signup')}>Sign up</button>
           <button type="button" className="auth-button" style={{ flex: 1, opacity: mode === 'login' ? 1 : 0.65 }} onClick={() => setMode('login')}>Sign in</button>
         </div>
 
         {mode === 'signup' ? (
-          <form noValidate onSubmit={handleSignup} className="auth-form">
+          <form noValidate onSubmit={handlePinSignup} className="auth-form">
             <div className="form-group">
               <label htmlFor="name">Full name</label>
               <input id="name" value={name} onChange={(e) => setName(e.target.value)} autoComplete="name" required />
             </div>
             <div className="form-group">
-              <label htmlFor="username">Username</label>
+              <label htmlFor="username">Username (yours forever — like Instagram)</label>
               <input id="username" value={username} onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))} autoComplete="username" required />
+              {usernameCheck && (
+                <p style={{ fontSize: 12, marginTop: 6, color: usernameCheck.startsWith('✓') ? '#10b981' : '#f59e0b' }}>{usernameCheck}</p>
+              )}
+            </div>
+            <div className="form-group">
+              <label htmlFor="pin">6-digit PIN</label>
+              <input id="pin" type="password" inputMode="numeric" maxLength={6} value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 6))} autoComplete="new-password" required />
+            </div>
+            <div className="form-group">
+              <label>PIN hints (if you forget — only you see these on recovery)</label>
+              <input type="text" value={passwordHint1} onChange={(e) => setPasswordHint1(e.target.value)} placeholder="Hint 1 — e.g. pet name" maxLength={200} style={{ marginBottom: 6 }} required />
+              <input type="text" value={passwordHint2} onChange={(e) => setPasswordHint2(e.target.value)} placeholder="Hint 2" maxLength={200} style={{ marginBottom: 6 }} required />
+              <input type="text" value={passwordHint3} onChange={(e) => setPasswordHint3(e.target.value)} placeholder="Hint 3" maxLength={200} required />
             </div>
             <div className="form-group">
               <label htmlFor="email">Email (optional)</label>
               <input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" placeholder="you@email.com" />
             </div>
             <div className="form-group">
-              <label htmlFor="phone">Phone number</label>
-              <input id="phone" type="tel" value={phoneNumber} onChange={(e) => setPhoneNumber(normalizePhoneInput(e.target.value))} autoComplete="tel" placeholder="+1 234 567 8901" />
+              <label htmlFor="phone">Phone (optional)</label>
+              <input id="phone" type="tel" value={phoneNumber} onChange={(e) => setPhoneNumber(normalizePhoneInput(e.target.value))} autoComplete="tel" />
             </div>
-            <div className="form-group">
-              <label htmlFor="password">Password (optional with Face ID)</label>
-              <input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" />
-            </div>
-            {showPasswordSignup && (
-              <>
-                <div className="form-group">
-                  <label>Password hints (only if you set a password)</label>
-                  <input type="text" value={passwordHint1} onChange={(e) => setPasswordHint1(e.target.value)} placeholder="Hint 1" maxLength={200} style={{ marginBottom: 6 }} />
-                  <input type="text" value={passwordHint2} onChange={(e) => setPasswordHint2(e.target.value)} placeholder="Hint 2" maxLength={200} style={{ marginBottom: 6 }} />
-                  <input type="text" value={passwordHint3} onChange={(e) => setPasswordHint3(e.target.value)} placeholder="Hint 3" maxLength={200} />
-                </div>
-              </>
-            )}
-            {!showPasswordSignup && (
-              <button type="button" className="auth-button" style={{ marginBottom: 12, opacity: 0.85 }} onClick={() => setShowPasswordSignup(true)}>
-                Add password & recovery hints (optional)
-              </button>
-            )}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
               <div className="form-group">
                 <label htmlFor="age">Age</label>
@@ -372,23 +443,53 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
               <input type="checkbox" id="agree-terms" checked={agreedToTerms} onChange={(e) => setAgreedToTerms(e.target.checked)} />
               <label htmlFor="agree-terms">I agree to the <Link to="/terms">Terms</Link> and <Link to="/privacy">Privacy</Link>. 18+.</label>
             </div>
-            <button type="button" className="auth-button" disabled={loading} onClick={beginFaceSignup}>
-              {loading ? 'Please wait…' : 'Sign up with Face ID'}
+            <button type="submit" className="auth-button face-id-primary" disabled={loading}>
+              {loading ? 'Creating…' : 'Create account'}
             </button>
-            {password && (
-              <button type="submit" className="auth-button" disabled={loading} style={{ marginTop: 8, opacity: 0.9 }}>
-                {loading ? 'Creating…' : 'Or create account with password'}
+            <button type="button" className="auth-button" disabled={loading} style={{ marginTop: 8 }} onClick={beginFaceSignup}>
+              Or sign up with Face ID
+            </button>
+            {showPasswordSignup && (
+              <>
+                <div className="form-group" style={{ marginTop: 12 }}>
+                  <label htmlFor="password">Password (optional backup)</label>
+                  <input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+                </div>
+                <button type="button" className="auth-button" disabled={loading || !password} style={{ marginTop: 8, opacity: 0.85 }} onClick={() => void handleSignup({ preventDefault: () => {} } as React.FormEvent)}>
+                  Create with password instead
+                </button>
+              </>
+            )}
+            {!showPasswordSignup && (
+              <button type="button" className="auth-button" style={{ marginTop: 8, opacity: 0.75, fontSize: 13 }} onClick={() => setShowPasswordSignup(true)}>
+                Use password instead of PIN
               </button>
             )}
           </form>
         ) : (
           <>
             <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
-              <button type="button" className="auth-button" style={{ flex: 1, minWidth: 100, opacity: loginMethod === 'face' ? 1 : 0.65 }} onClick={() => setLoginMethod('face')}>Face ID</button>
-              <button type="button" className="auth-button" style={{ flex: 1, minWidth: 100, opacity: loginMethod === 'email' ? 1 : 0.65 }} onClick={() => setLoginMethod('email')}>Email / username</button>
-              <button type="button" className="auth-button" style={{ flex: 1, minWidth: 100, opacity: loginMethod === 'phone' ? 1 : 0.65 }} onClick={() => setLoginMethod('phone')}>Phone (SMS)</button>
+              <button type="button" className="auth-button" style={{ flex: 1, minWidth: 80, opacity: loginMethod === 'pin' ? 1 : 0.65 }} onClick={() => setLoginMethod('pin')}>Username + PIN</button>
+              <button type="button" className="auth-button" style={{ flex: 1, minWidth: 80, opacity: loginMethod === 'face' ? 1 : 0.65 }} onClick={() => setLoginMethod('face')}>Face ID</button>
+              <button type="button" className="auth-button" style={{ flex: 1, minWidth: 80, opacity: loginMethod === 'email' ? 1 : 0.65 }} onClick={() => setLoginMethod('email')}>Email</button>
+              <button type="button" className="auth-button" style={{ flex: 1, minWidth: 80, opacity: loginMethod === 'phone' ? 1 : 0.65 }} onClick={() => setLoginMethod('phone')}>Phone</button>
             </div>
-            {loginMethod === 'face' ? (
+            {loginMethod === 'pin' ? (
+              <form onSubmit={handlePinLogin} className="auth-form">
+                <div className="form-group">
+                  <label>Username</label>
+                  <input value={loginIdentifier} onChange={(e) => setLoginIdentifier(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))} autoComplete="username" required />
+                </div>
+                <div className="form-group">
+                  <label>6-digit PIN</label>
+                  <input type="password" inputMode="numeric" maxLength={6} value={loginPin} onChange={(e) => setLoginPin(e.target.value.replace(/\D/g, '').slice(0, 6))} required />
+                </div>
+                <Link to="/forgot-pin" className="forgot-link">Forgot PIN?</Link>
+                <button type="submit" className="auth-button face-id-primary" disabled={loading}>
+                  {loading ? 'Signing in…' : 'Sign in'}
+                </button>
+              </form>
+            ) : loginMethod === 'face' ? (
               <div className="auth-form">
                 <p className="auth-subtitle" style={{ fontSize: 13, marginBottom: 12 }}>
                   Open both eyes for the scan, then confirm with Face ID on your device. Optional: enter username if you have a look-alike.

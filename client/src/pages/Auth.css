@@ -413,6 +413,15 @@
   line-height: 1.4;
 }
 
+.pin-hint-line {
+  text-align: left;
+  font-size: 14px;
+  margin: 8px 0;
+  padding: 10px;
+  background: rgba(0, 0, 0, 0.25);
+  border-radius: 8px;
+}
+
 .signup-qr-link {
   margin: 10px 0 0;
   font-size: 11px;

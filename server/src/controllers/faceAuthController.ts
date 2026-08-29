@@ -10,6 +10,7 @@ import {
   getUserByUsername,
   updateUserProfile,
 } from '../models/user.js';
+import { assertUsernameAvailable, reserveUsername, normalizeUsernameKey } from '../models/usernameRegistry.js';
 import {
   findLookalikeConflict,
   identifyByFace,
@@ -80,8 +81,10 @@ export async function signupWithFace(req: Request, res: Response) {
       return res.status(400).json({ error: 'Username must be 3–20 characters (letters, numbers, underscore).' });
     }
 
-    if (await getUserByUsername(username)) {
-      return res.status(400).json({ error: 'Username is already taken' });
+    try {
+      await assertUsernameAvailable(username);
+    } catch (e: unknown) {
+      return res.status(400).json({ error: e instanceof Error ? e.message : 'Username not available' });
     }
 
     if (!password) {
@@ -125,6 +128,7 @@ export async function signupWithFace(req: Request, res: Response) {
       passwordHint3: sanitizeForStorage(passwordHint3 || 'face-signup', LIMITS.PASSWORD_HINT),
     });
 
+    await reserveUsername(username, user.id);
     await updateUserProfile(user.id, { emailVerified: false });
     if (normalizedPhone) {
       await updateUserProfile(user.id, { phoneNumber: normalizedPhone });

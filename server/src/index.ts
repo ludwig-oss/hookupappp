@@ -5,6 +5,8 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import authRoutes from './routes/auth.js';
+import { getAllUsers } from './models/user.js';
+import { seedRegistryFromUsers } from './models/usernameRegistry.js';
 
 // Load .env – try multiple locations so we always find server/.env
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -198,6 +200,13 @@ async function start() {
       console.warn('  Error:', msg);
       delete process.env.DATABASE_URL;
     }
+  }
+  try {
+    const users = await getAllUsers();
+    const n = await seedRegistryFromUsers(users);
+    if (n > 0) console.log(`✓ Locked ${n} existing usernames (never re-used)`);
+  } catch {
+    /* non-fatal */
   }
   app.listen(PORT, () => {
     console.log(`Server running on http://localhost:${PORT}`);

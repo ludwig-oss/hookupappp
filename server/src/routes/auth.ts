@@ -21,6 +21,16 @@ import {
   passkeySupported,
 } from '../controllers/passkeyController.js';
 import { signupWithFace, identifyFaceForLogin } from '../controllers/faceAuthController.js';
+import {
+  usernameAvailability,
+  signupWithPin,
+  loginWithPin,
+  forgotPinHints,
+  forgotPinLastChatChallenge,
+  forgotPinVerifyLastChat,
+  forgotPinVerifyChatNames,
+  resetPin,
+} from '../controllers/pinAuthController.js';
 
 const router = express.Router();
 
@@ -29,6 +39,14 @@ router.use((req, res, next) => runWithSystem(() => next()));
 
 router.post('/signup', signupLimiter, signup);
 router.post('/signup-face', signupLimiter, signupWithFace);
+router.post('/signup-pin', signupLimiter, signupWithPin);
+router.post('/login-pin', loginLimiter, loginWithPin);
+router.get('/username-available', usernameAvailability);
+router.post('/forgot-pin/hints', loginLimiter, forgotPinHints);
+router.post('/forgot-pin/last-chat', loginLimiter, forgotPinLastChatChallenge);
+router.post('/forgot-pin/verify-last-chat', loginLimiter, forgotPinVerifyLastChat);
+router.post('/forgot-pin/verify-chat-names', loginLimiter, forgotPinVerifyChatNames);
+router.post('/reset-pin', loginLimiter, resetPin);
 router.post('/face/identify', loginLimiter, identifyFaceForLogin);
 router.post('/login', loginLimiter, login);
 router.post('/send-login-code', loginLimiter, sendLoginCode);

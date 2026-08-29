@@ -14,6 +14,7 @@ import {
   getCoupleHub,
   acceptBlindDate,
   getCheatWarning,
+  recordHealthBoostHandler,
 } from '../controllers/relationshipController.js';
 import { authenticateToken } from '../middleware/auth.js';
 
@@ -32,6 +33,7 @@ router.get('/solutions', authenticateToken, getSolutions);
 router.get('/status/:userId', authenticateToken, getRelationshipStatus);
 router.get('/couple-hub/:partnerUserId', authenticateToken, getCoupleHub);
 router.post('/blind-date', authenticateToken, acceptBlindDate);
+router.post('/health-boost', authenticateToken, recordHealthBoostHandler);
 router.get('/cheat-warning/:otherUserId', authenticateToken, getCheatWarning);
 
 export default router;

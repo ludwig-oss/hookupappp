@@ -25,6 +25,13 @@ import {
 } from '../models/relationshipHealth.js';
 import { recordBlindDate } from '../models/relationship.js';
 import { CHAT_CHALLENGES } from '../models/chatEngagement.js';
+import {
+  recordHealthBoost,
+  getRecentBoosts,
+  syncBoostsFromMessages,
+  COUPLE_BONDING_ACTIVITIES,
+  type CoupleActivityType,
+} from '../models/relationshipBoosts.js';
 
 export const getMyRelationship = async (req: Request, res: Response) => {
   try {
@@ -182,6 +189,12 @@ export const submitCheckIn = async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'relationshipId is required' });
     }
     await setLastCheckIn(relationshipId);
+    if (goingWell) {
+      const rel = await getActiveRelationship(userId);
+      if (rel?.id === relationshipId) {
+        await recordHealthBoost({ relationshipId, userId, activity: 'check_in_positive' });
+      }
+    }
     const solutions = problemText && !goingWell
       ? getSolutionsForProblem(problemText)
       : [];
@@ -239,7 +252,15 @@ export const getCoupleHub = async (req: Request, res: Response) => {
     }
 
     const messages = await getConversation(userId, partnerUserId);
-    const health = computeRelationshipHealth(messages, rel);
+    const boostPoints = await syncBoostsFromMessages(rel.id, userId, messages);
+    const recentBoosts = await getRecentBoosts(rel.id, 6);
+    const health = computeRelationshipHealth(messages, rel, boostPoints);
+    health.recentBoosts = recentBoosts.map((b) => ({
+      activity: b.activity,
+      points: b.points,
+      label: b.label,
+      createdAt: b.createdAt,
+    }));
     const blindDate = pickBlindDate(rel.blindDateHistory || []);
     const surprises = pickSurpriseIdeas();
     const shouldSuggestBlindDate =
@@ -258,6 +279,7 @@ export const getCoupleHub = async (req: Request, res: Response) => {
         ['xo', 'would-you-rather', 'this-or-that', 'compatibility-quiz', 'two-truths-lie', 'emoji-story'].includes(g.type)
       ),
       coupleQuiz: COUPLE_QUIZ,
+      bondingActivities: COUPLE_BONDING_ACTIVITIES,
       cheatWarning: CHEAT_WARNING,
       relationshipId: rel.id,
     });
@@ -275,6 +297,7 @@ export const acceptBlindDate = async (req: Request, res: Response) => {
     const rel = await getActiveRelationship(userId);
     if (!rel || rel.id !== relationshipId) return res.status(403).json({ error: 'Not your relationship' });
     await recordBlindDate(relationshipId, idea);
+    await recordHealthBoost({ relationshipId, userId, activity: 'blind_date' });
     res.json({ message: 'Blind date saved — surprise your partner!', idea });
   } catch (error) {
     res.status(500).json({ error: 'Internal server error' });
@@ -294,6 +317,32 @@ export const getCheatWarning = async (req: Request, res: Response) => {
       return res.json({ shouldWarn: false });
     }
     res.json({ shouldWarn: true, ...CHEAT_WARNING });
+  } catch (error) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+/** Record a couple activity — raises the relationship health bar. */
+export const recordHealthBoostHandler = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).userId;
+    const { relationshipId, activity } = req.body as { relationshipId?: string; activity?: CoupleActivityType };
+    if (!relationshipId || !activity) {
+      return res.status(400).json({ error: 'relationshipId and activity required' });
+    }
+    const rel = await getActiveRelationship(userId);
+    if (!rel || rel.id !== relationshipId) {
+      return res.status(403).json({ error: 'Not your relationship' });
+    }
+    const { boost, totalBoostPoints } = await recordHealthBoost({ relationshipId, userId, activity });
+    const partnerId = getPartnerId(rel, userId);
+    const messages = await getConversation(userId, partnerId);
+    const health = computeRelationshipHealth(messages, rel, totalBoostPoints);
+    res.json({
+      message: `+${boost.points} relationship health from ${boost.label}`,
+      boost,
+      health,
+    });
   } catch (error) {
     res.status(500).json({ error: 'Internal server error' });
   }

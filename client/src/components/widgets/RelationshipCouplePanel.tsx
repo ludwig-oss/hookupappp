@@ -27,12 +27,13 @@ export default function RelationshipCouplePanel({
   onOpenGuides,
 }: Props) {
   const [hub, setHub] = useState<Awaited<ReturnType<typeof relationshipAPI.getCoupleHub>> | null>(null);
-  const [tab, setTab] = useState<'hub' | 'games' | 'watch'>('hub');
+  const [tab, setTab] = useState<'hub' | 'charge' | 'games' | 'watch'>('hub');
   const [xoChallenge, setXoChallenge] = useState<ChatChallenge | null>(null);
   const [board, setBoard] = useState<string[]>(EMPTY_BOARD);
   const [xoSymbol, setXoSymbol] = useState<'X' | 'O'>('X');
   const [watchUrl, setWatchUrl] = useState('');
   const [quizIdx, setQuizIdx] = useState(0);
+  const [boostToast, setBoostToast] = useState<string | null>(null);
 
   const loadHub = useCallback(async () => {
     try {
@@ -45,7 +46,7 @@ export default function RelationshipCouplePanel({
 
   useEffect(() => {
     loadHub();
-    const t = setInterval(loadHub, 60000);
+    const t = setInterval(loadHub, 30000);
     return () => clearInterval(t);
   }, [loadHub]);
 
@@ -63,6 +64,24 @@ export default function RelationshipCouplePanel({
       .catch(() => {});
   }, [userId, partnerUserId]);
 
+  const showBoost = (msg: string) => {
+    setBoostToast(msg);
+    setTimeout(() => setBoostToast(null), 3500);
+  };
+
+  const applyBoost = async (activity: string, fallbackLabel?: string) => {
+    if (!hub?.relationshipId) return;
+    try {
+      const res = await relationshipAPI.recordHealthBoost(hub.relationshipId, activity);
+      showBoost(res.message || `+health from ${fallbackLabel || activity}`);
+      setHub((prev) => (prev ? { ...prev, health: { ...prev.health, ...res.health } } : prev));
+      await loadHub();
+    } catch {
+      if (fallbackLabel) showBoost(`Activity logged: ${fallbackLabel}`);
+      loadHub();
+    }
+  };
+
   const startXo = async () => {
     const sym = Math.random() > 0.5 ? 'X' : 'O';
     const gameState = {
@@ -79,7 +98,8 @@ export default function RelationshipCouplePanel({
     setXoChallenge(challenge);
     setBoard(EMPTY_BOARD);
     setXoSymbol(sym);
-    onSendMessage(`🎮 I started Tic-Tac-Toe — your turn when ready!`);
+    onSendMessage('🎮 I started Tic-Tac-Toe — your turn when ready!');
+    await applyBoost('game_xo', 'Tic-Tac-Toe');
   };
 
   const playXo = async (idx: number) => {
@@ -98,7 +118,10 @@ export default function RelationshipCouplePanel({
     });
     setXoChallenge(challenge);
     setBoard(next);
-    if (winner) onSendMessage(winner === 'draw' ? '🎮 Tic-Tac-Toe draw!' : '🎮 Tic-Tac-Toe — game over!');
+    if (winner) {
+      onSendMessage(winner === 'draw' ? '🎮 Tic-Tac-Toe draw!' : '🎮 Tic-Tac-Toe — game over!');
+      if (winner !== 'draw') await applyBoost('game_xo', 'Game finished');
+    }
   };
 
   const checkWinner = (b: string[]): string | null => {
@@ -114,12 +137,32 @@ export default function RelationshipCouplePanel({
     if (!hub?.blindDate || !hub.relationshipId) return;
     await relationshipAPI.acceptBlindDate(hub.relationshipId, hub.blindDate);
     onSendMessage(`💑 Blind date idea: ${hub.blindDate} — want to do this together?`);
-    loadHub();
+    await loadHub();
   };
 
-  const startWatchParty = () => {
+  const sendSurpriseGift = async (idea: string, forPartner: boolean) => {
+    onSendMessage(forPartner ? `🎁 Surprise for you: ${idea}` : `🎁 I am planning: ${idea}`);
+    await applyBoost('surprise_gift', 'Surprise / gift');
+  };
+
+  const startWatchParty = async () => {
     if (!watchUrl.trim()) return;
     onSendMessage(`🎬 Watch together: ${watchUrl.trim()}`);
+    await applyBoost('watch_together', 'Watch together');
+  };
+
+  const sendQuizAnswer = async (text: string) => {
+    onSendMessage(text);
+    await applyBoost('quiz', 'Couple quiz');
+  };
+
+  const runBondingActivity = async (activity: {
+    id: string;
+    messageTemplate: string;
+    title: string;
+  }) => {
+    onSendMessage(activity.messageTemplate);
+    await applyBoost(activity.id, activity.title);
   };
 
   const youtubeEmbed = (url: string) => {
@@ -130,15 +173,37 @@ export default function RelationshipCouplePanel({
   if (!hub) return null;
 
   const embed = watchUrl ? youtubeEmbed(watchUrl) : null;
+  const health = hub.health as {
+    score: number;
+    baseScore?: number;
+    boostPoints?: number;
+    level: string;
+    label: string;
+    message: string;
+    needsChargeUp: boolean;
+    selfControlTip?: string | null;
+    recentBoosts?: Array<{ label: string; points: number; createdAt: string }>;
+  };
 
   return (
     <div className="relationship-couple-panel" style={{ marginBottom: 12, padding: 12, borderRadius: 12, background: 'rgba(236,72,153,0.08)', border: '1px solid rgba(236,72,153,0.25)' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+      {boostToast && (
+        <div style={{ padding: 8, marginBottom: 8, background: 'rgba(34,197,94,0.2)', borderRadius: 8, fontSize: 12, color: '#86efac' }}>
+          ⚡ {boostToast}
+        </div>
+      )}
+
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, flexWrap: 'wrap', gap: 4 }}>
         <strong style={{ color: '#fbcfe8' }}>💑 Couple space</strong>
-        <div style={{ display: 'flex', gap: 4 }}>
-          {(['hub', 'games', 'watch'] as const).map((t) => (
+        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+          {([
+            ['hub', 'Health'],
+            ['charge', 'Charge up'],
+            ['games', 'Games'],
+            ['watch', 'Watch'],
+          ] as const).map(([t, label]) => (
             <button key={t} type="button" className="chat-back-btn" style={{ fontSize: 10, padding: '2px 8px', opacity: tab === t ? 1 : 0.6 }} onClick={() => setTab(t)}>
-              {t === 'hub' ? 'Health' : t === 'games' ? 'Games' : 'Watch'}
+              {label}
             </button>
           ))}
         </div>
@@ -148,27 +213,46 @@ export default function RelationshipCouplePanel({
         <>
           <div style={{ marginBottom: 8 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginBottom: 4 }}>
-              <span>Relationship health — {hub.health.label}</span>
-              <span>{hub.health.score}%</span>
+              <span>Relationship health — {health.label}</span>
+              <span>{health.score}%</span>
             </div>
-            <div style={{ height: 10, borderRadius: 999, background: 'rgba(0,0,0,0.3)', overflow: 'hidden' }}>
-              <div style={{ width: `${hub.health.score}%`, height: '100%', background: healthColor(hub.health.level), transition: 'width 0.4s' }} />
+            <div style={{ height: 12, borderRadius: 999, background: 'rgba(0,0,0,0.3)', overflow: 'hidden', position: 'relative' }}>
+              {health.baseScore != null && health.boostPoints != null && health.boostPoints > 0 && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    left: 0,
+                    top: 0,
+                    height: '100%',
+                    width: `${health.baseScore}%`,
+                    background: 'rgba(255,255,255,0.15)',
+                  }}
+                />
+              )}
+              <div style={{ width: `${health.score}%`, height: '100%', background: healthColor(health.level), transition: 'width 0.6s ease' }} />
             </div>
-            <p style={{ fontSize: 11, color: '#d1d5db', marginTop: 6 }}>{hub.health.message}</p>
-            {hub.health.needsChargeUp && (
-              <p style={{ fontSize: 11, color: '#fbbf24', marginTop: 4 }}>⚡ Charge up now — talk, plan a date, or play a game below.</p>
+            <p style={{ fontSize: 11, color: '#d1d5db', marginTop: 6 }}>{health.message}</p>
+            {(health.boostPoints ?? 0) > 0 && (
+              <p style={{ fontSize: 10, color: '#86efac', marginTop: 4 }}>
+                +{health.boostPoints} from quizzes, gifts, games & watch parties this week
+              </p>
+            )}
+            {health.recentBoosts && health.recentBoosts.length > 0 && (
+              <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 6 }}>
+                Recent: {health.recentBoosts.slice(0, 3).map((b) => `${b.label} (+${b.points})`).join(' · ')}
+              </div>
             )}
           </div>
 
-          {hub.health.selfControlTip && (
+          {health.selfControlTip && (
             <p style={{ fontSize: 11, padding: 8, background: 'rgba(0,0,0,0.25)', borderRadius: 8, marginBottom: 8 }}>
-              🛡️ {hub.health.selfControlTip}
+              🛡️ {health.selfControlTip}
             </p>
           )}
 
           {hub.blindDate && (
             <div style={{ padding: 8, background: 'rgba(0,0,0,0.2)', borderRadius: 8, marginBottom: 8 }}>
-              <div style={{ fontSize: 11, color: '#f472b6', marginBottom: 4 }}>🎭 Blind date (something new)</div>
+              <div style={{ fontSize: 11, color: '#f472b6', marginBottom: 4 }}>🎭 Blind date (+14 health)</div>
               <p style={{ fontSize: 12 }}>{hub.blindDate}</p>
               <button type="button" className="chat-convo-use" style={{ marginTop: 6 }} onClick={acceptBlindDate}>
                 Suggest to {partnerName}
@@ -177,9 +261,12 @@ export default function RelationshipCouplePanel({
           )}
 
           <div style={{ fontSize: 11, marginBottom: 8 }}>
-            <div style={{ color: '#c4b5fd', marginBottom: 4 }}>🎁 Surprise ideas</div>
+            <div style={{ color: '#c4b5fd', marginBottom: 4 }}>🎁 Surprise ideas (+12 health when you send one)</div>
             <p><strong>You → partner:</strong> {hub.surprises.forPartner}</p>
-            <p style={{ marginTop: 4 }}><strong>Partner → you:</strong> {hub.surprises.forYou}</p>
+            <button type="button" className="chat-convo-use" style={{ marginTop: 4, fontSize: 10 }} onClick={() => sendSurpriseGift(hub.surprises.forPartner, true)}>
+              Send surprise idea
+            </button>
+            <p style={{ marginTop: 8 }}><strong>For you:</strong> {hub.surprises.forYou}</p>
           </div>
 
           {hub.suggestGuide && (
@@ -195,12 +282,31 @@ export default function RelationshipCouplePanel({
         </>
       )}
 
+      {tab === 'charge' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <p style={{ fontSize: 11, color: '#d1d5db' }}>Each activity raises your health bar. Good convos charge up automatically too.</p>
+          {(hub.bondingActivities || []).map((act) => (
+            <button
+              key={act.id}
+              type="button"
+              className="chat-back-btn"
+              style={{ textAlign: 'left', padding: 10, fontSize: 12 }}
+              onClick={() => runBondingActivity(act)}
+            >
+              <span style={{ marginRight: 6 }}>{act.emoji}</span>
+              <strong>{act.title}</strong>
+              <span style={{ display: 'block', fontSize: 10, color: '#9ca3af', marginTop: 4 }}>{act.prompt}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
       {tab === 'games' && (
         <div>
-          <p style={{ fontSize: 11, marginBottom: 8 }}>Play in chat — tap to connect when vibes are low.</p>
+          <p style={{ fontSize: 11, marginBottom: 8 }}>Games add +8–12 health when you play together.</p>
           {!xoChallenge && (
             <button type="button" className="select-user-btn" style={{ width: '100%', marginBottom: 10, fontSize: 12 }} onClick={startXo}>
-              ⭕ Tic-Tac-Toe (X O)
+              ⭕ Tic-Tac-Toe (+12 health)
             </button>
           )}
           {xoChallenge && xoChallenge.status === 'active' && (
@@ -220,10 +326,10 @@ export default function RelationshipCouplePanel({
           {hub.coupleQuiz[quizIdx] && (
             <div style={{ padding: 8, background: 'rgba(0,0,0,0.2)', borderRadius: 8 }}>
               <p style={{ fontSize: 12, marginBottom: 6 }}>{hub.coupleQuiz[quizIdx].q}</p>
-              <button type="button" className="chat-back-btn" style={{ marginRight: 6, fontSize: 11 }} onClick={() => onSendMessage(`Quiz: ${hub.coupleQuiz[quizIdx].q} → I pick: ${hub.coupleQuiz[quizIdx].a}`)}>
+              <button type="button" className="chat-back-btn" style={{ marginRight: 6, fontSize: 11 }} onClick={() => sendQuizAnswer(`Quiz: ${hub.coupleQuiz[quizIdx].q} → I pick: ${hub.coupleQuiz[quizIdx].a}`)}>
                 {hub.coupleQuiz[quizIdx].a}
               </button>
-              <button type="button" className="chat-back-btn" style={{ fontSize: 11 }} onClick={() => onSendMessage(`Quiz: ${hub.coupleQuiz[quizIdx].q} → I pick: ${hub.coupleQuiz[quizIdx].b}`)}>
+              <button type="button" className="chat-back-btn" style={{ fontSize: 11 }} onClick={() => sendQuizAnswer(`Quiz: ${hub.coupleQuiz[quizIdx].q} → I pick: ${hub.coupleQuiz[quizIdx].b}`)}>
                 {hub.coupleQuiz[quizIdx].b}
               </button>
               <button type="button" className="chat-convo-use" style={{ marginLeft: 8, fontSize: 10 }} onClick={() => setQuizIdx((q) => (q + 1) % hub.coupleQuiz.length)}>
@@ -236,7 +342,7 @@ export default function RelationshipCouplePanel({
 
       {tab === 'watch' && (
         <div>
-          <p style={{ fontSize: 11, marginBottom: 6 }}>Paste a YouTube link — watch together like screen share.</p>
+          <p style={{ fontSize: 11, marginBottom: 6 }}>Watch together (+10 health) — like screen sharing.</p>
           <input
             type="url"
             value={watchUrl}

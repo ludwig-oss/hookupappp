@@ -4,6 +4,8 @@ export type HealthLevel = 'great' | 'good' | 'low' | 'critical';
 
 export interface RelationshipHealthSnapshot {
   score: number;
+  baseScore: number;
+  boostPoints: number;
   level: HealthLevel;
   label: string;
   message: string;
@@ -13,6 +15,7 @@ export interface RelationshipHealthSnapshot {
   daysSinceDateTalk: number | null;
   suggestGuide: boolean;
   selfControlTip: string | null;
+  recentBoosts?: Array<{ activity: string; points: number; label: string; createdAt: string }>;
 }
 
 const DATE_KEYWORDS = [
@@ -61,7 +64,8 @@ export const SELF_CONTROL_TIPS = [
 
 export function computeRelationshipHealth(
   messages: { content: string; createdAt: Date | string; fromUserId?: string }[],
-  _rel?: Relationship | null
+  _rel?: Relationship | null,
+  activityBoostPoints = 0
 ): RelationshipHealthSnapshot {
   const now = Date.now();
   const weekAgo = now - 7 * 24 * 60 * 60 * 1000;
@@ -96,7 +100,8 @@ export function computeRelationshipHealth(
   if (daysSinceDateTalk === null || daysSinceDateTalk > 21) score -= 18;
   else if (daysSinceDateTalk > 14) score -= 10;
 
-  score = Math.max(0, Math.min(100, Math.round(score)));
+  const baseScore = Math.max(0, Math.min(100, Math.round(score)));
+  score = Math.min(100, baseScore + activityBoostPoints);
 
   let level: HealthLevel = 'good';
   if (score >= 75) level = 'great';
@@ -107,21 +112,32 @@ export function computeRelationshipHealth(
   const needsChargeUp = level === 'low' || level === 'critical';
   let label = 'Strong connection';
   let message = 'You two are showing up for each other. Keep it going.';
+  if (activityBoostPoints > 0 && score > baseScore) {
+    message = `Connection recharging — +${activityBoostPoints} from quizzes, gifts, games & quality time. Keep it up!`;
+  }
   if (level === 'good') {
     label = 'Steady';
-    message = 'Connection is okay — plan something small this week to recharge.';
+    if (activityBoostPoints <= 0) {
+      message = 'Connection is okay — plan something small this week to recharge.';
+    }
   }
   if (level === 'low') {
     label = 'Low — charge up';
-    message = 'Vibes are fading: you are talking less and dates are not on the radar. Plan time together now.';
+    message = 'Vibes are fading — try a quiz, surprise gift, watch-together, or blind date to raise your bar.';
   }
   if (level === 'critical') {
     label = 'Needs attention';
-    message = 'Your relationship health bar is critical. Talk today, plan a date, or play a couple game in chat.';
+    message = 'Health bar is critical. Play a game, share gratitude, or plan a date — each activity charges you up.';
+  }
+  if (level === 'great' && activityBoostPoints >= 15) {
+    label = 'Charged up';
+    message = 'You are investing in each other — the bar reflects your quizzes, gifts, and good convos. Beautiful.';
   }
 
   return {
     score,
+    baseScore,
+    boostPoints: activityBoostPoints,
     level,
     label,
     message,

@@ -81,11 +81,14 @@ export const relationshipAPI = {
     return response.data as {
       health: {
         score: number;
+        baseScore?: number;
+        boostPoints?: number;
         level: string;
         label: string;
         message: string;
         needsChargeUp: boolean;
         selfControlTip: string | null;
+        recentBoosts?: Array<{ label: string; points: number; createdAt: string }>;
       };
       blindDate: string | null;
       surprises: { forYou: string; forPartner: string };
@@ -93,6 +96,7 @@ export const relationshipAPI = {
       guideMessage: string;
       games: Array<{ type: string; name: string; description: string }>;
       coupleQuiz: Array<{ q: string; a: string; b: string }>;
+      bondingActivities?: Array<{ id: string; emoji: string; title: string; prompt: string; messageTemplate: string }>;
       relationshipId: string;
     };
   },
@@ -100,6 +104,15 @@ export const relationshipAPI = {
   acceptBlindDate: async (relationshipId: string, idea: string) => {
     const response = await axios.post(`${API_URL}/blind-date`, { relationshipId, idea });
     return response.data;
+  },
+
+  recordHealthBoost: async (relationshipId: string, activity: string) => {
+    const response = await axios.post(`${API_URL}/health-boost`, { relationshipId, activity });
+    return response.data as {
+      message: string;
+      boost: { points: number; label: string };
+      health: { score: number; baseScore: number; boostPoints: number; level: string; label: string; message: string };
+    };
   },
 
   getCheatWarning: async (otherUserId: string) => {

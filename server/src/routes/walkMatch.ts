@@ -8,6 +8,7 @@ import {
   postLifeQuiz,
   postProfileClick,
   postProfileImpression,
+  postDismissSuggestion,
   patchWalkSettings,
 } from '../controllers/walkMatchController.js';
 import { authenticateToken } from '../middleware/auth.js';
@@ -24,6 +25,7 @@ router.get('/incoming', getIncoming);
 router.post('/life-quiz', postLifeQuiz);
 router.post('/profile-click', postProfileClick);
 router.post('/profile-impression', postProfileImpression);
+router.post('/dismiss', postDismissSuggestion);
 router.patch('/settings', patchWalkSettings);
 
 export default router;

@@ -31,7 +31,58 @@ export interface WalkSuggestion {
 }
 
 const INTERESTS_PATH = join(process.cwd(), 'server', 'data', 'walk-interests.json');
+const DISMISSALS_PATH = join(process.cwd(), 'server', 'data', 'walk-proximity-dismissals.json');
 const WALK_RADIUS_M = 120;
+
+export interface WalkProximityDismissal {
+  userId: string;
+  otherUserId: string;
+  createdAt: string;
+}
+
+async function readDismissals(): Promise<WalkProximityDismissal[]> {
+  try {
+    return JSON.parse(await readFile(DISMISSALS_PATH, 'utf-8'));
+  } catch {
+    return [];
+  }
+}
+
+async function writeDismissals(rows: WalkProximityDismissal[]): Promise<void> {
+  const dir = join(process.cwd(), 'server', 'data');
+  await import('fs/promises').then((fs) => fs.mkdir(dir, { recursive: true }));
+  await writeFile(DISMISSALS_PATH, JSON.stringify(rows, null, 2));
+}
+
+/** Hide this nearby person from future popups for this user. */
+export async function dismissWalkSuggestion(userId: string, otherUserId: string): Promise<void> {
+  const rows = await readDismissals();
+  if (rows.some((r) => r.userId === userId && r.otherUserId === otherUserId)) return;
+  rows.push({ userId, otherUserId, createdAt: new Date().toISOString() });
+  await writeDismissals(rows);
+}
+
+function shouldSkipNearbyCandidate(
+  userId: string,
+  otherId: string,
+  interests: WalkInterest[],
+  dismissals: WalkProximityDismissal[]
+): boolean {
+  if (dismissals.some((d) => d.userId === userId && d.otherUserId === otherId)) return true;
+  const sent = interests.find(
+    (r) => r.fromUserId === userId && r.toUserId === otherId && (r.status === 'pending' || r.status === 'mutual')
+  );
+  if (sent) return true;
+  const declinedByMe = interests.find(
+    (r) => r.fromUserId === otherId && r.toUserId === userId && r.status === 'declined'
+  );
+  if (declinedByMe) return true;
+  const iDeclinedThem = interests.find(
+    (r) => r.fromUserId === userId && r.toUserId === otherId && r.status === 'declined'
+  );
+  if (iDeclinedThem) return true;
+  return false;
+}
 const DIVERSIFY_CHANCE = 0.22;
 
 async function readInterests(): Promise<WalkInterest[]> {
@@ -200,10 +251,13 @@ export async function getWalkSuggestions(
 
   const users = await getAllUsers();
   const viewerPref = await getUserPreference(userId);
+  const interests = await readInterests();
+  const dismissals = await readDismissals();
   const suggestions: WalkSuggestion[] = [];
 
   for (const other of users) {
     if (other.id === userId) continue;
+    if (shouldSkipNearbyCandidate(userId, other.id, interests, dismissals)) continue;
     if (viewer.blockedUsers?.includes(other.id)) continue;
     if (viewer.unmatchedUsers?.includes(other.id)) continue;
     if (other.outdoorWalkEnabled === false) continue;

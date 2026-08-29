@@ -8,6 +8,7 @@ import {
   recordProfileClick,
   recordProfileImpression,
   getUserAge,
+  dismissWalkSuggestion,
 } from '../models/walkMatch.js';
 import { updateUserLocation } from '../models/user.js';
 import { getUserById } from '../models/user.js';
@@ -72,12 +73,14 @@ export const postInterest = async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'toUserId required' });
     }
     const result = await sendWalkInterest(userId, toUserId);
-    if (result.mutual && result.chatUserId) {
-      await ensureMatchConversation(userId, result.chatUserId);
-    }
+    const opener = result.mutual
+      ? "You're matched nearby! Say hi and start chatting 💬"
+      : "I'm nearby and interested — say hi when you're ready 💬";
+    await ensureMatchConversation(userId, toUserId, opener);
     res.json({
-      message: result.mutual ? "It's a match! You can chat now." : 'Interest sent',
+      message: result.mutual ? "It's a match! Opening chat…" : 'Added to your chats — say hi!',
       ...result,
+      chatUserId: toUserId,
     });
   } catch (e: any) {
     console.error('Walk interest error:', e);
@@ -159,6 +162,20 @@ export const postProfileImpression = async (req: Request, res: Response) => {
     res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+export const postDismissSuggestion = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).userId;
+    const { toUserId } = req.body;
+    if (!userId || !toUserId) {
+      return res.status(400).json({ error: 'toUserId required' });
+    }
+    await dismissWalkSuggestion(userId, toUserId);
+    res.json({ message: 'Dismissed — we will not suggest them again nearby.' });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message || 'Internal server error' });
   }
 };
 

@@ -40,7 +40,7 @@ export const walkMatchAPI = {
 
   sendInterest: async (toUserId: string) => {
     const res = await axios.post(`${API_URL}/interest`, { toUserId });
-    return res.data as { mutual: boolean; chatUserId?: string; message: string };
+    return res.data as { mutual: boolean; chatUserId: string; message: string };
   },
 
   respondInterest: async (interestId: string, accept: boolean) => {
@@ -70,6 +70,11 @@ export const walkMatchAPI = {
 
   recordImpression: async (targetUserId: string) => {
     await axios.post(`${API_URL}/profile-impression`, { targetUserId });
+  },
+
+  dismiss: async (toUserId: string) => {
+    const res = await axios.post(`${API_URL}/dismiss`, { toUserId });
+    return res.data as { message: string };
   },
 
   updateSettings: async (data: { outdoorWalkEnabled?: boolean; gender?: string; age?: number }) => {

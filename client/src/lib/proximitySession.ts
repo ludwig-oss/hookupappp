@@ -18,12 +18,24 @@ function storageKey(kind: string, otherUserId: string): string {
 
 /** True if we may show the banner for this user encounter. */
 export function shouldShowProximityBanner(kind: 'walk-suggest' | 'walk-incoming' | 'buzz-incoming', otherUserId: string): boolean {
-  if (!otherUserId || typeof sessionStorage === 'undefined') return true;
-  return sessionStorage.getItem(storageKey(kind, otherUserId)) !== '1';
+  if (!otherUserId) return true;
+  const key = storageKey(kind, otherUserId);
+  if (typeof sessionStorage !== 'undefined' && sessionStorage.getItem(key) === '1') return false;
+  try {
+    if (localStorage.getItem(key) === '1') return false;
+  } catch {
+    /* ignore */
+  }
+  return true;
 }
 
-/** Mark banner as shown for this session — chat bridge stays open separately. */
+/** Mark banner as shown for this session — persists across reloads in this tab. */
 export function markProximityBannerShown(kind: 'walk-suggest' | 'walk-incoming' | 'buzz-incoming', otherUserId: string): void {
   if (!otherUserId || typeof sessionStorage === 'undefined') return;
   sessionStorage.setItem(storageKey(kind, otherUserId), '1');
+  try {
+    localStorage.setItem(storageKey(kind, otherUserId), '1');
+  } catch {
+    /* ignore */
+  }
 }

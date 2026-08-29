@@ -14,12 +14,10 @@ import {
   endFocus,
 } from '../controllers/chatController.js';
 import { authenticateToken } from '../middleware/auth.js';
-import { requireEmailVerified } from '../middleware/requireEmailVerified.js';
 
 const router = express.Router();
 
 router.use(authenticateToken);
-router.use(requireEmailVerified);
 
 router.post('/send', sendMessage);
 router.get('/conversations', getConversationsList);

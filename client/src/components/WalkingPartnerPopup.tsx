@@ -2,6 +2,7 @@ import { useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { AuthContext } from '../context/AuthContext';
 import { walkMatchAPI, WalkSuggestion, WalkIncomingInterest } from '../api/walkMatch';
 import { markProximityBannerShown, shouldShowProximityBanner } from '../lib/proximitySession';
+import { isLocationGranted, readStoredCoords } from '../lib/locationSession';
 import { formatAxiosError } from '../lib/apiError';
 import LifeQuizModal from './LifeQuizModal';
 import './WalkingPartnerPopup.css';
@@ -19,7 +20,6 @@ export default function WalkingPartnerPopup({ onOpenChat }: Props) {
   const [actionError, setActionError] = useState<string | null>(null);
   const [homeSet, setHomeSet] = useState(false);
   const coordsRef = useRef<{ lat: number; lon: number } | null>(null);
-  const watchIdRef = useRef<number | null>(null);
   const actedOnRef = useRef<Set<string>>(new Set());
 
   const hidePerson = useCallback((kind: 'walk-suggest' | 'walk-incoming', otherUserId: string) => {
@@ -79,24 +79,19 @@ export default function WalkingPartnerPopup({ onOpenChat }: Props) {
 
   useEffect(() => {
     if (!user?.id || user.outdoorWalkEnabled === false) return;
-    if (!navigator.geolocation) return;
+    if (!isLocationGranted()) return;
 
-    const onPos = (pos: GeolocationPosition) => {
-      coordsRef.current = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+    const syncCoords = () => {
+      const stored = readStoredCoords();
+      if (!stored) return;
+      coordsRef.current = stored;
       poll();
     };
 
-    navigator.geolocation.getCurrentPosition(onPos, () => {}, { enableHighAccuracy: true, maximumAge: 15000 });
-    watchIdRef.current = navigator.geolocation.watchPosition(onPos, () => {}, {
-      enableHighAccuracy: true,
-      maximumAge: 20000,
-    });
-    const interval = setInterval(poll, 45000);
+    syncCoords();
+    const interval = setInterval(syncCoords, 45000);
 
-    return () => {
-      clearInterval(interval);
-      if (watchIdRef.current != null) navigator.geolocation.clearWatch(watchIdRef.current);
-    };
+    return () => clearInterval(interval);
   }, [user?.id, user?.outdoorWalkEnabled, poll]);
 
   const handleInterest = async (targetId: string) => {

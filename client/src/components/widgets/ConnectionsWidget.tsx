@@ -3,6 +3,7 @@ import { AuthContext } from '../../context/AuthContext';
 import { connectionsAPI, NearbyUser, VenueCount, Buzz } from '../../api/connections';
 import { openChatWithUser } from '../../lib/openChat';
 import { formatAxiosError } from '../../lib/apiError';
+import { markLocationGranted, clearLocationGranted, isLocationGranted, readStoredCoords } from '../../lib/locationSession';
 import './Widget.css';
 
 const NEARBY_DISCOVERY_RADIUS_M = 500;
@@ -51,6 +52,7 @@ const ConnectionsWidget = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [comfortingMessage, setComfortingMessage] = useState<string | null>(null);
+  const locationWatchRef = useRef<number | null>(null);
   const locationIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const buzzInitializedRef = useRef(false);
   const knownBuzzIdsRef = useRef<Set<string>>(new Set());
@@ -104,9 +106,29 @@ const ConnectionsWidget = () => {
           setLocation(coords);
           setLocationDeclined(false);
           setError('');
+          markLocationGranted(coords);
           fetchPlaceLabel(coords.lat, coords.lon);
           pushLocation(coords, true).catch(() => {});
           setConnectionsVisible(true);
+
+          if (locationWatchRef.current != null) {
+            navigator.geolocation.clearWatch(locationWatchRef.current);
+          }
+          locationWatchRef.current = navigator.geolocation.watchPosition(
+            (pos) => {
+              const next = {
+                lat: pos.coords.latitude,
+                lon: pos.coords.longitude,
+                accuracy: pos.coords.accuracy,
+              };
+              setLocation(next);
+              markLocationGranted(next);
+              fetchPlaceLabel(next.lat, next.lon);
+            },
+            () => {},
+            { enableHighAccuracy: true, maximumAge: 15000, timeout: 20000 }
+          );
+
           resolve(coords);
         },
         (geoErr) => {
@@ -197,8 +219,21 @@ const ConnectionsWidget = () => {
       if (locationIntervalRef.current) {
         clearInterval(locationIntervalRef.current);
       }
+      if (locationWatchRef.current != null && navigator?.geolocation) {
+        navigator.geolocation.clearWatch(locationWatchRef.current);
+      }
     };
   }, [user?.id, loadBuzzes]);
+
+  useEffect(() => {
+    if (!user?.id || location) return;
+    if (!isLocationGranted()) return;
+    const stored = readStoredCoords();
+    if (!stored) return;
+    setLocation(stored);
+    fetchPlaceLabel(stored.lat, stored.lon);
+    pushLocation(stored, true).catch(() => {});
+  }, [user?.id, location, pushLocation]);
 
   useEffect(() => {
     if (location && user?.id) {
@@ -215,24 +250,6 @@ const ConnectionsWidget = () => {
   }, [location, user?.id, pushLocation]);
 
   useEffect(() => {
-    if (!navigator?.geolocation || !user?.id) return;
-    const watchId = navigator.geolocation.watchPosition(
-      (position) => {
-        const coords = {
-          lat: position.coords.latitude,
-          lon: position.coords.longitude,
-          accuracy: position.coords.accuracy,
-        };
-        setLocation(coords);
-        fetchPlaceLabel(coords.lat, coords.lon);
-      },
-      () => {},
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 15000 }
-    );
-    return () => navigator.geolocation.clearWatch(watchId);
-  }, [user?.id]);
-
-  useEffect(() => {
     if (!location || !user?.id) return;
     refreshNearby(location);
     loadBuzzes();
@@ -243,43 +260,19 @@ const ConnectionsWidget = () => {
     return () => clearInterval(nearbyPoll);
   }, [location, user?.id, refreshNearby, loadBuzzes]);
 
-  const toggleVisibility = async () => {
+  const refreshNearbyList = async () => {
     if (!user?.id) return;
-    const next = !connectionsVisible;
-    setLoading(true);
-    setError('');
-    try {
-      await connectionsAPI.setVisibility(next);
-      setConnectionsVisible(next);
-      updateUser({ connectionsVisible: next });
-      if (next && location) {
-        await pushLocation(location, true);
-        await refreshNearby(location);
-      } else if (!next) {
-        await refreshNearby(location || undefined);
-      }
-    } catch (err) {
-      setError(formatAxiosError(err, 'Could not update visibility'));
-    } finally {
-      setLoading(false);
+    if (!location) {
+      await requestLocationAccess();
+      return;
     }
-  };
-
-  const openNearbyList = async () => {
-    if (!user?.id) return;
     setLoading(true);
     setError('');
     try {
-      let coords = location;
-      if (!coords) {
-        setLocationDeclined(false);
-        coords = await ensureLocation();
-      }
-      await refreshNearby(coords);
+      await refreshNearby(location);
       await loadBuzzes();
-      setView('nearby');
     } catch (err: unknown) {
-      setError(formatAxiosError(err, 'Could not load nearby'));
+      setError(formatAxiosError(err, 'Could not refresh nearby'));
     } finally {
       setLoading(false);
     }
@@ -448,7 +441,10 @@ const ConnectionsWidget = () => {
             type="button"
             className="auth-button secondary"
             disabled={requestingLocation || loading}
-            onClick={() => setLocationDeclined(true)}
+            onClick={() => {
+              setLocationDeclined(true);
+              clearLocationGranted();
+            }}
             style={{ flex: 1, minWidth: 100, margin: 0, background: 'rgba(255,255,255,0.1)' }}
           >
             No thanks
@@ -608,46 +604,6 @@ const ConnectionsWidget = () => {
               {buzzes.received.filter((b) => b.status === 'pending').length === 1 ? '' : 's'} — respond below
             </div>
           )}
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: 12,
-              marginBottom: 14,
-              padding: '10px 12px',
-              borderRadius: 10,
-              border: '1px solid rgba(0, 212, 255, 0.35)',
-              background: 'rgba(0,0,0,0.35)',
-            }}
-          >
-            <div>
-              <strong style={{ color: '#00d4ff', fontSize: 13, fontFamily: 'Orbitron, monospace' }}>Visible nearby</strong>
-              <p style={{ margin: '4px 0 0', fontSize: 11, color: '#9ca3af' }}>
-                {connectionsVisible ? 'Others can see you when location is on.' : 'Hidden — you can still browse.'}
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={toggleVisibility}
-              disabled={loading}
-              style={{
-                minWidth: 52,
-                padding: '8px 12px',
-                borderRadius: 999,
-                border: connectionsVisible ? 'none' : '1px solid rgba(255,255,255,0.25)',
-                background: connectionsVisible ? 'linear-gradient(135deg, #00d4ff, #0891b2)' : 'rgba(255,255,255,0.1)',
-                color: '#fff',
-                fontWeight: 700,
-                fontSize: 12,
-                cursor: 'pointer',
-                fontFamily: 'Orbitron, monospace',
-              }}
-            >
-              {connectionsVisible ? 'On' : 'Off'}
-            </button>
-          </div>
-
           <div style={{ marginBottom: 14 }}>
             <strong style={{ color: '#00d4ff', fontSize: 13, fontFamily: 'Orbitron, monospace', display: 'block', marginBottom: 8 }}>
               Nearby now{buzzes.received.filter((b) => b.status === 'pending').length > 0 || nearbyUsers.length > 0
@@ -659,7 +615,7 @@ const ConnectionsWidget = () => {
 
           <button
             type="button"
-            onClick={openNearbyList}
+            onClick={refreshNearbyList}
             className="select-user-btn"
             disabled={loading}
             style={{

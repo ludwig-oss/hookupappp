@@ -1,16 +1,40 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { confessionAPI, ConfessionSessionView } from '../../api/confession';
+import { confessionAPI, ConfessionSessionView, BlurredConfessionGuide } from '../../api/confession';
 import { formatAxiosError } from '../../lib/apiError';
 import './Widget.css';
 
-type Step = 'intro' | 'safety' | 'pay' | 'waiting' | 'chat' | 'guide';
+type Step = 'intro' | 'scope' | 'guides' | 'book' | 'waiting_accept' | 'pay' | 'waiting' | 'chat' | 'guide';
+type GuideScope = 'local' | 'international';
+
+function defaultAppointmentValue(): string {
+  const d = new Date();
+  d.setMinutes(0, 0, 0);
+  d.setHours(d.getHours() + 2);
+  return d.toISOString().slice(0, 16);
+}
+
+function formatAppointment(iso: string): string {
+  return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+}
+
+function stepForSession(session: ConfessionSessionView): Step {
+  if (session.status === 'active') return 'chat';
+  if (session.status === 'awaiting_payment') return 'pay';
+  if (session.status === 'pending_appointment') return 'waiting_accept';
+  if (session.status === 'pending_guide_nda' || session.status === 'seeking_guide') return 'waiting';
+  return 'intro';
+}
 
 export default function ConfessionBoothWidget() {
   const [step, setStep] = useState<Step>('intro');
   const [info, setInfo] = useState<{ seekerSafetyAgreement: string; guideNdaAgreement: string; prices: number[] } | null>(null);
   const [guideInfo, setGuideInfo] = useState<Awaited<ReturnType<typeof confessionAPI.getGuidePrefs>> | null>(null);
   const [session, setSession] = useState<ConfessionSessionView | null>(null);
+  const [guideScope, setGuideScope] = useState<GuideScope | null>(null);
+  const [guides, setGuides] = useState<BlurredConfessionGuide[]>([]);
+  const [selectedGuide, setSelectedGuide] = useState<BlurredConfessionGuide | null>(null);
   const [amountEur, setAmountEur] = useState<5 | 10>(5);
+  const [appointmentAt, setAppointmentAt] = useState(defaultAppointmentValue());
   const [safetySignature, setSafetySignature] = useState('');
   const [guideNdaSignature, setGuideNdaSignature] = useState('');
   const [guideEnabled, setGuideEnabled] = useState(false);
@@ -23,8 +47,8 @@ export default function ConfessionBoothWidget() {
   const refreshSession = useCallback(async (sessionId: string) => {
     const { session: s } = await confessionAPI.getSession(sessionId);
     setSession(s);
-    if (s.status === 'active') setStep('chat');
-    else if (s.paymentStatus === 'paid' && s.status !== 'ended' && s.status !== 'reported') setStep('waiting');
+    const next = stepForSession(s);
+    setStep((prev) => (prev === 'guide' ? prev : next));
     return s;
   }, []);
 
@@ -35,12 +59,12 @@ export default function ConfessionBoothWidget() {
       setGuideEnabled(g.prefs.enabled);
     }).catch(() => {});
     confessionAPI.listSessions().then(({ sessions }) => {
-      const open = sessions.find((s) => ['awaiting_payment', 'seeking_guide', 'pending_guide_nda', 'active'].includes(s.status));
+      const open = sessions.find((s) =>
+        ['pending_appointment', 'awaiting_payment', 'seeking_guide', 'pending_guide_nda', 'active'].includes(s.status)
+      );
       if (open) {
         setSession(open);
-        if (open.status === 'awaiting_payment') setStep('pay');
-        else if (open.status === 'active') setStep('chat');
-        else setStep('waiting');
+        setStep(stepForSession(open));
       }
     }).catch(() => {});
 
@@ -52,15 +76,15 @@ export default function ConfessionBoothWidget() {
       confessionAPI.capturePayPalOrder(sessionId, orderId).then((r) => {
         setSession(r.session);
         setSuccess(r.message);
-        setStep('waiting');
+        setStep(stepForSession(r.session));
         window.history.replaceState({}, '', window.location.pathname);
-      }).catch((e) => setError(formatAxiosError(e)));
+      }).catch((e) => setError(formatAxiosError(e, 'Payment failed')));
     }
   }, []);
 
   useEffect(() => {
     if (pollRef.current) clearInterval(pollRef.current);
-    if (session && (step === 'waiting' || step === 'chat') && session.status !== 'ended') {
+    if (session && ['waiting_accept', 'waiting', 'chat', 'pay'].includes(step) && session.status !== 'ended') {
       pollRef.current = setInterval(() => {
         refreshSession(session.id).catch(() => {});
       }, 4000);
@@ -70,12 +94,23 @@ export default function ConfessionBoothWidget() {
     };
   }, [session?.id, step, session?.status, refreshSession]);
 
-  const handleStartSafety = () => {
+  const loadGuides = async (scope: GuideScope) => {
+    setLoading(true);
     setError('');
-    setStep('safety');
+    setGuideScope(scope);
+    try {
+      const data = await confessionAPI.listGuides(scope);
+      setGuides(data.guides);
+      setStep('guides');
+    } catch (e) {
+      setError(formatAxiosError(e, 'Could not load guides'));
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleCreateSession = async () => {
+  const handleBookSession = async () => {
+    if (!selectedGuide || !guideScope) return;
     if (!safetySignature.trim()) {
       setError('Type your full name to sign the safety agreement');
       return;
@@ -83,11 +118,18 @@ export default function ConfessionBoothWidget() {
     setLoading(true);
     setError('');
     try {
-      const { session: s } = await confessionAPI.createSession(amountEur, safetySignature.trim());
+      const { session: s } = await confessionAPI.createSession({
+        amountEur,
+        safetySignature: safetySignature.trim(),
+        guideId: selectedGuide.id,
+        appointmentAt: new Date(appointmentAt).toISOString(),
+        guideScope,
+      });
       setSession(s);
-      setStep('pay');
+      setStep('waiting_accept');
+      setSuccess('Appointment requested — your guide must accept before you pay.');
     } catch (e) {
-      setError(formatAxiosError(e));
+      setError(formatAxiosError(e, 'Could not book appointment'));
     } finally {
       setLoading(false);
     }
@@ -102,7 +144,7 @@ export default function ConfessionBoothWidget() {
       if (approvalUrl) window.location.href = approvalUrl;
       else setError('PayPal unavailable');
     } catch (e) {
-      setError(formatAxiosError(e));
+      setError(formatAxiosError(e, 'Could not start payment'));
     } finally {
       setLoading(false);
     }
@@ -121,7 +163,7 @@ export default function ConfessionBoothWidget() {
       if (err.response?.data?.blocked) {
         setError(err.response.data.error || 'Message blocked for safety');
       } else {
-        setError(formatAxiosError(e));
+        setError(formatAxiosError(e, 'Could not send message'));
       }
     } finally {
       setLoading(false);
@@ -144,7 +186,22 @@ export default function ConfessionBoothWidget() {
       setGuideEnabled(g.prefs.enabled);
       setSuccess(enabling ? 'You can receive anonymous confession requests' : 'Confession support disabled');
     } catch (e) {
-      setError(formatAxiosError(e));
+      setError(formatAxiosError(e, 'Could not update guide settings'));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleGuideRespondAppointment = async (sessionId: string, accept: boolean) => {
+    setLoading(true);
+    setError('');
+    try {
+      await confessionAPI.respondAppointment(sessionId, accept);
+      const g = await confessionAPI.getGuidePrefs();
+      setGuideInfo(g);
+      setSuccess(accept ? 'Appointment accepted — seeker can pay now' : 'Appointment declined');
+    } catch (e) {
+      setError(formatAxiosError(e, 'Could not respond'));
     } finally {
       setLoading(false);
     }
@@ -163,26 +220,26 @@ export default function ConfessionBoothWidget() {
       setStep('chat');
       setSuccess('Session started — identities remain hidden');
     } catch (e) {
-      setError(formatAxiosError(e));
+      setError(formatAxiosError(e, 'Could not open booth'));
     } finally {
       setLoading(false);
     }
   };
 
+  const resetSeekerFlow = () => {
+    setSession(null);
+    setSelectedGuide(null);
+    setGuideScope(null);
+    setGuides([]);
+    setSafetySignature('');
+    setStep('intro');
+    setSuccess('');
+    setError('');
+  };
+
   return (
     <div className="widget confession-booth-widget">
-      <div
-        style={{
-          textAlign: 'center',
-          padding: '20px 16px',
-          borderRadius: 16,
-          background: 'linear-gradient(180deg, #1a0f0a 0%, #0d0705 100%)',
-          border: '2px solid rgba(180, 140, 80, 0.35)',
-          marginBottom: 16,
-          position: 'relative',
-          overflow: 'hidden',
-        }}
-      >
+      <div className="confession-booth-hero">
         <div style={{ fontSize: 48, marginBottom: 8 }} aria-hidden>⛪</div>
         <h2 style={{ margin: 0, fontSize: 20, color: '#fde68a' }}>Confession Booth</h2>
         <p style={{ fontSize: 13, color: '#a8a29e', marginTop: 8, lineHeight: 1.5 }}>
@@ -191,7 +248,7 @@ export default function ConfessionBoothWidget() {
       </div>
 
       <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
-        <button type="button" className={step !== 'guide' ? 'select-user-btn' : 'chat-back-btn'} onClick={() => setStep('intro')}>
+        <button type="button" className={step !== 'guide' ? 'select-user-btn' : 'chat-back-btn'} onClick={resetSeekerFlow}>
           I need help
         </button>
         {guideInfo?.isGuide && (
@@ -213,20 +270,80 @@ export default function ConfessionBoothWidget() {
           <ul style={{ fontSize: 13, color: '#d1d5db', lineHeight: 1.6, paddingLeft: 18 }}>
             <li>Completely anonymous — neither side knows who the other is</li>
             <li>Guide signs a legal NDA — revealing anything can lead to lawsuit</li>
-            <li>€5 or €10 before your session (guide keeps 80%)</li>
+            <li>€5 or €10 after your guide accepts your appointment (guide keeps 80%)</li>
             <li><strong>Forbidden:</strong> confessing crimes or intent to harm — blocked &amp; reported</li>
           </ul>
-          <button type="button" className="select-user-btn" style={{ width: '100%', marginTop: 12 }} onClick={handleStartSafety}>
+          <button type="button" className="select-user-btn" style={{ width: '100%', marginTop: 12 }} onClick={() => setStep('scope')}>
             Enter the booth
           </button>
         </div>
       )}
 
-      {step === 'safety' && info && (
+      {step === 'scope' && (
         <div>
+          <p style={{ fontSize: 14, color: '#d1d5db', marginBottom: 12 }}>
+            Choose who you want to hear you. Guides stay blurred — you never see their identity.
+          </p>
+          <div style={{ display: 'flex', gap: 10 }}>
+            <button type="button" className="select-user-btn" style={{ flex: 1 }} disabled={loading} onClick={() => loadGuides('local')}>
+              Guides in my area
+            </button>
+            <button type="button" className="select-user-btn" style={{ flex: 1 }} disabled={loading} onClick={() => loadGuides('international')}>
+              International guides
+            </button>
+          </div>
+        </div>
+      )}
+
+      {step === 'guides' && (
+        <div>
+          <p style={{ fontSize: 13, color: '#9ca3af', marginBottom: 12 }}>
+            {guideScope === 'local' ? 'Anonymous guides near you' : 'International anonymous guides'} — identities hidden until the booth opens.
+          </p>
+          {guides.length === 0 ? (
+            <p style={{ fontSize: 13, color: '#d1d5db' }}>
+              No guides available here right now. Try {guideScope === 'local' ? 'international' : 'local'} guides instead.
+            </p>
+          ) : (
+            <div className="confession-guide-list">
+              {guides.map((g) => (
+                <button
+                  key={g.id}
+                  type="button"
+                  className={`confession-guide-card${selectedGuide?.id === g.id ? ' selected' : ''}`}
+                  onClick={() => {
+                    setSelectedGuide(g);
+                    setStep('book');
+                  }}
+                >
+                  <div className="confession-guide-avatar blurred" aria-hidden />
+                  <div className="confession-guide-meta">
+                    <strong>{g.label}</strong>
+                    <span>★ {g.rating} · {g.totalSessions} sessions</span>
+                    <span className="confession-guide-snippet">{g.experienceSnippet}</span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+          <button type="button" className="chat-back-btn" style={{ marginTop: 12 }} onClick={() => setStep('scope')}>
+            Back
+          </button>
+        </div>
+      )}
+
+      {step === 'book' && selectedGuide && info && (
+        <div>
+          <div className="confession-guide-card selected" style={{ marginBottom: 12, cursor: 'default' }}>
+            <div className="confession-guide-avatar blurred" aria-hidden />
+            <div className="confession-guide-meta">
+              <strong>{selectedGuide.label}</strong>
+              <span>★ {selectedGuide.rating}</span>
+            </div>
+          </div>
           <div
             style={{
-              maxHeight: 200,
+              maxHeight: 160,
               overflowY: 'auto',
               padding: 12,
               background: 'rgba(0,0,0,0.3)',
@@ -240,7 +357,15 @@ export default function ConfessionBoothWidget() {
           >
             {info.seekerSafetyAgreement}
           </div>
-          <p style={{ fontSize: 13, marginBottom: 8 }}>Choose session fee (paid before confession):</p>
+          <label style={{ fontSize: 13, display: 'block', marginBottom: 6 }}>Appointment date &amp; time</label>
+          <input
+            type="datetime-local"
+            value={appointmentAt}
+            min={defaultAppointmentValue()}
+            onChange={(e) => setAppointmentAt(e.target.value)}
+            style={{ width: '100%', padding: 12, borderRadius: 8, border: '1px solid #374151', background: '#111827', color: '#fff', marginBottom: 12, boxSizing: 'border-box' }}
+          />
+          <p style={{ fontSize: 13, marginBottom: 8 }}>Session fee (paid only after the guide accepts):</p>
           <div style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
             {([5, 10] as const).map((p) => (
               <button
@@ -267,18 +392,39 @@ export default function ConfessionBoothWidget() {
             value={safetySignature}
             onChange={(e) => setSafetySignature(e.target.value)}
             placeholder="Your full name"
-            style={{ width: '100%', padding: 12, borderRadius: 8, border: '1px solid #374151', background: '#111827', color: '#fff', marginBottom: 12 }}
+            style={{ width: '100%', padding: 12, borderRadius: 8, border: '1px solid #374151', background: '#111827', color: '#fff', marginBottom: 12, boxSizing: 'border-box' }}
           />
-          <button type="button" className="select-user-btn" style={{ width: '100%' }} disabled={loading} onClick={handleCreateSession}>
-            {loading ? 'Preparing…' : 'I agree — continue to payment'}
+          <button type="button" className="select-user-btn" style={{ width: '100%' }} disabled={loading} onClick={handleBookSession}>
+            {loading ? 'Booking…' : 'Request appointment'}
           </button>
+          <button type="button" className="chat-back-btn" style={{ width: '100%', marginTop: 8 }} onClick={() => setStep('guides')}>
+            Choose another guide
+          </button>
+        </div>
+      )}
+
+      {step === 'waiting_accept' && session && (
+        <div style={{ textAlign: 'center', padding: 20 }}>
+          <div style={{ fontSize: 40, marginBottom: 12 }}>🕯️</div>
+          <p style={{ color: '#d1d5db' }}>
+            Waiting for {session.guideDisplayLabel || 'your guide'} to accept your appointment.
+          </p>
+          <p style={{ fontSize: 13, color: '#9ca3af', marginTop: 8 }}>
+            {session.appointmentAt ? formatAppointment(session.appointmentAt) : 'Scheduled time pending'}
+          </p>
+          <p style={{ fontSize: 12, color: '#6b7280', marginTop: 8 }}>You are: {session.seekerAlias}</p>
+          <p style={{ fontSize: 12, color: '#6b7280' }}>Pay €{session.amountEur} only after they accept.</p>
         </div>
       )}
 
       {step === 'pay' && session && (
         <div>
-          <p style={{ fontSize: 14, marginBottom: 12 }}>
-            Pay €{session.amountEur} to open the booth. A random anonymous guide will be notified after payment.
+          <p style={{ fontSize: 14, marginBottom: 8 }}>
+            {session.guideDisplayLabel || 'Your guide'} accepted your appointment
+            {session.appointmentAt ? ` for ${formatAppointment(session.appointmentAt)}` : ''}.
+          </p>
+          <p style={{ fontSize: 13, color: '#9ca3af', marginBottom: 12 }}>
+            Pay €{session.amountEur} to open the anonymous booth and start talking.
           </p>
           <button type="button" className="select-user-btn" style={{ width: '100%' }} disabled={loading} onClick={handlePayPal}>
             {loading ? 'Opening PayPal…' : `Pay €${session.amountEur} with PayPal`}
@@ -289,27 +435,14 @@ export default function ConfessionBoothWidget() {
       {step === 'waiting' && session && (
         <div style={{ textAlign: 'center', padding: 20 }}>
           <div style={{ fontSize: 40, marginBottom: 12 }}>🕯️</div>
-          <p style={{ color: '#d1d5db' }}>
-            {session.status === 'seeking_guide'
-              ? 'Payment received. Waiting for an available anonymous guide…'
-              : 'Your guide is reviewing the NDA. The booth opens when they accept.'}
-          </p>
+          <p style={{ color: '#d1d5db' }}>Payment received. Your guide is opening the booth…</p>
           <p style={{ fontSize: 12, color: '#6b7280', marginTop: 8 }}>You are: {session.seekerAlias}</p>
         </div>
       )}
 
       {step === 'chat' && session && (
         <div>
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              marginBottom: 10,
-              fontSize: 12,
-              color: '#9ca3af',
-            }}
-          >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, fontSize: 12, color: '#9ca3af' }}>
             <span>
               {session.role === 'seeker' ? `You: ${session.seekerAlias}` : `You: ${session.guideAlias}`}
               {' · '}
@@ -321,8 +454,7 @@ export default function ConfessionBoothWidget() {
               style={{ fontSize: 11, padding: '4px 8px' }}
               onClick={async () => {
                 await confessionAPI.endSession(session.id);
-                setSession(null);
-                setStep('intro');
+                resetSeekerFlow();
                 setSuccess('Session ended. May peace be with you.');
               }}
             >
@@ -330,32 +462,13 @@ export default function ConfessionBoothWidget() {
             </button>
           </div>
 
-          <div
-            style={{
-              maxHeight: 280,
-              overflowY: 'auto',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 8,
-              marginBottom: 12,
-              padding: 8,
-              background: 'rgba(0,0,0,0.35)',
-              borderRadius: 12,
-            }}
-          >
+          <div className="confession-chat-log">
             {session.messages.map((m) => (
               <div
                 key={m.id}
-                style={{
-                  alignSelf: m.fromRole === session.role ? 'flex-end' : 'flex-start',
-                  maxWidth: '85%',
-                  padding: '10px 12px',
-                  borderRadius: 12,
-                  background: m.fromRole === session.role ? 'rgba(180,140,80,0.25)' : 'rgba(255,255,255,0.06)',
-                  fontSize: 13,
-                }}
+                className={`confession-chat-bubble${m.fromRole === session.role ? ' mine' : ''}`}
               >
-                <div style={{ fontSize: 10, color: '#a8a29e', marginBottom: 4 }}>{m.alias}</div>
+                <div className="confession-chat-alias">{m.alias}</div>
                 {m.content}
               </div>
             ))}
@@ -376,6 +489,7 @@ export default function ConfessionBoothWidget() {
                   background: '#111827',
                   color: '#fff',
                   resize: 'vertical',
+                  boxSizing: 'border-box',
                 }}
               />
               <button
@@ -413,15 +527,13 @@ export default function ConfessionBoothWidget() {
             {guideInfo.guideNdaAgreement}
           </div>
           {!guideInfo.prefs.ndaSignedAt && (
-            <>
-              <input
-                type="text"
-                value={guideNdaSignature}
-                onChange={(e) => setGuideNdaSignature(e.target.value)}
-                placeholder="Sign with full name"
-                style={{ width: '100%', padding: 10, borderRadius: 8, marginBottom: 8, background: '#111827', color: '#fff', border: '1px solid #374151' }}
-              />
-            </>
+            <input
+              type="text"
+              value={guideNdaSignature}
+              onChange={(e) => setGuideNdaSignature(e.target.value)}
+              placeholder="Sign with full name"
+              style={{ width: '100%', padding: 10, borderRadius: 8, marginBottom: 8, background: '#111827', color: '#fff', border: '1px solid #374151', boxSizing: 'border-box' }}
+            />
           )}
           <button type="button" className="select-user-btn" style={{ width: '100%', marginBottom: 16 }} disabled={loading} onClick={handleGuideToggle}>
             {guideEnabled ? 'Disable confession support' : 'Enable — accept anonymous sessions'}
@@ -432,10 +544,29 @@ export default function ConfessionBoothWidget() {
               <h4 style={{ fontSize: 14, marginBottom: 8 }}>Pending requests</h4>
               {guideInfo.pendingSessions.map((s) => (
                 <div key={s.id} style={{ padding: 12, background: 'rgba(0,0,0,0.25)', borderRadius: 8, marginBottom: 8 }}>
-                  <p style={{ fontSize: 13 }}>Anonymous seeker · €{s.amountEur} prepaid</p>
-                  <button type="button" className="select-user-btn" style={{ width: '100%', marginTop: 8 }} disabled={loading} onClick={() => handleGuideAccept(s.id)}>
-                    Accept &amp; open booth
-                  </button>
+                  {s.status === 'pending_appointment' ? (
+                    <>
+                      <p style={{ fontSize: 13 }}>Anonymous seeker · €{s.amountEur}</p>
+                      <p style={{ fontSize: 12, color: '#9ca3af' }}>
+                        Requested: {s.appointmentAt ? formatAppointment(s.appointmentAt) : 'TBD'}
+                      </p>
+                      <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                        <button type="button" className="chat-back-btn" style={{ flex: 1 }} disabled={loading} onClick={() => handleGuideRespondAppointment(s.id, false)}>
+                          Decline
+                        </button>
+                        <button type="button" className="select-user-btn" style={{ flex: 1 }} disabled={loading} onClick={() => handleGuideRespondAppointment(s.id, true)}>
+                          Accept appointment
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <p style={{ fontSize: 13 }}>Anonymous seeker · €{s.amountEur} prepaid</p>
+                      <button type="button" className="select-user-btn" style={{ width: '100%', marginTop: 8 }} disabled={loading} onClick={() => handleGuideAccept(s.id)}>
+                        Accept &amp; open booth
+                      </button>
+                    </>
+                  )}
                 </div>
               ))}
             </div>

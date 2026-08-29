@@ -16,6 +16,10 @@ export interface ConfessionSessionView {
   role: 'seeker' | 'guide' | null;
   seekerAlias: string;
   guideAlias: string | null;
+  guideDisplayLabel?: string | null;
+  guideScope?: 'local' | 'international' | null;
+  appointmentAt?: string | null;
+  appointmentStatus?: 'pending' | 'accepted' | 'declined' | null;
   amountEur: 5 | 10;
   paymentStatus: 'pending' | 'paid';
   status: string;
@@ -23,6 +27,15 @@ export interface ConfessionSessionView {
   createdAt: string;
   startedAt: string | null;
   endedAt: string | null;
+}
+
+export interface BlurredConfessionGuide {
+  id: string;
+  label: string;
+  rating: number;
+  totalSessions: number;
+  experienceSnippet: string;
+  scope: 'local' | 'international';
 }
 
 export const confessionAPI = {
@@ -34,6 +47,11 @@ export const confessionAPI = {
       prices: number[];
       split: { guidePercent: number; platformPercent: number };
     };
+  },
+
+  listGuides: async (scope: 'local' | 'international') => {
+    const res = await axios.get(`${API_URL}/guides`, { params: { scope } });
+    return res.data as { guides: BlurredConfessionGuide[]; scope: 'local' | 'international' };
   },
 
   getGuidePrefs: async () => {
@@ -56,8 +74,14 @@ export const confessionAPI = {
     return res.data as { sessions: ConfessionSessionView[] };
   },
 
-  createSession: async (amountEur: 5 | 10, safetySignature: string) => {
-    const res = await axios.post(`${API_URL}/sessions`, { amountEur, safetySignature });
+  createSession: async (data: {
+    amountEur: 5 | 10;
+    safetySignature: string;
+    guideId: string;
+    appointmentAt: string;
+    guideScope: 'local' | 'international';
+  }) => {
+    const res = await axios.post(`${API_URL}/sessions`, data);
     return res.data as { session: ConfessionSessionView };
   },
 
@@ -74,6 +98,11 @@ export const confessionAPI = {
   capturePayPalOrder: async (sessionId: string, orderId: string) => {
     const res = await axios.post(`${API_URL}/sessions/${sessionId}/paypal/capture`, { orderId, sessionId });
     return res.data as { session: ConfessionSessionView; message: string };
+  },
+
+  respondAppointment: async (sessionId: string, accept: boolean) => {
+    const res = await axios.post(`${API_URL}/sessions/${sessionId}/respond-appointment`, { accept });
+    return res.data as { session: ConfessionSessionView };
   },
 
   acceptSession: async (sessionId: string, ndaSignature: string) => {

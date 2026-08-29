@@ -848,4 +848,101 @@
   box-shadow: 0 5px 15px rgba(255, 107, 157, 0.4);
 }
 
+.confession-booth-hero {
+  text-align: center;
+  padding: 20px 16px;
+  border-radius: 16px;
+  background: linear-gradient(180deg, #1a0f0a 0%, #0d0705 100%);
+  border: 2px solid rgba(180, 140, 80, 0.35);
+  margin-bottom: 16px;
+}
+
+.confession-guide-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.confession-guide-card {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  width: 100%;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(0, 0, 0, 0.25);
+  color: #fff;
+  text-align: left;
+  cursor: pointer;
+}
+
+.confession-guide-card.selected {
+  border-color: rgba(251, 191, 36, 0.65);
+  background: rgba(251, 191, 36, 0.08);
+}
+
+.confession-guide-avatar {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: linear-gradient(135deg, #6b7280, #374151);
+}
+
+.confession-guide-avatar.blurred {
+  filter: blur(8px);
+  opacity: 0.85;
+}
+
+.confession-guide-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: #d1d5db;
+}
+
+.confession-guide-meta strong {
+  font-size: 14px;
+  color: #fde68a;
+}
+
+.confession-guide-snippet {
+  color: #9ca3af;
+  line-height: 1.35;
+}
+
+.confession-chat-log {
+  max-height: 280px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 8px;
+  background: rgba(0, 0, 0, 0.35);
+  border-radius: 12px;
+}
+
+.confession-chat-bubble {
+  align-self: flex-start;
+  max-width: 85%;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
+  font-size: 13px;
+  color: #fff;
+}
+
+.confession-chat-bubble.mine {
+  align-self: flex-end;
+  background: rgba(180, 140, 80, 0.25);
+}
+
+.confession-chat-alias {
+  font-size: 10px;
+  color: #a8a29e;
+  margin-bottom: 4px;
+}
 

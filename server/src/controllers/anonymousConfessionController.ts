@@ -9,10 +9,12 @@ import {
   markSessionPaid,
   creditConfessionPayment,
   guideAcceptSession,
+  guideRespondAppointment,
   addConfessionMessage,
   endConfessionSession,
   retryGuideMatching,
   sanitizeSessionForClient,
+  listBlurredConfessionGuides,
   SEEKER_SAFETY_AGREEMENT,
   GUIDE_NDA_AGREEMENT,
 } from '../models/anonymousConfession.js';
@@ -77,22 +79,63 @@ export async function updateGuideConfessionPrefsHandler(req: Request, res: Respo
   }
 }
 
+export async function listConfessionGuidesHandler(req: Request, res: Response) {
+  try {
+    const userId = (req as any).userId as string;
+    const scope = req.query.scope as string;
+    if (scope !== 'local' && scope !== 'international') {
+      return res.status(400).json({ error: 'Choose local or international guides' });
+    }
+    const guides = await listBlurredConfessionGuides(userId, scope);
+    res.json({ guides, scope });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message || 'Failed' });
+  }
+}
+
 export async function createSessionHandler(req: Request, res: Response) {
   try {
     const userId = (req as any).userId as string;
-    const { amountEur, safetySignature } = req.body as { amountEur?: number; safetySignature?: string };
+    const { amountEur, safetySignature, guideId, appointmentAt, guideScope } = req.body as {
+      amountEur?: number;
+      safetySignature?: string;
+      guideId?: string;
+      appointmentAt?: string;
+      guideScope?: string;
+    };
     if (amountEur !== 5 && amountEur !== 10) {
       return res.status(400).json({ error: 'Choose €5 or €10 for your confession session' });
     }
     if (!safetySignature?.trim()) {
       return res.status(400).json({ error: 'Sign the safety agreement before continuing' });
     }
+    if (!guideId) {
+      return res.status(400).json({ error: 'Choose an anonymous guide' });
+    }
+    if (!appointmentAt) {
+      return res.status(400).json({ error: 'Choose a date and time for your appointment' });
+    }
+    if (guideScope !== 'local' && guideScope !== 'international') {
+      return res.status(400).json({ error: 'Choose local or international guides' });
+    }
 
     const session = await createConfessionSession({
       seekerUserId: userId,
       amountEur: amountEur,
       safetySignature: safetySignature.trim(),
+      guideId,
+      appointmentAt,
+      guideScope,
     });
+
+    if (session.guideUserId) {
+      notifyConfessionRequest(session.guideUserId, { sessionId: session.id });
+      sendPushToUser(session.guideUserId, {
+        title: 'Confession appointment requested',
+        body: `Anonymous seeker requested ${new Date(session.appointmentAt!).toLocaleString()} — accept to continue.`,
+        data: { type: 'confession_request', sessionId: session.id },
+      }).catch(() => {});
+    }
 
     res.json({
       session: sanitizeSessionForClient(session, userId),
@@ -149,6 +192,9 @@ export async function createPayPalOrderHandler(req: Request, res: Response) {
     const session = await getSessionById(req.params.sessionId);
     if (!session || session.seekerUserId !== userId) return res.status(404).json({ error: 'Session not found' });
     if (session.paymentStatus === 'paid') return res.status(400).json({ error: 'Already paid' });
+    if (session.status !== 'awaiting_payment') {
+      return res.status(400).json({ error: 'Your guide must accept the appointment before you can pay' });
+    }
 
     const accessToken = await getPayPalAccessToken();
     const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
@@ -204,23 +250,54 @@ export async function capturePayPalOrderHandler(req: Request, res: Response) {
     if (!captureRes.ok) return res.status(402).json({ error: 'Payment capture failed' });
 
     let session = await markSessionPaid(sessionId, orderId);
-    if (session.guideUserId) {
+    if (session.status === 'pending_guide_nda' && session.guideUserId) {
       notifyConfessionRequest(session.guideUserId, { sessionId: session.id });
       sendPushToUser(session.guideUserId, {
-        title: 'Anonymous confession — guide needed',
-        body: `Someone paid €${session.amountEur} for confidential support. Accept after signing your NDA.`,
+        title: 'Anonymous confession — paid & ready',
+        body: `Someone paid €${session.amountEur}. Open the booth when you are ready.`,
         data: { type: 'confession_request', sessionId: session.id },
       }).catch(() => {});
+    } else if (session.status === 'active') {
+      notifyConfessionMessage(session.seekerUserId, { sessionId: session.id, preview: 'Your guide is ready.' });
     }
 
     res.json({
-      message: session.guideUserId
-        ? 'Payment received. A guide was notified — session starts when they accept.'
-        : 'Payment received. Waiting for an available anonymous guide…',
+      message: session.status === 'active'
+        ? 'Payment received. The confession booth is open — say what you need to share.'
+        : 'Payment received. Your guide will open the booth shortly.',
       session: sanitizeSessionForClient(session, userId),
     });
   } catch (e: any) {
     res.status(500).json({ error: e.message || 'Failed' });
+  }
+}
+
+export async function guideRespondAppointmentHandler(req: Request, res: Response) {
+  try {
+    const userId = (req as any).userId as string;
+    const { accept } = req.body as { accept?: boolean };
+    const session = await guideRespondAppointment(req.params.sessionId, userId, accept !== false);
+
+    if (accept !== false && session.status === 'awaiting_payment') {
+      notifyConfessionMessage(session.seekerUserId, {
+        sessionId: session.id,
+        preview: 'Your guide accepted the appointment — pay to open the booth.',
+      });
+      sendPushToUser(session.seekerUserId, {
+        title: 'Confession appointment accepted',
+        body: `Pay €${session.amountEur} to open your anonymous session.`,
+        data: { type: 'confession_payment', sessionId: session.id },
+      }).catch(() => {});
+    } else if (accept === false) {
+      notifyConfessionMessage(session.seekerUserId, {
+        sessionId: session.id,
+        preview: 'Your guide could not take that time. Choose another guide.',
+      });
+    }
+
+    res.json({ session: sanitizeSessionForClient(session, userId) });
+  } catch (e: any) {
+    res.status(400).json({ error: e.message || 'Failed' });
   }
 }
 

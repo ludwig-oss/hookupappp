@@ -58,7 +58,9 @@ export const uploadProfilePicture = async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Image is required' });
     }
 
-    const imageUrl = await uploadImage(image, 'profile');
+    const imageUrl = inferMediaTypeFromUrl(image) === 'video'
+      ? await uploadMedia(image, 'profile')
+      : await uploadImage(image, 'profile');
     const user = await updateUserProfile(userId, { profilePicture: imageUrl, photoVerifiedAt: null });
 
     if (!user) {
@@ -387,7 +389,11 @@ export const completeProfileSetup = async (req: Request, res: Response) => {
     const updates: any = { profileSetupComplete: true };
     
     if (profilePicture) {
-      updates.profilePicture = await uploadImage(profilePicture, 'profile');
+      const isVideo =
+        profilePicture.startsWith('data:video') || /\.(mp4|webm|mov)(\?|#|$)/i.test(profilePicture);
+      updates.profilePicture = isVideo
+        ? await uploadMedia(profilePicture, 'profile')
+        : await uploadImage(profilePicture, 'profile');
     }
 
     const user = await updateUserProfile(userId, updates);

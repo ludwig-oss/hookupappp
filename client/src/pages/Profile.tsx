@@ -731,14 +731,14 @@ const Profile = () => {
                     <div className="highlights-title" style={{ fontSize: 13, marginBottom: 6 }}>3. Social links OR unique photo</div>
                     <div style={{ display: 'flex', gap: 16, marginBottom: 8 }}>
                       <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
-                        <input type="radio" checked={publicFigureProofType === 'social'} onChange={() => setPublicFigureProofType('social')} /> Social (Instagram, Facebook or TikTok)
+                        <input type="radio" checked={publicFigureProofType === 'social'} onChange={() => setPublicFigureProofType('social')} /> Social (public profile links)
                       </label>
                       <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
                         <input type="radio" checked={publicFigureProofType === 'unique'} onChange={() => setPublicFigureProofType('unique')} /> Unique verification photo
                       </label>
                     </div>
                     {publicFigureProofType === 'social' ? (
-                      <textarea value={publicFigureProof} onChange={(e) => setPublicFigureProof(e.target.value)} placeholder="Paste your Instagram, Facebook or TikTok profile URL (one or more)." rows={2} className="profile-input" style={{ width: '100%', resize: 'vertical' }} />
+                      <textarea value={publicFigureProof} onChange={(e) => setPublicFigureProof(e.target.value)} placeholder="Paste your public social profile URL (one or more)." rows={2} className="profile-input" style={{ width: '100%', resize: 'vertical' }} />
                     ) : (
                       <>
                         <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.75)', marginBottom: 6 }}>A photo only you can provide: e.g. holding a spoon, with a dog, or doing something specific.</p>
@@ -787,7 +787,7 @@ const Profile = () => {
                       return;
                     }
                     if (!hasSocial && !hasUnique) {
-                      setError('Provide either social links (Instagram/Facebook/TikTok) or a unique verification photo.');
+                      setError('Provide either social profile links or a unique verification photo.');
                       return;
                     }
                     if (!publicFigureAgreedToLegal) {

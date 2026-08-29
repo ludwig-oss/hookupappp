@@ -17,7 +17,6 @@ import { safetyAPI } from '../../api/safety';
 import { personalSafetyAPI } from '../../api/personalSafety';
 import { authAPI } from '../../api/auth';
 import { walletAPI, GuideWalletSummary } from '../../api/improvement';
-import { registerPasskey, getPasskeyStatus, passkeysSupported } from '../../lib/passkeyAuth';
 import { LANGUAGES } from '../../constants/languages';
 import { setStoredLanguage } from '../../i18n/languageStorage';
 import './Widget.css';
@@ -88,10 +87,6 @@ const SettingsWidgetFull = () => {
   // Gamification
   const [gamification, setGamification] = useState<any>(null);
 
-  const [passkeyRegistered, setPasskeyRegistered] = useState(false);
-  const [passkeyMessage, setPasskeyMessage] = useState('');
-  const [passkeyError, setPasskeyError] = useState('');
-
   const [walletSummary, setWalletSummary] = useState<GuideWalletSummary | null>(null);
   const [walletPaypal, setWalletPaypal] = useState('');
   const [walletBank, setWalletBank] = useState('');
@@ -143,11 +138,6 @@ const SettingsWidgetFull = () => {
         loadCompatibility(),
         loadBlockedUsers(),
         loadGamification(),
-        passkeysSupported()
-          ? getPasskeyStatus()
-              .then((s) => setPasskeyRegistered(s.registered))
-              .catch(() => {})
-          : Promise.resolve(),
       ]);
       if (profileRes) {
         setBio((profileRes as any).bio ?? '');
@@ -1009,7 +999,7 @@ const SettingsWidgetFull = () => {
                 )}
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px', border: '1px solid #e5e7eb', borderRadius: '8px' }}>
-                <span>Facebook: {verification.social.facebook.connected ? verification.social.facebook.email : 'Not connected'}</span>
+                <span>Social profile: {verification.social.facebook.connected ? verification.social.facebook.email : 'Not connected'}</span>
                 {verification.social.facebook.connected ? (
                   <button onClick={async () => {
                     await verificationAPI.disconnectSocial('facebook');
@@ -1017,7 +1007,7 @@ const SettingsWidgetFull = () => {
                   }} className="back-btn" style={{ fontSize: '12px' }}>Disconnect</button>
                 ) : (
                   <button onClick={async () => {
-                    const email = prompt('Enter Facebook email:');
+                    const email = prompt('Enter your public profile email:');
                     if (email) {
                       await verificationAPI.connectSocial('facebook', email);
                       await loadVerification();
@@ -1026,7 +1016,7 @@ const SettingsWidgetFull = () => {
                 )}
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px', border: '1px solid #e5e7eb', borderRadius: '8px' }}>
-                <span>Instagram: {verification.social.instagram.connected ? verification.social.instagram.username : 'Not connected'}</span>
+                <span>Photo profile: {verification.social.instagram.connected ? verification.social.instagram.username : 'Not connected'}</span>
                 {verification.social.instagram.connected ? (
                   <button onClick={async () => {
                     await verificationAPI.disconnectSocial('instagram');
@@ -1034,7 +1024,7 @@ const SettingsWidgetFull = () => {
                   }} className="back-btn" style={{ fontSize: '12px' }}>Disconnect</button>
                 ) : (
                   <button onClick={async () => {
-                    const username = prompt('Enter Instagram username:');
+                    const username = prompt('Enter your public profile username:');
                     if (username) {
                       await verificationAPI.connectSocial('instagram', username);
                       await loadVerification();
@@ -1189,7 +1179,7 @@ const SettingsWidgetFull = () => {
 
             <div style={{ padding: '20px', border: '1px solid #e5e7eb', borderRadius: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
-                <div style={{ fontWeight: 'bold', marginBottom: '5px' }}>Facebook</div>
+                <div style={{ fontWeight: 'bold', marginBottom: '5px' }}>Social profile</div>
                 <div style={{ fontSize: '14px', color: '#6b7280' }}>
                   {verification.social.facebook.connected ? `Connected: ${verification.social.facebook.email}` : 'Not connected'}
                 </div>
@@ -1201,7 +1191,7 @@ const SettingsWidgetFull = () => {
                 }} className="back-btn">Disconnect</button>
               ) : (
                 <button onClick={async () => {
-                  const email = prompt('Enter Facebook email:');
+                  const email = prompt('Enter your public profile email:');
                   if (email) {
                     await verificationAPI.connectSocial('facebook', email);
                     await loadVerification();
@@ -1212,7 +1202,7 @@ const SettingsWidgetFull = () => {
 
             <div style={{ padding: '20px', border: '1px solid #e5e7eb', borderRadius: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
-                <div style={{ fontWeight: 'bold', marginBottom: '5px' }}>Instagram</div>
+                <div style={{ fontWeight: 'bold', marginBottom: '5px' }}>Photo profile</div>
                 <div style={{ fontSize: '14px', color: '#6b7280' }}>
                   {verification.social.instagram.connected ? `Connected: @${verification.social.instagram.username}` : 'Not connected'}
                 </div>
@@ -1224,7 +1214,7 @@ const SettingsWidgetFull = () => {
                 }} className="back-btn">Disconnect</button>
               ) : (
                 <button onClick={async () => {
-                  const username = prompt('Enter Instagram username:');
+                  const username = prompt('Enter your public profile username:');
                   if (username) {
                     await verificationAPI.connectSocial('instagram', username);
                     await loadVerification();
@@ -1785,43 +1775,6 @@ const SettingsWidgetFull = () => {
                 }
               }}
             />
-          </div>
-
-          <div style={{ marginBottom: '30px' }}>
-            <h4 style={{ marginBottom: '12px' }}>Face ID / Touch ID (Passkey)</h4>
-            <p style={{ fontSize: '13px', color: '#6b7280', marginBottom: '12px' }}>
-              Sign in with Face ID, Touch ID, or Windows Hello on this device. Register after signing in with password once.
-            </p>
-            {passkeyError && <div className="error-message" style={{ marginBottom: '8px' }}>{passkeyError}</div>}
-            {passkeyMessage && <div className="success-message" style={{ marginBottom: '8px' }}>{passkeyMessage}</div>}
-            {passkeyRegistered ? (
-              <p style={{ color: '#059669', fontSize: '13px' }}>Passkey registered on this account.</p>
-            ) : passkeysSupported() ? (
-              <button
-                type="button"
-                className="select-user-btn"
-                disabled={loading}
-                style={{ width: '100%' }}
-                onClick={async () => {
-                  setPasskeyError('');
-                  setPasskeyMessage('');
-                  setLoading(true);
-                  try {
-                    const msg = await registerPasskey();
-                    setPasskeyMessage(msg);
-                    setPasskeyRegistered(true);
-                  } catch (err: unknown) {
-                    setPasskeyError((err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Could not register passkey');
-                  } finally {
-                    setLoading(false);
-                  }
-                }}
-              >
-                {loading ? 'Registering…' : 'Register Face ID / Touch ID'}
-              </button>
-            ) : (
-              <p style={{ fontSize: '13px', color: '#6b7280' }}>Passkeys are not supported in this browser.</p>
-            )}
           </div>
 
           <div style={{ marginBottom: '30px' }}>

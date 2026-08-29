@@ -649,7 +649,7 @@ export default function LoveFeedWidget({ onShareToFriends }: { onShareToFriends?
       </div>
 
       <p className="love-feed-hint">
-        Post tweets, photos &amp; videos — our feed mixes <strong>YouTube-style recommendations</strong>, <strong>Twitter trending</strong>, and <strong>TikTok viral ranking</strong>. Likes, views &amp; tags train what you see next.
+        Post photos, videos and updates — the feed learns from what you watch, like and comment on. Tags and views shape what you see next.
       </p>
 
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
@@ -705,7 +705,7 @@ export default function LoveFeedWidget({ onShareToFriends }: { onShareToFriends?
         {!loading && !feedError && feedMode === 'for_you' && recommendations.length > 0 && (
           <section className="love-feed-trending" style={{ marginBottom: 16 }}>
             <h3 className="love-feed-trending-title">✨ Recommended for you</h3>
-            <p className="love-feed-trending-sub">YouTube-style picks based on what you watch, like &amp; comment on.</p>
+            <p className="love-feed-trending-sub">Picks based on what you watch, like and comment on.</p>
             {recommendations.slice(0, 3).map((post) => renderPostCard(post, { compact: true }))}
           </section>
         )}

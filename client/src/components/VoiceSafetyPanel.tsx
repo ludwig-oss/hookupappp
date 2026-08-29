@@ -159,7 +159,7 @@ export default function VoiceSafetyPanel(props: Props) {
           {recording && <span className="voice-live-dot">LIVE</span>}
         </div>
         <p className="voice-safety-hint">
-          Whole date recorded like a Twitch VOD. You cannot delete it — only your emergency contact can access it with a PIN if you go missing. Auto-expires in 7 days.
+          Whole date recorded for safety. You cannot delete it — only your emergency contact can access it with a PIN if you go missing. Auto-expires in 7 days.
         </p>
         {!session && (
           <>

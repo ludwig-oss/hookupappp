@@ -5,9 +5,6 @@ import { authAPI } from '../api/auth';
 import { discoverAPI } from '../api/discover';
 import { walkMatchAPI } from '../api/walkMatch';
 import { formatAxiosError } from '../lib/apiError';
-import { faceScanSupported } from '../lib/faceScan';
-import { loginWithPasskey, passkeysSupported } from '../lib/passkeyAuth';
-import FaceVerifyPanel from '../components/FaceVerifyPanel';
 import './Auth.css';
 import './Legal.css';
 
@@ -26,8 +23,7 @@ function normalizePhoneInput(value: string): string {
 }
 
 type AuthMode = 'signup' | 'login';
-type LoginMethod = 'pin' | 'password' | 'phone' | 'face';
-type FacePanelMode = 'login' | null;
+type LoginMethod = 'pin' | 'password' | 'phone';
 
 type Props = { initialMode?: AuthMode };
 
@@ -35,7 +31,6 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
   const [searchParams] = useSearchParams();
   const [mode, setMode] = useState<AuthMode>(initialMode);
   const [loginMethod, setLoginMethod] = useState<LoginMethod>('pin');
-  const [facePanel, setFacePanel] = useState<FacePanelMode>(null);
   const [pin, setPin] = useState('');
   const [loginPin, setLoginPin] = useState('');
   const [usernameCheck, setUsernameCheck] = useState('');
@@ -98,38 +93,6 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
     login({ ...user, id }, token);
     navigate(user.profileSetupComplete ? '/home' : '/profile-setup', { replace: true });
   }, [login, navigate]);
-
-  const beginFaceLogin = () => {
-    if (!faceScanSupported()) {
-      setError('Face sign-in needs a front camera. Try on your phone.');
-      return;
-    }
-    setError('');
-    setFacePanel('login');
-  };
-
-  const onFaceLoginCaptured = useCallback(
-    async (descriptor: number[]) => {
-      setFacePanel(null);
-      setLoading(true);
-      try {
-        const hint = loginIdentifier.trim() || undefined;
-        const identified = await authAPI.identifyFace(descriptor, hint);
-        if (!passkeysSupported()) {
-          setError('Register passkey sign-in in Settings after signing in with PIN or password.');
-          return;
-        }
-        const res = await loginWithPasskey(identified.username);
-        if (!res.token || !res.user) throw new Error('Face ID on device failed');
-        finishAuth(res.user as { profileSetupComplete?: boolean; id?: unknown }, res.token);
-      } catch (err: unknown) {
-        setError(formatAxiosError(err, 'Face sign-in failed'));
-      } finally {
-        setLoading(false);
-      }
-    },
-    [loginIdentifier, finishAuth]
-  );
 
   const handlePinSignup = async (e?: React.FormEvent) => {
     e?.preventDefault();
@@ -260,19 +223,13 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
 
   return (
     <div className="auth-container">
-      <FaceVerifyPanel
-        open={facePanel === 'login'}
-        title="Sign in with Face ID"
-        onClose={() => setFacePanel(null)}
-        onCaptured={onFaceLoginCaptured}
-      />
       <div className="auth-card" style={{ maxWidth: 720 }}>
         <Link to="/" className="back-link">← Back</Link>
         <h1 className="auth-title">{mode === 'signup' ? 'Join Hook Up' : 'Welcome Back'}</h1>
         <p className="auth-subtitle">
           {mode === 'signup'
             ? 'Pick a username forever, a 6-digit PIN, and 3 hints — add an optional password for sign-in too.'
-            : 'Username + PIN is fastest. Password, Face ID, and phone code also work.'}
+            : 'Username + PIN is fastest. Password and phone code also work.'}
         </p>
 
         {error && <div className="error-message">{error}</div>}
@@ -298,7 +255,7 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
             </div>
             <div className="form-group">
               <label htmlFor="pin">6-digit PIN</label>
-              <input id="pin" type="password" inputMode="numeric" maxLength={6} value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 6))} autoComplete="off" required />
+              <input id="pin" type="password" inputMode="numeric" maxLength={6} value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 6))} autoComplete="new-password" required />
             </div>
             <div className="form-group">
               <label>PIN hints (if you forget — only you see these on recovery)</label>
@@ -313,7 +270,7 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                autoComplete="off"
+                autoComplete="new-password"
                 placeholder="8+ chars, upper, lower, number, symbol"
               />
             </div>
@@ -352,7 +309,6 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
           <>
             <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
               <button type="button" className="auth-button" style={{ flex: 1, minWidth: 80, opacity: loginMethod === 'pin' ? 1 : 0.65 }} onClick={() => setLoginMethod('pin')}>Username + PIN</button>
-              <button type="button" className="auth-button" style={{ flex: 1, minWidth: 80, opacity: loginMethod === 'face' ? 1 : 0.65 }} onClick={() => setLoginMethod('face')}>Face ID</button>
               <button type="button" className="auth-button" style={{ flex: 1, minWidth: 80, opacity: loginMethod === 'password' ? 1 : 0.65 }} onClick={() => setLoginMethod('password')}>Password</button>
               <button type="button" className="auth-button" style={{ flex: 1, minWidth: 80, opacity: loginMethod === 'phone' ? 1 : 0.65 }} onClick={() => setLoginMethod('phone')}>Phone</button>
             </div>
@@ -371,19 +327,6 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
                   {loading ? 'Signing in…' : 'Sign in'}
                 </button>
               </form>
-            ) : loginMethod === 'face' ? (
-              <div className="auth-form">
-                <p className="auth-subtitle" style={{ fontSize: 13, marginBottom: 12 }}>
-                  Open both eyes for the scan, then confirm with Face ID on your device. Optional: enter username if you have a look-alike.
-                </p>
-                <div className="form-group">
-                  <label>Username (optional)</label>
-                  <input value={loginIdentifier} onChange={(e) => setLoginIdentifier(e.target.value)} autoComplete="username" placeholder="Only if needed" />
-                </div>
-                <button type="button" className="auth-button" disabled={loading} onClick={beginFaceLogin}>
-                  {loading ? 'Verifying…' : 'Sign in with Face ID'}
-                </button>
-              </div>
             ) : loginMethod === 'password' ? (
               <form onSubmit={handlePasswordLogin} className="auth-form">
                 <div className="form-group">

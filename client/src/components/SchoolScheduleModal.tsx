@@ -38,7 +38,7 @@ export default function SchoolScheduleModal({ onDone }: Props) {
         <p className="school-badge">Hook Up School</p>
         <h2>When are you usually home?</h2>
         <p className="school-sub">
-          We&apos;ll send a daily class reminder around this time — like a gym app. One topic per day until you level up.
+          We&apos;ll send a daily class reminder around this time. One topic per day until you level up.
         </p>
         {error && <div className="school-error">{error}</div>}
         <div className="school-time-row">

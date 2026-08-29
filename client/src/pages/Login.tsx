@@ -8,7 +8,7 @@ import { redirectToOAuth, type OAuthProvider } from '../lib/oauth';
 import './Auth.css';
 import './Legal.css';
 
-type SignMethod = 'account' | 'pattern' | 'passkey';
+type SignMethod = 'account' | 'pattern';
 
 const PATTERN_CELLS = [1, 2, 3, 4, 5, 6, 7, 8, 9];
 
@@ -90,15 +90,6 @@ const Login = () => {
     }
   };
 
-  const handlePasskey = async () => {
-    setError('');
-    if (!window.PublicKeyCredential) {
-      setError('Face ID / fingerprint (passkeys) are not supported on this browser. Use password, phone, or email.');
-      return;
-    }
-    setError('Passkeys (Face ID / Touch ID) need to be registered in Settings after you sign in with password once. Use password for now.');
-  };
-
   const startOAuth = async (provider: OAuthProvider) => {
     setError('');
     setOauthLoading(true);
@@ -128,7 +119,6 @@ const Login = () => {
         <div className="auth-method-tabs" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
           <button type="button" className="auth-button" style={{ flex: 1, padding: '8px', fontSize: 12, opacity: method === 'account' ? 1 : 0.7 }} onClick={() => setMethod('account')}>Password</button>
           <button type="button" className="auth-button" style={{ flex: 1, padding: '8px', fontSize: 12, opacity: method === 'pattern' ? 1 : 0.7 }} onClick={() => { setMethod('pattern'); setPattern([]); }}>Pattern</button>
-          <button type="button" className="auth-button" style={{ flex: 1, padding: '8px', fontSize: 12, opacity: method === 'passkey' ? 1 : 0.7 }} onClick={() => setMethod('passkey')}>Face / Touch</button>
         </div>
 
         {(method === 'account' || method === 'pattern') && (
@@ -205,15 +195,6 @@ const Login = () => {
                 {loading ? '…' : 'Unlock'}
               </button>
             </div>
-          </div>
-        )}
-
-        {method === 'passkey' && (
-          <div className="auth-form">
-            <p style={{ fontSize: 13, marginBottom: 12, opacity: 0.9 }}>
-              Use Face ID / Touch ID / Windows Hello when your device supports passkeys.
-            </p>
-            <button type="button" className="auth-button" onClick={handlePasskey}>Continue with Face / Fingerprint</button>
           </div>
         )}
 

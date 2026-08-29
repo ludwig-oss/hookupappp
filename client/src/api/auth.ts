@@ -49,6 +49,16 @@ export const authAPI = {
     return response.data;
   },
 
+  sendLoginCode: async (phoneNumber: string): Promise<{ message: string }> => {
+    const response = await axios.post(`${API_URL}/send-login-code`, { phoneNumber });
+    return response.data;
+  },
+
+  loginWithCode: async (phoneNumber: string, code: string): Promise<AuthResponse> => {
+    const response = await axios.post(`${API_URL}/login-with-code`, { phoneNumber, code });
+    return response.data;
+  },
+
   forgotPassword: async (username?: string, phoneNumber?: string, email?: string): Promise<{ message: string; resetLink?: string; hint1?: string; hint2?: string; hint3?: string }> => {
     const response = await axios.post(`${API_URL}/forgot-password`, { username, phoneNumber, email });
     return response.data;

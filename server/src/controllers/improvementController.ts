@@ -16,6 +16,9 @@ import {
   getGuidesByProblemSearch,
   getAllGuides,
   matchesRegionFilter,
+  matchesGeoFilter,
+  getQualifiedCoachesLocal,
+  enrichGuideWithUser,
   addAvailability,
   getAvailability,
   createBooking,
@@ -158,7 +161,11 @@ export const approveGuideApplication = async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Reviewer ID and application ID are required' });
     }
 
-    const guide = await approveApplication(applicationId, reviewerId);
+    const guide = await approveApplication(
+      applicationId,
+      reviewerId,
+      typeof req.body.coachStarRating === 'number' ? req.body.coachStarRating : 4.5
+    );
     res.json({
       message: 'Application approved. Guide badge has been assigned.',
       guide,
@@ -213,25 +220,24 @@ export const getGuidesForCategory = async (req: Request, res: Response) => {
   try {
     const { category } = req.params;
     const region = req.query.region as string | undefined;
+    const country = req.query.country as string | undefined;
+    const city = req.query.city as string | undefined;
     if (!category) {
       return res.status(400).json({ error: 'Category is required' });
     }
 
-    const guides = region ? await getGuidesByCategoryAndRegion(category, region) : await getGuidesByCategory(category);
-    const guidesWithUsers = await Promise.all(
-      guides.map(async (guide) => {
-        const user = await getUserById(guide.userId);
-        return {
-          ...guide,
-          user: user ? {
-            id: user.id,
-            name: user.name,
-            username: user.username,
-            profilePicture: user.profilePicture,
-          } : null,
-        };
-      })
-    );
+    let guides;
+    if (country || city) {
+      guides = await getQualifiedCoachesLocal(country, city, [category]);
+    } else {
+      guides = region
+        ? await getGuidesByCategoryAndRegion(category, region)
+        : await getGuidesByCategory(category);
+    }
+
+    const guidesWithUsers = (
+      await Promise.all(guides.map((guide) => enrichGuideWithUser(guide)))
+    ).filter(Boolean);
 
     res.json({ guides: guidesWithUsers });
   } catch (error) {
@@ -244,21 +250,25 @@ export const getGuidesRecommendedForUser = async (req: Request, res: Response) =
   try {
     const userId = (req as any).userId || req.query.userId as string;
     const region = req.query.region as string | undefined;
+    const countryQ = req.query.country as string | undefined;
+    const cityQ = req.query.city as string | undefined;
     if (!userId) return res.status(400).json({ error: 'User ID is required' });
 
     const user = await getUserById(userId);
     const categoryIds = user?.improvementCategories || [];
-    const guides = await getGuidesRecommended(categoryIds, region);
-    const guidesWithUsers = await Promise.all(
-      guides.map(async (guide) => {
-        const u = await getUserById(guide.userId);
-        return {
-          ...guide,
-          user: u ? { id: u.id, name: u.name, username: u.username, profilePicture: u.profilePicture } : null,
-        };
-      })
-    );
-    res.json({ guides: guidesWithUsers });
+    const country = countryQ || user?.country;
+    const city = cityQ || user?.city;
+
+    const guides = await getQualifiedCoachesLocal(country, city, categoryIds.length ? categoryIds : undefined);
+    const regionFiltered = region
+      ? guides.filter((g) => matchesRegionFilter(g.region, region))
+      : guides;
+
+    const guidesWithUsers = (
+      await Promise.all(regionFiltered.map((guide) => enrichGuideWithUser(guide)))
+    ).filter(Boolean);
+
+    res.json({ guides: guidesWithUsers, country: country || null, city: city || null });
   } catch (error) {
     console.error('Get recommended guides error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -269,22 +279,52 @@ export const searchGuidesByProblem = async (req: Request, res: Response) => {
   try {
     const q = (req.query.q as string)?.trim();
     const region = req.query.region as string | undefined;
+    const country = req.query.country as string | undefined;
+    const city = req.query.city as string | undefined;
     if (!q) return res.status(400).json({ error: 'Search query q is required' });
 
     const guides = await getGuidesByProblemSearch(q);
-    const filtered = region ? guides.filter(g => matchesRegionFilter(g.region, region)) : guides;
-    const guidesWithUsers = await Promise.all(
-      filtered.map(async (guide) => {
-        const u = await getUserById(guide.userId);
-        return {
-          ...guide,
-          user: u ? { id: u.id, name: u.name, username: u.username, profilePicture: u.profilePicture } : null,
-        };
-      })
-    );
+    let filtered = region ? guides.filter((g) => matchesRegionFilter(g.region, region)) : guides;
+    if (country || city) {
+      filtered = filtered.filter((g) => matchesGeoFilter(g.region, country, city));
+    }
+
+    const guidesWithUsers = (
+      await Promise.all(filtered.map((guide) => enrichGuideWithUser(guide)))
+    ).filter(Boolean);
+
     res.json({ guides: guidesWithUsers });
   } catch (error) {
     console.error('Search guides by problem error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+/** Local qualified coaches in viewer's area (live sync from profile country/city). */
+export const getLocalQualifiedCoaches = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).userId;
+    const country = (req.query.country as string) || undefined;
+    const city = (req.query.city as string) || undefined;
+    const category = (req.query.category as string) || undefined;
+
+    let c = country;
+    let ct = city;
+    if (userId && (!c || !ct)) {
+      const user = await getUserById(userId);
+      c = c || user?.country;
+      ct = ct || user?.city;
+    }
+
+    const categoryIds = category ? [category] : undefined;
+    const guides = await getQualifiedCoachesLocal(c, ct, categoryIds);
+    const guidesWithUsers = (
+      await Promise.all(guides.map((guide) => enrichGuideWithUser(guide)))
+    ).filter(Boolean);
+
+    res.json({ guides: guidesWithUsers, country: c || null, city: ct || null });
+  } catch (error) {
+    console.error('Get local qualified coaches error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 };

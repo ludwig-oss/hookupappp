@@ -1,6 +1,7 @@
 import { useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { AuthContext } from '../context/AuthContext';
 import { walkMatchAPI, WalkSuggestion, WalkIncomingInterest } from '../api/walkMatch';
+import { markProximityBannerShown, shouldShowProximityBanner } from '../lib/proximitySession';
 import LifeQuizModal from './LifeQuizModal';
 import './WalkingPartnerPopup.css';
 
@@ -27,8 +28,11 @@ export default function WalkingPartnerPopup({ onOpenChat }: Props) {
       await walkMatchAPI.updateLocation(lat, lon);
       const inc = await walkMatchAPI.getIncoming();
       if (inc.incoming.length > 0) {
-        setIncoming(inc.incoming[0]);
-        setSuggestion(null);
+        const first = inc.incoming[0];
+        if (shouldShowProximityBanner('walk-incoming', first.fromUserId)) {
+          setIncoming(first);
+          setSuggestion(null);
+        }
         return;
       }
       setIncoming(null);
@@ -39,7 +43,8 @@ export default function WalkingPartnerPopup({ onOpenChat }: Props) {
         return;
       }
       const top = data.suggestions[0];
-      if (!top || top.id === dismissedId || top.id === lastShownRef.current) return;
+      if (!top || top.id === dismissedId) return;
+      if (!shouldShowProximityBanner('walk-suggest', top.id)) return;
       await walkMatchAPI.recordImpression(top.id);
       setSuggestion(top);
       lastShownRef.current = top.id;
@@ -100,6 +105,7 @@ export default function WalkingPartnerPopup({ onOpenChat }: Props) {
       if (accept && res.mutual && res.chatUserId) {
         onOpenChat(res.chatUserId);
       }
+      markProximityBannerShown('walk-incoming', incoming.fromUserId);
       setIncoming(null);
     } finally {
       setLoading(false);
@@ -123,15 +129,23 @@ export default function WalkingPartnerPopup({ onOpenChat }: Props) {
     return (
       <div className="walk-popup-overlay" role="dialog" aria-modal="true">
         <div className="walk-popup-card">
-          <p className="walk-popup-badge">Someone nearby</p>
+          <p className="walk-popup-badge">Someone is near</p>
           <h2>{incoming.fromUser?.name || 'A match'} is interested</h2>
           <p className="walk-popup-sub">You are both out — say yes to start chatting.</p>
           {incoming.fromUser?.profilePicture && (
             <img src={incoming.fromUser.profilePicture} alt="" className="walk-popup-avatar" />
           )}
           <div className="walk-popup-actions">
-            <button type="button" className="walk-btn-secondary" disabled={loading} onClick={() => handleIncoming(false)}>
-              Not now
+            <button
+              type="button"
+              className="walk-btn-secondary"
+              disabled={loading}
+              onClick={() => {
+                markProximityBannerShown('walk-incoming', incoming.fromUserId);
+                setIncoming(null);
+              }}
+            >
+              Dismiss
             </button>
             <button type="button" className="walk-btn-primary" disabled={loading} onClick={() => handleIncoming(true)}>
               Yes — let&apos;s chat
@@ -147,7 +161,7 @@ export default function WalkingPartnerPopup({ onOpenChat }: Props) {
   return (
     <div className="walk-popup-overlay" role="dialog" aria-modal="true">
       <div className="walk-popup-card">
-        <p className="walk-popup-badge">Walking match nearby</p>
+        <p className="walk-popup-badge">Someone is near</p>
         <div className="walk-popup-profile">
           {suggestion.profilePicture ? (
             <img src={suggestion.profilePicture} alt="" className="walk-popup-avatar" />
@@ -172,11 +186,12 @@ export default function WalkingPartnerPopup({ onOpenChat }: Props) {
             className="walk-btn-secondary"
             disabled={loading}
             onClick={() => {
+              markProximityBannerShown('walk-suggest', suggestion.id);
               setDismissedId(suggestion.id);
               setSuggestion(null);
             }}
           >
-            Not now
+            Dismiss
           </button>
           <button
             type="button"

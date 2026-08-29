@@ -49,4 +49,19 @@ export const adminAPI = {
     const response = await axios.post(`${API_URL}/safety-reviews/${planId}/decide`, { decision });
     return response.data;
   },
+
+  listCoachApplications: async (): Promise<{ applications: Array<Record<string, unknown>> }> => {
+    const response = await axios.get(`${API_URL}/coach-applications`);
+    return response.data;
+  },
+
+  approveCoachApplication: async (applicationId: string, coachStarRating?: number): Promise<{ message: string }> => {
+    const response = await axios.post(`${API_URL}/coach-applications/approve`, { applicationId, coachStarRating });
+    return response.data;
+  },
+
+  rejectCoachApplication: async (applicationId: string): Promise<{ message: string }> => {
+    const response = await axios.post(`${API_URL}/coach-applications/reject`, { applicationId });
+    return response.data;
+  },
 };

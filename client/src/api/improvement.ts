@@ -40,11 +40,15 @@ export interface Guide {
   totalSessions: number;
   isActive: boolean;
   badge: boolean;
+  qualifiedCoach?: boolean;
+  coachStarRating?: number;
   user?: {
     id: string;
     name: string;
     username: string;
     profilePicture: string | null;
+    country?: string;
+    city?: string;
   };
 }
 
@@ -126,18 +130,29 @@ export const improvementAPI = {
     return response.data;
   },
 
-  getGuidesForCategory: async (category: string, region?: string): Promise<{ guides: Guide[] }> => {
-    const response = await axios.get(`${API_URL}/guides/category/${category}`, { params: region ? { region } : {} });
+  getGuidesForCategory: async (category: string, region?: string, country?: string, city?: string): Promise<{ guides: Guide[] }> => {
+    const response = await axios.get(`${API_URL}/guides/category/${category}`, {
+      params: { ...(region ? { region } : {}), ...(country ? { country } : {}), ...(city ? { city } : {}) },
+    });
     return response.data;
   },
 
-  getRecommendedGuides: async (userId: string, region?: string): Promise<{ guides: Guide[] }> => {
-    const response = await axios.get(`${API_URL}/guides/recommended`, { params: { userId, ...(region ? { region } : {}) } });
+  getRecommendedGuides: async (userId: string, region?: string, country?: string, city?: string): Promise<{ guides: Guide[]; country?: string | null; city?: string | null }> => {
+    const response = await axios.get(`${API_URL}/guides/recommended`, {
+      params: { userId, ...(region ? { region } : {}), ...(country ? { country } : {}), ...(city ? { city } : {}) },
+    });
     return response.data;
   },
 
-  searchGuidesByProblem: async (q: string, region?: string): Promise<{ guides: Guide[] }> => {
-    const response = await axios.get(`${API_URL}/guides/search`, { params: { q, ...(region ? { region } : {}) } });
+  searchGuidesByProblem: async (q: string, region?: string, country?: string, city?: string): Promise<{ guides: Guide[] }> => {
+    const response = await axios.get(`${API_URL}/guides/search`, {
+      params: { q, ...(region ? { region } : {}), ...(country ? { country } : {}), ...(city ? { city } : {}) },
+    });
+    return response.data;
+  },
+
+  getLocalQualifiedCoaches: async (params?: { country?: string; city?: string; category?: string }): Promise<{ guides: Guide[]; country: string | null; city: string | null }> => {
+    const response = await axios.get(`${API_URL}/guides/local`, { params: params || {} });
     return response.data;
   },
 

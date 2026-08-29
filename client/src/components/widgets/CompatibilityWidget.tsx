@@ -140,8 +140,14 @@ export default function CompatibilityWidget() {
         region =
           guideSeekStep === 'ready' && clientRegion.trim() ? clientRegion.trim() : undefined;
       }
-      const res = await improvementAPI.getRecommendedGuides(user.id, region);
+      const res = await improvementAPI.getRecommendedGuides(
+        user.id,
+        region,
+        user.country || undefined,
+        user.city || undefined
+      );
       setRecommendedGuides(res.guides || []);
+      if (res.country && !clientRegion) setClientRegion([res.city, res.country].filter(Boolean).join(', '));
     } catch {
       setRecommendedGuides([]);
     } finally {
@@ -165,7 +171,12 @@ export default function CompatibilityWidget() {
     try {
       const region =
         guideSeekStep === 'ready' && clientRegion.trim() ? clientRegion.trim() : undefined;
-      const res = await improvementAPI.searchGuidesByProblem(q, region);
+      const res = await improvementAPI.searchGuidesByProblem(
+        q,
+        region,
+        user?.country || undefined,
+        user?.city || undefined
+      );
       setSearchGuides(res.guides || []);
       setView('search');
     } catch {
@@ -182,7 +193,12 @@ export default function CompatibilityWidget() {
     try {
       const region =
         guideSeekStep === 'ready' && clientRegion.trim() ? clientRegion.trim() : undefined;
-      const res = await improvementAPI.getGuidesForCategory(catId, region);
+      const res = await improvementAPI.getGuidesForCategory(
+        catId,
+        region,
+        user?.country || undefined,
+        user?.city || undefined
+      );
       setGuides(res.guides || []);
       setView('guides');
     } catch {
@@ -424,10 +440,15 @@ export default function CompatibilityWidget() {
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
                   <span style={{ fontWeight: 'bold', color: '#00d4ff' }}>{guide.user?.name}</span>
-                  {guide.badge && <span style={{ fontSize: '10px', color: '#ff00ff' }}>✓ Verified</span>}
+                  {(guide.qualifiedCoach || guide.badge) && (
+                    <span style={{ fontSize: '10px', color: '#ff00ff' }}>✓ Qualified Coach</span>
+                  )}
                 </div>
                 <div style={{ fontSize: '11px', color: '#9ca3af' }}>
-                  🌐 {guide.region} &nbsp; ⭐ {typeof guide.rating === 'number' ? guide.rating.toFixed(1) : '0'} &nbsp; {guide.totalSessions || 0} sessions &nbsp; €{guide.sessionPriceEur ?? SESSION_PRICE_EUR}/session
+                  🌐 {guide.region}
+                  {guide.user?.city || guide.user?.country ? ` · ${[guide.user.city, guide.user.country].filter(Boolean).join(', ')}` : ''}
+                  &nbsp; ⭐ {(guide.coachStarRating ?? guide.rating ?? 0).toFixed(1)} qualification
+                  &nbsp; {guide.totalSessions || 0} sessions &nbsp; €{guide.sessionPriceEur ?? SESSION_PRICE_EUR}/session
                 </div>
                 {expertiseLabels.length > 0 && (
                   <div style={{ marginTop: '6px', display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
@@ -970,8 +991,8 @@ export default function CompatibilityWidget() {
       {view === 'expert_apply' && (
         <div>
           <button type="button" onClick={() => setView('main')} style={{ marginBottom: '12px', background: 'transparent', border: '2px solid #00d4ff', color: '#00d4ff', padding: '8px 14px', borderRadius: '8px', fontFamily: 'Orbitron, monospace', cursor: 'pointer' }}>← Back</button>
-          <h3 style={{ color: '#00d4ff', marginBottom: '8px', fontFamily: 'Orbitron, monospace' }}>Apply to be an expert</h3>
-          <p style={{ fontSize: '12px', color: '#9ca3af', marginBottom: '16px' }}>For each area you apply for, provide proof of expertise (e.g. photos for appearance, credentials for communications, evidence it&apos;s really you). Applications are reviewed within 48 hours.</p>
+          <h3 style={{ color: '#00d4ff', marginBottom: '8px', fontFamily: 'Orbitron, monospace' }}>Apply to be a Style / Problem Coach</h3>
+          <p style={{ fontSize: '12px', color: '#9ca3af', marginBottom: '16px' }}>Submit your application — status starts as Pending Review. Admins approve qualified coaches and assign star ratings. Review within 48 hours.</p>
           <label style={{ display: 'block', marginBottom: '8px', color: '#00d4ff', fontSize: '12px' }}>Categories (select all that apply)</label>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '16px', maxHeight: '140px', overflowY: 'auto' }}>
             {categories.map(cat => (

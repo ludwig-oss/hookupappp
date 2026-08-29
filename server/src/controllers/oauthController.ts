@@ -76,6 +76,12 @@ async function findByFacebookId(facebookId: string): Promise<User | null> {
   return hit ? ((await getUserById(hit.id)) as User) : null;
 }
 
+async function findByAppleId(appleId: string): Promise<User | null> {
+  const users = await getAllUsers();
+  const hit = users.find((u) => (u as any).appleId === appleId);
+  return hit ? ((await getUserById(hit.id)) as User) : null;
+}
+
 async function uniqueUsername(base: string): Promise<string> {
   let clean = base.replace(/[^a-zA-Z0-9_]/g, '').slice(0, 16) || 'user';
   if (clean.length < 3) clean = `user${clean}`;
@@ -89,7 +95,7 @@ async function uniqueUsername(base: string): Promise<string> {
 }
 
 async function upsertOAuthUser(opts: {
-  provider: 'google' | 'facebook';
+  provider: 'google' | 'facebook' | 'apple';
   providerId: string;
   email: string;
   name: string;
@@ -97,7 +103,11 @@ async function upsertOAuthUser(opts: {
 }): Promise<User> {
   const { provider, providerId, email, name, picture } = opts;
   const existingByProvider =
-    provider === 'google' ? await findByGoogleId(providerId) : await findByFacebookId(providerId);
+    provider === 'google'
+      ? await findByGoogleId(providerId)
+      : provider === 'facebook'
+        ? await findByFacebookId(providerId)
+        : await findByAppleId(providerId);
   if (existingByProvider) {
     if (picture && !existingByProvider.profilePicture) {
       await updateUserProfile(existingByProvider.id, { profilePicture: picture });
@@ -112,7 +122,8 @@ async function upsertOAuthUser(opts: {
         emailVerified: true,
         ...(picture && !byEmail.profilePicture ? { profilePicture: picture } : {}),
       };
-      (patch as any)[provider === 'google' ? 'googleId' : 'facebookId'] = providerId;
+      const idKey = provider === 'google' ? 'googleId' : provider === 'facebook' ? 'facebookId' : 'appleId';
+      (patch as any)[idKey] = providerId;
       await updateUserProfile(byEmail.id, patch);
       return (await getUserById(byEmail.id)) || byEmail;
     }
@@ -130,11 +141,17 @@ async function upsertOAuthUser(opts: {
     passwordHint2: 'oauth',
     passwordHint3: 'oauth',
   });
+  const idPatch =
+    provider === 'google'
+      ? ({ googleId: providerId } as any)
+      : provider === 'facebook'
+        ? ({ facebookId: providerId } as any)
+        : ({ appleId: providerId } as any);
   await updateUserProfile(user.id, {
     emailVerified: true,
     profileSetupComplete: false,
     profilePicture: picture || null,
-    ...(provider === 'google' ? ({ googleId: providerId } as any) : ({ facebookId: providerId } as any)),
+    ...idPatch,
   });
   return (await getUserById(user.id)) || user;
 }
@@ -143,6 +160,7 @@ export function oauthStatus(_req: Request, res: Response) {
   res.json({
     google: Boolean(process.env.GOOGLE_CLIENT_ID?.trim() && process.env.GOOGLE_CLIENT_SECRET?.trim()),
     facebook: Boolean(process.env.FACEBOOK_APP_ID?.trim() && process.env.FACEBOOK_APP_SECRET?.trim()),
+    apple: Boolean(process.env.APPLE_CLIENT_ID?.trim() && process.env.APPLE_TEAM_ID?.trim()),
   });
 }
 
@@ -282,5 +300,84 @@ export async function facebookCallback(req: Request, res: Response) {
   } catch (e: any) {
     console.error('Facebook OAuth error:', e);
     redirectError(res, e.message || 'Facebook sign-in failed');
+  }
+}
+
+export function startApple(req: Request, res: Response) {
+  const clientId = process.env.APPLE_CLIENT_ID?.trim();
+  const teamId = process.env.APPLE_TEAM_ID?.trim();
+  if (!clientId || !teamId) {
+    return redirectError(res, 'Apple Sign-In is not configured yet. Set APPLE_CLIENT_ID and APPLE_TEAM_ID on Render.');
+  }
+  const redirectUri = `${oauthCallbackBase(req)}/api/auth/apple/callback`;
+  const url = new URL('https://appleid.apple.com/auth/authorize');
+  url.searchParams.set('client_id', clientId);
+  url.searchParams.set('redirect_uri', redirectUri);
+  url.searchParams.set('response_type', 'code');
+  url.searchParams.set('response_mode', 'query');
+  url.searchParams.set('scope', 'name email');
+  url.searchParams.set('state', uuidv4());
+  res.redirect(302, url.toString());
+}
+
+export async function appleCallback(req: Request, res: Response) {
+  try {
+    const clientId = process.env.APPLE_CLIENT_ID?.trim();
+    if (!clientId) {
+      return redirectError(res, 'Apple Sign-In is not configured.');
+    }
+    const code = String(req.query.code || '');
+    const err = String(req.query.error || '');
+    if (err) return redirectError(res, err);
+    if (!code) return redirectError(res, 'Apple did not return a code.');
+
+    // Production Apple token exchange requires a signed client_secret JWT (ES256).
+    // When APPLE_KEY_ID + APPLE_PRIVATE_KEY are set, exchange the code; otherwise guide setup.
+    const keyId = process.env.APPLE_KEY_ID?.trim();
+    const privateKey = process.env.APPLE_PRIVATE_KEY?.replace(/\\n/g, '\n');
+    if (!keyId || !privateKey) {
+      return redirectError(res, 'Apple Sign-In needs APPLE_KEY_ID and APPLE_PRIVATE_KEY on the server. See OAUTH-SETUP.md.');
+    }
+
+    const redirectUri = `${oauthCallbackBase(req)}/api/auth/apple/callback`;
+    const clientSecret = jwt.sign({}, privateKey, {
+      algorithm: 'ES256',
+      expiresIn: '5m',
+      audience: 'https://appleid.apple.com',
+      issuer: process.env.APPLE_TEAM_ID!.trim(),
+      subject: clientId,
+      keyid: keyId,
+    });
+
+    const tokenRes = await fetch('https://appleid.apple.com/auth/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        client_id: clientId,
+        client_secret: clientSecret,
+        code,
+        grant_type: 'authorization_code',
+        redirect_uri: redirectUri,
+      }),
+    });
+    const tokenJson = (await tokenRes.json()) as { id_token?: string; error?: string };
+    if (!tokenRes.ok || !tokenJson.id_token) {
+      return redirectError(res, tokenJson.error || 'Apple token exchange failed');
+    }
+
+    const payload = jwt.decode(tokenJson.id_token) as { sub?: string; email?: string } | null;
+    if (!payload?.sub) return redirectError(res, 'Could not read Apple profile');
+
+    const user = await upsertOAuthUser({
+      provider: 'apple',
+      providerId: payload.sub,
+      email: (payload.email || '').toLowerCase(),
+      name: 'Apple User',
+      picture: null,
+    });
+    issueTokenAndRedirect(res, user);
+  } catch (e: any) {
+    console.error('Apple OAuth error:', e);
+    redirectError(res, e.message || 'Apple sign-in failed');
   }
 }

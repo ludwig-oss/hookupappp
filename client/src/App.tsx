@@ -2,7 +2,7 @@ import { Routes, Route } from 'react-router-dom';
 import { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { GuestOnly, RequireAuth, LandingOrRedirect } from './components/AuthRouteGuards';
-import Login from './pages/Login';
+import AuthEntry from './pages/AuthEntry';
 import AuthCallback from './pages/AuthCallback';
 import SignupWithImprovement from './pages/SignupWithImprovement';
 import Landing from './pages/Landing';
@@ -18,6 +18,7 @@ import ProfileSetup from './pages/ProfileSetup';
 import Settings from './pages/Settings';
 import Home from './pages/Home';
 import AdminSafetyReview from './pages/AdminSafetyReview';
+import AdminCoachReview from './pages/AdminCoachReview';
 import Checkout from './pages/Checkout';
 import { AuthContext } from './context/AuthContext';
 import { LanguageProvider } from './context/LanguageContext';
@@ -229,9 +230,9 @@ function App() {
     <LanguageProvider>
       <AuthContext.Provider value={{ user, login, logout, updateUser }}>
         <Routes>
-          <Route path="/login" element={<GuestOnly><Login /></GuestOnly>} />
+          <Route path="/login" element={<GuestOnly><AuthEntry initialMode="login" /></GuestOnly>} />
           <Route path="/auth/callback" element={<AuthCallback />} />
-          <Route path="/signup" element={<GuestOnly><SignupWithImprovement /></GuestOnly>} />
+          <Route path="/signup" element={<GuestOnly><AuthEntry initialMode="signup" /></GuestOnly>} />
           <Route path="/terms" element={<TermsOfService />} />
           <Route path="/privacy" element={<PrivacyPolicy />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />
@@ -245,6 +246,7 @@ function App() {
           <Route path="/home" element={<RequireAuth><Dashboard /></RequireAuth>} />
           <Route path="/checkout" element={<RequireAuth><Checkout /></RequireAuth>} />
           <Route path="/admin/safety" element={<RequireAuth><AdminSafetyReview /></RequireAuth>} />
+          <Route path="/admin/coaches" element={<RequireAuth><AdminCoachReview /></RequireAuth>} />
           <Route path="/" element={user ? <LandingOrRedirect /> : <Landing />} />
         </Routes>
       </AuthContext.Provider>

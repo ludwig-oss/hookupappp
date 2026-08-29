@@ -10,6 +10,7 @@ import {
   getGuidesForCategory,
   getGuidesRecommendedForUser,
   searchGuidesByProblem,
+  getLocalQualifiedCoaches,
   getAllGuidesList,
   setAvailability,
   getGuideAvailability,
@@ -51,6 +52,7 @@ router.get('/guides/my-profile', getMyGuideProfile);
 router.get('/guides/category/:category', getGuidesForCategory);
 router.get('/guides/recommended', getGuidesRecommendedForUser);
 router.get('/guides/search', searchGuidesByProblem);
+router.get('/guides/local', getLocalQualifiedCoaches);
 router.get('/guides', getAllGuidesList);
 
 // Availability

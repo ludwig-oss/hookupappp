@@ -243,7 +243,11 @@ export async function getAllApplications(): Promise<GuideApplication[]> {
   return readApplications();
 }
 
-export async function approveApplication(applicationId: string, reviewerId: string): Promise<Guide> {
+export async function approveApplication(
+  applicationId: string,
+  reviewerId: string,
+  coachStarRating = 4.5
+): Promise<Guide> {
   const apps = await readApplications();
   const app = apps.find(a => a.id === applicationId);
   if (!app) throw new Error('Application not found');
@@ -263,13 +267,20 @@ export async function approveApplication(applicationId: string, reviewerId: stri
     qualifications: app.qualifications,
     hourlyRate: 50,
     sessionPriceEur: SESSION_PRICE_EUR,
-    rating: 0,
+    rating: coachStarRating,
     totalSessions: 0,
     isActive: true,
     badge: true,
   };
   guides.push(guide);
   await writeGuides(guides);
+
+  const { updateUserProfile } = await import('./user.js');
+  await updateUserProfile(app.userId, {
+    qualifiedCoach: true,
+    coachStarRating,
+  });
+
   return guide;
 }
 
@@ -308,6 +319,66 @@ export function matchesRegionFilter(guideRegion: string | undefined | null, filt
   const g = (guideRegion || '').trim().toLowerCase();
   if (!g || g === 'global') return true;
   return g === f || g.includes(f) || f.includes(g);
+}
+
+/** Match guide region to viewer country/city (free-text regions). */
+export function matchesGeoFilter(
+  guideRegion: string | undefined | null,
+  country?: string | null,
+  city?: string | null
+): boolean {
+  const g = (guideRegion || '').trim().toLowerCase();
+  if (!g || g === 'global') return true;
+  const c = (country || '').trim().toLowerCase();
+  const ct = (city || '').trim().toLowerCase();
+  if (ct && (g.includes(ct) || ct.includes(g))) return true;
+  if (c && (g.includes(c) || c.includes(g))) return true;
+  return matchesRegionFilter(guideRegion, country || city || undefined);
+}
+
+/** Approved coaches only, filtered by geography, sorted by star rating. */
+export async function getQualifiedCoachesLocal(
+  country?: string,
+  city?: string,
+  categoryIds?: string[]
+): Promise<Guide[]> {
+  const { getUserById } = await import('./user.js');
+  const guides = await readGuides();
+  const filtered: Guide[] = [];
+
+  for (const g of guides) {
+    if (!g.isActive) continue;
+    const u = await getUserById(g.userId);
+    if (!u?.qualifiedCoach) continue;
+    if (categoryIds?.length && !g.categories.some((c) => categoryIds.includes(c))) continue;
+    if (!matchesGeoFilter(g.region, country, city)) continue;
+    const star = typeof u.coachStarRating === 'number' ? u.coachStarRating : g.rating;
+    filtered.push(normalizeGuide({ ...g, rating: star }));
+  }
+
+  return filtered.sort((a, b) => b.rating - a.rating);
+}
+
+export async function enrichGuideWithUser(guide: Guide) {
+  const { getUserById } = await import('./user.js');
+  const u = await getUserById(guide.userId);
+  if (!u?.qualifiedCoach) return null;
+  const star = typeof u.coachStarRating === 'number' ? u.coachStarRating : guide.rating;
+  return {
+    ...normalizeGuide({ ...guide, rating: star }),
+    qualifiedCoach: true,
+    coachStarRating: star,
+    user: u
+      ? {
+          id: u.id,
+          name: u.name,
+          username: u.username,
+          profilePicture: u.profilePicture ?? null,
+          country: u.country,
+          city: u.city,
+        }
+      : null,
+  };
 }
 
 export async function getGuidesByCategoryAndRegion(category: string, region?: string): Promise<Guide[]> {

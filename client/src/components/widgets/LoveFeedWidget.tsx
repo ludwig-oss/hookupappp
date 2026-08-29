@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useContext, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { AuthContext } from '../../context/AuthContext';
 import { postsAPI, DatingPost, FeedMode } from '../../api/posts';
 import { formatAxiosError } from '../../lib/apiError';
@@ -298,6 +299,16 @@ export default function LoveFeedWidget({ onShareToFriends }: { onShareToFriends?
     setPostTags('');
     setShowCreateModal(false);
   };
+
+  useEffect(() => {
+    if (!showCreateModal) return;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [showCreateModal]);
+
   const revokePreview = () => {
     if (previewUrl) {
       URL.revokeObjectURL(previewUrl);
@@ -753,12 +764,12 @@ export default function LoveFeedWidget({ onShareToFriends }: { onShareToFriends?
         />
       )}
 
-      {showCreateModal && (
-        <div className="love-feed-modal-overlay" onClick={closeCreateModal}>
+      {showCreateModal && createPortal(
+        <div className="love-feed-modal-overlay" onClick={closeCreateModal} role="dialog" aria-modal="true">
           <div className="love-feed-modal" onClick={(e) => e.stopPropagation()}>
             <div className="love-feed-modal-header">
               <h3>New post</h3>
-              <button type="button" className="love-feed-modal-close" onClick={closeCreateModal}>×</button>
+              <button type="button" className="love-feed-modal-close" onClick={closeCreateModal} aria-label="Close">×</button>
             </div>
             <p className="love-feed-modal-note">Text thoughts, photos, or videos — dating, relationship & marriage only.</p>
             <div className="love-feed-modal-form">
@@ -832,7 +843,8 @@ export default function LoveFeedWidget({ onShareToFriends }: { onShareToFriends?
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

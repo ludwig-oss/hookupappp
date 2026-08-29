@@ -1,5 +1,9 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "env": {
+    "VITE_API_URL": "https://hookupappp.onrender.com",
+    "BACKEND_URL": "https://hookupappp.onrender.com"
+  },
   "framework": null,
   "installCommand": "npm run vercel-install",
   "buildCommand": "npm run vercel-build",

@@ -86,6 +86,10 @@ export interface User {
   location?: Location | null;
   resetToken: string | null;
   resetTokenExpiry: Date | string | null;
+  /** Short-lived PIN recovery quiz (survives server restarts). */
+  pinRecoveryToken?: string | null;
+  pinRecoveryAnswer?: string | null;
+  pinRecoveryExpiry?: Date | string | null;
   emailVerified: boolean;
   emailVerificationToken: string | null;
   emailVerificationTokenExpiry: Date | string | null;

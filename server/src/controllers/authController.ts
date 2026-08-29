@@ -6,7 +6,7 @@ import { createUser, getUserByEmail, getUserByUsername, getUserByResetToken, upd
 import { sendPasswordResetEmail, sendVerificationEmail } from '../utils/email.js';
 import { sendPasswordResetSMS, sendVerificationSMS } from '../utils/sms.js';
 import { sanitizeName, sanitizeUsername, sanitizeForStorage, LIMITS } from '../utils/sanitize.js';
-import { assertUsernameAvailable, reserveUsername } from '../models/usernameRegistry.js';
+import { assertUsernameAvailable, reserveUsername, normalizeUsernameKey } from '../models/usernameRegistry.js';
 
 const JWT_EXPIRES_IN = '7d';
 
@@ -173,7 +173,7 @@ export const login = async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Username/email/phone and password are required' });
     }
 
-    let user = await getUserByUsername(rawId);
+    let user = await getUserByUsername(normalizeUsernameKey(rawId));
     if (!user && rawId.includes('@')) {
       user = await getUserByEmail(rawId.toLowerCase());
     }
@@ -223,7 +223,7 @@ export const forgotPassword = async (req: Request, res: Response) => {
 
     let user = null;
     if (username) {
-      user = await getUserByUsername((username || '').trim());
+      user = await getUserByUsername(normalizeUsernameKey(String(username).trim()));
     } else if (email) {
       user = await getUserByEmail(String(email).trim().toLowerCase());
     } else if (phoneNumber) {

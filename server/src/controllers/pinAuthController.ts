@@ -23,7 +23,19 @@ const BCRYPT_ROUNDS = process.env.NODE_ENV === 'production' ? 12 : 10;
 const JWT_EXPIRES_IN = '7d';
 const PIN_RESET_TTL_MS = 15 * 60 * 1000;
 
-const pinChallenges = new Map<string, { userId: string; correct: string; expires: number }>();
+function parseExpiry(v: Date | string | null | undefined): Date | null {
+  if (!v) return null;
+  const d = v instanceof Date ? v : new Date(v);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+async function clearPinRecoveryChallenge(userId: string): Promise<void> {
+  await updateUserProfile(userId, {
+    pinRecoveryToken: null,
+    pinRecoveryAnswer: null,
+    pinRecoveryExpiry: null,
+  });
+}
 
 function getJwtSecret(): string {
   const secret = process.env.JWT_SECRET;
@@ -273,10 +285,10 @@ export async function forgotPinLastChatChallenge(req: Request, res: Response) {
     const options = [correct, ...decoys].sort(() => Math.random() - 0.5);
 
     const challengeToken = uuidv4();
-    pinChallenges.set(challengeToken, {
-      userId: user.id,
-      correct,
-      expires: Date.now() + PIN_RESET_TTL_MS,
+    await updateUserProfile(user.id, {
+      pinRecoveryToken: challengeToken,
+      pinRecoveryAnswer: correct,
+      pinRecoveryExpiry: new Date(Date.now() + PIN_RESET_TTL_MS),
     });
 
     res.json({
@@ -299,16 +311,21 @@ export async function forgotPinVerifyLastChat(req: Request, res: Response) {
       return res.status(400).json({ error: 'Missing recovery info' });
     }
 
-    const challenge = pinChallenges.get(challengeToken);
-    if (!challenge || challenge.userId !== user.id || challenge.expires < Date.now()) {
+    const expiry = parseExpiry(user.pinRecoveryExpiry);
+    if (
+      !user.pinRecoveryToken ||
+      user.pinRecoveryToken !== challengeToken ||
+      !expiry ||
+      expiry.getTime() < Date.now()
+    ) {
       return res.status(401).json({ error: 'Challenge expired — try again.' });
     }
 
-    if (normalizeUsernameKey(answer) !== challenge.correct) {
+    if (normalizeUsernameKey(answer) !== normalizeUsernameKey(user.pinRecoveryAnswer || '')) {
       return res.status(401).json({ error: 'Wrong answer — try the three-usernames method instead.' });
     }
 
-    pinChallenges.delete(challengeToken);
+    await clearPinRecoveryChallenge(user.id);
 
     const resetToken = uuidv4();
     await updateUserResetToken(user.id, resetToken, new Date(Date.now() + PIN_RESET_TTL_MS));

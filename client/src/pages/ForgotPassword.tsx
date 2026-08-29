@@ -52,7 +52,7 @@ const ForgotPassword = () => {
         return;
       }
       const response = await authAPI.forgotPassword(
-        method === 'username' ? username.trim() : undefined,
+        method === 'username' ? username.trim().toLowerCase().replace(/[^a-z0-9_]/g, '') : undefined,
         method === 'phone' ? cleanPhoneNumber : undefined,
         method === 'email' ? email.trim().toLowerCase() : undefined
       );
@@ -133,7 +133,7 @@ const ForgotPassword = () => {
           {method === 'username' && (
             <div className="form-group">
               <label htmlFor="username">Username</label>
-              <input type="text" id="username" value={username} onChange={(e) => setUsername(e.target.value)} required placeholder="Enter your username" />
+              <input type="text" id="username" value={username} onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))} required placeholder="Enter your username" autoComplete="username" />
             </div>
           )}
           {method === 'email' && (

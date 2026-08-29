@@ -20,6 +20,9 @@ function rowToUser(row: { id: string; email: string; password: string; name: str
     improvementCategories: Array.isArray(data.improvementCategories) ? data.improvementCategories : [],
     resetToken: (data.resetToken as string) ?? null,
     resetTokenExpiry: parseDate(data.resetTokenExpiry) as Date | string | null,
+    pinRecoveryToken: (data.pinRecoveryToken as string) ?? null,
+    pinRecoveryAnswer: (data.pinRecoveryAnswer as string) ?? null,
+    pinRecoveryExpiry: parseDate(data.pinRecoveryExpiry) as Date | string | null,
     emailVerified: data.emailVerified !== undefined ? Boolean(data.emailVerified) : true,
     emailVerificationToken: (data.emailVerificationToken as string) ?? null,
     emailVerificationTokenExpiry: parseDate(data.emailVerificationTokenExpiry) as Date | string | null,
@@ -121,6 +124,7 @@ function rowToUser(row: { id: string; email: string; password: string; name: str
 function userToData(u: Partial<User>): Record<string, unknown> {
   const data: Record<string, unknown> = {};
   const keys = ['phoneNumber', 'profilePicture', 'profileSetupComplete', 'improvementCategories', 'resetToken', 'resetTokenExpiry',
+    'pinRecoveryToken', 'pinRecoveryAnswer', 'pinRecoveryExpiry',
     'emailVerified', 'emailVerificationToken', 'emailVerificationTokenExpiry', 'emailVerificationCode', 'emailVerificationCodeExpiry',
     'blockedUsers', 'mutedUsers', 'unmatchedUsers', 'highlights', 'stories', 'closeFriendIds', 'disappearingPhotos', 'location', 'profiles', 'activeProfileId',
     'bio', 'age', 'gender', 'height', 'interests', 'education', 'occupation', 'relationshipStatus', 'country', 'city',
@@ -216,9 +220,10 @@ export async function getUserByEmail(email: string): Promise<User | null> {
 }
 
 export async function getUserByUsername(username: string): Promise<User | null> {
+  const key = username.trim().toLowerCase();
   const res = await query<{ id: string; email: string; password: string; name: string; username: string; data: unknown }>(
-    `SELECT ${USER_COLS} FROM users WHERE username = $1`,
-    [username]
+    `SELECT ${USER_COLS} FROM users WHERE lower(username) = $1`,
+    [key]
   );
   return res.rows[0] ? rowToUser(res.rows[0]) : null;
 }

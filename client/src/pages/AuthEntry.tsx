@@ -155,7 +155,10 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
       if (!loginIdentifier.trim() || loginPin.length !== 6) {
         throw new Error('Enter username and 6-digit PIN');
       }
-      const response = await authAPI.loginWithPin(loginIdentifier.trim(), loginPin);
+      const response = await authAPI.loginWithPin(
+        loginIdentifier.trim().toLowerCase().replace(/[^a-z0-9_]/g, ''),
+        loginPin
+      );
       if (!response.token || !response.user) throw new Error('Invalid login response');
       finishAuth(response.user, response.token);
     } catch (err: unknown) {
@@ -172,7 +175,10 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
     try {
       const id = loginIdentifier.trim();
       if (!id || !loginPassword) throw new Error('Enter username and password');
-      const response = await authAPI.login({ username: id, password: loginPassword });
+      const response = await authAPI.login({
+        username: id.includes('@') ? id : id.toLowerCase().replace(/[^a-z0-9_@.+-]/g, ''),
+        password: loginPassword,
+      });
       if (!response.token || !response.user) throw new Error('Invalid login response');
       finishAuth(response.user, response.token);
     } catch (err: unknown) {

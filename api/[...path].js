@@ -2,12 +2,14 @@
  * Vercel Node serverless: proxy /api/* → BACKEND_URL.
  * Fixes: (1) POST body not always on req.body, (2) path as /auth/... vs /api/auth/...
  */
+const DEFAULT_BACKEND = 'https://hookupappp.onrender.com';
+
 function getBackendBase() {
   const raw =
     process.env.BACKEND_URL ||
     process.env.VITE_API_URL ||
     process.env.RENDER_EXTERNAL_URL ||
-    '';
+    DEFAULT_BACKEND;
   return raw.replace(/\/+$/, '');
 }
 
@@ -146,8 +148,16 @@ module.exports = async function handler(req, res) {
     }
   }
 
+  const fetchOpts = { method, headers, body, redirect: 'manual' };
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
   try {
-    const upstream = await fetch(target, { method, headers, body, redirect: 'manual' });
+    let upstream = await fetch(target, fetchOpts);
+    // Render free tier cold start — retry once after a short pause
+    if ((upstream.status === 502 || upstream.status === 503 || upstream.status === 504) && method === 'POST') {
+      await sleep(2500);
+      upstream = await fetch(target, fetchOpts);
+    }
     if (upstream.status === 508) {
       res.status(503).setHeader('Content-Type', 'application/json');
       res.send(

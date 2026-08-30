@@ -19,6 +19,7 @@ import { getUserById } from '../models/user.js';
 import { maskUserForViewer } from '../lib/celebMask.js';
 import { checkContent } from '../utils/moderation.js';
 import { sanitizeForStorage, sanitizeMessageContent, parseEventType, LIMITS } from '../utils/sanitize.js';
+import { filterAndRankEvents } from '../utils/eventSearch.js';
 
 const SAFETY_NOTE =
   'Be careful: meet at a public place first. Get details of where you\'re going and who you\'re with. Share your plans with an emergency contact.';
@@ -37,10 +38,31 @@ function creatorBase(u: any) {
 export async function listEvents(req: Request, res: Response) {
   try {
     const userId = (req as any).userId;
-    const city = (req.query.city as string)?.trim();
-    const country = (req.query.country as string)?.trim();
-    const events = city ? await getEventsByCity(city, country || undefined) : await getAllEvents();
-    const now = new Date();
+    const cityQuery = (req.query.city as string)?.trim();
+    const countryQuery = (req.query.country as string)?.trim();
+    const searchQ = (req.query.q as string)?.trim();
+    const describe = (req.query.describe as string)?.trim();
+
+    let profileCity = '';
+    let profileCountry = '';
+    if (userId) {
+      const viewer = await getUserById(userId);
+      profileCity = (viewer?.city || '').trim();
+      profileCountry = (viewer?.country || '').trim();
+    }
+
+    const city = cityQuery || profileCity;
+    const country = countryQuery || profileCountry || undefined;
+
+    let events = city ? await getEventsByCity(city, country) : await getAllEvents();
+    if (!cityQuery && !searchQ && !describe && profileCity) {
+      events = await getEventsByCity(profileCity, country);
+    }
+
+    if (searchQ || describe) {
+      events = filterAndRankEvents(events, searchQ, describe);
+    }
+
     const withCreator = await Promise.all(
       events.map(async (e) => {
         const ended = isEventEnded(e);
@@ -55,7 +77,11 @@ export async function listEvents(req: Request, res: Response) {
       })
     );
     const active = withCreator.filter((e) => !e.ended).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-    res.json({ events: active, safetyNote: SAFETY_NOTE });
+    res.json({
+      events: active,
+      safetyNote: SAFETY_NOTE,
+      locationUsed: city || profileCity || null,
+    });
   } catch (e: any) {
     console.error('List events error:', e);
     res.status(500).json({ error: e.message || 'Internal server error' });

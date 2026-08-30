@@ -44,6 +44,28 @@ async function writeAll(rows: UserSchoolState[]): Promise<void> {
   await writeFile(PROGRESS_PATH, JSON.stringify(rows, null, 2));
 }
 
+async function syncSetupFromUserProfile(state: UserSchoolState): Promise<UserSchoolState> {
+  const user = await getUserById(state.userId);
+  if (!user) return state;
+  const hour = user.schoolHomeHour;
+  const minute = user.schoolHomeMinute;
+  const hasSchedule =
+    typeof hour === 'number' &&
+    typeof minute === 'number' &&
+    !Number.isNaN(hour) &&
+    !Number.isNaN(minute);
+  if (!hasSchedule) return state;
+
+  state.homeHour = hour;
+  state.homeMinute = minute;
+  state.notifyEnabled = user.schoolNotifyEnabled !== false;
+  if (!state.setupComplete) {
+    state.setupComplete = true;
+    await saveState(state);
+  }
+  return state;
+}
+
 async function getState(userId: string): Promise<UserSchoolState> {
   const rows = await readAll();
   let row = rows.find((r) => r.userId === userId);
@@ -62,7 +84,7 @@ async function getState(userId: string): Promise<UserSchoolState> {
     rows.push(row);
     await writeAll(rows);
   }
-  return row;
+  return syncSetupFromUserProfile(row);
 }
 
 async function saveState(state: UserSchoolState): Promise<void> {

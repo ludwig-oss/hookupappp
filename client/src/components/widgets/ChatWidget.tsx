@@ -14,6 +14,7 @@ import { connectionJourneyAPI, ConnectionJourneyResponse } from '../../api/conne
 import RelationshipCouplePanel from './RelationshipCouplePanel';
 import VoiceSafetyPanel from '../VoiceSafetyPanel';
 import ProfileMedia from '../ProfileMedia';
+import TranslateButton from '../TranslateButton';
 import { voiceRecordingAPI } from '../../api/voiceRecording';
 import '../../pages/Dashboard.css';
 
@@ -1730,6 +1731,7 @@ const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId, onOpenGuides }: Ch
                   className={`chat-bubble ${isMe ? 'chat-bubble-sent' : 'chat-bubble-received'} ${isSafetyMessage ? 'chat-bubble-safety' : ''}`}
                 >
                   {renderMessageContent(msg.content)}
+                  <TranslateButton text={msg.content.replace(/\[Safety\]/g, '').trim()} />
                   <div className="chat-bubble-time">{formatMessageTime(msg.createdAt)}</div>
                 </div>
               );

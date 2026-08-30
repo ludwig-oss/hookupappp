@@ -2,6 +2,7 @@ import { useState, useEffect, useContext, useCallback } from 'react';
 import { AuthContext } from '../../context/AuthContext';
 import { adviceAPI, AdviceQuestion } from '../../api/advice';
 import { formatAxiosError } from '../../lib/apiError';
+import TranslateButton from '../TranslateButton';
 import './Widget.css';
 
 export default function DatingAdviceWidget() {
@@ -17,7 +18,9 @@ export default function DatingAdviceWidget() {
   const [success, setSuccess] = useState('');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [answerDrafts, setAnswerDrafts] = useState<Record<string, string>>({});
+  const [replyDrafts, setReplyDrafts] = useState<Record<string, string>>({});
   const [submittingId, setSubmittingId] = useState<string | null>(null);
+  const [replySubmittingKey, setReplySubmittingKey] = useState<string | null>(null);
 
   const loadFeed = useCallback(async (q?: string) => {
     setLoading(true);
@@ -28,7 +31,7 @@ export default function DatingAdviceWidget() {
       setCohortLabel(data.cohortLabel);
       setPrizeEur(data.prizeEur);
     } catch (e) {
-      setError(formatAxiosError(e));
+      setError(formatAxiosError(e, 'Could not load advice feed'));
     } finally {
       setLoading(false);
     }
@@ -52,7 +55,7 @@ export default function DatingAdviceWidget() {
       setExpandedId(res.question.id);
       await loadFeed();
     } catch (err) {
-      setError(formatAxiosError(err));
+      setError(formatAxiosError(err, 'Could not post your question'));
     } finally {
       setSearching(false);
     }
@@ -65,17 +68,31 @@ export default function DatingAdviceWidget() {
     setError('');
     try {
       const res = await adviceAPI.postAnswer(questionId, content);
-      if (res.firstTimeMessage) {
-        setSuccess(res.firstTimeMessage);
-      } else {
-        setSuccess('Advice posted! The asker was notified.');
-      }
+      if (res.firstTimeMessage) setSuccess(res.firstTimeMessage);
+      else setSuccess('Advice posted! The asker was notified.');
       setAnswerDrafts((d) => ({ ...d, [questionId]: '' }));
       await loadFeed(feedQuery || undefined);
     } catch (err) {
-      setError(formatAxiosError(err));
+      setError(formatAxiosError(err, 'Could not post advice'));
     } finally {
       setSubmittingId(null);
+    }
+  };
+
+  const handlePostReply = async (questionId: string, answerId: string) => {
+    const key = `${questionId}:${answerId}`;
+    const content = (replyDrafts[key] || '').trim();
+    if (!content) return;
+    setReplySubmittingKey(key);
+    setError('');
+    try {
+      await adviceAPI.postReply(questionId, answerId, content);
+      setReplyDrafts((d) => ({ ...d, [key]: '' }));
+      await loadFeed(feedQuery || undefined);
+    } catch (err) {
+      setError(formatAxiosError(err, 'Could not post comment'));
+    } finally {
+      setReplySubmittingKey(null);
     }
   };
 
@@ -88,12 +105,21 @@ export default function DatingAdviceWidget() {
     }
   };
 
+  const handleLikeReply = async (questionId: string, answerId: string, replyId: string) => {
+    try {
+      await adviceAPI.likeReply(questionId, answerId, replyId);
+      await loadFeed(feedQuery || undefined);
+    } catch {
+      /* ignore */
+    }
+  };
+
   return (
     <div className="widget dating-advice-widget">
       <h2 className="widget-title">Dating Advice</h2>
       <p style={{ fontSize: 13, color: '#9ca3af', marginBottom: 12 }}>
-        Ask anything — peers in your group ({cohortLabel || 'your cohort'}) get notified to help.
-        Best advice each month wins €{prizeEur} in your account balance.
+        Ask anything — your post stays <strong>anonymous</strong>. {cohortLabel || 'Your cohort'} in your area see it first;
+        hot questions spread wider. Best advice each month wins €{prizeEur}.
       </p>
 
       <form onSubmit={handleSearch} style={{ marginBottom: 16 }}>
@@ -106,30 +132,11 @@ export default function DatingAdviceWidget() {
             background: 'linear-gradient(135deg, rgba(30,20,40,0.95), rgba(50,20,60,0.9))',
           }}
         >
-          <div
-            aria-hidden
-            style={{
-              position: 'absolute',
-              inset: 0,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              pointerEvents: 'none',
-              opacity: searchQuery ? 0 : 0.35,
-              fontSize: 15,
-              fontWeight: 500,
-              color: '#f9a8d4',
-              textAlign: 'center',
-              padding: '0 16px',
-            }}
-          >
-            Search anything or dating advice…
-          </div>
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder=""
+            placeholder="Ask anything — e.g. gold diggers, first dates, red flags…"
             style={{
               width: '100%',
               padding: '14px 16px',
@@ -137,8 +144,6 @@ export default function DatingAdviceWidget() {
               border: 'none',
               color: '#fff',
               fontSize: 15,
-              position: 'relative',
-              zIndex: 1,
             }}
           />
         </div>
@@ -213,11 +218,13 @@ export default function DatingAdviceWidget() {
                 >
                   <div style={{ fontSize: 11, color: '#f472b6', marginBottom: 4 }}>
                     {q.cohortLabel || cohortLabel} · {q.answers.length} answers
-                    {isMine && ' · Your question'}
+                    {q.city ? ` · ${q.city}` : ''}
+                    {isMine && ' · Your question (anonymous to others)'}
                   </div>
                   <div style={{ fontWeight: 600, marginBottom: 4 }}>{q.query}</div>
-                  <div style={{ fontSize: 11, color: '#6b7280' }}>
-                    {q.user?.name || 'Someone'} · {new Date(q.createdAt).toLocaleDateString()}
+                  <TranslateButton text={q.query} />
+                  <div style={{ fontSize: 11, color: '#6b7280', marginTop: 6 }}>
+                    {isMine ? 'You' : q.user?.name || 'Anonymous'} · {new Date(q.createdAt).toLocaleDateString()}
                   </div>
                 </button>
 
@@ -229,6 +236,7 @@ export default function DatingAdviceWidget() {
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 12 }}>
                         {q.answers.map((a) => {
                           const liked = a.likeUserIds.includes(user?.id || '');
+                          const replyKey = `${q.id}:${a.id}`;
                           return (
                             <div
                               key={a.id}
@@ -239,6 +247,7 @@ export default function DatingAdviceWidget() {
                               }}
                             >
                               <div style={{ fontSize: 13 }}>{a.content}</div>
+                              <TranslateButton text={a.content} />
                               <div
                                 style={{
                                   display: 'flex',
@@ -249,7 +258,7 @@ export default function DatingAdviceWidget() {
                                   color: '#9ca3af',
                                 }}
                               >
-                                <span>{a.userName}</span>
+                                <span>{a.userId === user?.id ? 'You' : a.userName}</span>
                                 <button
                                   type="button"
                                   onClick={() => handleLike(q.id, a.id)}
@@ -264,6 +273,65 @@ export default function DatingAdviceWidget() {
                                   }}
                                 >
                                   ♥ {a.likeUserIds.length}
+                                </button>
+                              </div>
+
+                              {(a.replies || []).length > 0 && (
+                                <div style={{ marginTop: 8, paddingLeft: 10, borderLeft: '2px solid rgba(236,72,153,0.25)' }}>
+                                  {(a.replies || []).map((r) => {
+                                    const replyLiked = r.likeUserIds.includes(user?.id || '');
+                                    return (
+                                      <div key={r.id} style={{ marginBottom: 8 }}>
+                                        <div style={{ fontSize: 12 }}>{r.content}</div>
+                                        <TranslateButton text={r.content} />
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4, fontSize: 10, color: '#9ca3af' }}>
+                                          <span>{r.userId === user?.id ? 'You' : r.userName}</span>
+                                          <button
+                                            type="button"
+                                            onClick={() => handleLikeReply(q.id, a.id, r.id)}
+                                            style={{
+                                              background: replyLiked ? 'rgba(236,72,153,0.3)' : 'transparent',
+                                              border: '1px solid rgba(236,72,153,0.3)',
+                                              borderRadius: 999,
+                                              padding: '2px 8px',
+                                              color: '#fbcfe8',
+                                              cursor: 'pointer',
+                                              fontSize: 10,
+                                            }}
+                                          >
+                                            ♥ {r.likeUserIds.length}
+                                          </button>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
+
+                              <div style={{ marginTop: 8 }}>
+                                <input
+                                  type="text"
+                                  value={replyDrafts[replyKey] || ''}
+                                  onChange={(e) => setReplyDrafts((d) => ({ ...d, [replyKey]: e.target.value }))}
+                                  placeholder="Comment on this reply…"
+                                  style={{
+                                    width: '100%',
+                                    padding: '8px 10px',
+                                    borderRadius: 8,
+                                    border: '1px solid #374151',
+                                    background: '#111827',
+                                    color: '#fff',
+                                    fontSize: 12,
+                                  }}
+                                />
+                                <button
+                                  type="button"
+                                  className="select-user-btn"
+                                  style={{ marginTop: 6, width: '100%', fontSize: 12, padding: '6px 10px' }}
+                                  disabled={replySubmittingKey === replyKey || !(replyDrafts[replyKey] || '').trim()}
+                                  onClick={() => handlePostReply(q.id, a.id)}
+                                >
+                                  {replySubmittingKey === replyKey ? 'Posting…' : 'Comment'}
                                 </button>
                               </div>
                             </div>

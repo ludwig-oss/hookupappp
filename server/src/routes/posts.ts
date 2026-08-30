@@ -1,6 +1,7 @@
 import express from 'express';
 import {
   createDatingPost,
+  uploadPostMedia,
   getDatingPosts,
   getFeed,
   getRecommendations,
@@ -21,10 +22,12 @@ router.get('/feed', optionalAuthenticateToken, getFeed);
 router.get('/recommendations', optionalAuthenticateToken, getRecommendations);
 router.get('/blowing-up-count', getBlowingUpCountHandler);
 
+router.post('/upload-media', authenticateToken, uploadPostMedia);
+router.post('/', authenticateToken, createDatingPost);
+
 router.use(authenticateToken);
 router.use(requireEmailVerified);
 
-router.post('/', createDatingPost);
 router.post('/:postId/view', recordPostView);
 router.post('/:postId/like', likeDatingPost);
 router.post('/:postId/comment', commentOnPost);

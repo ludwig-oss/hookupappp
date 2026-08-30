@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import axios from 'axios';
 import { API_BASE } from '../api/config';
 import SettingsWidgetFull from '../components/widgets/SettingsWidgetFull';
@@ -8,6 +8,8 @@ import './Dashboard.css';
 
 const Settings = () => {
   const { t } = useTranslation();
+  const location = useLocation();
+  const fromHelp = !!(location.state as { fromHelp?: boolean } | null)?.fromHelp;
   const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
@@ -33,6 +35,9 @@ const Settings = () => {
         </div>
       </div>
       <div className="dashboard-top-nav">
+        {fromHelp && (
+          <Link to="/home" state={{ openWidget: 'help' }} className="dashboard-back-link">← {t('backToHelp')}</Link>
+        )}
         <Link to="/home" className="dashboard-back-link">← {t('backToHome')}</Link>
         <Link to="/profile" className="dashboard-back-link">👤 {t('profile')}</Link>
         {isAdmin && (

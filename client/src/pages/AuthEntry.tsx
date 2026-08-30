@@ -5,7 +5,9 @@ import { authAPI } from '../api/auth';
 import { discoverAPI } from '../api/discover';
 import { walkMatchAPI } from '../api/walkMatch';
 import { formatAxiosError } from '../lib/apiError';
+import { normalizePinDigits } from '../lib/pin';
 import { normalizeUsernameInput, USERNAME_HINT, USERNAME_MAX, USERNAME_MIN } from '../lib/username';
+import PasswordInput from '../components/PasswordInput';
 import './Auth.css';
 import './Legal.css';
 
@@ -26,6 +28,8 @@ function normalizePhoneInput(value: string): string {
 type AuthMode = 'signup' | 'login';
 type LoginMethod = 'pin' | 'password' | 'phone';
 
+const LAST_USERNAME_KEY = 'hookup_last_username';
+
 type Props = { initialMode?: AuthMode };
 
 const AuthEntry = ({ initialMode = 'signup' }: Props) => {
@@ -33,7 +37,6 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
   const [mode, setMode] = useState<AuthMode>(initialMode);
   const [loginMethod, setLoginMethod] = useState<LoginMethod>('pin');
   const [pin, setPin] = useState('');
-  const [loginPin, setLoginPin] = useState('');
   const [usernameCheck, setUsernameCheck] = useState('');
 
   const [name, setName] = useState('');
@@ -44,8 +47,14 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
   const [passwordHint2, setPasswordHint2] = useState('');
   const [passwordHint3, setPasswordHint3] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
-  const [loginIdentifier, setLoginIdentifier] = useState('');
-  const [loginPassword, setLoginPassword] = useState('');
+  const [loginIdentifier, setLoginIdentifier] = useState(() => {
+    try {
+      return localStorage.getItem(LAST_USERNAME_KEY) || '';
+    } catch {
+      return '';
+    }
+  });
+  const [loginSecret, setLoginSecret] = useState('');
   const [loginCode, setLoginCode] = useState('');
   const [codeSent, setCodeSent] = useState(false);
   const [age, setAge] = useState('');
@@ -85,6 +94,16 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
     navigate(user.profileSetupComplete ? '/home' : '/profile-setup', { replace: true });
   }, [login, navigate]);
 
+  const rememberUsername = (value: string) => {
+    const key = normalizeUsernameInput(value.trim());
+    if (!key) return;
+    try {
+      localStorage.setItem(LAST_USERNAME_KEY, key);
+    } catch {
+      /* ignore */
+    }
+  };
+
   const handlePinSignup = async (e?: React.FormEvent) => {
     e?.preventDefault();
     if (!name.trim() || !username.trim()) {
@@ -92,6 +111,11 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
       return;
     }
     if (pin.length !== 6) {
+      setError('Choose a 6-digit PIN');
+      return;
+    }
+    const normalizedPin = normalizePinDigits(pin);
+    if (normalizedPin.length !== 6) {
       setError('Choose a 6-digit PIN');
       return;
     }
@@ -109,7 +133,7 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
       const response = await authAPI.signupWithPin({
         name: name.trim(),
         username: normalizeUsernameInput(username),
-        pin,
+        pin: normalizedPin,
         pinHint1: passwordHint1.trim(),
         pinHint2: passwordHint2.trim(),
         pinHint3: passwordHint3.trim(),
@@ -120,6 +144,7 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
       });
       const id = coerceUserId(response.user?.id);
       if (!response.token || !id) throw new Error('Invalid server response');
+      rememberUsername(normalizeUsernameInput(username));
       login({ ...response.user, id }, response.token);
       const ageNum = parseInt(age, 10);
       if (!Number.isNaN(ageNum) && gender) {
@@ -138,42 +163,32 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
     }
   };
 
-  const handlePinLogin = async (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setLoading(true);
     try {
-      if (!loginIdentifier.trim() || loginPin.length !== 6) {
-        throw new Error('Enter username and 6-digit PIN');
-      }
-      const response = await authAPI.loginWithPin(
-        normalizeUsernameInput(loginIdentifier),
-        loginPin
-      );
-      if (!response.token || !response.user) throw new Error('Invalid login response');
-      finishAuth(response.user, response.token);
-    } catch (err: unknown) {
-      setError(formatAxiosError(err, 'Wrong username or PIN'));
-    } finally {
-      setLoading(false);
-    }
-  };
+      const id = normalizeUsernameInput(loginIdentifier.trim());
+      const secret = loginSecret.trim();
+      if (!id) throw new Error('Enter your username');
+      if (!secret) throw new Error(loginMethod === 'pin' ? 'Enter your 6-digit PIN' : 'Enter your password');
+      rememberUsername(id);
 
-  const handlePasswordLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
-    setLoading(true);
-    try {
-      const id = loginIdentifier.trim();
-      if (!id || !loginPassword) throw new Error('Enter username and password');
-      const response = await authAPI.login({
-        username: id.includes('@') ? id : normalizeUsernameInput(id),
-        password: loginPassword,
-      });
+      let response;
+      if (loginMethod === 'pin') {
+        const pinDigits = normalizePinDigits(secret);
+        if (pinDigits.length !== 6) {
+          throw new Error('PIN must be exactly 6 digits');
+        }
+        response = await authAPI.loginWithPin(id, pinDigits);
+      } else {
+        response = await authAPI.login({ identifier: id, username: id, password: secret });
+      }
+
       if (!response.token || !response.user) throw new Error('Invalid login response');
       finishAuth(response.user, response.token);
     } catch (err: unknown) {
-      setError(formatAxiosError(err, 'Invalid username or password'));
+      setError(formatAxiosError(err, loginMethod === 'pin' ? 'Wrong username or PIN' : 'Wrong username or password'));
     } finally {
       setLoading(false);
     }
@@ -226,7 +241,7 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
         <p className="auth-subtitle">
           {mode === 'signup'
             ? 'Pick a username forever, a 6-digit PIN, and 3 hints — add an optional password for sign-in too.'
-            : 'Username + PIN is fastest. Password and phone code also work.'}
+            : 'Same username as sign-up. PIN tab = 6-digit PIN only. Password tab = if you signed up with a long password.'}
         </p>
 
         {error && <div className="error-message">{error}</div>}
@@ -263,7 +278,16 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
             </div>
             <div className="form-group">
               <label htmlFor="pin">6-digit PIN</label>
-              <input id="pin" type="password" inputMode="numeric" maxLength={6} value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 6))} autoComplete="new-password" required />
+              <PasswordInput
+                id="pin"
+                value={pin}
+                onChange={setPin}
+                autoComplete="new-password"
+                inputMode="numeric"
+                maxLength={6}
+                digitsOnly
+                required
+              />
             </div>
             <div className="form-group">
               <label>PIN hints (if you forget — only you see these on recovery)</label>
@@ -273,11 +297,10 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
             </div>
             <div className="form-group">
               <label htmlFor="backup-password">Password (optional — sign in with username + password)</label>
-              <input
+              <PasswordInput
                 id="backup-password"
-                type="password"
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                onChange={setPassword}
                 autoComplete="new-password"
                 placeholder="8+ chars, upper, lower, number, symbol"
               />
@@ -316,37 +339,38 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
         ) : (
           <>
             <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
-              <button type="button" className="auth-button" style={{ flex: 1, minWidth: 80, opacity: loginMethod === 'pin' ? 1 : 0.65 }} onClick={() => setLoginMethod('pin')}>Username + PIN</button>
-              <button type="button" className="auth-button" style={{ flex: 1, minWidth: 80, opacity: loginMethod === 'password' ? 1 : 0.65 }} onClick={() => setLoginMethod('password')}>Password</button>
+              <button type="button" className="auth-button" style={{ flex: 1, minWidth: 100, opacity: loginMethod === 'pin' ? 1 : 0.65 }} onClick={() => { setLoginMethod('pin'); setLoginSecret(''); }}>Username + PIN</button>
+              <button type="button" className="auth-button" style={{ flex: 1, minWidth: 80, opacity: loginMethod === 'password' ? 1 : 0.65 }} onClick={() => { setLoginMethod('password'); setLoginSecret(''); }}>Password</button>
               <button type="button" className="auth-button" style={{ flex: 1, minWidth: 80, opacity: loginMethod === 'phone' ? 1 : 0.65 }} onClick={() => setLoginMethod('phone')}>Phone</button>
             </div>
-            {loginMethod === 'pin' ? (
-              <form onSubmit={handlePinLogin} className="auth-form">
+            {loginMethod === 'pin' || loginMethod === 'password' ? (
+              <form onSubmit={handleLogin} className="auth-form">
                 <div className="form-group">
                   <label>Username</label>
                   <input value={loginIdentifier} onChange={(e) => setLoginIdentifier(normalizeUsernameInput(e.target.value))} autoComplete="username" required />
                 </div>
                 <div className="form-group">
-                  <label>6-digit PIN</label>
-                  <input type="password" inputMode="numeric" maxLength={6} value={loginPin} onChange={(e) => setLoginPin(e.target.value.replace(/\D/g, '').slice(0, 6))} required />
+                  <label htmlFor="login-secret">{loginMethod === 'pin' ? '6-digit PIN' : 'Password'}</label>
+                  <PasswordInput
+                    id="login-secret"
+                    value={loginSecret}
+                    onChange={setLoginSecret}
+                    autoComplete={loginMethod === 'pin' ? 'one-time-code' : 'current-password'}
+                    placeholder={loginMethod === 'pin' ? '6-digit PIN' : 'Your backup password'}
+                    inputMode={loginMethod === 'pin' ? 'numeric' : 'text'}
+                    maxLength={loginMethod === 'pin' ? 6 : undefined}
+                    digitsOnly={loginMethod === 'pin'}
+                    required
+                  />
                 </div>
-                <Link to="/forgot-pin" className="forgot-link">Forgot PIN?</Link>
+                {loginMethod === 'pin' ? (
+                  <Link to="/forgot-pin" className="forgot-link">Forgot PIN?</Link>
+                ) : (
+                  <Link to="/forgot-password" className="forgot-link">Forgot password?</Link>
+                )}
                 <button type="submit" className="auth-button face-id-primary" disabled={loading}>
                   {loading ? 'Signing in…' : 'Sign in'}
                 </button>
-              </form>
-            ) : loginMethod === 'password' ? (
-              <form onSubmit={handlePasswordLogin} className="auth-form">
-                <div className="form-group">
-                  <label>Username</label>
-                  <input value={loginIdentifier} onChange={(e) => setLoginIdentifier(normalizeUsernameInput(e.target.value))} autoComplete="username" required />
-                </div>
-                <div className="form-group">
-                  <label>Password</label>
-                  <input type="password" value={loginPassword} onChange={(e) => setLoginPassword(e.target.value)} autoComplete="current-password" required />
-                </div>
-                <Link to="/forgot-password" className="forgot-link">Forgot password?</Link>
-                <button type="submit" className="auth-button face-id-primary" disabled={loading}>{loading ? 'Signing in…' : 'Sign in'}</button>
               </form>
             ) : loginMethod === 'phone' ? (
               <form onSubmit={handlePhoneCodeLogin} className="auth-form">

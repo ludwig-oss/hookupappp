@@ -75,10 +75,17 @@ export const EVENT_TYPE_LABELS: Record<EventType, string> = {
 };
 
 export const eventsAPI = {
-  list: async (city?: string, country?: string): Promise<{ events: Event[]; safetyNote: string }> => {
+  list: async (
+    city?: string,
+    country?: string,
+    q?: string,
+    describe?: string
+  ): Promise<{ events: Event[]; safetyNote: string; locationUsed?: string | null }> => {
     const params: Record<string, string> = {};
     if (city) params.city = city;
     if (country) params.country = country;
+    if (q?.trim()) params.q = q.trim();
+    if (describe?.trim()) params.describe = describe.trim();
     const res = await axios.get(API_URL, { params, headers: getAuthHeaders() });
     return res.data;
   },

@@ -18,6 +18,8 @@ import { assertUsernameAvailable, reserveUsername, checkUsernameAvailable, norma
 import { getUserConversations } from '../models/chat.js';
 import { sanitizeName, sanitizeUsername, sanitizeForStorage, LIMITS } from '../utils/sanitize.js';
 import { validateStrongPassword } from './authController.js';
+import { resolveUserByIdentifier, verifyLoginSecret, loginFailureMessage, upgradeLegacyPasswordHashes } from '../utils/loginUser.js';
+import { isValidPinFormat, normalizePinDigits } from '../utils/pin.js';
 
 const BCRYPT_ROUNDS = process.env.NODE_ENV === 'production' ? 12 : 10;
 const JWT_EXPIRES_IN = '7d';
@@ -61,10 +63,11 @@ function toClientUser(user: Awaited<ReturnType<typeof getUserById>>) {
 }
 
 function validatePin(pin: string): { valid: boolean; error?: string } {
-  if (!/^\d{6}$/.test(pin)) {
+  const normalized = normalizePinDigits(pin);
+  if (!isValidPinFormat(normalized)) {
     return { valid: false, error: 'PIN must be exactly 6 digits' };
   }
-  if (pin === '000000' || pin === '123456' || pin === '654321') {
+  if (normalized === '000000' || normalized === '123456' || normalized === '654321') {
     return { valid: false, error: 'Choose a less obvious PIN' };
   }
   return { valid: true };
@@ -103,7 +106,7 @@ export async function signupWithPin(req: Request, res: Response) {
 
     name = sanitizeName(name);
     username = sanitizeUsername(username);
-    const pinStr = String(pin || '');
+    const pinStr = normalizePinDigits(pin);
 
     if (!name || !username) {
       return res.status(400).json({ error: 'Name and username are required' });
@@ -169,11 +172,13 @@ export async function signupWithPin(req: Request, res: Response) {
       passwordHint1: sanitizeForStorage(pinHint1, LIMITS.PASSWORD_HINT),
       passwordHint2: sanitizeForStorage(pinHint2, LIMITS.PASSWORD_HINT),
       passwordHint3: sanitizeForStorage(pinHint3, LIMITS.PASSWORD_HINT),
+      ...(backupPasswordHash ? { backupPasswordHash } : {}),
     });
 
     await reserveUsername(username, user.id);
     await updateUserProfile(user.id, {
       emailVerified: false,
+      pinAuth: true,
       ...(backupPasswordHash ? { backupPasswordHash } : {}),
     });
     if (normalizedPhone) {
@@ -195,23 +200,35 @@ export async function signupWithPin(req: Request, res: Response) {
 
 export async function loginWithPin(req: Request, res: Response) {
   try {
-    const { username, pin } = req.body as { username?: string; pin?: string };
-    const key = normalizeUsernameKey(String(username || ''));
-    const pinStr = String(pin || '');
+    const { username, identifier, pin, password } = req.body as {
+      username?: string;
+      identifier?: string;
+      pin?: string;
+      password?: string;
+    };
+    const secret = normalizePinDigits(pin ?? password ?? '');
+    const rawId = String(username || identifier || '').trim();
 
-    if (!key || !pinStr) {
+    if (!rawId || !secret) {
       return res.status(400).json({ error: 'Username and 6-digit PIN required' });
     }
+    if (!isValidPinFormat(secret)) {
+      return res.status(400).json({ error: 'PIN must be exactly 6 digits' });
+    }
 
-    const user = await getUserByUsername(key);
+    const user = await resolveUserByIdentifier(rawId);
     if (!user) {
-      return res.status(401).json({ error: 'Wrong username or PIN' });
+      return res.status(401).json({ error: loginFailureMessage(null, { pinLogin: true, attemptedSecret: secret }) });
     }
 
-    const ok = await bcrypt.compare(pinStr, user.password);
+    const ok = await verifyLoginSecret(user, secret);
     if (!ok) {
-      return res.status(401).json({ error: 'Wrong username or PIN' });
+      return res.status(401).json({
+        error: loginFailureMessage(user, { pinLogin: true, attemptedSecret: secret }),
+      });
     }
+
+    await upgradeLegacyPasswordHashes(user, secret);
 
     const token = jwt.sign({ userId: user.id, email: user.email }, getJwtSecret(), { expiresIn: JWT_EXPIRES_IN });
 
@@ -400,9 +417,11 @@ export async function resetPin(req: Request, res: Response) {
       return res.status(400).json({ error: 'Reset expired — start again.' });
     }
 
-    const hashed = await bcrypt.hash(String(newPin), BCRYPT_ROUNDS);
+    const normalizedPin = normalizePinDigits(newPin);
+    const hashed = await bcrypt.hash(normalizedPin, BCRYPT_ROUNDS);
     await updateUserPassword(user.id, hashed);
     await updateUserResetToken(user.id, null, null);
+    await updateUserProfile(user.id, { pinAuth: true });
 
     res.json({ message: 'PIN updated. Sign in with your new PIN.' });
   } catch (error) {

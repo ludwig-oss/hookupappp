@@ -1,6 +1,6 @@
 import { useState, useEffect, useContext } from 'react';
 import { AuthContext } from '../../context/AuthContext';
-import { coachVoteAPI, CoachVoteCampaign, CoachVoteStatusResponse } from '../../api/improvement';
+import { coachVoteAPI, CoachVoteCampaign, CoachVoteStatusResponse, improvementAPI } from '../../api/improvement';
 import './Widget.css';
 
 const TAG_LABELS: Record<string, string> = {
@@ -16,6 +16,7 @@ export default function CoachVoteWidget() {
   const [pending, setPending] = useState<CoachVoteCampaign[]>([]);
   const [feedbackTags, setFeedbackTags] = useState<string[]>([]);
   const [myStatus, setMyStatus] = useState<CoachVoteStatusResponse | null>(null);
+  const [isGuide, setIsGuide] = useState(false);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -25,10 +26,15 @@ export default function CoachVoteWidget() {
     if (!user?.id) return;
     setError('');
     try {
-      const [p, s] = await Promise.all([coachVoteAPI.getPending(), coachVoteAPI.getMyStatus()]);
+      const [p, s, g] = await Promise.all([
+        coachVoteAPI.getPending(),
+        coachVoteAPI.getMyStatus(),
+        improvementAPI.getMyGuideProfile(user.id),
+      ]);
       setPending(p.campaigns || []);
       setFeedbackTags(p.feedbackTags || []);
       setMyStatus(s);
+      setIsGuide(!!g.canVote);
     } catch (e: unknown) {
       setError((e as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Could not load coach votes');
     }
@@ -38,11 +44,11 @@ export default function CoachVoteWidget() {
     load();
   }, [user?.id]);
 
-  const submitVote = async (campaignId: string, vote: 'baddie' | 'not') => {
+  const submitVote = async (campaignId: string, vote: 'yes' | 'no') => {
     setLoading(true);
     setError('');
     try {
-      const res = await coachVoteAPI.vote(campaignId, vote, vote === 'not' ? selectedTags : undefined);
+      const res = await coachVoteAPI.vote(campaignId, vote, vote === 'no' ? selectedTags : undefined);
       setMessage(res.message || 'Vote recorded');
       setSelectedTags([]);
       await load();
@@ -60,11 +66,12 @@ export default function CoachVoteWidget() {
   if (!user?.id) return null;
 
   const hasContent =
-    pending.length > 0 ||
+    (isGuide && pending.length > 0) ||
     (myStatus?.campaign && myStatus.campaign.status === 'voting') ||
-    myStatus?.campaign?.status === 'failed';
+    myStatus?.campaign?.status === 'failed' ||
+    myStatus?.campaign?.status === 'passed';
 
-  if (!hasContent && !myStatus?.campaign) return null;
+  if (!hasContent) return null;
 
   return (
     <div
@@ -76,17 +83,19 @@ export default function CoachVoteWidget() {
         background: 'rgba(255, 0, 255, 0.08)',
       }}
     >
-      <div style={{ fontFamily: 'Orbitron, monospace', color: '#ff00ff', fontSize: 13, marginBottom: 8 }}>
-        Coach peer review — 48h · 80% &quot;baddie&quot; votes
-      </div>
+      {isGuide && pending.length > 0 && (
+        <div style={{ fontFamily: 'Orbitron, monospace', color: '#ff00ff', fontSize: 13, marginBottom: 8 }}>
+          Expert guide vote — 48h · more yes than no qualifies them
+        </div>
+      )}
 
       {error && <div style={{ color: '#f87171', fontSize: 12, marginBottom: 8 }}>{error}</div>}
       {message && <div style={{ color: '#34d399', fontSize: 12, marginBottom: 8 }}>{message}</div>}
 
       {myStatus?.campaign?.status === 'voting' && myStatus.stats && (
         <div style={{ marginBottom: 12, fontSize: 12, color: '#e5e7eb' }}>
-          <strong>Your application:</strong> {myStatus.stats.baddiePercent}% yes · {myStatus.stats.total}/{myStatus.stats.minVotes} votes ·{' '}
-          {myStatus.stats.hoursLeft}h left
+          <strong>Your application:</strong> {myStatus.stats.yes} yes · {myStatus.stats.no} no ·{' '}
+          {myStatus.stats.total}/{myStatus.stats.minVotes} votes · {myStatus.stats.hoursLeft}h left
         </div>
       )}
 
@@ -109,7 +118,7 @@ export default function CoachVoteWidget() {
         </div>
       )}
 
-      {pending.map((c) => (
+      {isGuide && pending.map((c) => (
         <div
           key={c.id}
           style={{
@@ -132,7 +141,7 @@ export default function CoachVoteWidget() {
               {c.profileBio ? <div style={{ fontSize: 11, color: '#d1d5db', marginTop: 4 }}>{c.profileBio.slice(0, 120)}</div> : null}
             </div>
           </div>
-          <div style={{ fontSize: 12, color: '#f9a8d4', marginBottom: 8 }}>Would you call them a baddie coach material?</div>
+          <div style={{ fontSize: 12, color: '#f9a8d4', marginBottom: 8 }}>Do they qualify as a guide in your area?</div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
             {feedbackTags.map((tag) => (
               <button
@@ -157,7 +166,7 @@ export default function CoachVoteWidget() {
             <button
               type="button"
               disabled={loading}
-              onClick={() => submitVote(c.id, 'baddie')}
+              onClick={() => submitVote(c.id, 'yes')}
               style={{
                 flex: 1,
                 padding: '10px',
@@ -170,12 +179,12 @@ export default function CoachVoteWidget() {
                 fontSize: 12,
               }}
             >
-              Yes — baddie
+              Yes — qualifies
             </button>
             <button
               type="button"
               disabled={loading}
-              onClick={() => submitVote(c.id, 'not')}
+              onClick={() => submitVote(c.id, 'no')}
               style={{
                 flex: 1,
                 padding: '10px',
@@ -191,7 +200,7 @@ export default function CoachVoteWidget() {
               Not yet
             </button>
           </div>
-          <div style={{ fontSize: 10, color: '#6b7280', marginTop: 6 }}>Tags optional — helps them improve if &quot;not&quot;</div>
+          <div style={{ fontSize: 10, color: '#6b7280', marginTop: 6 }}>Tags optional — helps them improve if you vote no</div>
         </div>
       ))}
     </div>

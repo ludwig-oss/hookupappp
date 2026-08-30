@@ -1,10 +1,10 @@
 import { readFile, writeFile, mkdir } from 'fs/promises';
 import { join } from 'path';
 
-/** 80% "baddie" votes within 48h → auto-approved as coach */
-export const COACH_VOTE_THRESHOLD = 0.8;
+/** 50%+ yes votes from expert guides within 48h → approved */
+export const COACH_VOTE_THRESHOLD = 0.5;
 export const COACH_VOTE_WINDOW_MS = 48 * 60 * 60 * 1000;
-export const COACH_VOTE_MIN_VOTES = 5;
+export const COACH_VOTE_MIN_VOTES = 3;
 
 export type CoachVoteCampaignStatus = 'voting' | 'passed' | 'failed';
 
@@ -18,6 +18,10 @@ export interface CoachVoteCampaign {
   profilePicture: string | null;
   profileBio: string | null;
   profileAge: number | null;
+  applicationCategories: string[];
+  applicationRegion: string;
+  applicantCountry?: string | null;
+  applicantCity?: string | null;
   status: CoachVoteCampaignStatus;
   startedAt: string;
   expiresAt: string;
@@ -30,7 +34,7 @@ export interface CoachVote {
   id: string;
   campaignId: string;
   voterUserId: string;
-  vote: 'baddie' | 'not';
+  vote: 'baddie' | 'not' | 'yes' | 'no';
   feedbackTags: string[];
   createdAt: string;
 }
@@ -40,7 +44,12 @@ const VOTES_PATH = join(process.cwd(), 'server', 'data', 'coach-votes.json');
 
 async function readCampaigns(): Promise<CoachVoteCampaign[]> {
   try {
-    return JSON.parse(await readFile(CAMPAIGNS_PATH, 'utf-8'));
+    const raw = JSON.parse(await readFile(CAMPAIGNS_PATH, 'utf-8')) as CoachVoteCampaign[];
+    return raw.map((c) => ({
+      ...c,
+      applicationCategories: c.applicationCategories || [],
+      applicationRegion: c.applicationRegion || 'Global',
+    }));
   } catch {
     return [];
   }
@@ -107,6 +116,10 @@ export async function createCoachVoteCampaign(params: {
   profilePicture: string | null;
   profileBio: string | null;
   profileAge: number | null;
+  applicationCategories?: string[];
+  applicationRegion?: string;
+  applicantCountry?: string | null;
+  applicantCity?: string | null;
 }): Promise<CoachVoteCampaign> {
   const campaigns = await readCampaigns();
   const existing = campaigns.find(
@@ -124,6 +137,10 @@ export async function createCoachVoteCampaign(params: {
     profilePicture: params.profilePicture,
     profileBio: params.profileBio,
     profileAge: params.profileAge,
+    applicationCategories: params.applicationCategories || [],
+    applicationRegion: params.applicationRegion || 'Global',
+    applicantCountry: params.applicantCountry ?? null,
+    applicantCity: params.applicantCity ?? null,
     status: 'voting',
     startedAt: now.toISOString(),
     expiresAt: new Date(now.getTime() + COACH_VOTE_WINDOW_MS).toISOString(),
@@ -155,10 +172,35 @@ export async function hasVoted(campaignId: string, voterUserId: string): Promise
   return votes.some((v) => v.campaignId === campaignId && v.voterUserId === voterUserId);
 }
 
+export function isYesVote(vote: CoachVote['vote']): boolean {
+  return vote === 'baddie' || vote === 'yes';
+}
+
+export async function guideCanVoteOnCampaign(
+  voterUserId: string,
+  campaign: CoachVoteCampaign
+): Promise<boolean> {
+  const { getGuideByUserId, matchesRegionFilter, matchesGeoFilter } = await import('./improvement.js');
+  const { getUserById } = await import('./user.js');
+  const guide = await getGuideByUserId(voterUserId);
+  const voter = await getUserById(voterUserId);
+  if (!guide || !voter?.qualifiedCoach || !guide.isActive) return false;
+
+  const appCats = campaign.applicationCategories || [];
+  if (appCats.length > 0 && !appCats.some((c) => guide.categories.includes(c))) return false;
+
+  const appRegion = (campaign.applicationRegion || 'Global').trim();
+  if (appRegion.toLowerCase() === 'global') return true;
+  if (matchesRegionFilter(guide.region, appRegion)) return true;
+  if (matchesGeoFilter(guide.region, campaign.applicantCountry, campaign.applicantCity)) return true;
+  if (matchesGeoFilter(appRegion, voter.country, voter.city)) return true;
+  return false;
+}
+
 export async function castCoachVote(params: {
   campaignId: string;
   voterUserId: string;
-  vote: 'baddie' | 'not';
+  vote: 'baddie' | 'not' | 'yes' | 'no';
   feedbackTags?: string[];
 }): Promise<CoachVote> {
   const campaigns = await readCampaigns();
@@ -166,18 +208,24 @@ export async function castCoachVote(params: {
   if (!campaign) throw new Error('Campaign not found');
   if (campaign.status !== 'voting') throw new Error('Voting has ended');
   if (new Date() > new Date(campaign.expiresAt)) throw new Error('Voting period expired');
-  if (campaign.applicantUserId === params.voterUserId) throw new Error('You cannot vote on your own profile');
+  if (campaign.applicantUserId === params.voterUserId) throw new Error('You cannot vote on your own application');
+  if (!(await guideCanVoteOnCampaign(params.voterUserId, campaign))) {
+    throw new Error('Only hired guides in this category and region can vote');
+  }
 
   const votes = await readVotes();
   if (votes.some((v) => v.campaignId === params.campaignId && v.voterUserId === params.voterUserId)) {
     throw new Error('You already voted');
   }
 
+  const normalizedVote: CoachVote['vote'] =
+    params.vote === 'yes' || params.vote === 'baddie' ? 'yes' : 'no';
+
   const entry: CoachVote = {
     id: Date.now().toString() + Math.random().toString(36).slice(2, 6),
     campaignId: params.campaignId,
     voterUserId: params.voterUserId,
-    vote: params.vote,
+    vote: normalizedVote,
     feedbackTags: params.feedbackTags || [],
     createdAt: new Date().toISOString(),
   };
@@ -186,11 +234,18 @@ export async function castCoachVote(params: {
   return entry;
 }
 
-export function computeVoteStats(votes: CoachVote[]): { total: number; baddie: number; percent: number } {
+export function computeVoteStats(votes: CoachVote[]): {
+  total: number;
+  baddie: number;
+  yes: number;
+  no: number;
+  percent: number;
+} {
   const total = votes.length;
-  const baddie = votes.filter((v) => v.vote === 'baddie').length;
-  const percent = total > 0 ? baddie / total : 0;
-  return { total, baddie, percent };
+  const yes = votes.filter((v) => isYesVote(v.vote)).length;
+  const no = total - yes;
+  const percent = total > 0 ? yes / total : 0;
+  return { total, baddie: yes, yes, no, percent };
 }
 
 export async function updateCampaignStatus(
@@ -208,23 +263,25 @@ export async function updateCampaignStatus(
   return campaign;
 }
 
-export async function getPendingCampaignsForVoter(voterUserId: string, voterGender: string): Promise<CoachVoteCampaign[]> {
+export async function getPendingCampaignsForVoter(voterUserId: string): Promise<CoachVoteCampaign[]> {
   const campaigns = await readCampaigns();
   const votes = await readVotes();
   const now = new Date();
   const votedIds = new Set(votes.filter((v) => v.voterUserId === voterUserId).map((v) => v.campaignId));
 
-  return campaigns.filter((c) => {
-    if (c.status !== 'voting') return false;
-    if (now > new Date(c.expiresAt)) return false;
-    if (c.applicantUserId === voterUserId) return false;
-    if (votedIds.has(c.id)) return false;
-    return isOppositeGender(c.applicantGender, voterGender);
-  });
+  const pending: CoachVoteCampaign[] = [];
+  for (const c of campaigns) {
+    if (c.status !== 'voting') continue;
+    if (now > new Date(c.expiresAt)) continue;
+    if (c.applicantUserId === voterUserId) continue;
+    if (votedIds.has(c.id)) continue;
+    if (await guideCanVoteOnCampaign(voterUserId, c)) pending.push(c);
+  }
+  return pending;
 }
 
 export async function collectImprovementHints(votes: CoachVote[]): Promise<string[]> {
-  const tags = votes.filter((v) => v.vote === 'not').flatMap((v) => v.feedbackTags);
+  const tags = votes.filter((v) => !isYesVote(v.vote)).flatMap((v) => v.feedbackTags);
   const counts = new Map<string, number>();
   for (const t of tags) counts.set(t, (counts.get(t) || 0) + 1);
   return [...counts.entries()]
@@ -236,12 +293,11 @@ export async function collectImprovementHints(votes: CoachVote[]): Promise<strin
 /** One campaign for 15s swipe popup — prioritizes voter's region. */
 export async function getPopupCampaignForVoter(
   voterUserId: string,
-  voterGender: string,
   country?: string | null,
   city?: string | null,
   skipIds: string[] = []
 ): Promise<(CoachVoteCampaign & { applicantCountry?: string | null; applicantCity?: string | null }) | null> {
-  const pending = await getPendingCampaignsForVoter(voterUserId, voterGender);
+  const pending = await getPendingCampaignsForVoter(voterUserId);
   const candidates = pending.filter((c) => !skipIds.includes(c.id));
   if (!candidates.length) return null;
 

@@ -8,7 +8,7 @@ function permanentKey(kind: string, otherUserId: string): string {
 
 /** True if we may show the banner for this user encounter. */
 export function shouldShowProximityBanner(
-  kind: 'walk-suggest' | 'walk-incoming' | 'buzz-incoming',
+  kind: 'walk-suggest' | 'walk-incoming' | 'buzz-incoming' | 'nearby-match',
   otherUserId: string
 ): boolean {
   if (!otherUserId) return true;
@@ -22,7 +22,7 @@ export function shouldShowProximityBanner(
 
 /** Mark this person as handled — they will not pop up again. */
 export function markProximityBannerShown(
-  kind: 'walk-suggest' | 'walk-incoming' | 'buzz-incoming',
+  kind: 'walk-suggest' | 'walk-incoming' | 'buzz-incoming' | 'nearby-match',
   otherUserId: string
 ): void {
   if (!otherUserId) return;

@@ -13,6 +13,8 @@ import {
 import { getUserById } from '../models/user.js';
 import { checkContent } from '../utils/moderation.js';
 import { sanitizeMessageContent, sanitizeForStorage, sanitizeTags, LIMITS } from '../utils/sanitize.js';
+import { uploadMedia } from '../utils/storage.js';
+import { inferMediaTypeFromUrl } from '../utils/mediaType.js';
 import {
   recordFeedLike,
   recordFeedComment,
@@ -30,16 +32,38 @@ function parseFeedMode(raw: unknown): FeedMode {
   return 'for_you';
 }
 
+export const uploadPostMedia = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).userId;
+    if (!userId) return res.status(401).json({ error: 'Sign in required' });
+    const raw = req.body?.data;
+    if (!raw || typeof raw !== 'string') {
+      return res.status(400).json({ error: 'Media data required' });
+    }
+    const folder = typeof req.body?.folder === 'string' ? req.body.folder.slice(0, 40) : 'posts';
+    const url = await uploadMedia(raw, folder);
+    const contentType = inferMediaTypeFromUrl(url) === 'video' ? 'video' : 'image';
+    res.json({ url, contentType });
+  } catch (error) {
+    console.error('Upload post media error:', error);
+    res.status(500).json({ error: 'Could not upload media' });
+  }
+};
+
 export const createDatingPost = async (req: Request, res: Response) => {
   try {
     const userId = (req as any).userId;
     const { type, contentType } = req.body;
-    const content = sanitizeMessageContent(req.body.content, LIMITS.POST_CONTENT);
+    let content = sanitizeMessageContent(req.body.content, LIMITS.POST_CONTENT);
     const title = req.body.title != null ? sanitizeForStorage(req.body.title, LIMITS.POST_TITLE) : undefined;
     const tags = sanitizeTags(req.body.tags);
 
     if (!type || !contentType || !content) {
       return res.status(400).json({ error: 'Type, content type, and content are required' });
+    }
+
+    if (content.startsWith('data:') && content.length > 400_000) {
+      content = await uploadMedia(content, 'posts');
     }
 
     if (type !== 'warning' && type !== 'positive') {

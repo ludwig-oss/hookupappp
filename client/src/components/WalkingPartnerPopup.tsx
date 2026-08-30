@@ -1,8 +1,9 @@
 import { useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { AuthContext } from '../context/AuthContext';
 import { walkMatchAPI, WalkSuggestion, WalkIncomingInterest } from '../api/walkMatch';
+import { connectionsAPI } from '../api/connections';
 import { markProximityBannerShown, shouldShowProximityBanner } from '../lib/proximitySession';
-import { isLocationGranted, readStoredCoords } from '../lib/locationSession';
+import { readStoredCoords, resolveWorkingCoords } from '../lib/locationSession';
 import { formatAxiosError } from '../lib/apiError';
 import LifeQuizModal from './LifeQuizModal';
 import './WalkingPartnerPopup.css';
@@ -21,6 +22,13 @@ export default function WalkingPartnerPopup({ onOpenChat }: Props) {
   const [homeSet, setHomeSet] = useState(false);
   const coordsRef = useRef<{ lat: number; lon: number } | null>(null);
   const actedOnRef = useRef<Set<string>>(new Set());
+
+  const locationApi = {
+    getMyLocation: () => connectionsAPI.getMyLocation(),
+    forwardGeocode: (q: string) => connectionsAPI.forwardGeocode(q),
+    updateLocation: (data: Parameters<typeof connectionsAPI.updateLocation>[0]) =>
+      connectionsAPI.updateLocation(data),
+  };
 
   const hidePerson = useCallback((kind: 'walk-suggest' | 'walk-incoming', otherUserId: string) => {
     markProximityBannerShown(kind, otherUserId);
@@ -79,12 +87,22 @@ export default function WalkingPartnerPopup({ onOpenChat }: Props) {
 
   useEffect(() => {
     if (!user?.id || user.outdoorWalkEnabled === false) return;
-    if (!isLocationGranted()) return;
 
-    const syncCoords = () => {
-      const stored = readStoredCoords();
-      if (!stored) return;
-      coordsRef.current = stored;
+    const syncCoords = async () => {
+      const coords = await resolveWorkingCoords(
+        {
+          userId: user.id,
+          city: (user as { city?: string }).city,
+          country: (user as { country?: string }).country,
+        },
+        locationApi
+      );
+      if (!coords) {
+        const stored = readStoredCoords();
+        if (stored) coordsRef.current = stored;
+        return;
+      }
+      coordsRef.current = coords;
       poll();
     };
 
@@ -92,7 +110,7 @@ export default function WalkingPartnerPopup({ onOpenChat }: Props) {
     const interval = setInterval(syncCoords, 45000);
 
     return () => clearInterval(interval);
-  }, [user?.id, user?.outdoorWalkEnabled, poll]);
+  }, [user?.id, user?.outdoorWalkEnabled, user?.city, user?.country, poll]);
 
   const handleInterest = async (targetId: string) => {
     setLoading(true);
@@ -182,10 +200,12 @@ export default function WalkingPartnerPopup({ onOpenChat }: Props) {
       <div className="walk-popup-overlay" role="dialog" aria-modal="true">
           <div className="walk-popup-card">
             <p className="walk-popup-badge">Someone is near</p>
-            <h2>{incoming.fromUser?.name || 'A match'} is interested</h2>
-            <p className="walk-popup-sub">They are nearby and interested — say yes to start chatting in Communications.</p>
-            {incoming.fromUser?.profilePicture && (
+            <h2>Someone nearby is interested</h2>
+            <p className="walk-popup-sub">Profile only — name hidden until you both match.</p>
+            {incoming.fromUser?.profilePicture ? (
               <img src={incoming.fromUser.profilePicture} alt="" className="walk-popup-avatar" />
+            ) : (
+              <div className="walk-popup-avatar walk-popup-avatar-placeholder">?</div>
             )}
             {actionError && <p className="walk-popup-error">{actionError}</p>}
             <div className="walk-popup-actions">
@@ -208,18 +228,15 @@ export default function WalkingPartnerPopup({ onOpenChat }: Props) {
   return (
     <div className="walk-popup-overlay" role="dialog" aria-modal="true">
         <div className="walk-popup-card">
-          <p className="walk-popup-badge">Someone is near</p>
+          <p className="walk-popup-badge">Someone is near · your type</p>
           <div className="walk-popup-profile">
             {suggestion.profilePicture ? (
               <img src={suggestion.profilePicture} alt="" className="walk-popup-avatar" />
             ) : (
-              <div className="walk-popup-avatar walk-popup-avatar-placeholder">{suggestion.name[0]}</div>
+              <div className="walk-popup-avatar walk-popup-avatar-placeholder">?</div>
             )}
             <div>
-              <h2>
-                {suggestion.name}
-                {suggestion.age ? `, ${suggestion.age}` : ''}
-              </h2>
+              <h2>Someone nearby{suggestion.age ? ` · ${suggestion.age}` : ''}</h2>
               <p className="walk-popup-meta">
                 {suggestion.distance}m away
                 {suggestion.isOnline ? ' · online now' : ''}

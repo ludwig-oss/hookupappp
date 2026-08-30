@@ -3,10 +3,17 @@ import { AuthContext } from '../../context/AuthContext';
 import { connectionsAPI, NearbyUser, VenueCount, Buzz } from '../../api/connections';
 import { openChatWithUser } from '../../lib/openChat';
 import { formatAxiosError } from '../../lib/apiError';
-import { markLocationGranted, clearLocationGranted, isLocationGranted, readStoredCoords } from '../../lib/locationSession';
+import { markLocationGranted, clearLocationGranted, isLocationGranted, readStoredCoords, nearbyRadiusForCoords, resolveWorkingCoords } from '../../lib/locationSession';
 import './Widget.css';
 
 const NEARBY_DISCOVERY_RADIUS_M = 500;
+
+const locationApi = {
+  getMyLocation: () => connectionsAPI.getMyLocation(),
+  forwardGeocode: (q: string) => connectionsAPI.forwardGeocode(q),
+  updateLocation: (data: Parameters<typeof connectionsAPI.updateLocation>[0]) =>
+    connectionsAPI.updateLocation(data),
+};
 
 const VENUE_RADIUS_OPTIONS = [
   { value: 500, label: '500 m' },
@@ -194,12 +201,13 @@ const ConnectionsWidget = () => {
     if (!user?.id) return;
     const loc = coords || location;
     if (!loc) return;
+    const radiusCoords = readStoredCoords() || loc;
     try {
       await pushLocation(loc, connectionsVisible);
       const response = await connectionsAPI.getNearby({
         lat: loc.lat,
         lon: loc.lon,
-        radius: NEARBY_DISCOVERY_RADIUS_M,
+        radius: nearbyRadiusForCoords(radiusCoords),
         userId: user.id,
       });
       setNearbyUsers(response.users);
@@ -226,13 +234,47 @@ const ConnectionsWidget = () => {
   }, [user?.id, loadBuzzes]);
 
   useEffect(() => {
+    if (!user?.id) return;
+    resolveWorkingCoords(
+      {
+        userId: user.id,
+        city: (user as { city?: string }).city,
+        country: (user as { country?: string }).country,
+      },
+      locationApi
+    ).then((coords) => {
+      if (coords && !location) {
+        setLocation(coords);
+        fetchPlaceLabel(coords.lat, coords.lon);
+        pushLocation(coords, true).catch(() => {});
+      }
+    });
+  }, [user?.id, user?.city, user?.country]);
+
+  useEffect(() => {
     if (!user?.id || location) return;
-    if (!isLocationGranted()) return;
-    const stored = readStoredCoords();
-    if (!stored) return;
-    setLocation(stored);
-    fetchPlaceLabel(stored.lat, stored.lon);
-    pushLocation(stored, true).catch(() => {});
+    if (isLocationGranted()) {
+      const stored = readStoredCoords();
+      if (stored) {
+        setLocation(stored);
+        fetchPlaceLabel(stored.lat, stored.lon);
+        pushLocation(stored, true).catch(() => {});
+      }
+      return;
+    }
+    resolveWorkingCoords(
+      {
+        userId: user.id,
+        city: (user as { city?: string }).city,
+        country: (user as { country?: string }).country,
+      },
+      locationApi
+    ).then((coords) => {
+      if (!coords) return;
+      setLocation(coords);
+      fetchPlaceLabel(coords.lat, coords.lon);
+      pushLocation(coords, true).catch(() => {});
+    });
   }, [user?.id, location, pushLocation]);
 
   useEffect(() => {
@@ -539,10 +581,10 @@ const ConnectionsWidget = () => {
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: '15px', fontWeight: 'bold', color: '#fff', fontFamily: 'Orbitron, monospace' }}>
-                {nearbyUser.name}
+                Nearby match
               </div>
               <div style={{ fontSize: '11px', color: nearbyUser.isOnline ? '#10b981' : '#9ca3af', marginTop: 4 }}>
-                {nearbyUser.isOnline ? 'Active nearby' : 'Recently nearby'}
+                {nearbyUser.isOnline ? 'Active nearby · your type' : 'Recently nearby · your type'}
               </div>
             </div>
             {renderPersonActions(nearbyUser.id)}

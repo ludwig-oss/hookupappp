@@ -1,5 +1,5 @@
 import { useContext, useState, useEffect, useRef } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { createPortal } from 'react-dom';
 import { AuthContext } from '../context/AuthContext';
 import { profileAPI } from '../api/profile';
@@ -18,6 +18,9 @@ import DatingAdviceWidget from '../components/widgets/DatingAdviceWidget';
 import ConfessionBoothWidget from '../components/widgets/ConfessionBoothWidget';
 import type { HelpNavTarget } from '../data/helpFaq';
 import WalkingPartnerPopup from '../components/WalkingPartnerPopup';
+import ConnectionsBuzzPopup from '../components/ConnectionsBuzzPopup';
+import NearbyMatchPopup from '../components/NearbyMatchPopup';
+import { useDashboardLocation } from '../hooks/useDashboardLocation';
 import CoachVoteSwipePopup from '../components/CoachVoteSwipePopup';
 import DateSafetyMonitor from '../components/DateSafetyMonitor';
 import SchoolDailyNotification from '../components/SchoolDailyNotification';
@@ -34,6 +37,7 @@ const Dashboard = () => {
   const { user, logout, updateUser } = useContext(AuthContext);
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const location = useLocation();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const highlightInputRef = useRef<HTMLInputElement>(null);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -50,11 +54,41 @@ const Dashboard = () => {
   const [viewingHighlight, setViewingHighlight] = useState<any | null>(null);
   type WidgetId = 'activity' | 'compatibility' | 'connections' | 'highlights' | 'lovefeed' | 'advice' | 'confession' | 'chat' | 'events' | 'help' | null;
   const [openWidget, setOpenWidget] = useState<WidgetId>(null);
+  const [returnToWidget, setReturnToWidget] = useState<'help' | null>(null);
+
+  const openWidgetFromHome = (id: Exclude<WidgetId, null>) => {
+    setReturnToWidget(null);
+    setOpenWidget(id);
+  };
+
+  const handleBackFromWidget = () => {
+    if (returnToWidget) {
+      setOpenWidget(returnToWidget);
+      setReturnToWidget(null);
+    } else {
+      setOpenWidget(null);
+    }
+  };
+
+  const navigateFromHelp = (target: HelpNavTarget) => {
+    if (target === 'profile') {
+      navigate('/profile', { state: { fromHelp: true } });
+      return;
+    }
+    if (target === 'settings') {
+      navigate('/settings', { state: { fromHelp: true } });
+      return;
+    }
+    setReturnToWidget('help');
+    setOpenWidget(target);
+  };
   const [openChatWithUserId, setOpenChatWithUserId] = useState<string | null>(null);
   const [loveFeedBlowingUpCount, setLoveFeedBlowingUpCount] = useState(0);
   const [wheelOutcomeSegment, setWheelOutcomeSegment] = useState<number | null>(null);
   const [showPhotoVerification, setShowPhotoVerification] = useState(false);
   const [inRelationship, setInRelationship] = useState(false);
+
+  useDashboardLocation(user?.id ? { id: user.id, city: user.city, country: user.country } : undefined);
 
   useEffect(() => {
     if (user?.id) {
@@ -253,6 +287,15 @@ const Dashboard = () => {
   }, []);
 
   useEffect(() => {
+    const state = location.state as { openWidget?: WidgetId } | null;
+    if (state?.openWidget === 'help') {
+      setOpenWidget('help');
+      setReturnToWidget(null);
+      navigate('/home', { replace: true, state: null });
+    }
+  }, [location.state, navigate]);
+
+  useEffect(() => {
     const onOpen = (e: Event) => {
       const detail = (e as CustomEvent).detail as { userId?: string } | undefined;
       const uid = detail?.userId;
@@ -280,6 +323,8 @@ const Dashboard = () => {
           setOpenWidget('chat');
         }}
       />
+      <ConnectionsBuzzPopup onOpenConnections={() => setOpenWidget('connections')} />
+      <NearbyMatchPopup onOpenConnections={() => setOpenWidget('connections')} />
       <CoachVoteSwipePopup />
       <DateSafetyMonitor />
       <MensDatingTipPopup />
@@ -301,8 +346,8 @@ const Dashboard = () => {
       </div>
       {openWidget && (
         <div className="dashboard-back-link-wrap">
-          <button type="button" className="dashboard-back-link" onClick={() => setOpenWidget(null)}>
-            ← {t('backToHome')}
+          <button type="button" className="dashboard-back-link" onClick={handleBackFromWidget}>
+            ← {returnToWidget === 'help' ? t('backToHelp') : t('backToHome')}
           </button>
         </div>
       )}
@@ -312,46 +357,46 @@ const Dashboard = () => {
             <div className="widget-card-icon">👤</div>
             <div className="widget-card-title">{t('profile')}</div>
           </div>
-          <div className={`widget-card ${inRelationship ? 'widget-card-blurred' : ''}`} onClick={() => !inRelationship && setOpenWidget('activity')} role="button" tabIndex={inRelationship ? -1 : 0} onKeyDown={(e) => !inRelationship && e.key === 'Enter' && setOpenWidget('activity')} title={inRelationship ? 'In a relationship – focus on your partner' : undefined}>
+          <div className={`widget-card ${inRelationship ? 'widget-card-blurred' : ''}`} onClick={() => !inRelationship && openWidgetFromHome('activity')} role="button" tabIndex={inRelationship ? -1 : 0} onKeyDown={(e) => !inRelationship && e.key === 'Enter' && openWidgetFromHome('activity')} title={inRelationship ? 'In a relationship – focus on your partner' : undefined}>
             <div className="widget-card-icon">◇</div>
             <div className="widget-card-title">{t('activityStream')}</div>
           </div>
-          <div className="widget-card" onClick={() => setOpenWidget('compatibility')} role="button" tabIndex={0} onKeyDown={(e) => e.key === 'Enter' && setOpenWidget('compatibility')}>
+          <div className="widget-card" onClick={() => openWidgetFromHome('compatibility')} role="button" tabIndex={0} onKeyDown={(e) => e.key === 'Enter' && openWidgetFromHome('compatibility')}>
             <div className="widget-card-icon">⚡</div>
             <div className="widget-card-title">{t('compatibility')}</div>
           </div>
-          <div className={`widget-card ${inRelationship ? 'widget-card-blurred' : ''}`} onClick={() => !inRelationship && setOpenWidget('connections')} role="button" tabIndex={inRelationship ? -1 : 0} onKeyDown={(e) => !inRelationship && e.key === 'Enter' && setOpenWidget('connections')} title={inRelationship ? 'In a relationship – focus on your partner' : undefined}>
+          <div className={`widget-card ${inRelationship ? 'widget-card-blurred' : ''}`} onClick={() => !inRelationship && openWidgetFromHome('connections')} role="button" tabIndex={inRelationship ? -1 : 0} onKeyDown={(e) => !inRelationship && e.key === 'Enter' && openWidgetFromHome('connections')} title={inRelationship ? 'In a relationship – focus on your partner' : undefined}>
             <div className="widget-card-icon">▣</div>
             <div className="widget-card-title">{t('connections')}</div>
           </div>
-          <div className={`widget-card ${inRelationship ? 'widget-card-blurred' : ''}`} onClick={() => !inRelationship && setOpenWidget('highlights')} role="button" tabIndex={inRelationship ? -1 : 0} onKeyDown={(e) => !inRelationship && e.key === 'Enter' && setOpenWidget('highlights')} title={inRelationship ? 'In a relationship – focus on your partner' : undefined}>
+          <div className={`widget-card ${inRelationship ? 'widget-card-blurred' : ''}`} onClick={() => !inRelationship && openWidgetFromHome('highlights')} role="button" tabIndex={inRelationship ? -1 : 0} onKeyDown={(e) => !inRelationship && e.key === 'Enter' && openWidgetFromHome('highlights')} title={inRelationship ? 'In a relationship – focus on your partner' : undefined}>
             <div className="widget-card-icon">✦</div>
             <div className="widget-card-title">{t('highlights')}</div>
           </div>
-          <div className="widget-card" style={{ position: 'relative' }} onClick={() => setOpenWidget('lovefeed')} role="button" tabIndex={0} onKeyDown={(e) => e.key === 'Enter' && setOpenWidget('lovefeed')}>
+          <div className="widget-card" style={{ position: 'relative' }} onClick={() => openWidgetFromHome('lovefeed')} role="button" tabIndex={0} onKeyDown={(e) => e.key === 'Enter' && openWidgetFromHome('lovefeed')}>
             <div className="widget-card-icon">♥</div>
             <div className="widget-card-title">Love Life Feed</div>
             {loveFeedBlowingUpCount > 0 && (
               <span className="widget-card-badge" title="Breaking / blowing up posts">{loveFeedBlowingUpCount}</span>
             )}
           </div>
-          <div className="widget-card" onClick={() => setOpenWidget('advice')} role="button" tabIndex={0} onKeyDown={(e) => e.key === 'Enter' && setOpenWidget('advice')}>
+          <div className="widget-card" onClick={() => openWidgetFromHome('advice')} role="button" tabIndex={0} onKeyDown={(e) => e.key === 'Enter' && openWidgetFromHome('advice')}>
             <div className="widget-card-icon">💬</div>
             <div className="widget-card-title">Dating Advice</div>
           </div>
-          <div className="widget-card" onClick={() => setOpenWidget('confession')} role="button" tabIndex={0} onKeyDown={(e) => e.key === 'Enter' && setOpenWidget('confession')}>
+          <div className="widget-card" onClick={() => openWidgetFromHome('confession')} role="button" tabIndex={0} onKeyDown={(e) => e.key === 'Enter' && openWidgetFromHome('confession')}>
             <div className="widget-card-icon">⛪</div>
             <div className="widget-card-title">Confession Booth</div>
           </div>
-          <div className="widget-card" onClick={() => setOpenWidget('chat')} role="button" tabIndex={0} onKeyDown={(e) => e.key === 'Enter' && setOpenWidget('chat')}>
+          <div className="widget-card" onClick={() => openWidgetFromHome('chat')} role="button" tabIndex={0} onKeyDown={(e) => e.key === 'Enter' && openWidgetFromHome('chat')}>
             <div className="widget-card-icon">◉</div>
             <div className="widget-card-title">{t('communication')}</div>
           </div>
-          <div className="widget-card" onClick={() => setOpenWidget('events')} role="button" tabIndex={0} onKeyDown={(e) => e.key === 'Enter' && setOpenWidget('events')}>
+          <div className="widget-card" onClick={() => openWidgetFromHome('events')} role="button" tabIndex={0} onKeyDown={(e) => e.key === 'Enter' && openWidgetFromHome('events')}>
             <div className="widget-card-icon">📅</div>
             <div className="widget-card-title">Events</div>
           </div>
-          <div className="widget-card" onClick={() => setOpenWidget('help')} role="button" tabIndex={0} onKeyDown={(e) => e.key === 'Enter' && setOpenWidget('help')}>
+          <div className="widget-card" onClick={() => openWidgetFromHome('help')} role="button" tabIndex={0} onKeyDown={(e) => e.key === 'Enter' && openWidgetFromHome('help')}>
             <div className="widget-card-icon">?</div>
             <div className="widget-card-title">Help</div>
           </div>
@@ -400,19 +445,15 @@ const Dashboard = () => {
             {openWidget === 'events' && <EventsWidget />}
             {openWidget === 'help' && (
               <HelpWidget
-                onOpenChat={() => setOpenWidget('chat')}
-                onOpenLoveFeed={() => setOpenWidget('lovefeed')}
-                onNavigate={(target: HelpNavTarget) => {
-                  if (target === 'profile') {
-                    navigate('/profile');
-                    return;
-                  }
-                  if (target === 'settings') {
-                    navigate('/settings');
-                    return;
-                  }
-                  setOpenWidget(target);
+                onOpenChat={() => {
+                  setReturnToWidget('help');
+                  setOpenWidget('chat');
                 }}
+                onOpenLoveFeed={() => {
+                  setReturnToWidget('help');
+                  setOpenWidget('lovefeed');
+                }}
+                onNavigate={navigateFromHelp}
               />
             )}
             {openWidget === 'chat' && (

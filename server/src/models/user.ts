@@ -115,6 +115,8 @@ export interface User {
   passwordHint3?: string;
   /** Optional backup password hash (PIN accounts sign in with username + password via this). */
   backupPasswordHash?: string | null;
+  /** True when account primary sign-in is a 6-digit PIN (signup-pin). */
+  pinAuth?: boolean;
   /** Public figure / celebrity verification */
   publicFigureLevel?: 'world' | 'community' | 'country' | null;
   publicFigureProof?: string | null; // Instagram, Facebook, TikTok links (social proof)
@@ -334,7 +336,8 @@ export async function getUserByEmail(email: string): Promise<User | null> {
 export async function getUserByUsername(username: string): Promise<User | null> {
   if (usePostgres()) return pgUsers.getUserByUsername(username);
   const users = await readUsers();
-  return users.find(u => u.username === username) || null;
+  const key = username.trim().toLowerCase();
+  return users.find((u) => u.username?.trim().toLowerCase() === key) || null;
 }
 
 export async function getUserByPhone(phoneNumber: string): Promise<User | null> {

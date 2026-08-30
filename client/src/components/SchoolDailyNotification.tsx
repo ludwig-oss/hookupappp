@@ -11,19 +11,31 @@ type Props = {
 
 export default function SchoolDailyNotification({ onOpenGuides }: Props) {
   const { user } = useContext(AuthContext);
+  const setupStorageKey = user?.id ? `school-setup-${user.id}` : null;
   const [lesson, setLesson] = useState<TodayLesson | null>(null);
   const [visible, setVisible] = useState(false);
   const [showQuiz, setShowQuiz] = useState(false);
   const [showSetup, setShowSetup] = useState(false);
+  const [setupSavedLocally, setSetupSavedLocally] = useState(
+    () => setupStorageKey != null && localStorage.getItem(setupStorageKey) === '1',
+  );
   const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState('');
+
+  const markSetupSaved = useCallback(() => {
+    if (setupStorageKey) localStorage.setItem(setupStorageKey, '1');
+    setSetupSavedLocally(true);
+    setShowSetup(false);
+  }, [setupStorageKey]);
 
   const refresh = useCallback(async () => {
     if (!user?.id) return;
     try {
       const data = await schoolAPI.getToday();
       setLesson(data);
-      if (!data.setupComplete) {
+      if (data.setupComplete) {
+        markSetupSaved();
+      } else if (!setupSavedLocally) {
         setShowSetup(true);
         setVisible(false);
         return;
@@ -32,9 +44,10 @@ export default function SchoolDailyNotification({ onOpenGuides }: Props) {
       const shouldShow = !data.alreadyCompletedToday && (data.showNotification || data.showOnLogin);
       setVisible(shouldShow);
     } catch {
-      /* API offline */
+      /* API offline — keep local setup flag so we do not nag again this session */
+      if (setupSavedLocally) setShowSetup(false);
     }
-  }, [user?.id]);
+  }, [user?.id, setupSavedLocally, markSetupSaved]);
 
   useEffect(() => {
     refresh();
@@ -77,7 +90,15 @@ export default function SchoolDailyNotification({ onOpenGuides }: Props) {
   };
 
   if (showSetup) {
-    return <SchoolScheduleModal onDone={() => { setShowSetup(false); refresh(); }} />;
+    return (
+      <SchoolScheduleModal
+        onDone={() => {
+          markSetupSaved();
+          refresh();
+        }}
+        onDismiss={() => setShowSetup(false)}
+      />
+    );
   }
 
   if (!lesson || !visible) return null;

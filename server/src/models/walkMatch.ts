@@ -4,6 +4,7 @@ import { getAllUsers, getUserById, updateUserProfile, type User } from './user.j
 
 type WalkUser = Omit<User, 'password' | 'resetToken' | 'resetTokenExpiry'>;
 import { getUserPreference } from './discover.js';
+import { usersMatchPreferences } from '../utils/preferenceMatch.js';
 import { calculateDistance, HOME_RADIUS_M } from './walkMatchUtils.js';
 import { runWithSystem } from '../db/context.js';
 
@@ -186,18 +187,6 @@ function malePremium(user: WalkUser): boolean {
   );
 }
 
-function matchesOrientation(viewerId: string, otherId: string, viewerPref: any, otherPref: any): boolean {
-  if (!viewerPref?.orientation || !otherPref?.orientation) return true;
-  const a = viewerPref.orientation;
-  const b = otherPref.orientation;
-  if (a === 'bisexual' || a === 'pansexual' || b === 'bisexual' || b === 'pansexual') return true;
-  if (a === b) return true;
-  if (a === 'straight' && b === 'straight') return true;
-  if (a === 'gay' && b === 'gay') return true;
-  if (a === 'lesbian' && b === 'lesbian') return true;
-  return false;
-}
-
 function scorePair(viewer: WalkUser, candidate: WalkUser): { score: number; reason: string; tags: string[] } {
   const vAge = getUserAge(viewer);
   const cAge = getUserAge(candidate);
@@ -296,7 +285,7 @@ export async function getWalkSuggestions(
     if (!other.location) continue;
 
     const otherPref = await getUserPreference(other.id);
-    if (!matchesOrientation(userId, other.id, viewerPref, otherPref)) continue;
+    if (!usersMatchPreferences(viewer, other, viewerPref, otherPref)) continue;
 
     const distance = calculateDistance(lat, lon, other.location.lat, other.location.lon);
     if (distance > radiusM) continue;

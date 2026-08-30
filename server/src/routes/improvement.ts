@@ -96,7 +96,7 @@ router.post('/bookings/confirm-payment', confirmPayment);
 router.post('/courses/rate', rateCourseCompletion);
 router.get('/improvement', getUserImprovement);
 
-// Coach peer vote (opposite gender "baddie or not" — 48h, 80%)
+// Expert guide peer vote — 48h, more yes than no qualifies
 router.get('/coach-votes/pending', getPendingVotes);
 router.get('/coach-votes/popup', getCoachVotePopup);
 router.get('/coach-votes/my-status', getMyVoteStatus);

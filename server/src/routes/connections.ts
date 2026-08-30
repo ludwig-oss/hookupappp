@@ -11,6 +11,8 @@ import {
   searchPlaces,
   getConnectionPrefs,
   patchConnectionVisibility,
+  getMyLocation,
+  forwardGeocode,
 } from '../controllers/connectionsController.js';
 import { authenticateToken } from '../middleware/auth.js';
 
@@ -22,6 +24,8 @@ router.post('/buzz', sendBuzz);
 router.get('/buzzes', getMyBuzzes);
 router.post('/buzz/respond', respondBuzz);
 router.post('/location', updateLocation);
+router.get('/location', getMyLocation);
+router.get('/geocode', forwardGeocode);
 router.get('/prefs', getConnectionPrefs);
 router.patch('/visibility', patchConnectionVisibility);
 router.get('/nearby', getNearby);

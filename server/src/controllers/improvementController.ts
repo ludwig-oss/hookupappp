@@ -62,58 +62,95 @@ export const applyAsGuide = async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'At least one category is required' });
     }
 
-    if (!experience || !qualifications) {
-      return res.status(400).json({ error: 'Experience and qualifications are required' });
+    if (!region || !String(region).trim()) {
+      return res.status(400).json({ error: 'Region is required (e.g. Munich, Europe, Global)' });
     }
 
-    // At least one of identificationUrl or proofPerCategory (with descriptions) required
-    const hasIdentification = identificationUrl && String(identificationUrl).trim();
-    const hasProofPerCategory = proofPerCategory && typeof proofPerCategory === 'object' &&
-      Object.values(proofPerCategory).some((p: any) => p && typeof p.description === 'string' && String(p.description).trim());
-    if (!hasIdentification && !hasProofPerCategory) {
-      return res.status(400).json({ error: 'Provide identification or proof for each category (description + optional image URLs)' });
+    const proofEntries =
+      proofPerCategory && typeof proofPerCategory === 'object'
+        ? Object.entries(
+            proofPerCategory as Record<
+              string,
+              {
+                whyGood?: string;
+                description?: string;
+                proofType?: string;
+                instagramHandle?: string;
+                imageUrls?: string[] | string;
+                videoUrl?: string;
+              }
+            >
+          )
+        : [];
+
+    if (proofEntries.length === 0) {
+      return res.status(400).json({ error: 'Add why you are good and proof for each category' });
     }
 
-    // Check if user already applied
+    const sanitizedProof: Record<string, import('../models/improvement.js').CategoryProof> = {};
+    for (const [key, val] of proofEntries) {
+      const catKey = sanitizeForStorage(key, LIMITS.SHORT_LABEL);
+      if (!categories.includes(catKey)) continue;
+      const whyGood = sanitizeForStorage(val?.whyGood || val?.description, LIMITS.PRECOMM_FIELD);
+      if (!whyGood) {
+        return res.status(400).json({ error: `Explain why you are good at ${catKey}` });
+      }
+      const proofType = (val?.proofType || 'pictures') as 'instagram' | 'pictures' | 'video';
+      const entry: import('../models/improvement.js').CategoryProof = {
+        whyGood,
+        description: whyGood,
+        proofType,
+      };
+      if (proofType === 'instagram') {
+        const handle = sanitizeForStorage(val?.instagramHandle, LIMITS.SHORT_LABEL);
+        if (!handle) return res.status(400).json({ error: `Instagram handle required for ${catKey}` });
+        entry.instagramHandle = handle.replace(/^@/, '');
+      } else if (proofType === 'video') {
+        const videoUrl = sanitizeHttpUrl(val?.videoUrl) || sanitizeForStorage(val?.videoUrl, LIMITS.HTTP_URL);
+        if (!videoUrl) return res.status(400).json({ error: `Video proof URL required for ${catKey}` });
+        entry.videoUrl = videoUrl;
+      } else {
+        const rawUrls = Array.isArray(val?.imageUrls)
+          ? val.imageUrls
+          : typeof val?.imageUrls === 'string'
+            ? val.imageUrls.split(/[\s,]+/)
+            : [];
+        const urls = rawUrls
+          .map((u) => sanitizeHttpUrl(String(u)) || sanitizeForStorage(String(u), LIMITS.HTTP_URL))
+          .filter(Boolean) as string[];
+        if (!urls.length) return res.status(400).json({ error: `Photo proof required for ${catKey}` });
+        entry.imageUrls = urls;
+      }
+      sanitizedProof[catKey] = entry;
+    }
+
+    for (const catId of categories) {
+      if (!sanitizedProof[catId]) {
+        return res.status(400).json({ error: `Proof required for category ${catId}` });
+      }
+    }
+
+    const summaryExperience = Object.entries(sanitizedProof)
+      .map(([id, p]) => `${id}: ${p.whyGood}`)
+      .join('\n');
+
     const existing = await getApplicationByUserId(userId);
     if (existing) {
       return res.status(400).json({ error: 'You have already submitted an application' });
     }
 
-    const sanitizedProof =
-      proofPerCategory && typeof proofPerCategory === 'object'
-        ? Object.fromEntries(
-            Object.entries(
-              proofPerCategory as Record<string, { description?: string; imageUrls?: string[]; imageUrl?: string }>
-            ).map(([key, val]) => {
-              const urls = Array.isArray(val?.imageUrls)
-                ? val.imageUrls
-                    .map((u) => sanitizeHttpUrl(u) || sanitizeForStorage(u, LIMITS.HTTP_URL))
-                    .filter(Boolean)
-                : val?.imageUrl
-                  ? [sanitizeHttpUrl(val.imageUrl) || sanitizeForStorage(val.imageUrl, LIMITS.HTTP_URL)].filter(Boolean)
-                  : undefined;
-              return [
-                sanitizeForStorage(key, LIMITS.SHORT_LABEL),
-                {
-                  description: sanitizeForStorage(val?.description, LIMITS.PRECOMM_FIELD),
-                  ...(urls?.length ? { imageUrls: urls } : {}),
-                },
-              ];
-            })
-          )
-        : undefined;
+    const sanitizedProofOldRemoved = sanitizedProof;
 
     const application = await createApplication({
       userId,
       categories,
       region: sanitizeForStorage(region || 'Global', LIMITS.CITY),
-      experience: sanitizeForStorage(experience, LIMITS.EXPERIENCE),
-      qualifications: sanitizeForStorage(qualifications, LIMITS.QUALIFICATIONS),
-      identificationUrl: hasIdentification
+      experience: sanitizeForStorage(experience || summaryExperience, LIMITS.EXPERIENCE),
+      qualifications: sanitizeForStorage(qualifications || 'See proof per category', LIMITS.QUALIFICATIONS),
+      identificationUrl: identificationUrl
         ? sanitizeHttpUrl(identificationUrl) || sanitizeForStorage(identificationUrl, LIMITS.HTTP_URL)
         : '',
-      proofPerCategory: sanitizedProof,
+      proofPerCategory: sanitizedProofOldRemoved,
     });
 
     const { startVoteForApplication } = await import('./coachVoteController.js');
@@ -121,7 +158,7 @@ export const applyAsGuide = async (req: Request, res: Response) => {
 
     res.json({
       message:
-        'Application submitted. Your profile is now shown to the opposite gender for 48 hours — they vote if you qualify as a "baddie" coach. You need ~80% yes votes to become a guide.',
+        'Application submitted. Hired guides in your region and categories will vote for 48 hours — more yes than no and you qualify.',
       application,
       peerVoteStarted: true,
     });
@@ -206,14 +243,21 @@ export const getMyGuideProfile = async (req: Request, res: Response) => {
     }
 
     const guide = await getGuideByUserId(userId);
-    if (!guide) {
-      return res.status(404).json({ error: 'You are not a guide' });
+    const user = await getUserById(userId);
+    const canVote = Boolean(guide?.isActive && user?.qualifiedCoach);
+
+    if (!guide || !canVote) {
+      return res.json({
+        guide: null,
+        user: null,
+        canVote: false,
+      });
     }
 
-    const user = await getUserById(userId);
     res.json({
-      guide,
+      guide: { ...guide, qualifiedCoach: true },
       user: user ? { id: user.id, name: user.name, username: user.username, profilePicture: user.profilePicture } : null,
+      canVote: true,
     });
   } catch (error) {
     console.error('Get guide profile error:', error);

@@ -118,6 +118,22 @@ export const connectionsAPI = {
     return response.data;
   },
 
+  getMyLocation: async (): Promise<{
+    lat: number | null;
+    lon: number | null;
+    accuracy?: number | null;
+    city?: string;
+    country?: string;
+  }> => {
+    const response = await axios.get(`${API_URL}/location`);
+    return response.data;
+  },
+
+  forwardGeocode: async (q: string): Promise<{ lat: number | null; lon: number | null; displayName?: string | null }> => {
+    const response = await axios.get(`${API_URL}/geocode`, { params: { q } });
+    return response.data;
+  },
+
   /** Search real places (bar, mall, cinema, club, etc.) in a location; returns counts and most concentrated spot */
   searchPlaces: async (params: { q: string; type?: string }): Promise<{
     places: Array<{ venue: string; venueType: string; location: { lat: number; lon: number }; count: number }>;

@@ -5,9 +5,10 @@ import './SchoolNotification.css';
 
 type Props = {
   onDone: () => void;
+  onDismiss?: () => void;
 };
 
-export default function SchoolScheduleModal({ onDone }: Props) {
+export default function SchoolScheduleModal({ onDone, onDismiss }: Props) {
   const [hour, setHour] = useState('19');
   const [minute, setMinute] = useState('00');
   const [loading, setLoading] = useState(false);
@@ -53,6 +54,9 @@ export default function SchoolScheduleModal({ onDone }: Props) {
         </div>
         <button type="button" className="school-btn-primary" onClick={handleSave} disabled={loading}>
           {loading ? 'Saving…' : 'Start my classes'}
+        </button>
+        <button type="button" className="school-btn-ghost" onClick={onDismiss} disabled={loading}>
+          Not now
         </button>
       </div>
     </div>

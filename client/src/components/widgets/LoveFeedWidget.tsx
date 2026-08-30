@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { AuthContext } from '../../context/AuthContext';
 import { postsAPI, DatingPost, FeedMode } from '../../api/posts';
 import { formatAxiosError } from '../../lib/apiError';
+import { uploadMediaDataUrl } from '../../lib/uploadMedia';
 import './Widget.css';
 
 const BLOWING_UP_LIKES = 25;
@@ -285,8 +286,6 @@ export default function LoveFeedWidget({ onShareToFriends }: { onShareToFriends?
   const captureVideoRef = useRef<HTMLInputElement>(null);
   const videoPreviewRef = useRef<HTMLVideoElement>(null);
 
-  const MAX_VIDEO_MB = 25;
-  const MAX_VIDEO_BYTES = MAX_VIDEO_MB * 1024 * 1024;
   const feedRef = useRef<HTMLDivElement>(null);
   const viewedPostsRef = useRef<Set<string>>(new Set());
 
@@ -368,17 +367,17 @@ export default function LoveFeedWidget({ onShareToFriends }: { onShareToFriends?
       alert('Add a statement, image or video');
       return;
     }
-    const content = mediaData || postContent.trim();
+    let content = mediaData || postContent.trim();
     if (!content) return;
-    const resolvedContentType = mediaData
-      ? (mediaData.startsWith('data:video/') ? 'video' : 'image')
+    let resolvedContentType: 'text' | 'image' | 'video' = mediaData
+      ? (mediaData.startsWith('data:video/') || selectedMediaType === 'video' ? 'video' : 'image')
       : 'text';
-    if (resolvedContentType === 'video' && content.length > MAX_VIDEO_BYTES * (4 / 3)) {
-      alert(`Video is too large. Use a file under ${MAX_VIDEO_MB}MB or a shorter clip.`);
-      return;
-    }
     setPosting(true);
     try {
+      if (mediaData && content.startsWith('data:') && (resolvedContentType === 'video' || content.length > 350_000)) {
+        content = await uploadMediaDataUrl(content, 'posts');
+        resolvedContentType = /\.(mp4|webm|mov|m4v)(\?|$)/i.test(content) ? 'video' : 'image';
+      }
       await postsAPI.createPost({
         type: postType,
         contentType: resolvedContentType,
@@ -393,12 +392,9 @@ export default function LoveFeedWidget({ onShareToFriends }: { onShareToFriends?
       await loadFeed(feedMode);
     } catch (err: any) {
       console.error('Failed to create post', err);
-      const status = err?.response?.status;
       const msg = err?.response?.data?.error || err?.message || 'Failed to create post';
-      if (status === 403) {
-        alert('Verify your email or phone before posting. Open Settings or check your inbox.');
-      } else if (status === 413 || msg.toLowerCase().includes('too large')) {
-        alert(`Video is too large. Try a shorter or smaller file (under ${MAX_VIDEO_MB}MB).`);
+      if (err?.response?.status === 413 || msg.toLowerCase().includes('too large')) {
+        alert('Upload failed — try again on Wi‑Fi or use a shorter clip.');
       } else {
         alert(msg);
       }
@@ -476,10 +472,6 @@ export default function LoveFeedWidget({ onShareToFriends }: { onShareToFriends?
     const isImage = file.type.startsWith('image/');
     const isVideo = file.type.startsWith('video/');
     if (!isImage && !isVideo) return;
-    if (isVideo && file.size > MAX_VIDEO_BYTES) {
-      alert(`Video must be under ${MAX_VIDEO_MB}MB. Yours is ${(file.size / 1024 / 1024).toFixed(1)}MB.`);
-      return;
-    }
     revokePreview();
     setMediaData(null);
     setSelectedMediaType(isVideo ? 'video' : 'image');

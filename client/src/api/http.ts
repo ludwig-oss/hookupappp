@@ -3,8 +3,11 @@ import axios from 'axios';
 const RETRY_STATUSES = new Set([502, 503, 504]);
 const RETRY_METHODS = new Set(['get', 'post', 'put', 'patch', 'delete']);
 
+axios.defaults.timeout = 45000;
+
 /** Attach JWT from localStorage on every request (survives signup finally-block bugs). */
 axios.interceptors.request.use((config) => {
+  if (config.timeout == null) config.timeout = 45000;
   if (typeof localStorage === 'undefined') return config;
   const token = localStorage.getItem('token');
   if (token) {

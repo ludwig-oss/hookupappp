@@ -1,5 +1,5 @@
 import { useState, useEffect, useContext, useRef } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { createPortal } from 'react-dom';
 import { AuthContext } from '../context/AuthContext';
 import { profileAPI, ProfileData } from '../api/profile';
@@ -57,6 +57,8 @@ const Profile = () => {
   const { user, logout, updateUser } = useContext(AuthContext);
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const location = useLocation();
+  const fromHelp = !!(location.state as { fromHelp?: boolean } | null)?.fromHelp;
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -518,6 +520,9 @@ const Profile = () => {
         </div>
       </div>
       <div className="dashboard-top-nav">
+        {fromHelp && (
+          <Link to="/home" state={{ openWidget: 'help' }} className="dashboard-back-link">← {t('backToHelp')}</Link>
+        )}
         <Link to="/home" className="dashboard-back-link">← {t('backToHome')}</Link>
         <Link to="/settings" className="dashboard-back-link">⚙️ {t('settings')}</Link>
       </div>

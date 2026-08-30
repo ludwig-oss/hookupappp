@@ -1,14 +1,15 @@
 import { compressImageDataUrl } from './compressImage';
 import { isVideoMediaUrl } from './media';
+import { uploadMediaDataUrl } from './uploadMedia';
 
 /** Stay under Vercel serverless ~4.5MB JSON body limit when using same-origin /api proxy. */
 const PROXY_SAFE_CHARS = 3_500_000;
 
-/** Shrink images and reject oversized videos before upload. */
+/** Shrink images; upload large videos directly to Render (bypasses Vercel limit). */
 export async function prepareMediaForUpload(dataUrl: string): Promise<string> {
   if (isVideoMediaUrl(dataUrl)) {
     if (dataUrl.length > PROXY_SAFE_CHARS) {
-      throw new Error('Video is too large. Use a shorter clip (max ~3 seconds) or pick a photo.');
+      return uploadMediaDataUrl(dataUrl, 'media');
     }
     return dataUrl;
   }

@@ -4,16 +4,19 @@ import { getUserPreference } from '../models/discover.js';
 import {
   createAdviceQuestion,
   getQuestionById,
-  getQuestionsForCohort,
+  getRankedAdviceFeed,
   searchQuestions,
   addAdviceAnswer,
+  addAdviceReply,
   likeAdviceAnswer,
+  likeAdviceReply,
   getUsersInCohort,
   computeAnswerCohort,
   cohortLabel,
   markFirstCommentNotified,
   runMonthlyAdvicePayouts,
   ADVICE_PRIZE_EUR,
+  type AdviceQuestion,
 } from '../models/datingAdvice.js';
 import { sendPushToUser } from '../realtime/push.js';
 import { notifyNewAdviceAnswer } from '../realtime/notifications.js';
@@ -29,6 +32,28 @@ async function getAskerContext(userId: string) {
     lookingFor: pref?.lookingFor || ['dating'],
     gender: user?.gender,
     cohort: computeAnswerCohort(pref?.orientation || 'straight', user?.gender),
+    city: user?.city,
+    country: user?.country,
+  };
+}
+
+function maskAdviceQuestion(q: AdviceQuestion, viewerId: string) {
+  const isAsker = q.userId === viewerId;
+  return {
+    ...q,
+    answers: q.answers.map((a) => ({
+      ...a,
+      userName: a.userId === viewerId ? a.userName : 'Community member',
+      replies: (a.replies || []).map((r) => ({
+        ...r,
+        userName: r.userId === viewerId ? r.userName : 'Community member',
+      })),
+    })),
+    user: isAsker
+      ? { id: q.userId, name: 'You (hidden from others)', profilePicture: null, blurred: true }
+      : { id: 'anonymous', name: 'Anonymous', profilePicture: null, blurred: true },
+    cohortLabel: cohortLabel(q.answerCohort),
+    isLocal: undefined as boolean | undefined,
   };
 }
 
@@ -49,53 +74,47 @@ export async function searchAdviceHandler(req: Request, res: Response) {
       orientation: ctx.orientation,
       gender: ctx.gender,
       lookingFor: ctx.lookingFor,
+      city: ctx.city,
+      country: ctx.country,
+      lat: ctx.user?.location?.lat,
+      lon: ctx.user?.location?.lon,
     });
 
     const notifyIds = await getUsersInCohort(question.answerCohort, userId);
-    const askerName = ctx.user?.name || 'Someone';
     const cohortName = cohortLabel(question.answerCohort);
 
-    for (const uid of notifyIds.slice(0, 200)) {
-      sendPushToUser(uid, {
-        title: 'Dating advice needed',
-        body: `${askerName} asked: "${content.slice(0, 80)}…" — ${cohortName} can help.`,
-        data: { type: 'advice_question', questionId: question.id },
-      }).catch(() => {});
-    }
+    void (async () => {
+      for (const uid of notifyIds.slice(0, 200)) {
+        await sendPushToUser(uid, {
+          title: 'Dating advice needed nearby',
+          body: `Someone in ${ctx.city || 'your area'} asked — ${cohortName} can help.`,
+          data: { type: 'advice_question', questionId: question.id },
+        }).catch(() => {});
+      }
+    })();
 
     res.json({
-      question,
-      message: `Posted! ${cohortName} were notified to answer.`,
+      question: maskAdviceQuestion(question, userId),
+      message: `Posted! ${cohortName} in your area were notified.`,
       notifiedCount: notifyIds.length,
     });
   } catch (e: any) {
-    res.status(500).json({ error: e.message || 'Failed' });
+    res.status(500).json({ error: e.message || 'Failed to post question' });
   }
 }
 
 export async function getAdviceFeedHandler(req: Request, res: Response) {
   try {
     const userId = (req as any).userId as string;
-    await runMonthlyAdvicePayouts().catch(() => {});
+    void runMonthlyAdvicePayouts().catch(() => {});
 
     const ctx = await getAskerContext(userId);
     const q = typeof req.query.q === 'string' ? req.query.q : '';
     const list = q.trim()
-      ? await searchQuestions(q, ctx.cohort)
-      : await getQuestionsForCohort(ctx.cohort);
+      ? await searchQuestions(q, ctx.cohort, ctx.city, ctx.country)
+      : await getRankedAdviceFeed(ctx.cohort, ctx.city, ctx.country);
 
-    const enriched = await Promise.all(
-      list.map(async (item) => {
-        const u = await getUserById(item.userId);
-        return {
-          ...item,
-          user: u
-            ? { id: u.id, name: u.name, username: u.username, profilePicture: u.profilePicture }
-            : null,
-          cohortLabel: cohortLabel(item.answerCohort),
-        };
-      })
-    );
+    const enriched = list.map((item) => maskAdviceQuestion(item, userId));
 
     res.json({
       questions: enriched,
@@ -104,22 +123,16 @@ export async function getAdviceFeedHandler(req: Request, res: Response) {
       prizeEur: ADVICE_PRIZE_EUR,
     });
   } catch (e: any) {
-    res.status(500).json({ error: e.message || 'Failed' });
+    res.status(500).json({ error: e.message || 'Failed to load feed' });
   }
 }
 
 export async function getAdviceQuestionHandler(req: Request, res: Response) {
   try {
+    const userId = (req as any).userId as string;
     const q = await getQuestionById(req.params.questionId);
     if (!q) return res.status(404).json({ error: 'Not found' });
-    const u = await getUserById(q.userId);
-    res.json({
-      question: {
-        ...q,
-        user: u ? { id: u.id, name: u.name, profilePicture: u.profilePicture } : null,
-        cohortLabel: cohortLabel(q.answerCohort),
-      },
-    });
+    res.json({ question: maskAdviceQuestion(q, userId) });
   } catch (e: any) {
     res.status(500).json({ error: e.message || 'Failed' });
   }
@@ -165,7 +178,7 @@ export async function postAdviceAnswerHandler(req: Request, res: Response) {
 
     sendPushToUser(question.userId, {
       title: 'New advice on your question',
-      body: `${user?.name || 'Someone'} answered: "${content.slice(0, 60)}…"`,
+      body: `Someone replied: "${content.slice(0, 60)}…"`,
       data: { type: 'advice_answer', questionId },
     }).catch(() => {});
 
@@ -186,6 +199,41 @@ export async function postAdviceAnswerHandler(req: Request, res: Response) {
   }
 }
 
+export async function postAdviceReplyHandler(req: Request, res: Response) {
+  try {
+    const userId = (req as any).userId as string;
+    const { questionId, answerId } = req.params;
+    const content = sanitizeMessageContent(req.body.content, LIMITS.COMMENT);
+    if (!content) return res.status(400).json({ error: 'Comment required' });
+
+    const mod = checkContent(content);
+    if (!mod.allowed) return res.status(400).json({ error: mod.reason || 'Not allowed' });
+
+    const question = await getQuestionById(questionId);
+    if (!question) return res.status(404).json({ error: 'Question not found' });
+
+    const user = await getUserById(userId);
+    const result = await addAdviceReply(questionId, answerId, {
+      userId,
+      userName: user?.name || 'User',
+      content,
+    });
+    if (!result) return res.status(404).json({ error: 'Answer not found' });
+
+    if (question.userId !== userId) {
+      sendPushToUser(question.userId, {
+        title: 'New comment on your advice thread',
+        body: content.slice(0, 80),
+        data: { type: 'advice_reply', questionId },
+      }).catch(() => {});
+    }
+
+    res.json({ reply: result.reply });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message || 'Failed' });
+  }
+}
+
 export async function likeAdviceAnswerHandler(req: Request, res: Response) {
   try {
     const userId = (req as any).userId as string;
@@ -193,6 +241,18 @@ export async function likeAdviceAnswerHandler(req: Request, res: Response) {
     const answer = await likeAdviceAnswer(questionId, answerId, userId);
     if (!answer) return res.status(404).json({ error: 'Not found' });
     res.json({ likes: answer.likeUserIds.length });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message || 'Failed' });
+  }
+}
+
+export async function likeAdviceReplyHandler(req: Request, res: Response) {
+  try {
+    const userId = (req as any).userId as string;
+    const { questionId, answerId, replyId } = req.params;
+    const reply = await likeAdviceReply(questionId, answerId, replyId, userId);
+    if (!reply) return res.status(404).json({ error: 'Not found' });
+    res.json({ likes: reply.likeUserIds.length });
   } catch (e: any) {
     res.status(500).json({ error: e.message || 'Failed' });
   }

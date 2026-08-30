@@ -45,10 +45,18 @@ export const IMPROVEMENT_CATEGORIES: ImprovementCategory[] = [
 
 export const SESSION_PRICE_EUR = 50;
 
-/** Per-category proof: description + optional image URLs (e.g. photos for appearance, credentials for communications). */
+/** Per-category: why you're good + proof (Instagram, photos, or video). */
+export type CategoryProofType = 'instagram' | 'pictures' | 'video';
+
 export interface CategoryProof {
-  description: string;
+  /** Why you're good in this area */
+  whyGood: string;
+  /** @deprecated use whyGood */
+  description?: string;
+  proofType?: CategoryProofType;
+  instagramHandle?: string;
   imageUrls?: string[];
+  videoUrl?: string;
 }
 
 export interface GuideApplication {
@@ -237,6 +245,11 @@ export async function createApplication(appData: Omit<GuideApplication, 'id' | '
 export async function getApplicationByUserId(userId: string): Promise<GuideApplication | null> {
   const apps = await readApplications();
   return apps.find(a => a.userId === userId) || null;
+}
+
+export async function getApplicationById(id: string): Promise<GuideApplication | null> {
+  const apps = await readApplications();
+  return apps.find(a => a.id === id) || null;
 }
 
 export async function getAllApplications(): Promise<GuideApplication[]> {

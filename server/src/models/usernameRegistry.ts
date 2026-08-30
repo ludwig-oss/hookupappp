@@ -37,6 +37,14 @@ export async function isUsernameReserved(username: string): Promise<boolean> {
   return list.some((r) => r.username === key);
 }
 
+/** Resolve user id from reserved username (handles username column drift). */
+export async function getRegisteredUserId(username: string): Promise<string | null> {
+  const key = normalizeUsernameKey(username);
+  if (!key) return null;
+  const list = await readRegistry();
+  return list.find((r) => r.username === key)?.userId ?? null;
+}
+
 /** Instagram-style: once taken, never available again (even if account is removed). */
 export async function assertUsernameAvailable(username: string): Promise<void> {
   const key = normalizeUsernameKey(username);

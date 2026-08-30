@@ -52,8 +52,9 @@ import connectionJourneyRoutes from './routes/connectionJourney.js';
 import notificationsRoutes from './routes/notifications.js';
 import walkMatchRoutes from './routes/walkMatch.js';
 import schoolRoutes from './routes/school.js';
-import adminRoutes from './routes/admin.js';
 import datingAdviceRoutes from './routes/datingAdvice.js';
+import adminRoutes from './routes/admin.js';
+import translateRoutes from './routes/translate.js';
 import anonymousConfessionRoutes from './routes/anonymousConfession.js';
 import { runSchema } from './db/index.js';
 import { runWithSystem } from './db/context.js';
@@ -157,6 +158,7 @@ app.use('/api/notifications', notificationsRoutes);
 app.use('/api/walk-match', walkMatchRoutes);
 app.use('/api/school', schoolRoutes);
 app.use('/api/advice', datingAdviceRoutes);
+app.use('/api/translate', translateRoutes);
 app.use('/api/confession', anonymousConfessionRoutes);
 app.use('/api/admin', adminRoutes);
 

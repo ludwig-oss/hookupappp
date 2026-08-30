@@ -33,7 +33,7 @@ const ForgotPin = () => {
     setError('');
     setLoading(true);
     try {
-      const res = await authAPI.forgotPinHints(username.trim());
+      const res = await authAPI.forgotPinHints(normalizeUsernameInput(username.trim()));
       setHint1(res.hint1);
       setHint2(res.hint2);
       setHint3(res.hint3);
@@ -51,7 +51,8 @@ const ForgotPin = () => {
     setError('');
     setLoading(true);
     try {
-      const res = await authAPI.forgotPinLastChatChallenge(username.trim());
+      const u = normalizeUsernameInput(username.trim());
+      const res = await authAPI.forgotPinLastChatChallenge(u);
       setQuestion(res.question);
       setOptions(res.options);
       setChallengeToken(res.challengeToken);
@@ -67,7 +68,8 @@ const ForgotPin = () => {
     setError('');
     setLoading(true);
     try {
-      const res = await authAPI.forgotPinVerifyLastChat(username.trim(), challengeToken, answer);
+      const u = normalizeUsernameInput(username.trim());
+      const res = await authAPI.forgotPinVerifyLastChat(u, challengeToken, answer);
       setResetToken(res.resetToken);
       setMessage(res.message);
       setStep('new-pin');
@@ -83,7 +85,8 @@ const ForgotPin = () => {
     setError('');
     setLoading(true);
     try {
-      const res = await authAPI.forgotPinVerifyChatNames(username.trim(), [name1, name2, name3]);
+      const u = normalizeUsernameInput(username.trim());
+      const res = await authAPI.forgotPinVerifyChatNames(u, [name1, name2, name3].map((n) => normalizeUsernameInput(n.trim())));
       setResetToken(res.resetToken);
       setMessage(res.message);
       setStep('new-pin');

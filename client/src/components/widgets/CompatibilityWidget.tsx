@@ -19,22 +19,6 @@ import './Widget.css';
 
 const VIDEO_CALL_BASE = 'https://meet.jit.si';
 
-/** Proof hint per category type for expert application */
-function getProofHint(categoryId: string): string {
-  const hints: Record<string, string> = {
-    communication: 'Provide evidence you\'re a pro (e.g. credentials, portfolio) and that it\'s really you.',
-    texting: 'Provide evidence of expertise in texting/DMs and that it\'s really you.',
-    bedroom: 'Provide proof of expertise in this area (credentials or evidence).',
-    'keeping-partner': 'Provide proof of expertise (e.g. social proof, credentials).',
-    'first-date': 'If appearance-related: photos of yourself. Otherwise: credentials or social proof.',
-    flirting: 'If appearance-related: photos of yourself. Otherwise: credentials or social proof.',
-    'body-language-dating': 'If appearance-related: photos of yourself. Otherwise: credentials or social proof.',
-    'confidence-dating': 'If appearance-related: photos of yourself. Otherwise: credentials or social proof.',
-    'dating-apps': 'Provide proof (e.g. profile screenshots, credentials) and that it\'s really you.',
-  };
-  return hints[categoryId] || 'Provide proof of expertise (e.g. credentials, social proof, or photos if applicable) and that it\'s really you.';
-}
-
 type GuideSeekStep = 'choose' | 'region' | 'ready' | 'skipped';
 
 function clipText(text: string, max: number): string {
@@ -76,7 +60,9 @@ export default function CompatibilityWidget() {
   const [applyExperience, setApplyExperience] = useState('');
   const [applyQualifications, setApplyQualifications] = useState('');
   const [applyIdentificationUrl, setApplyIdentificationUrl] = useState('');
-  const [applyProofPerCategory, setApplyProofPerCategory] = useState<Record<string, { description: string; imageUrls: string }>>({});
+  const [applyProofPerCategory, setApplyProofPerCategory] = useState<
+    Record<string, { whyGood: string; proofType: 'instagram' | 'pictures' | 'video'; instagramHandle: string; imageUrls: string; videoUrl: string }>
+  >({});
   const [applyRegion, setApplyRegion] = useState('');
   // Expert set availability
   const [availStart, setAvailStart] = useState('');
@@ -312,20 +298,50 @@ export default function CompatibilityWidget() {
       setError('Select at least one category');
       return;
     }
-    if (!applyExperience.trim() || !applyQualifications.trim()) {
-      setError('Experience and qualifications are required');
+    if (!applyRegion.trim()) {
+      setError('Region is required (e.g. Munich, Europe)');
       return;
     }
-    const proofPerCategory: Record<string, { description: string; imageUrls?: string[] }> = {};
+    const proofPerCategory: Record<string, {
+      whyGood: string;
+      proofType: 'instagram' | 'pictures' | 'video';
+      instagramHandle?: string;
+      imageUrls?: string;
+      videoUrl?: string;
+    }> = {};
     for (const catId of applyCategories) {
-      const p = applyProofPerCategory[catId];
-      const desc = p?.description?.trim();
-      if (!desc) {
-        setError(`Proof description required for ${categories.find(c => c.id === catId)?.name || catId}`);
+      const p = applyProofPerCategory[catId] || {
+        whyGood: '',
+        proofType: 'pictures' as const,
+        instagramHandle: '',
+        imageUrls: '',
+        videoUrl: '',
+      };
+      const whyGood = p.whyGood?.trim();
+      if (!whyGood) {
+        setError(`Explain why you're good at ${categories.find((c) => c.id === catId)?.name || catId}`);
         return;
       }
-      const urls = p?.imageUrls?.trim() ? p.imageUrls.split(/[\s,]+/).filter(Boolean) : undefined;
-      proofPerCategory[catId] = { description: desc, imageUrls: urls };
+      const proofType = p.proofType || 'pictures';
+      if (proofType === 'instagram' && !p.instagramHandle?.trim()) {
+        setError(`Instagram handle required for ${categories.find((c) => c.id === catId)?.name || catId}`);
+        return;
+      }
+      if (proofType === 'pictures' && !p.imageUrls?.trim()) {
+        setError(`Photo proof required for ${categories.find((c) => c.id === catId)?.name || catId}`);
+        return;
+      }
+      if (proofType === 'video' && !p.videoUrl?.trim()) {
+        setError(`Video proof URL required for ${categories.find((c) => c.id === catId)?.name || catId}`);
+        return;
+      }
+      proofPerCategory[catId] = {
+        whyGood,
+        proofType,
+        ...(proofType === 'instagram' ? { instagramHandle: p.instagramHandle.trim() } : {}),
+        ...(proofType === 'pictures' ? { imageUrls: p.imageUrls.trim() } : {}),
+        ...(proofType === 'video' ? { videoUrl: p.videoUrl.trim() } : {}),
+      };
     }
     setLoading(true);
     setError('');
@@ -333,9 +349,9 @@ export default function CompatibilityWidget() {
       const res = await improvementAPI.applyAsGuide({
         userId: user.id,
         categories: applyCategories,
-        region: applyRegion.trim() || undefined,
-        experience: applyExperience.trim(),
-        qualifications: applyQualifications.trim(),
+        region: applyRegion.trim(),
+        experience: applyExperience.trim() || undefined,
+        qualifications: applyQualifications.trim() || undefined,
         identificationUrl: applyIdentificationUrl.trim() || undefined,
         proofPerCategory,
       });
@@ -346,7 +362,7 @@ export default function CompatibilityWidget() {
       setApplyQualifications('');
       setApplyIdentificationUrl('');
       setApplyProofPerCategory({});
-      alert(res.message || 'Application submitted. Opposite-gender users will vote for 48 hours — you need ~80% "baddie" votes.');
+      alert(res.message || 'Application submitted. Expert guides in your region will vote yes or no.');
     } catch (err: any) {
       setError(err.response?.data?.error || 'Failed to submit application');
     } finally {
@@ -1006,8 +1022,10 @@ export default function CompatibilityWidget() {
       {view === 'expert_apply' && (
         <div>
           <button type="button" onClick={() => setView('main')} style={{ marginBottom: '12px', background: 'transparent', border: '2px solid #00d4ff', color: '#00d4ff', padding: '8px 14px', borderRadius: '8px', fontFamily: 'Orbitron, monospace', cursor: 'pointer' }}>← Back</button>
-          <h3 style={{ color: '#00d4ff', marginBottom: '8px', fontFamily: 'Orbitron, monospace' }}>Apply to be a Style / Problem Coach</h3>
-          <p style={{ fontSize: '12px', color: '#9ca3af', marginBottom: '16px' }}>Submit your application — status starts as Pending Review. Admins approve qualified coaches and assign star ratings. Review within 48 hours.</p>
+          <h3 style={{ color: '#00d4ff', marginBottom: '8px', fontFamily: 'Orbitron, monospace' }}>Apply to be a guide</h3>
+          <p style={{ fontSize: '12px', color: '#9ca3af', marginBottom: '16px' }}>
+            For each area: explain why you&apos;re good, then add proof (Instagram, photos, or video). Hired guides in your region vote yes/no — more yes than no and you qualify.
+          </p>
           <label style={{ display: 'block', marginBottom: '8px', color: '#00d4ff', fontSize: '12px' }}>Categories (select all that apply)</label>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '16px', maxHeight: '140px', overflowY: 'auto' }}>
             {categories.map(cat => (
@@ -1026,38 +1044,74 @@ export default function CompatibilityWidget() {
           </div>
           {applyCategories.map(catId => {
             const cat = categories.find(c => c.id === catId);
-            const proof = applyProofPerCategory[catId] || { description: '', imageUrls: '' };
+            const proof = applyProofPerCategory[catId] || {
+              whyGood: '',
+              proofType: 'pictures' as const,
+              instagramHandle: '',
+              imageUrls: '',
+              videoUrl: '',
+            };
             return (
               <div key={catId} style={{ ...cardStyle(), marginBottom: '12px' }}>
-                <div style={{ color: '#00d4ff', fontSize: '12px', marginBottom: '6px' }}>{cat?.icon} {cat?.name} — proof required</div>
-                <p style={{ fontSize: '11px', color: '#9ca3af', marginBottom: '8px' }}>{getProofHint(catId)}</p>
+                <div style={{ color: '#00d4ff', fontSize: '12px', marginBottom: '6px' }}>{cat?.icon} {cat?.name}</div>
+                <label style={{ fontSize: '11px', color: '#9ca3af', display: 'block', marginBottom: 4 }}>Why I&apos;m good at this</label>
                 <textarea
-                  value={proof.description}
-                  onChange={e => setApplyProofPerCategory(prev => ({ ...prev, [catId]: { ...prev[catId], description: e.target.value } }))}
-                  placeholder="Describe your proof / paste credentials or image URLs"
+                  value={proof.whyGood}
+                  onChange={e => setApplyProofPerCategory(prev => ({
+                    ...prev,
+                    [catId]: { ...proof, whyGood: e.target.value },
+                  }))}
+                  placeholder="e.g. I've styled people for 5 years because..."
                   rows={2}
-                  style={{ width: '100%', padding: '8px', marginBottom: '6px', background: 'rgba(0,0,0,0.5)', border: '2px solid rgba(0, 212, 255, 0.5)', borderRadius: '8px', color: '#fff', fontSize: '12px' }}
+                  style={{ width: '100%', padding: '8px', marginBottom: '8px', background: 'rgba(0,0,0,0.5)', border: '2px solid rgba(0, 212, 255, 0.5)', borderRadius: '8px', color: '#fff', fontSize: '12px' }}
                 />
-                <input
-                  type="text"
-                  value={proof.imageUrls}
-                  onChange={e => setApplyProofPerCategory(prev => ({ ...prev, [catId]: { ...prev[catId], imageUrls: e.target.value } }))}
-                  placeholder="Image URLs (optional, comma or space separated)"
-                  style={{ width: '100%', padding: '8px', background: 'rgba(0,0,0,0.5)', border: '2px solid rgba(0, 212, 255, 0.4)', borderRadius: '8px', color: '#fff', fontSize: '11px' }}
-                />
+                <label style={{ fontSize: '11px', color: '#9ca3af', display: 'block', marginBottom: 4 }}>Proof type</label>
+                <select
+                  value={proof.proofType}
+                  onChange={e => setApplyProofPerCategory(prev => ({
+                    ...prev,
+                    [catId]: { ...proof, proofType: e.target.value as 'instagram' | 'pictures' | 'video' },
+                  }))}
+                  style={{ width: '100%', padding: '8px', marginBottom: '8px', background: 'rgba(0,0,0,0.5)', border: '2px solid rgba(0, 212, 255, 0.4)', borderRadius: '8px', color: '#fff', fontSize: '12px' }}
+                >
+                  <option value="instagram">Instagram proof (@handle or profile)</option>
+                  <option value="pictures">Photo proof (URLs)</option>
+                  <option value="video">Video proof (URL)</option>
+                </select>
+                {proof.proofType === 'instagram' && (
+                  <input
+                    type="text"
+                    value={proof.instagramHandle}
+                    onChange={e => setApplyProofPerCategory(prev => ({ ...prev, [catId]: { ...proof, instagramHandle: e.target.value } }))}
+                    placeholder="@yourhandle or instagram.com/you"
+                    style={{ width: '100%', padding: '8px', background: 'rgba(0,0,0,0.5)', border: '2px solid rgba(0, 212, 255, 0.4)', borderRadius: '8px', color: '#fff', fontSize: '11px' }}
+                  />
+                )}
+                {proof.proofType === 'pictures' && (
+                  <input
+                    type="text"
+                    value={proof.imageUrls}
+                    onChange={e => setApplyProofPerCategory(prev => ({ ...prev, [catId]: { ...proof, imageUrls: e.target.value } }))}
+                    placeholder="Photo URLs (comma separated)"
+                    style={{ width: '100%', padding: '8px', background: 'rgba(0,0,0,0.5)', border: '2px solid rgba(0, 212, 255, 0.4)', borderRadius: '8px', color: '#fff', fontSize: '11px' }}
+                  />
+                )}
+                {proof.proofType === 'video' && (
+                  <input
+                    type="text"
+                    value={proof.videoUrl}
+                    onChange={e => setApplyProofPerCategory(prev => ({ ...prev, [catId]: { ...proof, videoUrl: e.target.value } }))}
+                    placeholder="Video URL showing your skills"
+                    style={{ width: '100%', padding: '8px', background: 'rgba(0,0,0,0.5)', border: '2px solid rgba(0, 212, 255, 0.4)', borderRadius: '8px', color: '#fff', fontSize: '11px' }}
+                  />
+                )}
               </div>
             );
           })}
           {applyCategories.length > 0 && (
             <>
-              <label style={{ display: 'block', marginBottom: '6px', color: '#00d4ff', fontSize: '12px' }}>Experience (required)</label>
-              <textarea value={applyExperience} onChange={e => setApplyExperience(e.target.value)} placeholder="Your experience in these areas" rows={2} style={{ width: '100%', padding: '10px', marginBottom: '12px', background: 'rgba(0,0,0,0.5)', border: '2px solid rgba(0, 212, 255, 0.5)', borderRadius: '8px', color: '#fff', fontSize: '12px' }} />
-              <label style={{ display: 'block', marginBottom: '6px', color: '#00d4ff', fontSize: '12px' }}>Qualifications (required)</label>
-              <textarea value={applyQualifications} onChange={e => setApplyQualifications(e.target.value)} placeholder="Credentials, certifications, social proof" rows={2} style={{ width: '100%', padding: '10px', marginBottom: '12px', background: 'rgba(0,0,0,0.5)', border: '2px solid rgba(0, 212, 255, 0.5)', borderRadius: '8px', color: '#fff', fontSize: '12px' }} />
-              <label style={{ display: 'block', marginBottom: '6px', color: '#9ca3af', fontSize: '12px' }}>Identification or main proof URL (optional if proof per category provided)</label>
-              <input type="text" value={applyIdentificationUrl} onChange={e => setApplyIdentificationUrl(e.target.value)} placeholder="https://..." style={{ width: '100%', padding: '10px', marginBottom: '12px', background: 'rgba(0,0,0,0.5)', border: '2px solid rgba(0, 212, 255, 0.4)', borderRadius: '8px', color: '#fff', fontSize: '12px' }} />
-              <label style={{ display: 'block', marginBottom: '6px', color: '#9ca3af', fontSize: '12px' }}>Region (optional)</label>
-              <input type="text" value={applyRegion} onChange={e => setApplyRegion(e.target.value)} placeholder="e.g. Global, Europe" style={{ width: '100%', padding: '10px', marginBottom: '16px', background: 'rgba(0,0,0,0.5)', border: '2px solid rgba(0, 212, 255, 0.4)', borderRadius: '8px', color: '#fff', fontSize: '12px' }} />
+              <label style={{ display: 'block', marginBottom: '6px', color: '#00d4ff', fontSize: '12px' }}>Your region (required)</label>
+              <input type="text" value={applyRegion} onChange={e => setApplyRegion(e.target.value)} placeholder="e.g. Munich, Europe, Global" style={{ width: '100%', padding: '10px', marginBottom: '16px', background: 'rgba(0,0,0,0.5)', border: '2px solid rgba(0, 212, 255, 0.4)', borderRadius: '8px', color: '#fff', fontSize: '12px' }} />
               <button type="button" onClick={handleSubmitExpertApplication} disabled={loading} style={{ padding: '12px 20px', background: 'rgba(0, 212, 255, 0.3)', border: '2px solid #00d4ff', borderRadius: '8px', color: '#00d4ff', fontFamily: 'Orbitron, monospace', fontWeight: 'bold', cursor: 'pointer' }}>{loading ? 'Submitting...' : 'Submit application'}</button>
             </>
           )}

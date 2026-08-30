@@ -1,6 +1,6 @@
 import { useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { AuthContext } from '../context/AuthContext';
-import { coachVoteAPI, CoachVoteCampaign } from '../api/improvement';
+import { coachVoteAPI, CoachVoteCampaign, improvementAPI } from '../api/improvement';
 import { getSkippedPopupIds, markCoachVotePopupShown, shouldShowCoachVotePopup } from '../lib/coachVoteSession';
 import './CoachVoteSwipePopup.css';
 
@@ -15,12 +15,21 @@ type PopupData = {
 
 export default function CoachVoteSwipePopup() {
   const { user } = useContext(AuthContext);
+  const [isGuide, setIsGuide] = useState(false);
   const [data, setData] = useState<PopupData | null>(null);
   const [secondsLeft, setSecondsLeft] = useState(POPUP_SECONDS);
   const [dragX, setDragX] = useState(0);
   const [voting, setVoting] = useState(false);
   const startX = useRef(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    improvementAPI
+      .getMyGuideProfile(user.id)
+      .then((r) => setIsGuide(!!r.canVote))
+      .catch(() => setIsGuide(false));
+  }, [user?.id]);
 
   const dismiss = useCallback(() => {
     if (data?.campaign?.id) markCoachVotePopupShown(data.campaign.id);
@@ -30,7 +39,7 @@ export default function CoachVoteSwipePopup() {
   }, [data?.campaign?.id]);
 
   const submitSwipe = useCallback(
-    async (vote: 'baddie' | 'not') => {
+    async (vote: 'yes' | 'no') => {
       if (!data?.campaign?.id || voting) return;
       setVoting(true);
       try {
@@ -47,7 +56,7 @@ export default function CoachVoteSwipePopup() {
   );
 
   const loadPopup = useCallback(async () => {
-    if (!user?.id) return;
+    if (!user?.id || !isGuide) return;
     try {
       const skip = getSkippedPopupIds();
       const res = await coachVoteAPI.getPopup({
@@ -58,15 +67,15 @@ export default function CoachVoteSwipePopup() {
       if (!res.campaign || !shouldShowCoachVotePopup(res.campaign.id)) return;
       setData({
         campaign: res.campaign,
-        swipeLabel: res.swipeLabel || 'Swipe right = yes, left = no',
-        helpText: res.helpText || 'Help pick quality guides in your area.',
+        swipeLabel: res.swipeLabel || 'Does this applicant qualify?',
+        helpText: res.helpText || 'Vote yes or no as an expert guide.',
         regionalMatch: res.regionalMatch,
       });
       setSecondsLeft(POPUP_SECONDS);
     } catch {
       /* silent */
     }
-  }, [user?.id, user?.country, user?.city]);
+  }, [user?.id, user?.country, user?.city, isGuide]);
 
   useEffect(() => {
     loadPopup();
@@ -90,17 +99,17 @@ export default function CoachVoteSwipePopup() {
     };
   }, [data, dismiss]);
 
-  if (!data) return null;
+  if (!isGuide || !data) return null;
 
   const regionLabel = [data.campaign.applicantCity, data.campaign.applicantCountry].filter(Boolean).join(', ');
 
   return (
     <div className="coach-vote-overlay" role="dialog" aria-modal="true">
       <div className="coach-vote-card" style={{ transform: `translateX(${dragX}px) rotate(${dragX * 0.05}deg)` }}>
-        <p className="coach-vote-badge">Help pick guides · {secondsLeft}s</p>
+        <p className="coach-vote-badge">Expert guide vote · {secondsLeft}s</p>
         <p className="coach-vote-help">{data.helpText}</p>
         {data.regionalMatch && regionLabel ? (
-          <p className="coach-vote-region">Near you: {regionLabel}</p>
+          <p className="coach-vote-region">Applicant area: {regionLabel}</p>
         ) : null}
         <div className="coach-vote-profile">
           {data.campaign.profilePicture ? (
@@ -115,8 +124,8 @@ export default function CoachVoteSwipePopup() {
         </div>
         <p className="coach-vote-question">{data.swipeLabel}</p>
         <div className="coach-vote-hints">
-          <span className="coach-vote-left">← Not yet</span>
-          <span className="coach-vote-right">Baddie →</span>
+          <span className="coach-vote-left">← No</span>
+          <span className="coach-vote-right">Yes →</span>
         </div>
         <div
           className="coach-vote-swipe-area"
@@ -126,16 +135,16 @@ export default function CoachVoteSwipePopup() {
           }}
           onPointerMove={(e) => setDragX(e.clientX - startX.current)}
           onPointerUp={() => {
-            if (dragX > 80) submitSwipe('baddie');
-            else if (dragX < -80) submitSwipe('not');
+            if (dragX > 80) submitSwipe('yes');
+            else if (dragX < -80) submitSwipe('no');
             setDragX(0);
           }}
         >
-          <button type="button" disabled={voting} className="coach-vote-btn no" onClick={() => submitSwipe('not')}>
+          <button type="button" disabled={voting} className="coach-vote-btn no" onClick={() => submitSwipe('no')}>
             ✕
           </button>
-          <button type="button" disabled={voting} className="coach-vote-btn yes" onClick={() => submitSwipe('baddie')}>
-            ♥
+          <button type="button" disabled={voting} className="coach-vote-btn yes" onClick={() => submitSwipe('yes')}>
+            ✓
           </button>
         </div>
         <button type="button" className="coach-vote-skip" onClick={dismiss}>

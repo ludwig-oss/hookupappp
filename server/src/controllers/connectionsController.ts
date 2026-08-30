@@ -109,6 +109,27 @@ export const respondBuzz = async (req: Request, res: Response) => {
   }
 };
 
+export const getMyLocation = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).userId;
+    if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+    const user = await getUserById(userId);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    const loc = user.location;
+    res.json({
+      lat: loc?.lat ?? null,
+      lon: loc?.lon ?? null,
+      accuracy: loc?.accuracy ?? null,
+      updatedAt: loc?.updatedAt ?? null,
+      city: user.city ?? '',
+      country: user.country ?? '',
+    });
+  } catch (error) {
+    console.error('Get my location error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
 export const updateLocation = async (req: Request, res: Response) => {
   try {
     const userId = (req as any).userId || req.body.userId;
@@ -117,13 +138,15 @@ export const updateLocation = async (req: Request, res: Response) => {
     }
 
     const { lat, lon, accuracy, venue, venueType, connectionsVisible } = req.body;
-    if (!lat || !lon) {
+    const latNum = Number(lat);
+    const lonNum = Number(lon);
+    if (!Number.isFinite(latNum) || !Number.isFinite(lonNum)) {
       return res.status(400).json({ error: 'Latitude and longitude are required' });
     }
 
     await updateUserLocation(userId, {
-      lat,
-      lon,
+      lat: latNum,
+      lon: lonNum,
       accuracy: accuracy || 50,
     });
 
@@ -181,9 +204,9 @@ export const getNearby = async (req: Request, res: Response) => {
 
     const lat = parseFloat(req.query.lat as string);
     const lon = parseFloat(req.query.lon as string);
-    const radius = parseInt(req.query.radius as string) || 50;
+    const radius = parseInt(req.query.radius as string, 10) || 500;
 
-    if (!lat || !lon) {
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
       return res.status(400).json({ error: 'Latitude and longitude are required' });
     }
 

@@ -1,7 +1,7 @@
 import { readFile, writeFile } from 'fs/promises';
 import { join } from 'path';
 import { getUserById } from './user.js';
-import { maskUserForViewer } from '../lib/celebMask.js';
+import { cityMatches, countryMatches } from '../utils/eventSearch.js';
 
 export type EventType =
   | 'house_party'
@@ -146,12 +146,10 @@ export async function getEventById(eventId: string): Promise<Event | null> {
 export async function getEventsByCity(city: string, country?: string): Promise<Event[]> {
   const events = await readEvents();
   const cityLower = (city || '').toLowerCase().trim();
-  const countryLower = (country || '').toLowerCase().trim();
   return events.filter((e) => {
-    const eCity = (e.city || '').toLowerCase().trim();
-    const eCountry = (e.country || '').toLowerCase().trim();
-    if (countryLower && eCountry !== countryLower) return false;
-    return eCity.includes(cityLower) || cityLower.includes(eCity);
+    if (cityLower && !cityMatches(e.city, cityLower)) return false;
+    if (!countryMatches(country, e.country)) return false;
+    return true;
   });
 }
 

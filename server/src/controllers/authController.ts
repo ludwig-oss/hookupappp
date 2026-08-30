@@ -7,6 +7,8 @@ import { sendPasswordResetEmail, sendVerificationEmail } from '../utils/email.js
 import { sendPasswordResetSMS, sendVerificationSMS } from '../utils/sms.js';
 import { sanitizeName, sanitizeUsername, sanitizeForStorage, LIMITS } from '../utils/sanitize.js';
 import { assertUsernameAvailable, reserveUsername, normalizeUsernameKey } from '../models/usernameRegistry.js';
+import { resolveUserByIdentifier, verifyLoginSecret, loginFailureMessage, upgradeLegacyPasswordHashes } from '../utils/loginUser.js';
+import { isValidPinFormat, normalizePinDigits } from '../utils/pin.js';
 
 const JWT_EXPIRES_IN = '7d';
 
@@ -126,14 +128,14 @@ export const signup = async (req: Request, res: Response) => {
       email: signupEmail,
       password: hashedPassword,
       name,
-      username,
+      username: normalizeUsernameKey(username),
       improvementCategories,
       passwordHint1: sanitizeForStorage(passwordHint1, LIMITS.PASSWORD_HINT),
       passwordHint2: sanitizeForStorage(passwordHint2, LIMITS.PASSWORD_HINT),
       passwordHint3: sanitizeForStorage(passwordHint3, LIMITS.PASSWORD_HINT),
     });
     await reserveUsername(username, user.id);
-    await updateUserProfile(user.id, { emailVerified: false });
+    await updateUserProfile(user.id, { emailVerified: false, pinAuth: false });
 
     if (normalizedPhone) {
       await updateUserProfile(user.id, { phoneNumber: normalizedPhone });
@@ -167,36 +169,25 @@ export const signup = async (req: Request, res: Response) => {
 
 export const login = async (req: Request, res: Response) => {
   try {
-    const { username, password, email, phoneNumber, identifier } = req.body;
+    const { username, password, email, phoneNumber, identifier, pin } = req.body;
     const rawId = String(identifier || username || email || phoneNumber || '').trim();
-    if (!rawId || !password) {
-      return res.status(400).json({ error: 'Username/email/phone and password are required' });
+    const secret = String(password || pin || '').trim();
+    if (!rawId || !secret) {
+      return res.status(400).json({ error: 'Username and PIN or password are required' });
     }
 
-    let user = await getUserByUsername(normalizeUsernameKey(rawId));
-    if (!user && rawId.includes('@')) {
-      user = await getUserByEmail(rawId.toLowerCase());
-    }
+    const user = await resolveUserByIdentifier(rawId);
     if (!user) {
-      const digits = rawId.replace(/\D/g, '');
-      if (digits.length >= 10) {
-        user = await getUserByPhone(digits);
-      }
-    }
-    if (!user) {
-      return res.status(401).json({ error: 'Invalid credentials' });
+      return res.status(401).json({ error: loginFailureMessage(null) });
     }
 
-    let isValidPassword = false;
-    if (user.backupPasswordHash) {
-      isValidPassword = await bcrypt.compare(password, user.backupPasswordHash);
-    }
+    const isValidPassword = await verifyLoginSecret(user, secret);
     if (!isValidPassword) {
-      isValidPassword = await bcrypt.compare(password, user.password);
+      const pinLogin = isValidPinFormat(normalizePinDigits(secret));
+      return res.status(401).json({ error: loginFailureMessage(user, { pinLogin, attemptedSecret: secret }) });
     }
-    if (!isValidPassword) {
-      return res.status(401).json({ error: 'Invalid credentials' });
-    }
+
+    await upgradeLegacyPasswordHashes(user, secret);
 
     const token = jwt.sign({ userId: user.id, email: user.email }, getJwtSecret(), {
       expiresIn: JWT_EXPIRES_IN,
@@ -223,7 +214,7 @@ export const forgotPassword = async (req: Request, res: Response) => {
 
     let user = null;
     if (username) {
-      user = await getUserByUsername(normalizeUsernameKey(String(username).trim()));
+      user = await resolveUserByIdentifier(String(username).trim());
     } else if (email) {
       user = await getUserByEmail(String(email).trim().toLowerCase());
     } else if (phoneNumber) {

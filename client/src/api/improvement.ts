@@ -19,7 +19,14 @@ export interface GuideApplication {
   experience: string;
   qualifications: string;
   identificationUrl: string;
-  proofPerCategory?: Record<string, { description: string; imageUrls?: string[] }>;
+  proofPerCategory?: Record<string, {
+    whyGood: string;
+    description?: string;
+    proofType?: 'instagram' | 'pictures' | 'video';
+    instagramHandle?: string;
+    imageUrls?: string[];
+    videoUrl?: string;
+  }>;
   status: 'pending' | 'approved' | 'rejected';
   appliedAt: string;
   reviewedAt: string | null;
@@ -110,10 +117,16 @@ export const improvementAPI = {
   applyAsGuide: async (data: {
     categories: string[];
     region?: string;
-    experience: string;
-    qualifications: string;
+    experience?: string;
+    qualifications?: string;
     identificationUrl?: string;
-    proofPerCategory?: Record<string, { description: string; imageUrls?: string[] }>;
+    proofPerCategory?: Record<string, {
+      whyGood: string;
+      proofType: 'instagram' | 'pictures' | 'video';
+      instagramHandle?: string;
+      imageUrls?: string;
+      videoUrl?: string;
+    }>;
     userId: string;
   }): Promise<{ message: string; application: GuideApplication }> => {
     const response = await axios.post(`${API_URL}/guides/apply`, data);
@@ -125,7 +138,9 @@ export const improvementAPI = {
     return response.data;
   },
 
-  getMyGuideProfile: async (userId: string): Promise<{ guide: Guide; user: any } | { guide: null; user: null }> => {
+  getMyGuideProfile: async (
+    userId: string
+  ): Promise<{ guide: Guide | null; user: any; canVote?: boolean }> => {
     const response = await axios.get(`${API_URL}/guides/my-profile`, { params: { userId } });
     return response.data;
   },
@@ -271,8 +286,10 @@ export interface CoachVoteStatusResponse {
   campaign: CoachVoteCampaign | null;
   stats?: {
     total: number;
-    baddie: number;
-    baddiePercent: number;
+    yes: number;
+    no: number;
+    baddie?: number;
+    baddiePercent?: number;
     minVotes: number;
     thresholdPercent: number;
     hoursLeft: number;
@@ -307,7 +324,7 @@ export const coachVoteAPI = {
     const res = await axios.get(`${API_URL}/coach-votes/pending`);
     return res.data;
   },
-  vote: async (campaignId: string, vote: 'baddie' | 'not', feedbackTags?: string[]) => {
+  vote: async (campaignId: string, vote: 'yes' | 'no', feedbackTags?: string[]) => {
     const res = await axios.post(`${API_URL}/coach-votes/${campaignId}/vote`, { vote, feedbackTags });
     return res.data;
   },

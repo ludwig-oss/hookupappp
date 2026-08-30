@@ -152,6 +152,42 @@
   color: rgba(156, 163, 175, 0.6);
 }
 
+.password-input-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.password-input-wrap input {
+  width: 100%;
+  padding-right: 44px;
+}
+
+.password-input-toggle {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  border: none;
+  background: transparent;
+  color: rgba(0, 212, 255, 0.85);
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  padding: 4px 6px;
+  border-radius: 6px;
+}
+
+.password-input-toggle:hover {
+  color: #fff;
+  background: rgba(0, 212, 255, 0.12);
+}
+
+.password-input-toggle:focus-visible {
+  outline: 2px solid rgba(0, 212, 255, 0.6);
+  outline-offset: 2px;
+}
+
 .form-footer {
   display: flex;
   justify-content: flex-end;

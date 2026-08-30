@@ -2,6 +2,7 @@ import { readFile, writeFile } from 'fs/promises';
 import { join } from 'path';
 import { getUserById, getAllUsers } from './user.js';
 import { getUserPreference } from './discover.js';
+import { usersMatchPreferences } from '../utils/preferenceMatch.js';
 import { fetchNearbyVenues, fetchVenuesByType, OsmVenue } from '../utils/overpass.js';
 
 export type BuzzStatus = 'pending' | 'accepted' | 'rejected' | 'talk_later';
@@ -194,7 +195,7 @@ export async function getNearbyUsers(
   userId: string,
   lat: number,
   lon: number,
-  radius: number = 50
+  radius: number = 500
 ): Promise<NearbyUser[]> {
   const users = await getAllUsers();
   const user = await getUserById(userId);
@@ -210,19 +211,27 @@ export async function getNearbyUsers(
     if (user.unmatchedUsers?.includes(otherUser.id)) continue;
     if (!otherUser.location) continue;
 
+    const updatedAt = otherUser.location.updatedAt
+      ? new Date(otherUser.location.updatedAt).getTime()
+      : 0;
+    if (updatedAt && Date.now() - updatedAt > 15 * 60 * 1000) continue;
+
     const distance = calculateDistance(
       lat, lon,
       otherUser.location.lat, otherUser.location.lon
     );
 
-    if (distance <= radius) {
+    const viewerCity = (user.city || '').toLowerCase().trim();
+    const otherCity = (otherUser.city || '').toLowerCase().trim();
+    const sameCity =
+      viewerCity.length > 0 &&
+      otherCity.length > 0 &&
+      (viewerCity === otherCity || viewerCity.includes(otherCity) || otherCity.includes(viewerCity));
+    const matchRadius = sameCity ? Math.max(radius, 12_000) : radius;
+
+    if (distance <= matchRadius) {
       const otherPref = await getUserPreference(otherUser.id);
-      
-      // Check orientation compatibility - if no preference set, show all
-      if (userPref && otherPref) {
-        const compatible = matchesOrientation(userPref.orientation, otherPref.orientation);
-        if (!compatible) continue;
-      }
+      if (!usersMatchPreferences(user, otherUser, userPref, otherPref)) continue;
 
       const lastActive = otherUser.location.updatedAt 
         ? new Date(otherUser.location.updatedAt).getTime()
@@ -241,14 +250,13 @@ export async function getNearbyUsers(
   return nearby.sort((a, b) => (b.isOnline ? 1 : 0) - (a.isOnline ? 1 : 0));
 }
 
-function matchesOrientation(orientation1: string, orientation2: string): boolean {
-  if (orientation1 === 'bisexual' || orientation1 === 'pansexual') return true;
-  if (orientation2 === 'bisexual' || orientation2 === 'pansexual') return true;
-  if (orientation1 === orientation2) return true;
-  if (orientation1 === 'gay' && orientation2 === 'gay') return true;
-  if (orientation1 === 'lesbian' && orientation2 === 'lesbian') return true;
-  if (orientation1 === 'straight' && orientation2 === 'straight') return true;
-  return false;
+function matchesOrientationForVenue(
+  viewer: { gender?: string | null },
+  other: { gender?: string | null },
+  userPref: Awaited<ReturnType<typeof getUserPreference>>,
+  otherPref: Awaited<ReturnType<typeof getUserPreference>>
+): boolean {
+  return usersMatchPreferences(viewer, other, userPref, otherPref);
 }
 
 /** Radius in meters around a real-world venue to count app users as "at" that venue */
@@ -288,7 +296,7 @@ export async function getVenueCounts(
 
       const otherPref = await getUserPreference(otherUser.id);
       if (!otherPref) continue;
-      if (!matchesOrientation(userPref.orientation, otherPref.orientation)) continue;
+      if (!matchesOrientationForVenue(user, otherUser, userPref, otherPref)) continue;
 
       usersAtVenue.push({
         id: otherUser.id,
@@ -338,7 +346,7 @@ export async function getCountsForOsmVenues(
       if (distance > VENUE_USER_RADIUS_M) continue;
       const otherPref = await getUserPreference(otherUser.id);
       if (!otherPref) continue;
-      if (!matchesOrientation(userPref.orientation, otherPref.orientation)) continue;
+      if (!matchesOrientationForVenue(user, otherUser, userPref, otherPref)) continue;
       count++;
     }
     result.push({

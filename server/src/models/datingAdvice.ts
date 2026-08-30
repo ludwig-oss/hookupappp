@@ -12,12 +12,22 @@ export type AdviceAnswerCohort =
   | 'bi_other'
   | 'pan_all';
 
+export interface AdviceReply {
+  id: string;
+  userId: string;
+  userName: string;
+  content: string;
+  likeUserIds: string[];
+  createdAt: string;
+}
+
 export interface AdviceAnswer {
   id: string;
   userId: string;
   userName: string;
   content: string;
   likeUserIds: string[];
+  replies: AdviceReply[];
   createdAt: string;
 }
 
@@ -30,6 +40,10 @@ export interface AdviceQuestion {
   askerGender: string;
   lookingFor: string[];
   answers: AdviceAnswer[];
+  city?: string;
+  country?: string;
+  lat?: number;
+  lon?: number;
   monthKey: string;
   createdAt: string;
   winnerAnswerId?: string | null;
@@ -47,6 +61,7 @@ const META_PATH = join(process.cwd(), 'server', 'data', 'advice-user-meta.json')
 const PAYOUTS_PATH = join(process.cwd(), 'server', 'data', 'advice-monthly-payouts.json');
 
 export const ADVICE_PRIZE_EUR = 5;
+export const ADVICE_GLOBAL_ENGAGEMENT = 5;
 
 export function normalizeGender(g?: string | null): string {
   const g2 = (g || '').trim().toLowerCase();
@@ -142,6 +157,10 @@ export async function createAdviceQuestion(params: {
   orientation: string;
   gender: string | null | undefined;
   lookingFor: string[];
+  city?: string;
+  country?: string;
+  lat?: number;
+  lon?: number;
 }): Promise<AdviceQuestion> {
   const questions = await readQuestions();
   const q: AdviceQuestion = {
@@ -152,6 +171,10 @@ export async function createAdviceQuestion(params: {
     orientation: params.orientation,
     askerGender: normalizeGender(params.gender),
     lookingFor: params.lookingFor,
+    city: params.city?.trim(),
+    country: params.country?.trim(),
+    lat: params.lat,
+    lon: params.lon,
     answers: [],
     monthKey: monthKey(),
     createdAt: new Date().toISOString(),
@@ -162,30 +185,103 @@ export async function createAdviceQuestion(params: {
 }
 
 export async function getQuestionById(id: string): Promise<AdviceQuestion | null> {
-  const questions = await readQuestions();
+  const questions = normalizeAnswers(await readQuestions());
   return questions.find((q) => q.id === id) || null;
 }
 
-export async function getQuestionsForCohort(cohort: AdviceAnswerCohort, limit = 50): Promise<AdviceQuestion[]> {
-  const questions = await readQuestions();
-  return questions
-    .filter((q) => q.answerCohort === cohort || cohort === 'pan_all' || q.answerCohort === 'pan_all')
-    .slice(0, limit);
+function normalizeAnswers(list: AdviceQuestion[]): AdviceQuestion[] {
+  for (const q of list) {
+    for (const a of q.answers) {
+      if (!Array.isArray(a.replies)) a.replies = [];
+    }
+  }
+  return list;
 }
 
-export async function searchQuestions(query: string, cohort?: AdviceAnswerCohort): Promise<AdviceQuestion[]> {
+function engagementScore(q: AdviceQuestion): number {
+  let score = 0;
+  for (const a of q.answers) {
+    score += 2 + a.likeUserIds.length;
+    for (const r of a.replies || []) {
+      score += 1 + r.likeUserIds.length;
+    }
+  }
+  return score;
+}
+
+function isLocalQuestion(
+  q: AdviceQuestion,
+  viewerCity?: string,
+  viewerCountry?: string
+): boolean {
+  const vc = (viewerCity || '').toLowerCase().trim();
+  const vco = (viewerCountry || '').toLowerCase().trim();
+  const qc = (q.city || '').toLowerCase().trim();
+  const qco = (q.country || '').toLowerCase().trim();
+  if (vc && qc && (vc.includes(qc) || qc.includes(vc))) return true;
+  if (vco && qco && (vco === qco || vco.includes(qco) || qco.includes(vco))) return true;
+  return !vc && !vco;
+}
+
+export async function getRankedAdviceFeed(
+  cohort: AdviceAnswerCohort,
+  viewerCity?: string,
+  viewerCountry?: string,
+  limit = 50
+): Promise<AdviceQuestion[]> {
+  let list = normalizeAnswers(await readQuestions());
+  list = list.filter(
+    (q) => q.answerCohort === cohort || cohort === 'pan_all' || q.answerCohort === 'pan_all'
+  );
+  list = list.filter((q) => {
+    if (isLocalQuestion(q, viewerCity, viewerCountry)) return true;
+    return engagementScore(q) >= ADVICE_GLOBAL_ENGAGEMENT;
+  });
+  list.sort((a, b) => {
+    const aLocal = isLocalQuestion(a, viewerCity, viewerCountry) ? 1 : 0;
+    const bLocal = isLocalQuestion(b, viewerCity, viewerCountry) ? 1 : 0;
+    if (aLocal !== bLocal) return bLocal - aLocal;
+    const eng = engagementScore(b) - engagementScore(a);
+    if (eng !== 0) return eng;
+    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+  });
+  return list.slice(0, limit);
+}
+
+export async function getQuestionsForCohort(cohort: AdviceAnswerCohort, limit = 50): Promise<AdviceQuestion[]> {
+  return getRankedAdviceFeed(cohort, undefined, undefined, limit);
+}
+
+export async function searchQuestions(
+  query: string,
+  cohort?: AdviceAnswerCohort,
+  viewerCity?: string,
+  viewerCountry?: string
+): Promise<AdviceQuestion[]> {
   const q = query.trim().toLowerCase();
-  let list = await readQuestions();
+  let list = normalizeAnswers(await readQuestions());
   if (cohort) {
     list = list.filter((x) => x.answerCohort === cohort || x.answerCohort === 'pan_all' || cohort === 'pan_all');
   }
-  if (!q) return list.slice(0, 30);
-  return list.filter((x) => x.query.toLowerCase().includes(q)).slice(0, 30);
+  if (q) {
+    list = list.filter((x) => x.query.toLowerCase().includes(q));
+  }
+  list = list.filter((item) => {
+    if (isLocalQuestion(item, viewerCity, viewerCountry)) return true;
+    return engagementScore(item) >= ADVICE_GLOBAL_ENGAGEMENT;
+  });
+  list.sort((a, b) => {
+    const aLocal = isLocalQuestion(a, viewerCity, viewerCountry) ? 1 : 0;
+    const bLocal = isLocalQuestion(b, viewerCity, viewerCountry) ? 1 : 0;
+    if (aLocal !== bLocal) return bLocal - aLocal;
+    return engagementScore(b) - engagementScore(a);
+  });
+  return list.slice(0, 30);
 }
 
 export async function addAdviceAnswer(
   questionId: string,
-  answer: Omit<AdviceAnswer, 'id' | 'likeUserIds' | 'createdAt'>
+  answer: Omit<AdviceAnswer, 'id' | 'likeUserIds' | 'createdAt' | 'replies'>
 ): Promise<{ question: AdviceQuestion; answer: AdviceAnswer; firstComment: boolean } | null> {
   const questions = await readQuestions();
   const qi = questions.findIndex((q) => q.id === questionId);
@@ -195,6 +291,7 @@ export async function addAdviceAnswer(
     ...answer,
     id: Date.now().toString(),
     likeUserIds: [],
+    replies: [],
     createdAt: new Date().toISOString(),
   };
   questions[qi].answers.push(entry);
@@ -213,12 +310,52 @@ export async function addAdviceAnswer(
   return { question: questions[qi], answer: entry, firstComment };
 }
 
+export async function addAdviceReply(
+  questionId: string,
+  answerId: string,
+  reply: Omit<AdviceReply, 'id' | 'likeUserIds' | 'createdAt'>
+): Promise<{ question: AdviceQuestion; reply: AdviceReply } | null> {
+  const questions = normalizeAnswers(await readQuestions());
+  const qi = questions.findIndex((q) => q.id === questionId);
+  if (qi === -1) return null;
+  const ai = questions[qi].answers.findIndex((a) => a.id === answerId);
+  if (ai === -1) return null;
+  const entry: AdviceReply = {
+    ...reply,
+    id: Date.now().toString() + Math.random().toString(36).slice(2, 4),
+    likeUserIds: [],
+    createdAt: new Date().toISOString(),
+  };
+  if (!questions[qi].answers[ai].replies) questions[qi].answers[ai].replies = [];
+  questions[qi].answers[ai].replies.push(entry);
+  await writeQuestions(questions);
+  return { question: questions[qi], reply: entry };
+}
+
+export async function likeAdviceReply(
+  questionId: string,
+  answerId: string,
+  replyId: string,
+  likerUserId: string
+): Promise<AdviceReply | null> {
+  const questions = normalizeAnswers(await readQuestions());
+  const q = questions.find((x) => x.id === questionId);
+  if (!q) return null;
+  const a = q.answers.find((x) => x.id === answerId);
+  if (!a) return null;
+  const r = (a.replies || []).find((x) => x.id === replyId);
+  if (!r) return null;
+  if (!r.likeUserIds.includes(likerUserId)) r.likeUserIds.push(likerUserId);
+  await writeQuestions(questions);
+  return r;
+}
+
 export async function likeAdviceAnswer(
   questionId: string,
   answerId: string,
   likerUserId: string
 ): Promise<AdviceAnswer | null> {
-  const questions = await readQuestions();
+  const questions = normalizeAnswers(await readQuestions());
   const q = questions.find((x) => x.id === questionId);
   if (!q) return null;
   const a = q.answers.find((x) => x.id === answerId);

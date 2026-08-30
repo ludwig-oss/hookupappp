@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { getUserById } from '../models/user.js';
-import { approveApplication, getApplicationByUserId } from '../models/improvement.js';
+import { approveApplication, getApplicationById, getApplicationByUserId } from '../models/improvement.js';
 import {
   castCoachVote,
   collectImprovementHints,
@@ -10,6 +10,7 @@ import {
   getCampaignById,
   getPendingCampaignsForVoter,
   getVotesForCampaign,
+  guideCanVoteOnCampaign,
   COACH_VOTE_MIN_VOTES,
   COACH_VOTE_THRESHOLD,
   updateCampaignStatus,
@@ -30,15 +31,16 @@ async function evaluateCampaign(campaignId: string): Promise<void> {
 
   if (!expired && stats.total < COACH_VOTE_MIN_VOTES) return;
 
-  const passed = stats.total >= COACH_VOTE_MIN_VOTES && stats.percent >= COACH_VOTE_THRESHOLD;
+  const passed = stats.total >= COACH_VOTE_MIN_VOTES && stats.yes > stats.no;
+
   const hints = passed ? [] : await collectImprovementHints(votes);
 
   if (passed) {
     await updateCampaignStatus(campaignId, 'passed', []);
     try {
-      await approveApplication(campaign.applicationId, 'peer-vote-system', Math.min(5, 3.5 + stats.percent));
+      await approveApplication(campaign.applicationId, 'expert-guide-vote', Math.min(5, 3.5 + stats.percent));
     } catch (e) {
-      console.error('Auto-approve coach after peer vote:', e);
+      console.error('Auto-approve coach after guide vote:', e);
     }
     notifyCoachVoteResult(campaign.applicantUserId, {
       passed: true,
@@ -47,17 +49,17 @@ async function evaluateCampaign(campaignId: string): Promise<void> {
       hints: [],
     });
     sendPushToUser(campaign.applicantUserId, {
-      title: 'Coach application approved!',
-      body: `You got ${Math.round(stats.percent * 100)}% "baddie" votes. You can now guide clients in the Guiding section.`,
+      title: 'Guide application approved!',
+      body: `${stats.yes} expert guides said yes (${stats.no} no). You can guide clients now.`,
       data: { url: '/home' },
     }).catch(() => {});
   } else {
     await updateCampaignStatus(campaignId, 'failed', hints);
     try {
       const { rejectApplication } = await import('../models/improvement.js');
-      await rejectApplication(campaign.applicationId, 'peer-vote-system');
+      await rejectApplication(campaign.applicationId, 'expert-guide-vote');
     } catch (e) {
-      console.error('Reject after failed peer vote:', e);
+      console.error('Reject after failed guide vote:', e);
     }
     notifyCoachVoteResult(campaign.applicantUserId, {
       passed: false,
@@ -66,19 +68,20 @@ async function evaluateCampaign(campaignId: string): Promise<void> {
       hints,
     });
     sendPushToUser(campaign.applicantUserId, {
-      title: 'Coach vote — try again',
+      title: 'Guide vote — not qualified',
       body: hints.length
-        ? `You didn't reach 80% in 48h. Work on: ${hints.slice(0, 3).join(', ')}.`
-        : `You didn't reach 80% in 48h. Improve your profile and re-apply.`,
+        ? `More guides said no. Work on: ${hints.slice(0, 3).join(', ')}.`
+        : `More expert guides said no than yes. Improve your proof and re-apply.`,
       data: { url: '/home' },
     }).catch(() => {});
   }
 }
 
-/** Called after guide application — starts 48h peer vote */
+/** Called after guide application — expert guides in region vote for 48h */
 export async function startVoteForApplication(applicationId: string, applicantUserId: string): Promise<void> {
   const user = await getUserById(applicantUserId);
   if (!user) return;
+  const app = await getApplicationById(applicationId);
 
   await createCoachVoteCampaign({
     applicationId,
@@ -88,50 +91,52 @@ export async function startVoteForApplication(applicationId: string, applicantUs
     profilePicture: user.profilePicture,
     profileBio: user.bio || null,
     profileAge: typeof user.age === 'number' ? user.age : null,
+    applicationCategories: app?.categories || [],
+    applicationRegion: app?.region || user.city || user.country || 'Global',
+    applicantCountry: user.country || null,
+    applicantCity: user.city || null,
   });
 }
 
-/** GET campaigns the voter can review */
 export async function getPendingVotes(req: Request, res: Response) {
   try {
     const userId = (req as any).userId as string;
-    const user = await getUserById(userId);
-    if (!user) return res.status(404).json({ error: 'User not found' });
-
-    const campaigns = await getPendingCampaignsForVoter(userId, user.gender || '');
+    const campaigns = await getPendingCampaignsForVoter(userId);
     res.json({ campaigns, feedbackTags: FEEDBACK_TAGS });
   } catch (e: any) {
     res.status(500).json({ error: e.message || 'Failed' });
   }
 }
 
-/** POST vote — body: { vote: 'baddie'|'not', feedbackTags?: string[] } */
+function normalizeVoteInput(raw: unknown): 'yes' | 'no' | null {
+  if (raw === 'yes' || raw === 'baddie') return 'yes';
+  if (raw === 'no' || raw === 'not') return 'no';
+  return null;
+}
+
+/** POST vote — body: { vote: 'yes'|'no', feedbackTags?: string[] } */
 export async function submitVote(req: Request, res: Response) {
   try {
     const userId = (req as any).userId as string;
     const { campaignId } = req.params;
     const { vote, feedbackTags } = req.body as { vote?: string; feedbackTags?: string[] };
 
-    if (vote !== 'baddie' && vote !== 'not') {
-      return res.status(400).json({ error: 'vote must be "baddie" or "not"' });
+    const normalized = normalizeVoteInput(vote);
+    if (!normalized) {
+      return res.status(400).json({ error: 'vote must be "yes" or "no"' });
     }
 
-    const user = await getUserById(userId);
     const campaign = await getCampaignById(campaignId);
     if (!campaign) return res.status(404).json({ error: 'Campaign not found' });
-    if (!user?.gender) {
-      return res.status(400).json({ error: 'Set your gender in profile settings to vote' });
-    }
 
-    const { isOppositeGender } = await import('../models/coachVote.js');
-    if (!isOppositeGender(campaign.applicantGender, user.gender)) {
-      return res.status(403).json({ error: 'Only opposite-gender members can vote on coach applicants' });
+    if (!(await guideCanVoteOnCampaign(userId, campaign))) {
+      return res.status(403).json({ error: 'Only hired guides in this category and region can vote' });
     }
 
     await castCoachVote({
       campaignId,
       voterUserId: userId,
-      vote,
+      vote: normalized,
       feedbackTags: Array.isArray(feedbackTags) ? feedbackTags.filter((t) => FEEDBACK_TAGS.includes(t as any)) : [],
     });
 
@@ -143,7 +148,9 @@ export async function submitVote(req: Request, res: Response) {
       message: 'Vote recorded',
       stats: {
         total: stats.total,
-        baddiePercent: Math.round(stats.percent * 100),
+        yes: stats.yes,
+        no: stats.no,
+        yesPercent: Math.round(stats.percent * 100),
         needed: COACH_VOTE_MIN_VOTES,
         thresholdPercent: COACH_VOTE_THRESHOLD * 100,
       },
@@ -153,7 +160,6 @@ export async function submitVote(req: Request, res: Response) {
   }
 }
 
-/** GET applicant's own vote campaign status */
 export async function getMyVoteStatus(req: Request, res: Response) {
   try {
     const userId = (req as any).userId as string;
@@ -177,7 +183,9 @@ export async function getMyVoteStatus(req: Request, res: Response) {
       campaign,
       stats: {
         total: stats.total,
-        baddie: stats.baddie,
+        yes: stats.yes,
+        no: stats.no,
+        baddie: stats.yes,
         baddiePercent: Math.round(stats.percent * 100),
         minVotes: COACH_VOTE_MIN_VOTES,
         thresholdPercent: COACH_VOTE_THRESHOLD * 100,
@@ -192,37 +200,31 @@ export async function getMyVoteStatus(req: Request, res: Response) {
 
 export { evaluateCampaign, FEEDBACK_TAGS };
 
-/** GET next coach candidate for 15s swipe popup (regional priority) */
 export async function getCoachVotePopup(req: Request, res: Response) {
   try {
     const userId = (req as any).userId as string;
     const user = await getUserById(userId);
     if (!user) return res.status(404).json({ error: 'User not found' });
-    if (!user.gender) {
-      return res.json({ campaign: null, message: 'Set gender in profile to help review coach applicants' });
+
+    const { getGuideByUserId } = await import('../models/improvement.js');
+    const guide = await getGuideByUserId(userId);
+    if (!guide?.isActive || !user.qualifiedCoach) {
+      return res.json({ campaign: null });
     }
 
     const skip = typeof req.query.skip === 'string' ? req.query.skip.split(',').filter(Boolean) : [];
     const country = (req.query.country as string) || user.country;
     const city = (req.query.city as string) || user.city;
 
-    const campaign = await getPopupCampaignForVoter(userId, user.gender, country, city, skip);
+    const campaign = await getPopupCampaignForVoter(userId, country, city, skip);
     if (!campaign) return res.json({ campaign: null });
-
-    const voterGender = user.gender;
-    const label =
-      voterGender === 'female' || voterGender === 'f'
-        ? 'Swipe right if she\'s a baddie coach — left if not'
-        : voterGender === 'male' || voterGender === 'm'
-          ? 'Swipe right if he\'s a bad boy coach — left if not'
-          : 'Swipe right = yes, left = not yet';
 
     res.json({
       campaign,
       popupSeconds: 15,
-      swipeLabel: label,
+      swipeLabel: 'Does this applicant qualify as a guide in your area?',
       helpText:
-        'Your vote helps pick quality guides in your area. You have 15 seconds — swipe or it skips.',
+        'You are a hired guide — vote yes or no on their proof. More yes than no = they qualify.',
       regionalMatch: Boolean(country && campaign.applicantCountry),
     });
   } catch (e: any) {
@@ -230,7 +232,6 @@ export async function getCoachVotePopup(req: Request, res: Response) {
   }
 }
 
-/** POST swipe vote from popup — body: { vote: 'baddie'|'not', feedbackTags? } */
 export async function submitPopupSwipe(req: Request, res: Response) {
   return submitVote(req, res);
 }

@@ -2,6 +2,7 @@
 export const translations: Record<string, Record<string, string>> = {
   en: {
     backToHome: 'Back to Home',
+    backToHelp: 'Back to Help',
     profile: 'Profile',
     settings: 'Settings',
     home: 'Home',
@@ -45,6 +46,7 @@ export const translations: Record<string, Record<string, string>> = {
   },
   es: {
     backToHome: 'Volver al inicio',
+    backToHelp: 'Volver a Ayuda',
     profile: 'Perfil',
     settings: 'Ajustes',
     home: 'Inicio',
@@ -77,6 +79,7 @@ export const translations: Record<string, Record<string, string>> = {
   },
   fr: {
     backToHome: "Retour à l'accueil",
+    backToHelp: "Retour à l'aide",
     profile: 'Profil',
     settings: 'Paramètres',
     home: 'Accueil',
@@ -109,6 +112,7 @@ export const translations: Record<string, Record<string, string>> = {
   },
   de: {
     backToHome: 'Zurück zur Startseite',
+    backToHelp: 'Zurück zur Hilfe',
     profile: 'Profil',
     settings: 'Einstellungen',
     home: 'Start',
@@ -141,6 +145,7 @@ export const translations: Record<string, Record<string, string>> = {
   },
   it: {
     backToHome: 'Torna alla home',
+    backToHelp: 'Torna ad Aiuto',
     profile: 'Profilo',
     settings: 'Impostazioni',
     home: 'Home',
@@ -173,6 +178,7 @@ export const translations: Record<string, Record<string, string>> = {
   },
   pt: {
     backToHome: 'Voltar ao início',
+    backToHelp: 'Voltar à Ajuda',
     profile: 'Perfil',
     settings: 'Configurações',
     home: 'Início',

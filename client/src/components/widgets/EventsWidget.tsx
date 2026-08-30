@@ -24,6 +24,9 @@ export default function EventsWidget() {
   const [myEvents, setMyEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
   const [cityFilter, setCityFilter] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [describeQuery, setDescribeQuery] = useState('');
+  const [locationUsed, setLocationUsed] = useState<string | null>(null);
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
   const [requests, setRequests] = useState<EventRequest[]>([]);
   const [messages, setMessages] = useState<EventMessage[]>([]);
@@ -39,7 +42,7 @@ export default function EventsWidget() {
   useEffect(() => {
     if (view === 'list') loadEvents();
     if (view === 'my') loadMyEvents();
-  }, [view, cityFilter]);
+  }, [view]);
 
   useEffect(() => {
     if (selectedEvent && view === 'detail') {
@@ -65,8 +68,11 @@ export default function EventsWidget() {
     setLoading(true);
     const city = cityFilter.trim() || userCity;
     eventsAPI
-      .list(city || undefined, userCountry || undefined)
-      .then((r) => setEvents(r.events || []))
+      .list(city || undefined, userCountry || undefined, searchQuery, describeQuery)
+      .then((r) => {
+        setEvents(r.events || []);
+        setLocationUsed(r.locationUsed || city || userCity || null);
+      })
       .catch(() => setEvents([]))
       .finally(() => setLoading(false));
   };
@@ -184,13 +190,40 @@ export default function EventsWidget() {
 
       {view === 'list' && (
         <>
+          {locationUsed && (
+            <p style={{ fontSize: 12, color: 'rgba(0,212,255,0.9)', marginBottom: 10 }}>
+              Showing events near <strong>{locationUsed}</strong>
+            </p>
+          )}
           <label style={{ display: 'block', marginBottom: 8, fontSize: 13 }}>
             City (leave empty to use your profile city)
             <input
               type="text"
               value={cityFilter}
               onChange={(e) => setCityFilter(e.target.value)}
-              placeholder={userCity || 'e.g. London'}
+              placeholder={userCity || 'e.g. Munich'}
+              className="profile-input"
+              style={{ width: '100%', marginTop: 4 }}
+            />
+          </label>
+          <label style={{ display: 'block', marginBottom: 8, fontSize: 13 }}>
+            Search name or type (party, club, drinks…)
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="e.g. party, house bash, football"
+              className="profile-input"
+              style={{ width: '100%', marginTop: 4 }}
+            />
+          </label>
+          <label style={{ display: 'block', marginBottom: 8, fontSize: 13 }}>
+            Describe what you&apos;re looking for
+            <textarea
+              value={describeQuery}
+              onChange={(e) => setDescribeQuery(e.target.value)}
+              placeholder="e.g. chill house party with music, not too loud, near city center"
+              rows={2}
               className="profile-input"
               style={{ width: '100%', marginTop: 4 }}
             />

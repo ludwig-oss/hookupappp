@@ -5,9 +5,9 @@ import { AuthContext } from '../context/AuthContext';
 import { profileAPI, ProfileData } from '../api/profile';
 import PhotoVerificationModal from '../components/PhotoVerificationModal';
 import { activityAPI } from '../api/activity';
-import { healthAPI, HealthTest, HealthResults, HealthViewRequest, HEALTH_CONDITIONS } from '../api/health';
 import { improvementAPI } from '../api/improvement';
 import { reviewsAPI, Review, OverallStarRating, REVIEW_ATTRIBUTE_LABELS } from '../api/reviews';
+import HealthProofSection from '../components/HealthProofSection';
 import { getCountryFlagCode } from '../constants/countryFlags';
 import { useTranslation } from '../context/LanguageContext';
 import { chatAPI } from '../api/chat';
@@ -92,11 +92,7 @@ const Profile = () => {
   const [celebMessagesOnlyWhenOpened, setCelebMessagesOnlyWhenOpened] = useState(false);
   const [celebSaving, setCelebSaving] = useState(false);
   const [celebConnections, setCelebConnections] = useState<Array<{ id: string; name: string }>>([]);
-  const [healthResults, setHealthResults] = useState<HealthResults | null>(null);
-  const [healthRequests, setHealthRequests] = useState<{ incoming: HealthViewRequest[]; outgoing: HealthViewRequest[] }>({ incoming: [], outgoing: [] });
-  const [healthLoading, setHealthLoading] = useState(false);
-  const [showAddTest, setShowAddTest] = useState(false);
-  const [newTest, setNewTest] = useState<Partial<HealthTest>>({ condition: '', result: 'clear', doctorName: '', doctorClinic: '', verificationInfo: '', approvedByDoctor: false, testedAt: new Date().toISOString().slice(0, 10) });
+  const [inRelationship, setInRelationship] = useState(false);
   const [showPhotoVerification, setShowPhotoVerification] = useState(false);
   const [syncWarning, setSyncWarning] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -171,6 +167,7 @@ const Profile = () => {
       if (!profileData?.id) throw new Error('Invalid profile response');
       setProfile(profileData);
       applyProfileFields(profileData as ProfileData & Record<string, unknown>);
+      setInRelationship(!!(profileData as any).inRelationship);
       setSyncWarning('');
       updateUser({
         name: profileData.name,
@@ -195,8 +192,6 @@ const Profile = () => {
       } else {
         setCelebConnections([]);
       }
-      healthAPI.getMyResults().then((r) => setHealthResults(r.results)).catch(() => setHealthResults(null));
-      healthAPI.getMyRequests().then((r) => setHealthRequests({ incoming: r.incoming, outgoing: r.outgoing })).catch(() => setHealthRequests({ incoming: [], outgoing: [] }));
       const improvement = await improvementAPI.getUserImprovement(user.id).catch(() => ({ improvementPercentage: 0 }));
       setMatchScore(improvement.improvementPercentage ?? 0);
       const revData = await reviewsAPI.getReviews(user.id).catch(() => ({ reviews: [], overall: null }));
@@ -954,107 +949,7 @@ const Profile = () => {
               )}
             </div>
 
-            <div className="profile-health-section" style={{ marginTop: 20, padding: 16, border: '1px solid rgba(0,212,255,0.3)', borderRadius: 12, background: 'rgba(0,0,0,0.2)' }}>
-              <div className="highlights-title" style={{ marginBottom: 8 }}>🩺 Before you meet – Health results</div>
-              <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.85)', marginBottom: 12 }}>
-                Update your results <strong>before every date</strong> and <strong>after every date</strong>. Covers STIs and other transferable diseases. Potential dates can request to see these; you approve who can view.
-              </p>
-              {healthResults?.tests && healthResults.tests.length > 0 ? (
-                <div style={{ marginBottom: 12 }}>
-                  {healthResults.tests.map((t) => (
-                    <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: 8, background: 'rgba(0,0,0,0.3)', borderRadius: 8, marginBottom: 6 }}>
-                      <span style={{ width: 12, height: 12, borderRadius: '50%', background: t.result === 'clear' ? '#22c55e' : t.result === 'positive' ? '#ef4444' : '#eab308' }} title={t.result} />
-                      <span style={{ flex: 1, fontSize: 13 }}>{t.condition}</span>
-                      <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.7)' }}>{new Date(t.testedAt).toLocaleDateString()}</span>
-                      <button type="button" className="avatar-btn remove" style={{ padding: '2px 8px', fontSize: 11 }} onClick={async () => {
-                        if (!confirm('Remove this test?')) return;
-                        setHealthLoading(true);
-                        try {
-                          const r = await healthAPI.deleteTest(t.id);
-                          setHealthResults(r.results || null);
-                        } finally {
-                          setHealthLoading(false);
-                        }
-                      }}>Remove</button>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)', marginBottom: 12 }}>No tests added yet. Add your results below.</p>
-              )}
-              {!showAddTest ? (
-                <button type="button" className="profile-location-btn" style={{ marginBottom: 12 }} onClick={() => setShowAddTest(true)} disabled={healthLoading}>+ Add test result</button>
-              ) : (
-                <div style={{ marginBottom: 12, padding: 12, background: 'rgba(0,0,0,0.3)', borderRadius: 8 }}>
-                  <label style={{ display: 'block', marginBottom: 6, fontSize: 12 }}>Condition</label>
-                  <select value={newTest.condition} onChange={(e) => setNewTest((p) => ({ ...p, condition: e.target.value }))} className="profile-input" style={{ width: '100%', marginBottom: 8 }}>
-                    {HEALTH_CONDITIONS.map((c) => <option key={c} value={c}>{c}</option>)}
-                  </select>
-                  <label style={{ display: 'block', marginBottom: 6, fontSize: 12 }}>Result</label>
-                  <select value={newTest.result} onChange={(e) => setNewTest((p) => ({ ...p, result: e.target.value as HealthTest['result'] }))} className="profile-input" style={{ width: '100%', marginBottom: 8 }}>
-                    <option value="clear">Clear (green)</option>
-                    <option value="positive">Positive (red)</option>
-                    <option value="pending">Pending</option>
-                  </select>
-                  <label style={{ display: 'block', marginBottom: 6, fontSize: 12 }}>Test date</label>
-                  <input type="date" value={newTest.testedAt?.slice(0, 10) || ''} onChange={(e) => setNewTest((p) => ({ ...p, testedAt: e.target.value }))} className="profile-input" style={{ width: '100%', marginBottom: 8 }} />
-                  <label style={{ display: 'block', marginBottom: 6, fontSize: 12 }}>Doctor name</label>
-                  <input type="text" value={newTest.doctorName || ''} onChange={(e) => setNewTest((p) => ({ ...p, doctorName: e.target.value }))} placeholder="Dr. Name" className="profile-input" style={{ width: '100%', marginBottom: 8 }} />
-                  <label style={{ display: 'block', marginBottom: 6, fontSize: 12 }}>Clinic / where they work</label>
-                  <input type="text" value={newTest.doctorClinic || ''} onChange={(e) => setNewTest((p) => ({ ...p, doctorClinic: e.target.value }))} placeholder="Clinic name" className="profile-input" style={{ width: '100%', marginBottom: 8 }} />
-                  <label style={{ display: 'block', marginBottom: 6, fontSize: 12 }}>How to verify (e.g. medical board, clinic registration)</label>
-                  <input type="text" value={newTest.verificationInfo || ''} onChange={(e) => setNewTest((p) => ({ ...p, verificationInfo: e.target.value }))} placeholder="How to check doctor/tests are legit" className="profile-input" style={{ width: '100%', marginBottom: 8 }} />
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, fontSize: 12 }}>
-                    <input type="checkbox" checked={newTest.approvedByDoctor || false} onChange={(e) => setNewTest((p) => ({ ...p, approvedByDoctor: e.target.checked }))} />
-                    Approved by doctor
-                  </label>
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <button type="button" className="profile-save-btn" disabled={healthLoading || !newTest.condition} onClick={async () => {
-                      setHealthLoading(true);
-                      try {
-                        const r = await healthAPI.addTest({ ...newTest, condition: newTest.condition!, result: newTest.result || 'clear', testedAt: newTest.testedAt || new Date().toISOString(), doctorName: newTest.doctorName || '', doctorClinic: newTest.doctorClinic || '', verificationInfo: newTest.verificationInfo || '', approvedByDoctor: !!newTest.approvedByDoctor });
-                        setHealthResults(r.results);
-                        setShowAddTest(false);
-                        setNewTest({ condition: '', result: 'clear', doctorName: '', doctorClinic: '', verificationInfo: '', approvedByDoctor: false, testedAt: new Date().toISOString().slice(0, 10) });
-                      } finally {
-                        setHealthLoading(false);
-                      }
-                    }}>{healthLoading ? 'Saving...' : 'Save test'}</button>
-                    <button type="button" className="profile-location-btn" onClick={() => setShowAddTest(false)}>Cancel</button>
-                  </div>
-                </div>
-              )}
-              {healthRequests.incoming.length > 0 && (
-                <div style={{ marginTop: 16 }}>
-                  <div className="highlights-title" style={{ marginBottom: 8 }}>Requests to see your results</div>
-                  {healthRequests.incoming.filter((r) => r.status === 'pending').map((r) => (
-                    <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                      <span style={{ flex: 1, fontSize: 13 }}>{(r as any).fromUser?.name || 'Someone'} wants to see your health results</span>
-                      <button type="button" className="profile-save-btn" style={{ padding: '6px 12px', fontSize: 12 }} onClick={async () => {
-                        setHealthLoading(true);
-                        try {
-                          await healthAPI.respondToRequest(r.id, true);
-                          const reqs = await healthAPI.getMyRequests();
-                          setHealthRequests(reqs);
-                        } finally {
-                          setHealthLoading(false);
-                        }
-                      }}>Approve</button>
-                      <button type="button" className="profile-location-btn" style={{ padding: '6px 12px', fontSize: 12 }} onClick={async () => {
-                        setHealthLoading(true);
-                        try {
-                          await healthAPI.respondToRequest(r.id, false);
-                          const reqs = await healthAPI.getMyRequests();
-                          setHealthRequests(reqs);
-                        } finally {
-                          setHealthLoading(false);
-                        }
-                      }}>Decline</button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
+            <HealthProofSection inRelationship={inRelationship} />
 
             <div className="match-score">{Math.round(matchScore)}% MATCH</div>
           </div>

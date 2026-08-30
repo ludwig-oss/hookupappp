@@ -1,7 +1,8 @@
 import axios from 'axios';
-import { API_BASE } from './config';
+import { API_BASE, MEDIA_API_BASE } from './config';
 
-const API_URL = API_BASE + '/api/health-results';
+const API_URL = `${API_BASE}/api/health-results`;
+const MEDIA_API_URL = `${MEDIA_API_BASE || API_BASE}/api/health-results`;
 
 function getAuthHeaders(): Record<string, string> {
   const token = typeof localStorage !== 'undefined' ? localStorage.getItem('token') : null;
@@ -20,12 +21,33 @@ export interface HealthTest {
   doctorClinic: string;
   verificationInfo: string;
   approvedByDoctor: boolean;
+  documentUrl?: string;
+  documentHash?: string;
+  signatureName?: string;
+  signedAt?: string;
+  legalAccepted?: boolean;
 }
 
 export interface HealthResults {
   userId: string;
   tests: HealthTest[];
   lastUpdated: string | null;
+}
+
+export interface HealthComplianceStatus {
+  exempt: boolean;
+  complete: boolean;
+  limited: boolean;
+  expiringSoon: boolean;
+  missingConditions: string[];
+  staleConditions: string[];
+  expiringConditions: string[];
+  lastUpdated: string | null;
+  warningMessage: string | null;
+  byCondition: Record<
+    string,
+    { test: HealthTest; daysSinceTest: number; status: 'ok' | 'expiring' | 'stale' | 'missing' }
+  >;
 }
 
 export interface HealthViewRequest {
@@ -39,7 +61,10 @@ export interface HealthViewRequest {
   toUser?: { id: string; name: string } | null;
 }
 
-export const HEALTH_CONDITIONS = [
+export const HEALTH_LEGAL_TEXT =
+  'I certify this is an authentic lab report from a licensed doctor or hospital in my area, with a visible clinic/hospital stamp. Forging or uploading fake results may result in a €4,000 fine, civil liability if a partner is harmed, and permanent account removal. I agree to update my STI proofs at least monthly.';
+
+export const REQUIRED_STI_CONDITIONS = [
   'HIV',
   'Chlamydia',
   'Gonorrhea',
@@ -49,29 +74,32 @@ export const HEALTH_CONDITIONS = [
   'Herpes (HSV)',
   'HPV',
   'Trichomoniasis',
-  'Mycoplasma',
-  'Flu (Influenza)',
-  'COVID-19',
-  'Other',
-];
+] as const;
 
 export const healthAPI = {
-  getMyResults: async (): Promise<{ results: HealthResults }> => {
+  getMyResults: async (): Promise<{
+    results: HealthResults;
+    compliance: HealthComplianceStatus;
+    legalText: string;
+    requiredConditions: readonly string[];
+  }> => {
     const res = await axios.get(`${API_URL}/me`, { headers: getAuthHeaders() });
     return res.data;
   },
 
-  updateMyResults: async (tests: HealthTest[]): Promise<{ results: HealthResults }> => {
-    const res = await axios.put(`${API_URL}/me`, { tests }, { headers: getAuthHeaders() });
+  uploadProof: async (payload: {
+    condition: string;
+    result: HealthTestResult;
+    testedAt: string;
+    documentImage: string;
+    signatureName: string;
+    legalAccepted: boolean;
+  }): Promise<{ results: HealthResults; compliance: HealthComplianceStatus }> => {
+    const res = await axios.post(`${MEDIA_API_URL}/me/tests`, payload, { headers: getAuthHeaders() });
     return res.data;
   },
 
-  addTest: async (test: Omit<HealthTest, 'id'> & { id?: string }): Promise<{ results: HealthResults }> => {
-    const res = await axios.post(`${API_URL}/me/tests`, test, { headers: getAuthHeaders() });
-    return res.data;
-  },
-
-  deleteTest: async (testId: string): Promise<{ results: HealthResults | null }> => {
+  deleteTest: async (testId: string): Promise<{ results: HealthResults | null; compliance: HealthComplianceStatus }> => {
     const res = await axios.delete(`${API_URL}/me/tests/${testId}`, { headers: getAuthHeaders() });
     return res.data;
   },
@@ -79,7 +107,8 @@ export const healthAPI = {
   getViewStatus: async (otherUserId: string): Promise<{
     request: HealthViewRequest | null;
     canView: boolean;
-    results: { tests: HealthTest[]; lastUpdated: string } | null;
+    canRequest: boolean;
+    results: { tests: HealthTest[]; lastUpdated: string; compliance?: HealthComplianceStatus | null } | null;
   }> => {
     const res = await axios.get(`${API_URL}/view-status/${otherUserId}`, { headers: getAuthHeaders() });
     return res.data;

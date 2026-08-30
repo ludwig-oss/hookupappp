@@ -13,6 +13,7 @@ import {
 } from '../models/walkMatch.js';
 import { getUserById } from '../models/user.js';
 import { ensureMatchConversation } from '../models/chat.js';
+import { isHealthMatchingLimited } from './healthController.js';
 
 export const getSuggestions = async (req: Request, res: Response) => {
   try {
@@ -37,14 +38,21 @@ export const getSuggestions = async (req: Request, res: Response) => {
       getUserAge(viewer)! >= 20;
 
     const suggestions = await getWalkSuggestions(userId, lat, lon, radius);
+    const viewerLimited = await isHealthMatchingLimited(userId);
+    const filtered: typeof suggestions = [];
+    for (const s of suggestions) {
+      if (await isHealthMatchingLimited(s.id)) continue;
+      filtered.push(s);
+    }
 
     res.json({
-      suggestions,
+      suggestions: filtered,
       needsLifeQuiz: needsQuiz,
       outdoorWalkEnabled: viewer.outdoorWalkEnabled !== false,
       nearbyDiscoverable: viewer.nearbyDiscoverable !== false,
       atHome: true,
       homeSet: Boolean(viewer.homeLocation),
+      healthMatchingLimited: viewerLimited,
     });
   } catch (e) {
     console.error('Walk suggestions error:', e);

@@ -12,6 +12,12 @@ export interface HealthTest {
   doctorClinic: string;
   verificationInfo: string; // How to verify the doctor/tests are legit (e.g. clinic registration, medical board)
   approvedByDoctor: boolean;
+  /** Photo of stamped lab report (required for new uploads). */
+  documentUrl?: string;
+  documentHash?: string;
+  signatureName?: string;
+  signedAt?: string;
+  legalAccepted?: boolean;
 }
 
 export interface HealthResults {
@@ -67,6 +73,10 @@ async function writeViewRequests(arr: HealthViewRequest[]): Promise<void> {
   await writeFile(HEALTH_REQUESTS_PATH, JSON.stringify(arr, null, 2), 'utf-8');
 }
 
+export async function getAllHealthResultsRecords(): Promise<HealthResults[]> {
+  return readHealthResults();
+}
+
 export async function getHealthResults(userId: string): Promise<HealthResults | null> {
   const arr = await readHealthResults();
   return arr.find((r) => r.userId === userId) || null;
@@ -90,20 +100,28 @@ export async function upsertHealthResults(userId: string, tests: HealthTest[]): 
   return record;
 }
 
-export async function addOrUpdateTest(userId: string, test: Partial<HealthTest> & Pick<HealthTest, 'condition' | 'result' | 'testedAt' | 'doctorName' | 'doctorClinic' | 'verificationInfo' | 'approvedByDoctor'>): Promise<HealthResults> {
+export async function addOrUpdateTest(
+  userId: string,
+  test: Partial<HealthTest> & Pick<HealthTest, 'condition' | 'result' | 'testedAt'>
+): Promise<HealthResults> {
   const current = await getHealthResults(userId);
   const tests = current?.tests || [];
   const id = test.id || Date.now().toString();
-  const existingIdx = tests.findIndex((t) => t.id === id);
+  const existingIdx = tests.findIndex((t) => t.id === id || t.condition === test.condition);
   const newTest: HealthTest = {
     id,
     condition: test.condition,
     result: test.result,
     testedAt: test.testedAt,
-    doctorName: test.doctorName,
-    doctorClinic: test.doctorClinic,
-    verificationInfo: test.verificationInfo,
-    approvedByDoctor: test.approvedByDoctor,
+    doctorName: test.doctorName || '',
+    doctorClinic: test.doctorClinic || '',
+    verificationInfo: test.verificationInfo || '',
+    approvedByDoctor: test.approvedByDoctor ?? true,
+    documentUrl: test.documentUrl,
+    documentHash: test.documentHash,
+    signatureName: test.signatureName,
+    signedAt: test.signedAt,
+    legalAccepted: test.legalAccepted,
   };
   if (existingIdx >= 0) {
     tests[existingIdx] = newTest;

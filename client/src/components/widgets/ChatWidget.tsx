@@ -171,6 +171,7 @@ const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId, onOpenGuides }: Ch
   const [healthViewStatus, setHealthViewStatus] = useState<{
     request: { status: string } | null;
     canView: boolean;
+    canRequest?: boolean;
     results: { tests: HealthTest[]; lastUpdated: string } | null;
   } | null>(null);
   const [healthViewLoading, setHealthViewLoading] = useState(false);
@@ -1978,14 +1979,19 @@ const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId, onOpenGuides }: Ch
                   )}
                   {showProfileUserId && showProfileUserId !== user?.id && (
                     <div className="chat-profile-health-block" style={{ marginTop: 16, padding: 12, border: '1px solid rgba(0,212,255,0.3)', borderRadius: 10, background: 'rgba(0,0,0,0.2)' }}>
-                      <div className="chat-profile-highlights-title" style={{ marginBottom: 8 }}>🩺 Before you meet – Health results</div>
-                      <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.8)', marginBottom: 10 }}>Check your date&apos;s health results (STIs and transferable diseases). They must approve your request to see.</p>
+                      <div className="chat-profile-highlights-title" style={{ marginBottom: 8 }}>🩺 Stamped lab reports</div>
+                      <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.8)', marginBottom: 10 }}>
+                        Plan a meetup first, then request their doctor/hospital stamped STI proofs before you meet. They approve who can view.
+                      </p>
                       {healthViewLoading && <div className="chat-loading">Loading...</div>}
                       {!healthViewLoading && healthViewStatus && (
                         <>
                           {healthViewStatus.request?.status === 'pending' && <p style={{ fontSize: 13, color: '#eab308' }}>Request sent. Waiting for approval.</p>}
-                          {healthViewStatus.request?.status === 'rejected' && <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.7)' }}>They declined to share health results.</p>}
-                          {!healthViewStatus.request && (
+                          {healthViewStatus.request?.status === 'rejected' && <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.7)' }}>They declined to share lab reports.</p>}
+                          {!healthViewStatus.request && !healthViewStatus.canView && healthViewStatus.canRequest === false && (
+                            <p style={{ fontSize: 12, color: '#fca5a5' }}>Create a meetup plan in Date safety first, then you can request their stamped reports.</p>
+                          )}
+                          {!healthViewStatus.request && !healthViewStatus.canView && healthViewStatus.canRequest !== false && (
                             <button type="button" className="profile-save-btn" style={{ padding: '8px 16px', fontSize: 13 }} disabled={healthRequesting} onClick={async () => {
                               if (!showProfileUserId) return;
                               setHealthRequesting(true);
@@ -1993,44 +1999,37 @@ const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId, onOpenGuides }: Ch
                                 await healthAPI.requestToView(showProfileUserId);
                                 const status = await healthAPI.getViewStatus(showProfileUserId);
                                 setHealthViewStatus(status);
+                              } catch (err: unknown) {
+                                const ax = err as { response?: { data?: { error?: string } } };
+                                window.alert(ax.response?.data?.error || 'Could not send request');
                               } finally {
                                 setHealthRequesting(false);
                               }
-                            }}>{healthRequesting ? 'Sending...' : 'Request to see health results'}</button>
+                            }}>{healthRequesting ? 'Sending...' : 'Request stamped lab reports'}</button>
                           )}
                           {healthViewStatus.canView && healthViewStatus.results && (
                             <div style={{ marginTop: 8 }}>
-                              <p style={{ fontSize: 12, color: '#22c55e', marginBottom: 8 }}>You can view their results:</p>
-                              {healthViewStatus.results.tests.length === 0 ? (
-                                <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.7)' }}>No tests shared yet.</p>
+                              <p style={{ fontSize: 12, color: '#22c55e', marginBottom: 8 }}>Approved — stamped reports:</p>
+                              {healthViewStatus.results.tests.filter((t) => t.documentUrl).length === 0 ? (
+                                <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.7)' }}>No stamped documents shared yet.</p>
                               ) : (
-                                <div className="health-results-report" style={{ background: 'rgba(0,0,0,0.25)', borderRadius: 8, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.1)' }}>
-                                  <div style={{ padding: '10px 12px', background: 'rgba(0,0,0,0.4)', borderBottom: '2px solid rgba(0,212,255,0.4)', fontSize: 14, fontWeight: 700 }}>Health results</div>
-                                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-                                    <thead>
-                                      <tr style={{ background: 'rgba(0,0,0,0.3)' }}>
-                                        <th style={{ textAlign: 'left', padding: '8px 10px', fontWeight: 600 }}>Test</th>
-                                        <th style={{ textAlign: 'left', padding: '8px 10px', fontWeight: 600 }}>Result</th>
-                                        <th style={{ textAlign: 'left', padding: '8px 10px', fontWeight: 600 }}>Reference</th>
-                                      </tr>
-                                    </thead>
-                                    <tbody>
-                                      {healthViewStatus.results.tests.map((t) => (
-                                        <tr key={t.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
-                                          <td style={{ padding: '8px 10px' }}>{t.condition}</td>
-                                          <td style={{ padding: '8px 10px', color: t.result === 'clear' ? '#22c55e' : t.result === 'positive' ? '#ef4444' : '#eab308', fontWeight: 500 }}>{t.result === 'clear' ? 'Negative' : t.result === 'positive' ? 'Positive' : 'Pending'}</td>
-                                          <td style={{ padding: '8px 10px', color: 'rgba(255,255,255,0.7)' }}>Negative</td>
-                                        </tr>
-                                      ))}
-                                    </tbody>
-                                  </table>
-                                  <div style={{ padding: '6px 10px', fontSize: 10, color: 'rgba(255,255,255,0.5)', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
-                                    {healthViewStatus.results.tests.some((t) => t.doctorName || t.doctorClinic) && (
-                                      <span>Doctor / clinic: {healthViewStatus.results.tests.map((t) => [t.doctorName, t.doctorClinic].filter(Boolean).join(' · ')).filter(Boolean)[0] || '—'} · </span>
-                                    )}
-                                    Test date: {healthViewStatus.results.tests[0] && new Date(healthViewStatus.results.tests[0].testedAt).toLocaleDateString()}
-                                    {healthViewStatus.results.lastUpdated && <> · Last updated: {new Date(healthViewStatus.results.lastUpdated).toLocaleDateString()}</>}
-                                  </div>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                                  {healthViewStatus.results.tests.filter((t) => t.documentUrl).map((t) => (
+                                    <div key={t.id} style={{ background: 'rgba(0,0,0,0.25)', borderRadius: 8, padding: 8, border: '1px solid rgba(255,255,255,0.1)' }}>
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                                        <span style={{ width: 10, height: 10, borderRadius: '50%', background: t.result === 'positive' ? '#ef4444' : t.result === 'clear' ? '#22c55e' : '#eab308' }} />
+                                        <strong style={{ fontSize: 13 }}>{t.condition}</strong>
+                                        <span style={{ fontSize: 12, color: t.result === 'positive' ? '#f87171' : '#86efac' }}>
+                                          {t.result === 'positive' ? 'Positive' : t.result === 'clear' ? 'Negative' : 'Pending'}
+                                        </span>
+                                      </div>
+                                      <img src={t.documentUrl} alt={`${t.condition} report`} style={{ width: '100%', maxHeight: 220, objectFit: 'contain', borderRadius: 6, background: '#111' }} />
+                                      <p style={{ fontSize: 10, color: 'rgba(255,255,255,0.55)', marginTop: 6 }}>
+                                        Test date: {new Date(t.testedAt).toLocaleDateString()}
+                                        {healthViewStatus.results?.lastUpdated ? ` · Last updated: ${new Date(healthViewStatus.results.lastUpdated).toLocaleDateString()}` : ''}
+                                      </p>
+                                    </div>
+                                  ))}
                                 </div>
                               )}
                             </div>

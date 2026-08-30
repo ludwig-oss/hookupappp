@@ -191,13 +191,11 @@ export const getUserProfile = async (req: Request, res: Response) => {
       delete profile.closeFriendIds;
     }
 
-    if (req.params.userId && req.params.userId !== 'me') {
-      try {
-        const rel = await getActiveRelationship(profileUserId);
-        (profile as any).inRelationship = !!rel && rel.status === 'active';
-      } catch (_) {
-        (profile as any).inRelationship = false;
-      }
+    try {
+      const rel = await getActiveRelationship(user.id);
+      (profile as any).inRelationship = !!rel && rel.status === 'active';
+    } catch (_) {
+      (profile as any).inRelationship = false;
     }
     
     res.json(profile);

@@ -1,6 +1,7 @@
 import { useState, useEffect, useContext, useRef } from 'react';
 import { AuthContext } from '../../context/AuthContext';
 import { profileAPI, ProfileData } from '../../api/profile';
+import ProfileMedia from '../ProfileMedia';
 import './Widget.css';
 
 const ProfileWidgetFull = () => {
@@ -99,7 +100,7 @@ const ProfileWidgetFull = () => {
       <div className="circle-profile-container">
         <div className="circle-frame-profile" onClick={() => fileInputRef.current?.click()}>
           {profile.profilePicture ? (
-            <img src={profile.profilePicture} alt="Profile" className="circle-profile-image" />
+            <ProfileMedia src={profile.profilePicture} alt="Profile" className="circle-profile-image" />
           ) : (
             <div className="circle-placeholder">
               <span>+</span>

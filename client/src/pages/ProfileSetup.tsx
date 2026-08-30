@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
 import { profileAPI } from '../api/profile';
 import { formatAxiosError } from '../lib/apiError';
-import { compressImageDataUrl } from '../lib/compressImage';
+import { prepareMediaForUpload } from '../lib/prepareMediaUpload';
 import { trimVideoToDataUrl, isVideoDataUrl, clampClipRange, MAX_CLIP_SEC } from '../lib/trimVideo';
 import './ProfileSetup.css';
 
@@ -40,8 +40,8 @@ const ProfileSetup = () => {
     setError('');
     try {
       let payload = media;
-      if (payload && !isVideoDataUrl(payload)) {
-        payload = await compressImageDataUrl(payload);
+      if (payload) {
+        payload = await prepareMediaForUpload(payload);
       }
       const response = await profileAPI.completeProfileSetup(payload, user.id);
       const token = localStorage.getItem('token') || '';

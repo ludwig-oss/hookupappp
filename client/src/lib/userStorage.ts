@@ -1,3 +1,5 @@
+import { profilePictureForStorage } from './prepareMediaUpload';
+
 /** Fields safe to keep in localStorage (no secrets, no huge media blobs). */
 export function userForStorage(user: Record<string, unknown>): Record<string, unknown> {
   const id = user.id;
@@ -6,10 +8,7 @@ export function userForStorage(user: Record<string, unknown>): Record<string, un
     email: user.email,
     name: user.name,
     username: user.username,
-    profilePicture:
-      typeof user.profilePicture === 'string' && user.profilePicture.length < 500_000
-        ? user.profilePicture
-        : null,
+    profilePicture: profilePictureForStorage(user.profilePicture as string | null | undefined),
     profileSetupComplete: Boolean(user.profileSetupComplete),
     emailVerified: user.emailVerified !== false,
     improvementCategories: Array.isArray(user.improvementCategories)

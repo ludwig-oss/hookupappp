@@ -57,7 +57,18 @@ export const uploadProfilePicture = async (req: Request, res: Response) => {
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    const { image } = req.body; // Base64 image data
+    const { image } = req.body;
+    if (image === '' || image === null) {
+      const user = await updateUserProfile(userId, { profilePicture: null, photoVerifiedAt: null });
+      if (!user) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+      return res.json({
+        message: 'Profile picture removed',
+        profilePicture: null,
+        photoVerifiedAt: null,
+      });
+    }
     if (!image) {
       return res.status(400).json({ error: 'Image is required' });
     }
@@ -252,7 +263,8 @@ export const addUserStory = async (req: Request, res: Response) => {
     res.json({ message: 'Story published (visible for 24 hours)', story });
   } catch (error) {
     console.error('Add story error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    const msg = error instanceof Error ? error.message : 'Internal server error';
+    res.status(500).json({ error: msg.includes('too large') ? msg : 'Story upload failed — try a smaller photo or shorter video.' });
   }
 };
 

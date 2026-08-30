@@ -1,7 +1,8 @@
 import axios from 'axios';
-import { API_BASE } from './config';
+import { API_BASE, MEDIA_API_BASE } from './config';
 
-const API_URL = API_BASE + '/api/profile';
+const API_URL = `${API_BASE}/api/profile`;
+const MEDIA_API_URL = `${MEDIA_API_BASE || API_BASE}/api/profile`;
 
 function getAuthHeaders(): Record<string, string> {
   const token = typeof localStorage !== 'undefined' ? localStorage.getItem('token') : null;
@@ -80,8 +81,8 @@ export const profileAPI = {
     }
   },
 
-  uploadProfilePicture: async (imageBase64: string, userId: string): Promise<{ profilePicture: string; photoVerifiedAt?: string | null }> => {
-    const response = await axios.post(`${API_URL}/picture`, { image: imageBase64, userId }, { headers: getAuthHeaders() });
+  uploadProfilePicture: async (imageBase64OrDataUrl: string, userId: string): Promise<{ profilePicture: string; photoVerifiedAt?: string | null }> => {
+    const response = await axios.post(`${MEDIA_API_URL}/picture`, { image: imageBase64OrDataUrl, userId }, { headers: getAuthHeaders() });
     return response.data;
   },
 
@@ -95,7 +96,7 @@ export const profileAPI = {
     const body: Record<string, string | undefined> = { userId, highlightId };
     if (mediaBase64OrDataUrl.startsWith('data:')) (body as any).media = mediaBase64OrDataUrl;
     else body.image = mediaBase64OrDataUrl;
-    const response = await axios.post(`${API_URL}/highlights`, body, { headers: getAuthHeaders() });
+    const response = await axios.post(`${MEDIA_API_URL}/highlights`, body, { headers: getAuthHeaders() });
     return response.data;
   },
 
@@ -106,7 +107,7 @@ export const profileAPI = {
     const body: Record<string, string> = { audience };
     if (mediaBase64OrDataUrl.startsWith('data:')) body.media = mediaBase64OrDataUrl;
     else body.image = mediaBase64OrDataUrl;
-    const response = await axios.post(`${API_URL}/stories`, body, { headers: getAuthHeaders() });
+    const response = await axios.post(`${MEDIA_API_URL}/stories`, body, { headers: getAuthHeaders() });
     return response.data;
   },
 
@@ -132,7 +133,7 @@ export const profileAPI = {
   },
 
   completeProfileSetup: async (profilePicture: string | null, userId: string): Promise<{ user: any }> => {
-    const response = await axios.post(`${API_URL}/setup`, { profilePicture, userId }, { headers: getAuthHeaders() });
+    const response = await axios.post(`${MEDIA_API_URL}/setup`, { profilePicture, userId }, { headers: getAuthHeaders() });
     return response.data;
   },
 

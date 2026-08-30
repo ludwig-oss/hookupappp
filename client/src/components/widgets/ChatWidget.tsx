@@ -13,6 +13,7 @@ import { speedDateAPI, SpeedDate } from '../../api/speedDate';
 import { connectionJourneyAPI, ConnectionJourneyResponse } from '../../api/connectionJourney';
 import RelationshipCouplePanel from './RelationshipCouplePanel';
 import VoiceSafetyPanel from '../VoiceSafetyPanel';
+import ProfileMedia from '../ProfileMedia';
 import { voiceRecordingAPI } from '../../api/voiceRecording';
 import '../../pages/Dashboard.css';
 
@@ -1949,7 +1950,7 @@ const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId, onOpenGuides }: Ch
                 <>
                   <div className="chat-profile-avatar">
                     {profileData.profilePicture ? (
-                      <img src={profileData.profilePicture} alt="" />
+                      <ProfileMedia src={profileData.profilePicture} alt="" />
                     ) : (
                       <span>{(profileData as any).name?.[0] || '?'}</span>
                     )}

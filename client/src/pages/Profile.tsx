@@ -12,6 +12,8 @@ import { getCountryFlagCode } from '../constants/countryFlags';
 import { useTranslation } from '../context/LanguageContext';
 import { chatAPI } from '../api/chat';
 import { isVideoMediaUrl } from '../lib/media';
+import { prepareMediaForUpload } from '../lib/prepareMediaUpload';
+import ProfileMedia from '../components/ProfileMedia';
 import './Dashboard.css';
 
 const NOMINATIM_REVERSE = 'https://nominatim.openstreetmap.org/reverse';
@@ -347,12 +349,14 @@ const Profile = () => {
     setUploading(true);
     setError('');
     try {
-      await profileAPI.addStory(pendingStoryMedia, audience);
+      const media = await prepareMediaForUpload(pendingStoryMedia);
+      await profileAPI.addStory(media, audience);
       setShowStoryAudiencePicker(false);
       setPendingStoryMedia(null);
       await loadProfile();
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Story upload failed');
+    } catch (err: unknown) {
+      const ax = err as { response?: { data?: { error?: string } }; message?: string };
+      setError(ax.response?.data?.error || ax.message || 'Story upload failed');
     } finally {
       setUploading(false);
     }
@@ -392,17 +396,30 @@ const Profile = () => {
     try {
       const reader = new FileReader();
       reader.onloadend = async () => {
-        const base64 = (reader.result as string).split(',')[1];
-        await profileAPI.uploadProfilePicture(base64, user.id);
-        await loadProfile();
-        setShowPhotoVerification(true);
+        try {
+          let dataUrl = reader.result as string;
+          if (!isVideoMediaUrl(dataUrl)) {
+            dataUrl = await prepareMediaForUpload(dataUrl);
+          }
+          await profileAPI.uploadProfilePicture(dataUrl, user.id);
+          await loadProfile();
+          if (!isVideoMediaUrl(dataUrl)) {
+            setShowPhotoVerification(true);
+          }
+        } catch (err: unknown) {
+          const ax = err as { response?: { data?: { error?: string } }; message?: string };
+          setError(ax.response?.data?.error || ax.message || 'Upload failed');
+        } finally {
+          setUploading(false);
+        }
       };
       reader.readAsDataURL(file);
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Upload failed');
-    } finally {
+    } catch (err: unknown) {
+      const ax = err as { response?: { data?: { error?: string } }; message?: string };
+      setError(ax.response?.data?.error || ax.message || 'Upload failed');
       setUploading(false);
     }
+    e.target.value = '';
   };
 
   const handleHighlightChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -412,10 +429,18 @@ const Profile = () => {
     try {
       const reader = new FileReader();
       reader.onloadend = async () => {
-        const dataUrl = reader.result as string;
-        await profileAPI.addHighlight(dataUrl, user.id, selectedHighlightId || undefined);
-        await loadProfile();
-        setSelectedHighlightId(null);
+        try {
+          const dataUrl = reader.result as string;
+          const media = await prepareMediaForUpload(dataUrl);
+          await profileAPI.addHighlight(media, user.id, selectedHighlightId || undefined);
+          await loadProfile();
+          setSelectedHighlightId(null);
+        } catch (err: unknown) {
+          const ax = err as { response?: { data?: { error?: string } }; message?: string };
+          setError(ax.response?.data?.error || ax.message || 'Highlight upload failed');
+        } finally {
+          setUploading(false);
+        }
       };
       reader.readAsDataURL(file);
     } finally {
@@ -524,7 +549,7 @@ const Profile = () => {
               <div className="avatar-circle" onClick={handleProfilePictureClick} style={{ cursor: 'pointer', position: 'relative' }}>
                 {profile.profilePicture ? (
                   <div className="avatar-image-wrapper">
-                    <img src={profile.profilePicture} alt="Profile" className="avatar-image" />
+                    <ProfileMedia src={profile.profilePicture} className="avatar-image" alt="Profile" />
                   </div>
                 ) : (
                   <div className="avatar-icon">👤</div>
@@ -543,7 +568,7 @@ const Profile = () => {
                   }}>Remove</button>
                 )}
               </div>
-              <input ref={fileInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleProfilePictureChange} />
+              <input ref={fileInputRef} type="file" accept="image/*,video/*" style={{ display: 'none' }} onChange={handleProfilePictureChange} />
             </div>
             <div className="profile-info">
               <div className="profile-name">
@@ -1224,10 +1249,10 @@ const Profile = () => {
             <p className="story-audience-question">Who can see this story?</p>
             <div className="story-audience-actions">
               <button type="button" className="story-audience-btn story-audience-everyone" disabled={uploading} onClick={() => submitStoryWithAudience('all')}>
-                {t('storyAudienceEveryone')}
+                {uploading ? `${t('loading')}…` : t('storyAudienceEveryone')}
               </button>
               <button type="button" className="story-audience-btn story-audience-close" disabled={uploading} onClick={() => submitStoryWithAudience('closeFriends')}>
-                {t('storyAudienceCloseFriends')}
+                {uploading ? `${t('loading')}…` : t('storyAudienceCloseFriends')}
               </button>
               <button type="button" className="story-audience-cancel" disabled={uploading} onClick={() => { setShowStoryAudiencePicker(false); setPendingStoryMedia(null); }}>
                 {t('cancel')}

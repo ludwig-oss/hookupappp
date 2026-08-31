@@ -332,9 +332,6 @@ const ProfileSetup = () => {
         <button type="button" onClick={() => finishSetup(null)} className="upload-button skip-btn" disabled={loading}>
           Skip for now
         </button>
-        <button type="button" onClick={startOver} className="upload-button skip-btn" disabled={loading} style={{ marginTop: 8 }}>
-          Use a different account
-        </button>
       </div>
     </div>
   );

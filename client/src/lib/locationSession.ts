@@ -99,57 +99,95 @@ function tryGps(timeoutMs = 20000, highAccuracy = false): Promise<StoredCoords |
 export function geolocationErrorMessage(err: GeolocationPositionError | null | undefined): string {
   const code = err?.code;
   if (code === 1) {
-    return 'Location is blocked for this site. Phone: tap the lock or “aA” next to the address → Location → Allow. Computer: click the padlock in the address bar → Location → Allow. Then tap the button again.';
+    return 'GPS did not come through. Type your city and country below and tap Save — nearby still works.';
   }
   if (code === 2) {
-    return 'Could not find your position. On a phone, turn on Location Services and Wi‑Fi. On a laptop, allow location or type your city and country, then Save.';
+    return 'Could not find GPS. Type your city and country below and tap Save.';
   }
   if (code === 3) {
-    return 'Location timed out. Tap again, or type your city and country and Save — that works on phones and computers.';
+    return 'GPS timed out. Type your city and country below and tap Save.';
   }
-  return 'Could not get GPS. Type your city and country and Save — nearby still works on phones and computers.';
+  return 'Could not get GPS. Type your city and country below and tap Save.';
 }
 
-/** Call only from a tap (Yes / Use my location) so iPhone/Android show Allow / Once / While using. */
+function coordsFromPosition(pos: GeolocationPosition): StoredCoords {
+  return {
+    lat: pos.coords.latitude,
+    lon: pos.coords.longitude,
+    accuracy: pos.coords.accuracy,
+    source: 'gps',
+  };
+}
+
+/** Call only from a tap (Yes / Use my location) so the phone can show Allow. */
 export function requestGpsFromUserTap(): Promise<{ coords: StoredCoords | null; error?: string }> {
   return new Promise((resolve) => {
     if (typeof navigator === 'undefined' || !navigator.geolocation) {
       resolve({ coords: null, error: 'This browser cannot use GPS. Type your city and country, then Save.' });
       return;
     }
+
+    let settled = false;
+    let watchId: number | null = null;
+    let deniedTimer: ReturnType<typeof setTimeout> | null = null;
+
     const finish = (coords: StoredCoords | null, error?: string) => {
+      if (settled) return;
+      settled = true;
+      if (deniedTimer) clearTimeout(deniedTimer);
+      if (watchId != null) {
+        try {
+          navigator.geolocation.clearWatch(watchId);
+        } catch {
+          /* ignore */
+        }
+      }
       if (coords) markLocationGranted(coords);
       resolve({ coords, error });
     };
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        finish({
-          lat: pos.coords.latitude,
-          lon: pos.coords.longitude,
-          accuracy: pos.coords.accuracy,
-          source: 'gps',
-        });
-      },
-      (err) => {
-        if (err?.code === 3) {
-          navigator.geolocation.getCurrentPosition(
-            (pos) => {
-              finish({
-                lat: pos.coords.latitude,
-                lon: pos.coords.longitude,
-                accuracy: pos.coords.accuracy,
-                source: 'gps',
-              });
-            },
-            (err2) => finish(null, geolocationErrorMessage(err2)),
-            { enableHighAccuracy: false, timeout: 25000, maximumAge: 120_000 }
-          );
-          return;
-        }
-        finish(null, geolocationErrorMessage(err));
-      },
-      { enableHighAccuracy: false, timeout: 20000, maximumAge: 30_000 }
-    );
+
+    const onOk = (pos: GeolocationPosition) => finish(coordsFromPosition(pos));
+
+    const options: PositionOptions = {
+      enableHighAccuracy: false,
+      timeout: 20000,
+      maximumAge: 300_000,
+    };
+
+    // iOS Safari often succeeds with watchPosition after a false first "denied".
+    try {
+      watchId = navigator.geolocation.watchPosition(
+        onOk,
+        (err) => {
+          if (err?.code === 1) {
+            if (deniedTimer) clearTimeout(deniedTimer);
+            deniedTimer = setTimeout(() => {
+              if (!settled) finish(null, geolocationErrorMessage(err));
+            }, 2500);
+            return;
+          }
+          if (err?.code === 2 || err?.code === 3) {
+            navigator.geolocation.getCurrentPosition(
+              onOk,
+              (err2) => finish(null, geolocationErrorMessage(err2)),
+              { enableHighAccuracy: false, timeout: 20000, maximumAge: 600_000 }
+            );
+          }
+        },
+        options
+      );
+    } catch {
+      finish(null, 'Could not start GPS. Type your city and country below and tap Save.');
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(onOk, () => {
+      /* watchPosition above is the fallback */
+    }, options);
+
+    window.setTimeout(() => {
+      if (!settled) finish(null, 'GPS is taking too long. Type your city and country below and tap Save.');
+    }, 28000);
   });
 }
 

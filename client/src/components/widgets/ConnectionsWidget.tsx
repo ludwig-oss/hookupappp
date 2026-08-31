@@ -73,6 +73,8 @@ const ConnectionsWidget = () => {
   const [searchPlacesLoading, setSearchPlacesLoading] = useState(false);
   const [locationDeclined, setLocationDeclined] = useState(false);
   const [requestingLocation, setRequestingLocation] = useState(false);
+  const [placeCity, setPlaceCity] = useState(() => String((user as { city?: string } | null)?.city || ''));
+  const [placeCountry, setPlaceCountry] = useState(() => String((user as { country?: string } | null)?.country || ''));
 
   const fetchPlaceLabel = async (lat: number, lon: number) => {
     try {
@@ -98,19 +100,35 @@ const ConnectionsWidget = () => {
     updateUser({ connectionsVisible: vis });
   }, [user?.id, connectionsVisible, updateUser]);
 
-  const ensureLocation = useCallback(async (): Promise<{ lat: number; lon: number; accuracy?: number }> => {
-    const { coords, error } = await requestGpsFromUserTap();
-    if (!coords) {
-      throw new Error(error || 'Location needed to see who is nearby.');
-    }
+  const applyCoords = useCallback((coords: { lat: number; lon: number; accuracy?: number }) => {
     setLocation(coords);
     setLocationDeclined(false);
     setError('');
     fetchPlaceLabel(coords.lat, coords.lon);
     pushLocation(coords, true).catch(() => {});
     setConnectionsVisible(true);
-    return coords;
   }, [pushLocation]);
+
+  const ensureLocation = useCallback(async (): Promise<{ lat: number; lon: number; accuracy?: number }> => {
+    const { coords, error } = await requestGpsFromUserTap();
+    if (coords) {
+      applyCoords(coords);
+      return coords;
+    }
+    const fallback = await resolveWorkingCoords(
+      {
+        userId: user?.id,
+        city: placeCity.trim() || (user as { city?: string })?.city,
+        country: placeCountry.trim() || (user as { country?: string })?.country,
+      },
+      locationApi
+    );
+    if (fallback) {
+      applyCoords(fallback);
+      return fallback;
+    }
+    throw new Error(error || 'Type your city and country below, then tap Save.');
+  }, [applyCoords, user?.id, user, placeCity, placeCountry]);
 
   const requestLocationAccess = useCallback(async () => {
     setRequestingLocation(true);
@@ -172,6 +190,13 @@ const ConnectionsWidget = () => {
       setError(formatAxiosError(err, 'Could not refresh nearby'));
     }
   }, [user?.id, location, connectionsVisible, pushLocation]);
+
+  useEffect(() => {
+    const city = (user as { city?: string } | null)?.city;
+    const country = (user as { country?: string } | null)?.country;
+    if (city && !placeCity) setPlaceCity(city);
+    if (country && !placeCountry) setPlaceCountry(country);
+  }, [user, placeCity, placeCountry]);
 
   useEffect(() => {
     if (user?.id) {
@@ -449,9 +474,60 @@ const ConnectionsWidget = () => {
             No thanks
           </button>
         </div>
+        <p style={{ margin: '14px 0 8px', fontSize: 12, color: '#d1d5db' }}>
+          Or type your city — works even if GPS does not.
+        </p>
+        <input
+          className="profile-input"
+          value={placeCity}
+          onChange={(e) => setPlaceCity(e.target.value)}
+          placeholder="City"
+          style={{ width: '100%', marginBottom: 6, padding: 10 }}
+        />
+        <input
+          className="profile-input"
+          value={placeCountry}
+          onChange={(e) => setPlaceCountry(e.target.value)}
+          placeholder="Country"
+          style={{ width: '100%', marginBottom: 8, padding: 10 }}
+        />
+        <button
+          type="button"
+          className="auth-button"
+          disabled={requestingLocation || loading}
+          onClick={async () => {
+            const city = placeCity.trim();
+            const country = placeCountry.trim();
+            if (!city && !country) {
+              setError('Type your city and country, then tap Save.');
+              return;
+            }
+            if (!user?.id) return;
+            setRequestingLocation(true);
+            setError('');
+            try {
+              const coords = await resolveWorkingCoords(
+                { userId: user.id, city, country },
+                locationApi
+              );
+              if (!coords) {
+                setError('Could not find that place. Check the spelling.');
+                return;
+              }
+              applyCoords(coords);
+            } catch (err: unknown) {
+              setError(formatAxiosError(err, 'Could not save that place'));
+            } finally {
+              setRequestingLocation(false);
+            }
+          }}
+          style={{ width: '100%', margin: 0 }}
+        >
+          {requestingLocation ? 'Saving…' : 'Save city'}
+        </button>
         {locationDeclined && (
           <p style={{ margin: '10px 0 0', fontSize: 11, color: '#9ca3af' }}>
-            Location off — you can still browse. Tap &quot;Yes, use location&quot; anytime to turn it on.
+            Location off — you can still browse. Tap Yes or Save city anytime.
           </p>
         )}
       </div>

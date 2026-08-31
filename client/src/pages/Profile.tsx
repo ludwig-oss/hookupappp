@@ -8,6 +8,7 @@ import { activityAPI } from '../api/activity';
 import { improvementAPI } from '../api/improvement';
 import { reviewsAPI, Review, OverallStarRating, REVIEW_ATTRIBUTE_LABELS } from '../api/reviews';
 import HealthProofSection from '../components/HealthProofSection';
+import ProfileMedia from '../components/ProfileMedia';
 import { getCountryFlagCode } from '../constants/countryFlags';
 import { useTranslation } from '../context/LanguageContext';
 import { chatAPI } from '../api/chat';

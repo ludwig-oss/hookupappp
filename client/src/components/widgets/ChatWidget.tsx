@@ -5,6 +5,7 @@ import { relationshipAPI, RelationshipState } from '../../api/relationship';
 import { profileAPI, ProfileData } from '../../api/profile';
 import { activityAPI } from '../../api/activity';
 import { healthAPI, HealthTest } from '../../api/health';
+import HealthProofSection from '../HealthProofSection';
 import { safetyAPI, MeetupPlan, EmergencyContact, MeetupWeekStatus } from '../../api/safety';
 import DateVenuePicker from '../DateVenuePicker';
 import { reviewsAPI, ReviewAttributes, REVIEW_ATTRIBUTE_LABELS } from '../../api/reviews';
@@ -1980,63 +1981,48 @@ const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId, onOpenGuides }: Ch
                     </div>
                   )}
                   {showProfileUserId && showProfileUserId !== user?.id && (
-                    <div className="chat-profile-health-block" style={{ marginTop: 16, padding: 12, border: '1px solid rgba(0,212,255,0.3)', borderRadius: 10, background: 'rgba(0,0,0,0.2)' }}>
-                      <div className="chat-profile-highlights-title" style={{ marginBottom: 8 }}>🩺 Stamped lab reports</div>
-                      <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.8)', marginBottom: 10 }}>
-                        Plan a meetup first, then request their doctor/hospital stamped STI proofs before you meet. They approve who can view.
-                      </p>
+                    <div className="chat-profile-health-block" style={{ marginTop: 16 }}>
                       {healthViewLoading && <div className="chat-loading">Loading...</div>}
-                      {!healthViewLoading && healthViewStatus && (
-                        <>
-                          {healthViewStatus.request?.status === 'pending' && <p style={{ fontSize: 13, color: '#eab308' }}>Request sent. Waiting for approval.</p>}
-                          {healthViewStatus.request?.status === 'rejected' && <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.7)' }}>They declined to share lab reports.</p>}
-                          {!healthViewStatus.request && !healthViewStatus.canView && healthViewStatus.canRequest === false && (
-                            <p style={{ fontSize: 12, color: '#fca5a5' }}>Create a meetup plan in Date safety first, then you can request their stamped reports.</p>
-                          )}
-                          {!healthViewStatus.request && !healthViewStatus.canView && healthViewStatus.canRequest !== false && (
-                            <button type="button" className="profile-save-btn" style={{ padding: '8px 16px', fontSize: 13 }} disabled={healthRequesting} onClick={async () => {
-                              if (!showProfileUserId) return;
-                              setHealthRequesting(true);
-                              try {
-                                await healthAPI.requestToView(showProfileUserId);
-                                const status = await healthAPI.getViewStatus(showProfileUserId);
-                                setHealthViewStatus(status);
-                              } catch (err: unknown) {
-                                const ax = err as { response?: { data?: { error?: string } } };
-                                window.alert(ax.response?.data?.error || 'Could not send request');
-                              } finally {
-                                setHealthRequesting(false);
-                              }
-                            }}>{healthRequesting ? 'Sending...' : 'Request stamped lab reports'}</button>
-                          )}
-                          {healthViewStatus.canView && healthViewStatus.results && (
-                            <div style={{ marginTop: 8 }}>
-                              <p style={{ fontSize: 12, color: '#22c55e', marginBottom: 8 }}>Approved — stamped reports:</p>
-                              {healthViewStatus.results.tests.filter((t) => t.documentUrl).length === 0 ? (
-                                <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.7)' }}>No stamped documents shared yet.</p>
-                              ) : (
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                                  {healthViewStatus.results.tests.filter((t) => t.documentUrl).map((t) => (
-                                    <div key={t.id} style={{ background: 'rgba(0,0,0,0.25)', borderRadius: 8, padding: 8, border: '1px solid rgba(255,255,255,0.1)' }}>
-                                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                                        <span style={{ width: 10, height: 10, borderRadius: '50%', background: t.result === 'positive' ? '#ef4444' : t.result === 'clear' ? '#22c55e' : '#eab308' }} />
-                                        <strong style={{ fontSize: 13 }}>{t.condition}</strong>
-                                        <span style={{ fontSize: 12, color: t.result === 'positive' ? '#f87171' : '#86efac' }}>
-                                          {t.result === 'positive' ? 'Positive' : t.result === 'clear' ? 'Negative' : 'Pending'}
-                                        </span>
-                                      </div>
-                                      <img src={t.documentUrl} alt={`${t.condition} report`} style={{ width: '100%', maxHeight: 220, objectFit: 'contain', borderRadius: 6, background: '#111' }} />
-                                      <p style={{ fontSize: 10, color: 'rgba(255,255,255,0.55)', marginTop: 6 }}>
-                                        Test date: {new Date(t.testedAt).toLocaleDateString()}
-                                        {healthViewStatus.results?.lastUpdated ? ` · Last updated: ${new Date(healthViewStatus.results.lastUpdated).toLocaleDateString()}` : ''}
-                                      </p>
-                                    </div>
-                                  ))}
-                                </div>
+                      {!healthViewLoading && healthViewStatus && !healthViewStatus.canView && (
+                        <HealthProofSection
+                          mode="visitor"
+                          visitorTests={[]}
+                          visitorGate={(
+                            <>
+                              <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.8)', marginBottom: 10 }}>
+                                Plan a meetup first, then request their doctor/hospital stamped STI proofs before you meet. They approve who can view.
+                              </p>
+                              {healthViewStatus.request?.status === 'pending' && <p style={{ fontSize: 13, color: '#eab308' }}>Request sent. Waiting for approval.</p>}
+                              {healthViewStatus.request?.status === 'rejected' && <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.7)' }}>They declined to share lab reports.</p>}
+                              {!healthViewStatus.request && healthViewStatus.canRequest === false && (
+                                <p style={{ fontSize: 12, color: '#fca5a5' }}>Create a meetup plan in Date safety first, then you can request their stamped reports.</p>
                               )}
-                            </div>
+                              {!healthViewStatus.request && healthViewStatus.canRequest !== false && (
+                                <button type="button" className="profile-save-btn" style={{ padding: '8px 16px', fontSize: 13 }} disabled={healthRequesting} onClick={async () => {
+                                  if (!showProfileUserId) return;
+                                  setHealthRequesting(true);
+                                  try {
+                                    await healthAPI.requestToView(showProfileUserId);
+                                    const status = await healthAPI.getViewStatus(showProfileUserId);
+                                    setHealthViewStatus(status);
+                                  } catch (err: unknown) {
+                                    const ax = err as { response?: { data?: { error?: string } } };
+                                    window.alert(ax.response?.data?.error || 'Could not send request');
+                                  } finally {
+                                    setHealthRequesting(false);
+                                  }
+                                }}>{healthRequesting ? 'Sending...' : 'Request stamped lab reports'}</button>
+                              )}
+                            </>
                           )}
-                        </>
+                        />
+                      )}
+                      {!healthViewLoading && healthViewStatus?.canView && healthViewStatus.results && (
+                        <HealthProofSection
+                          mode="visitor"
+                          visitorTests={healthViewStatus.results.tests}
+                          visitorLastUpdated={healthViewStatus.results.lastUpdated}
+                        />
                       )}
                     </div>
                   )}

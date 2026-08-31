@@ -223,7 +223,7 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
 
   return (
     <div className="auth-container">
-      <div className="auth-card" style={{ maxWidth: 720 }}>
+      <div className="auth-card">
         <Link to="/" className="back-link">← Back</Link>
         <h1 className="auth-title">{mode === 'signup' ? 'Join Hook Up' : 'Welcome Back'}</h1>
         <p className="auth-subtitle">
@@ -235,24 +235,28 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
         {error && <div className="error-message">{error}</div>}
         {message && <div className="success-message">{message}</div>}
 
-        <div className="auth-method-tabs" style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-          <button type="button" className="auth-button" style={{ flex: 1, opacity: mode === 'signup' ? 1 : 0.65 }} onClick={() => setMode('signup')}>Sign up</button>
-          <button type="button" className="auth-button" style={{ flex: 1, opacity: mode === 'login' ? 1 : 0.65 }} onClick={() => setMode('login')}>Sign in</button>
+        <div className="auth-method-tabs">
+          <button type="button" className={`auth-button auth-tab ${mode === 'signup' ? 'is-active' : ''}`} onClick={() => setMode('signup')}>Sign up</button>
+          <button type="button" className={`auth-button auth-tab ${mode === 'login' ? 'is-active' : ''}`} onClick={() => setMode('login')}>Sign in</button>
         </div>
 
         {mode === 'signup' ? (
           <form noValidate onSubmit={handlePinSignup} className="auth-form">
             <div className="form-group">
               <label htmlFor="name">Full name</label>
-              <input id="name" value={name} onChange={(e) => setName(e.target.value)} autoComplete="name" required />
+              <input id="name" name="full-name" value={name} onChange={(e) => setName(e.target.value)} autoComplete="name" required />
             </div>
             <div className="form-group">
               <label htmlFor="username">Username (yours forever)</label>
               <input
                 id="username"
+                name="new-username"
                 value={username}
                 onChange={(e) => setUsername(normalizeUsernameInput(e.target.value))}
-                autoComplete="username"
+                autoComplete="off"
+                autoCorrect="off"
+                autoCapitalize="none"
+                spellCheck={false}
                 required
                 minLength={USERNAME_MIN}
                 maxLength={USERNAME_MAX}
@@ -301,7 +305,7 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
               <label htmlFor="phone">Phone (optional)</label>
               <input id="phone" type="tel" value={phoneNumber} onChange={(e) => setPhoneNumber(normalizePhoneInput(e.target.value))} autoComplete="tel" />
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div className="auth-age-gender">
               <div className="form-group">
                 <label htmlFor="age">Age</label>
                 <input id="age" type="number" min={18} max={99} value={age} onChange={(e) => setAge(e.target.value)} />

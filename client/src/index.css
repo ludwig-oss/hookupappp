@@ -46,7 +46,7 @@
 }
 
 html {
-  min-height: 100vh;
+  min-height: 100%;
   background: #1a1a2e;
 }
 
@@ -56,20 +56,17 @@ body {
     sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  min-height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  background: #1a1a2e;
+  min-height: 100%;
+  min-height: 100dvh;
   color: #1f2937;
+  overflow-x: hidden;
 }
 
 #root {
   width: 100%;
-  min-height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  min-height: 100%;
+  min-height: 100dvh;
 }
 
 

@@ -1,7 +1,7 @@
 import { Routes, Route } from 'react-router-dom';
 import { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
-import { GuestOnly, RequireAuth, LandingOrRedirect } from './components/AuthRouteGuards';
+import { GuestOnly, RequireAuth } from './components/AuthRouteGuards';
 import AuthEntry from './pages/AuthEntry';
 import AuthCallback from './pages/AuthCallback';
 import OAuthReturn from './pages/OAuthReturn';
@@ -95,8 +95,13 @@ function App() {
           .then((fullProfile) => {
             applyProfile(fullProfile);
           })
-          .catch(() => {
-            /* keep token — user can sign in again without a phantom logout */
+          .catch((err: unknown) => {
+            const status = (err as { response?: { status?: number } })?.response?.status;
+            if (status === 401 || status === 404) {
+              localStorage.removeItem('token');
+              localStorage.removeItem('user');
+              setUser(null);
+            }
           })
           .finally(finishBoot);
         return;
@@ -131,7 +136,14 @@ function App() {
           /* ignore */
         }
       })
-      .catch(() => {});
+      .catch((err: unknown) => {
+        const status = (err as { response?: { status?: number } })?.response?.status;
+        if (status === 401 || status === 404) {
+          localStorage.removeItem('token');
+          localStorage.removeItem('user');
+          setUser(null);
+        }
+      });
     return () => {
       cancelled = true;
     };
@@ -168,7 +180,17 @@ function App() {
       })
       .catch((err: any) => {
         if (gen !== refreshGen.current) return;
-        console.warn('Profile refresh failed (session kept):', err?.response?.status || err?.message);
+        const status = err?.response?.status;
+        if (status === 401 || status === 404) {
+          refreshGen.current += 1;
+          setUser(null);
+          localStorage.removeItem('token');
+          localStorage.removeItem('user');
+          delete axios.defaults.headers.common['Authorization'];
+          hasRefreshedProfile.current = false;
+          return;
+        }
+        console.warn('Profile refresh failed (session kept):', status || err?.message);
       });
   }, [loading, user?.id]);
 
@@ -251,7 +273,7 @@ function App() {
           <Route path="/checkout" element={<RequireAuth><Checkout /></RequireAuth>} />
           <Route path="/admin/safety" element={<RequireAuth><AdminSafetyReview /></RequireAuth>} />
           <Route path="/admin/coaches" element={<RequireAuth><AdminCoachReview /></RequireAuth>} />
-          <Route path="/" element={user ? <LandingOrRedirect /> : <Landing />} />
+          <Route path="/" element={<Landing />} />
         </Routes>
       </AuthContext.Provider>
     </LanguageProvider>

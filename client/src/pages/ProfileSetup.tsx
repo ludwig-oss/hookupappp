@@ -1,5 +1,5 @@
 import { useState, useContext, useRef, useCallback, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
 import { profileAPI } from '../api/profile';
 import { formatAxiosError } from '../lib/apiError';
@@ -16,7 +16,7 @@ function asUploadFile(blob: Blob, fallbackName: string): File {
 }
 
 const ProfileSetup = () => {
-  const { user, login } = useContext(AuthContext);
+  const { user, login, logout } = useContext(AuthContext);
   const navigate = useNavigate();
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [uploadBlob, setUploadBlob] = useState<Blob | null>(null);
@@ -52,6 +52,11 @@ const ProfileSetup = () => {
     setUploadBlob(blob);
   };
 
+  const startOver = () => {
+    logout();
+    navigate('/', { replace: true });
+  };
+
   const finishSetup = async (blob: Blob | null) => {
     if (!user?.id) {
       setError('Session expired. Please log in again.');
@@ -77,6 +82,13 @@ const ProfileSetup = () => {
       );
       navigate('/home', { replace: true });
     } catch (err: unknown) {
+      const status = (err as { response?: { status?: number; data?: { code?: string } } })?.response?.status;
+      const code = (err as { response?: { data?: { code?: string } } })?.response?.data?.code;
+      if (status === 401 || status === 404 || code === 'SESSION_GONE') {
+        logout();
+        navigate('/', { replace: true });
+        return;
+      }
       setError(formatAxiosError(err, 'Failed to complete profile setup'));
     } finally {
       setLoading(false);
@@ -214,6 +226,9 @@ const ProfileSetup = () => {
   return (
     <div className="profile-setup-container">
       <div className="profile-setup-card">
+        <Link to="/" className="back-link" onClick={(e) => { e.preventDefault(); startOver(); }}>
+          ← Back to start
+        </Link>
         <h1 className="setup-title">Complete Your Profile</h1>
         <p className="setup-subtitle">Add a photo or GIF-length clip (max {MAX_CLIP_SEC}s) — or skip for now</p>
 
@@ -316,6 +331,9 @@ const ProfileSetup = () => {
 
         <button type="button" onClick={() => finishSetup(null)} className="upload-button skip-btn" disabled={loading}>
           Skip for now
+        </button>
+        <button type="button" onClick={startOver} className="upload-button skip-btn" disabled={loading} style={{ marginTop: 8 }}>
+          Use a different account
         </button>
       </div>
     </div>

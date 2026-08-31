@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
-import { dbContext } from '../db/context.js';
+import { dbContext, runWithSystem } from '../db/context.js';
 import { getUserById } from '../models/user.js';
 
 function getJwtSecret(): string {
@@ -34,7 +34,7 @@ export const authenticateToken = async (req: AuthRequest, res: Response, next: N
 
     // Suspension gate (serious-users only enforcement)
     try {
-      const u = await getUserById(uid);
+      const u = await runWithSystem(() => getUserById(uid));
       const until = u?.suspensionUntil ? new Date(u.suspensionUntil).getTime() : 0;
       if (until && until > Date.now()) {
         return res.status(403).json({

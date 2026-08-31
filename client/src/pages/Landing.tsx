@@ -1,4 +1,6 @@
 import { Link } from 'react-router-dom';
+import { useContext } from 'react';
+import { AuthContext } from '../context/AuthContext';
 import './Landing.css';
 
 const ROMANCE_IMAGES = [
@@ -15,6 +17,8 @@ const ROMANCE_IMAGES = [
 ];
 
 const Landing = () => {
+  const { user, logout } = useContext(AuthContext);
+
   return (
     <div className="landing-page">
       {/* Revolving romance background */}
@@ -53,7 +57,20 @@ const Landing = () => {
           <Link to="/terms">Terms</Link>
         </div>
         <div className="landing-nav-right">
-          <Link to="/login" className="landing-btn landing-btn-ghost">Log in</Link>
+          {user ? (
+            <>
+              {user.profileSetupComplete ? (
+                <Link to="/home" className="landing-btn landing-btn-ghost">Continue</Link>
+              ) : (
+                <Link to="/profile-setup" className="landing-btn landing-btn-ghost">Finish profile</Link>
+              )}
+              <button type="button" className="landing-btn landing-btn-ghost" onClick={() => logout()}>
+                Log out
+              </button>
+            </>
+          ) : (
+            <Link to="/login" className="landing-btn landing-btn-ghost">Log in</Link>
+          )}
         </div>
       </nav>
 

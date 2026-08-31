@@ -55,6 +55,18 @@ function mediaPayload(raw: string): string {
   return base64ToDataUrl(raw);
 }
 
+/** JWT user id can miss under RLS; recover the same way /me does. */
+async function resolveOwnUser(authUserId: string, authEmail?: string) {
+  let user = await getUserById(authUserId);
+  if (!user) user = await runWithSystem(() => getUserById(authUserId));
+  if (!user && authEmail) user = await runWithSystem(() => getUserByEmail(authEmail));
+  if (!user && authEmail?.endsWith('@noreply.local')) {
+    const uname = authEmail.split('@')[0]?.trim();
+    if (uname) user = await runWithSystem(() => getUserByUsername(uname));
+  }
+  return user;
+}
+
 export const uploadProfilePicture = async (req: Request, res: Response) => {
   try {
     const userId = (req as any).userId || req.body.userId;
@@ -145,20 +157,10 @@ export const getUserProfile = async (req: Request, res: Response) => {
       return res.status(401).json({ error: 'Unauthorized. Send Authorization: Bearer <token> for /me' });
     }
 
-    let user = await getUserById(profileUserId);
     const isOwnProfileRequest = paramId === 'me' || !paramId || authUserId === profileUserId;
-    if (!user && isOwnProfileRequest) {
-      user = await runWithSystem(() => getUserById(profileUserId));
-      if (!user && authEmail) {
-        user = await runWithSystem(() => getUserByEmail(authEmail));
-      }
-      if (!user && authEmail?.endsWith('@noreply.local')) {
-        const uname = authEmail.split('@')[0]?.trim();
-        if (uname) {
-          user = await runWithSystem(() => getUserByUsername(uname));
-        }
-      }
-    }
+    let user = isOwnProfileRequest
+      ? await resolveOwnUser(profileUserId, authEmail)
+      : await getUserById(profileUserId);
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
@@ -411,15 +413,24 @@ export const viewDisappearingPhotoUser = async (req: Request, res: Response) => 
 
 export const completeProfileSetup = async (req: Request, res: Response) => {
   try {
-    const userId = (req as any).userId || req.body.userId;
+    const userId = (req as AuthRequest).userId || req.body.userId;
+    const authEmail = (req as AuthRequest).userEmail;
     if (!userId) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
+    const existing = await resolveOwnUser(String(userId), authEmail);
+    if (!existing) {
+      return res.status(401).json({
+        error: 'This session is no longer valid. Sign in again.',
+        code: 'SESSION_GONE',
+      });
+    }
+
     const { profilePicture } = req.body;
-    const updates: any = { profileSetupComplete: true };
-    
-    if (profilePicture) {
+    const updates: Record<string, unknown> = { profileSetupComplete: true };
+
+    if (profilePicture && typeof profilePicture === 'string') {
       const isVideo =
         profilePicture.startsWith('data:video') || /\.(mp4|webm|mov)(\?|#|$)/i.test(profilePicture);
       updates.profilePicture = isVideo
@@ -427,9 +438,12 @@ export const completeProfileSetup = async (req: Request, res: Response) => {
         : await uploadImage(profilePicture, 'profile');
     }
 
-    const user = await updateUserProfile(userId, updates);
+    const user = await runWithSystem(() => updateUserProfile(existing.id, updates));
     if (!user) {
-      return res.status(404).json({ error: 'User not found' });
+      return res.status(401).json({
+        error: 'This session is no longer valid. Sign in again.',
+        code: 'SESSION_GONE',
+      });
     }
 
     res.json({

@@ -29,12 +29,11 @@ async function execQuery<T extends pg.QueryResultRow>(
     return client.query<T>(text, params);
   }
   const entries = Object.entries(settings);
-  const setParts = entries.map(([k], i) => `SET LOCAL app.${k} = $${i + 1}`);
-  const values = entries.map(([, v]) => v);
   await client.query('BEGIN');
   try {
-    for (let i = 0; i < setParts.length; i++) {
-      await client.query(setParts[i], [values[i]]);
+    // SET LOCAL does not accept $1 binds — use set_config so login/signup RLS bypass actually applies.
+    for (const [key, value] of entries) {
+      await client.query('SELECT set_config($1, $2, true)', [`app.${key}`, String(value)]);
     }
     const result = await client.query<T>(text, params);
     await client.query('COMMIT');

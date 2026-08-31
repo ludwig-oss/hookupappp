@@ -9,6 +9,7 @@ import { sanitizeName, sanitizeUsername, sanitizeForStorage, LIMITS } from '../u
 import { assertUsernameAvailable, reserveUsername, normalizeUsernameKey } from '../models/usernameRegistry.js';
 import { resolveUserByIdentifier, verifyLoginSecret, loginFailureMessage, upgradeLegacyPasswordHashes } from '../utils/loginUser.js';
 import { isValidPinFormat, normalizePinDigits } from '../utils/pin.js';
+import { runWithSystem } from '../db/context.js';
 
 const JWT_EXPIRES_IN = '7d';
 
@@ -176,7 +177,7 @@ export const login = async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Username and PIN or password are required' });
     }
 
-    const user = await resolveUserByIdentifier(rawId);
+    const user = await runWithSystem(() => resolveUserByIdentifier(rawId));
     if (!user) {
       return res.status(401).json({ error: loginFailureMessage(null) });
     }

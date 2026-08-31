@@ -28,8 +28,6 @@ function normalizePhoneInput(value: string): string {
 type AuthMode = 'signup' | 'login';
 type LoginMethod = 'pin' | 'password' | 'phone';
 
-const LAST_USERNAME_KEY = 'hookup_last_username';
-
 type Props = { initialMode?: AuthMode };
 
 const AuthEntry = ({ initialMode = 'signup' }: Props) => {
@@ -47,13 +45,7 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
   const [passwordHint2, setPasswordHint2] = useState('');
   const [passwordHint3, setPasswordHint3] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
-  const [loginIdentifier, setLoginIdentifier] = useState(() => {
-    try {
-      return localStorage.getItem(LAST_USERNAME_KEY) || '';
-    } catch {
-      return '';
-    }
-  });
+  const [loginIdentifier, setLoginIdentifier] = useState('');
   const [loginSecret, setLoginSecret] = useState('');
   const [loginCode, setLoginCode] = useState('');
   const [codeSent, setCodeSent] = useState(false);
@@ -75,6 +67,14 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
   }, [searchParams]);
 
   useEffect(() => {
+    try {
+      localStorage.removeItem('hookup_last_username');
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  useEffect(() => {
     if (mode !== 'signup' || username.length < 3) {
       setUsernameCheck('');
       return;
@@ -93,16 +93,6 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
     login({ ...user, id }, token);
     navigate(user.profileSetupComplete ? '/home' : '/profile-setup', { replace: true });
   }, [login, navigate]);
-
-  const rememberUsername = (value: string) => {
-    const key = normalizeUsernameInput(value.trim());
-    if (!key) return;
-    try {
-      localStorage.setItem(LAST_USERNAME_KEY, key);
-    } catch {
-      /* ignore */
-    }
-  };
 
   const handlePinSignup = async (e?: React.FormEvent) => {
     e?.preventDefault();
@@ -144,7 +134,6 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
       });
       const id = coerceUserId(response.user?.id);
       if (!response.token || !id) throw new Error('Invalid server response');
-      rememberUsername(normalizeUsernameInput(username));
       login({ ...response.user, id }, response.token);
       const ageNum = parseInt(age, 10);
       if (!Number.isNaN(ageNum) && gender) {
@@ -172,7 +161,6 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
       const secret = loginSecret.trim();
       if (!id) throw new Error('Enter your username');
       if (!secret) throw new Error(loginMethod === 'pin' ? 'Enter your 6-digit PIN' : 'Enter your password');
-      rememberUsername(id);
 
       let response;
       if (loginMethod === 'pin') {
@@ -344,10 +332,19 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
               <button type="button" className="auth-button" style={{ flex: 1, minWidth: 80, opacity: loginMethod === 'phone' ? 1 : 0.65 }} onClick={() => setLoginMethod('phone')}>Phone</button>
             </div>
             {loginMethod === 'pin' || loginMethod === 'password' ? (
-              <form onSubmit={handleLogin} className="auth-form">
+              <form onSubmit={handleLogin} className="auth-form" autoComplete="off">
                 <div className="form-group">
                   <label>Username</label>
-                  <input value={loginIdentifier} onChange={(e) => setLoginIdentifier(normalizeUsernameInput(e.target.value))} autoComplete="username" required />
+                  <input
+                    name="aswp-login-username"
+                    value={loginIdentifier}
+                    onChange={(e) => setLoginIdentifier(normalizeUsernameInput(e.target.value))}
+                    autoComplete="off"
+                    autoCorrect="off"
+                    autoCapitalize="none"
+                    spellCheck={false}
+                    required
+                  />
                 </div>
                 <div className="form-group">
                   <label htmlFor="login-secret">{loginMethod === 'pin' ? '6-digit PIN' : 'Password'}</label>

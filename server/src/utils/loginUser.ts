@@ -35,6 +35,10 @@ export async function resolveUserByIdentifier(rawId: string): Promise<User | nul
     return getUserByUsername(k);
   };
 
+  const rawLower = trimmed.toLowerCase();
+  const byRaw = await tryUsername(rawLower);
+  if (byRaw) return byRaw;
+
   const sanitized = sanitizeUsername(trimmed);
   if (sanitized) {
     const hit = await tryUsername(sanitized);

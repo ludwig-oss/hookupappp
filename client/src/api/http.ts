@@ -9,6 +9,12 @@ axios.defaults.timeout = 45000;
 axios.interceptors.request.use((config) => {
   if (config.timeout == null) config.timeout = 45000;
   if (typeof localStorage === 'undefined') return config;
+  const url = String(config.url || '');
+  const skipAuth =
+    /\/api\/auth\/(login|login-pin|signup|signup-pin|forgot-pin|forgot-password|reset-pin|reset-password|send-login-code|login-with-code)/.test(
+      url
+    );
+  if (skipAuth) return config;
   const token = localStorage.getItem('token');
   if (token) {
     config.headers = config.headers ?? {};

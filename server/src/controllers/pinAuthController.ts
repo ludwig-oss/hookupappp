@@ -20,6 +20,7 @@ import { sanitizeName, sanitizeUsername, sanitizeForStorage, LIMITS } from '../u
 import { validateStrongPassword } from './authController.js';
 import { resolveUserByIdentifier, verifyLoginSecret, loginFailureMessage, upgradeLegacyPasswordHashes } from '../utils/loginUser.js';
 import { isValidPinFormat, normalizePinDigits } from '../utils/pin.js';
+import { runWithSystem } from '../db/context.js';
 
 const BCRYPT_ROUNDS = process.env.NODE_ENV === 'production' ? 12 : 10;
 const JWT_EXPIRES_IN = '7d';
@@ -200,42 +201,48 @@ export async function signupWithPin(req: Request, res: Response) {
 
 export async function loginWithPin(req: Request, res: Response) {
   try {
-    const { username, identifier, pin, password } = req.body as {
-      username?: string;
-      identifier?: string;
-      pin?: string;
-      password?: string;
-    };
-    const secret = normalizePinDigits(pin ?? password ?? '');
-    const rawId = String(username || identifier || '').trim();
+    await runWithSystem(async () => {
+      const { username, identifier, pin, password } = req.body as {
+        username?: string;
+        identifier?: string;
+        pin?: string;
+        password?: string;
+      };
+      const secret = normalizePinDigits(pin ?? password ?? '');
+      const rawId = String(username || identifier || '').trim();
 
-    if (!rawId || !secret) {
-      return res.status(400).json({ error: 'Username and 6-digit PIN required' });
-    }
-    if (!isValidPinFormat(secret)) {
-      return res.status(400).json({ error: 'PIN must be exactly 6 digits' });
-    }
+      if (!rawId || !secret) {
+        res.status(400).json({ error: 'Username and 6-digit PIN required' });
+        return;
+      }
+      if (!isValidPinFormat(secret)) {
+        res.status(400).json({ error: 'PIN must be exactly 6 digits' });
+        return;
+      }
 
-    const user = await resolveUserByIdentifier(rawId);
-    if (!user) {
-      return res.status(401).json({ error: loginFailureMessage(null, { pinLogin: true, attemptedSecret: secret }) });
-    }
+      const user = await resolveUserByIdentifier(rawId);
+      if (!user) {
+        res.status(401).json({ error: loginFailureMessage(null, { pinLogin: true, attemptedSecret: secret }) });
+        return;
+      }
 
-    const ok = await verifyLoginSecret(user, secret);
-    if (!ok) {
-      return res.status(401).json({
-        error: loginFailureMessage(user, { pinLogin: true, attemptedSecret: secret }),
+      const ok = await verifyLoginSecret(user, secret);
+      if (!ok) {
+        res.status(401).json({
+          error: loginFailureMessage(user, { pinLogin: true, attemptedSecret: secret }),
+        });
+        return;
+      }
+
+      await upgradeLegacyPasswordHashes(user, secret);
+
+      const token = jwt.sign({ userId: user.id, email: user.email }, getJwtSecret(), { expiresIn: JWT_EXPIRES_IN });
+
+      res.json({
+        message: 'Signed in',
+        token,
+        user: toClientUser(user),
       });
-    }
-
-    await upgradeLegacyPasswordHashes(user, secret);
-
-    const token = jwt.sign({ userId: user.id, email: user.email }, getJwtSecret(), { expiresIn: JWT_EXPIRES_IN });
-
-    res.json({
-      message: 'Signed in',
-      token,
-      user: toClientUser(user),
     });
   } catch (error) {
     console.error('loginWithPin:', error);

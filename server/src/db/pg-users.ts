@@ -222,8 +222,13 @@ export async function getUserByEmail(email: string): Promise<User | null> {
 
 export async function getUserByUsername(username: string): Promise<User | null> {
   const key = username.trim().toLowerCase();
+  if (!key) return null;
   const res = await query<{ id: string; email: string; password: string; name: string; username: string; data: unknown }>(
-    `SELECT ${USER_COLS} FROM users WHERE lower(username) = $1`,
+    `SELECT ${USER_COLS} FROM users
+     WHERE lower(btrim(username)) = $1
+        OR lower(btrim(coalesce(data->>'username', ''))) = $1
+        OR lower(split_part(email, '@', 1)) = $1
+     LIMIT 1`,
     [key]
   );
   return res.rows[0] ? rowToUser(res.rows[0]) : null;

@@ -56,7 +56,7 @@ function resolveRlsSettings(): Record<string, string> | undefined {
   return { bypass_rls: 'true' };
 }
 
-export async function query<T extends pg.QueryResultRow = pg.QueryResultRow>(
+export async function query<T extends pg.QueryResultRow = Record<string, any>>(
   text: string,
   params?: unknown[]
 ): Promise<pg.QueryResult<T>> {

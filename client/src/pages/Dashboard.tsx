@@ -21,6 +21,7 @@ import ConfessionBoothWidget from '../components/widgets/ConfessionBoothWidget';
 import type { HelpNavTarget } from '../data/helpFaq';
 import WalkingPartnerPopup from '../components/WalkingPartnerPopup';
 import ConnectionsBuzzPopup from '../components/ConnectionsBuzzPopup';
+import BuzzResultPopup from '../components/BuzzResultPopup';
 import NearbyMatchPopup from '../components/NearbyMatchPopup';
 import { useDashboardLocation } from '../hooks/useDashboardLocation';
 import CoachVoteSwipePopup from '../components/CoachVoteSwipePopup';
@@ -315,6 +316,7 @@ const Dashboard = () => {
         }}
       />
       <ConnectionsBuzzPopup onOpenConnections={() => setOpenWidget('connections')} />
+      <BuzzResultPopup />
       <NearbyMatchPopup onOpenConnections={() => setOpenWidget('connections')} />
       <CoachVoteSwipePopup />
       <DateSafetyMonitor />

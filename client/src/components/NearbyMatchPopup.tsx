@@ -4,6 +4,7 @@ import { connectionsAPI, NearbyUser } from '../api/connections';
 import { markProximityBannerShown, shouldShowProximityBanner } from '../lib/proximitySession';
 import { nearbyRadiusForCoords, resolveWorkingCoords } from '../lib/locationSession';
 import { formatAxiosError } from '../lib/apiError';
+import { openChatWithUser } from '../lib/openChat';
 import './WalkingPartnerPopup.css';
 
 type Props = {
@@ -93,12 +94,14 @@ export default function NearbyMatchPopup({ onOpenConnections }: Props) {
     setLoading(true);
     setError('');
     try {
-      await connectionsAPI.sendBuzz({
+      const result = await connectionsAPI.sendBuzz({
         toUserId: match.id,
         location: { lat: coords.lat, lon: coords.lon },
         userId: user.id,
       });
+      const chatId = result.chatUserId;
       dismiss(match.id);
+      if (chatId) openChatWithUser(chatId);
     } catch (err: unknown) {
       setError(formatAxiosError(err, 'Could not send interest'));
     } finally {

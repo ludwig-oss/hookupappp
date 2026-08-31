@@ -4,6 +4,8 @@ import { getUserById, getAllUsers } from './user.js';
 import { getUserPreference } from './discover.js';
 import { usersMatchPreferences } from '../utils/preferenceMatch.js';
 import { fetchNearbyVenues, fetchVenuesByType, OsmVenue } from '../utils/overpass.js';
+import { usePostgres } from '../db/index.js';
+import * as pgBuzzes from '../db/pg-buzzes.js';
 
 export type BuzzStatus = 'pending' | 'accepted' | 'rejected' | 'talk_later';
 
@@ -112,6 +114,7 @@ function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: numbe
 }
 
 export async function createBuzz(buzzData: Omit<Buzz, 'id' | 'status' | 'createdAt' | 'respondedAt'>): Promise<Buzz> {
+  if (usePostgres()) return pgBuzzes.createBuzz(buzzData);
   const buzzes = await readBuzzes();
   
   // Check if buzz already exists
@@ -136,11 +139,13 @@ export async function createBuzz(buzzData: Omit<Buzz, 'id' | 'status' | 'created
 }
 
 export async function getBuzzesForUser(userId: string): Promise<Buzz[]> {
+  if (usePostgres()) return pgBuzzes.getBuzzesForUser(userId);
   const buzzes = await readBuzzes();
   return buzzes.filter(b => b.toUserId === userId && b.status === 'pending');
 }
 
 export async function getSentBuzzes(userId: string): Promise<Buzz[]> {
+  if (usePostgres()) return pgBuzzes.getSentBuzzes(userId);
   const buzzes = await readBuzzes();
   return buzzes.filter(b => b.fromUserId === userId);
 }
@@ -148,6 +153,15 @@ export async function getSentBuzzes(userId: string): Promise<Buzz[]> {
 export type RespondBuzzResponse = 'accepted' | 'rejected' | 'talk_later';
 
 export async function respondToBuzz(buzzId: string, response: RespondBuzzResponse): Promise<{ buzz: Buzz; comfortingMessage?: string }> {
+  if (usePostgres()) {
+    const mapped: BuzzStatus = response === 'rejected' ? 'rejected' : response === 'talk_later' ? 'talk_later' : 'accepted';
+    const buzz = await pgBuzzes.respondToBuzz(buzzId, mapped);
+    if (!buzz) throw new Error('Buzz not found');
+    return {
+      buzz,
+      comfortingMessage: response === 'rejected' ? getComfortingMessage() : undefined,
+    };
+  }
   const buzzes = await readBuzzes();
   const buzz = buzzes.find(b => b.id === buzzId);
   if (!buzz) {
@@ -172,6 +186,7 @@ export async function tryMutualBuzzMatch(
   fromUserId: string,
   toUserId: string
 ): Promise<{ matched: boolean; chatUserId?: string }> {
+  if (usePostgres()) return pgBuzzes.tryMutualBuzzMatch(fromUserId, toUserId);
   const buzzes = await readBuzzes();
   const reverse = buzzes.find(
     (b) => b.fromUserId === toUserId && b.toUserId === fromUserId && b.status === 'pending'
@@ -214,7 +229,7 @@ export async function getNearbyUsers(
     const updatedAt = otherUser.location.updatedAt
       ? new Date(otherUser.location.updatedAt).getTime()
       : 0;
-    if (updatedAt && Date.now() - updatedAt > 15 * 60 * 1000) continue;
+    if (updatedAt && Date.now() - updatedAt > 24 * 60 * 60 * 1000) continue;
 
     const distance = calculateDistance(
       lat, lon,

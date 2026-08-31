@@ -75,7 +75,7 @@ export function nearbyRadiusForCoords(coords: StoredCoords | null): number {
   return 500;
 }
 
-function tryGps(timeoutMs = 15000): Promise<StoredCoords | null> {
+function tryGps(timeoutMs = 20000, highAccuracy = false): Promise<StoredCoords | null> {
   return new Promise((resolve) => {
     if (typeof navigator === 'undefined' || !navigator.geolocation) {
       resolve(null);
@@ -91,7 +91,64 @@ function tryGps(timeoutMs = 15000): Promise<StoredCoords | null> {
         });
       },
       () => resolve(null),
-      { enableHighAccuracy: false, timeout: timeoutMs, maximumAge: 120_000 }
+      { enableHighAccuracy: highAccuracy, timeout: timeoutMs, maximumAge: 60_000 }
+    );
+  });
+}
+
+export function geolocationErrorMessage(err: GeolocationPositionError | null | undefined): string {
+  const code = err?.code;
+  if (code === 1) {
+    return 'Location is blocked for this site. Phone: tap the lock or “aA” next to the address → Location → Allow. Computer: click the padlock in the address bar → Location → Allow. Then tap the button again.';
+  }
+  if (code === 2) {
+    return 'Could not find your position. On a phone, turn on Location Services and Wi‑Fi. On a laptop, allow location or type your city and country, then Save.';
+  }
+  if (code === 3) {
+    return 'Location timed out. Tap again, or type your city and country and Save — that works on phones and computers.';
+  }
+  return 'Could not get GPS. Type your city and country and Save — nearby still works on phones and computers.';
+}
+
+/** Call only from a tap (Yes / Use my location) so iPhone/Android show Allow / Once / While using. */
+export function requestGpsFromUserTap(): Promise<{ coords: StoredCoords | null; error?: string }> {
+  return new Promise((resolve) => {
+    if (typeof navigator === 'undefined' || !navigator.geolocation) {
+      resolve({ coords: null, error: 'This browser cannot use GPS. Type your city and country, then Save.' });
+      return;
+    }
+    const finish = (coords: StoredCoords | null, error?: string) => {
+      if (coords) markLocationGranted(coords);
+      resolve({ coords, error });
+    };
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        finish({
+          lat: pos.coords.latitude,
+          lon: pos.coords.longitude,
+          accuracy: pos.coords.accuracy,
+          source: 'gps',
+        });
+      },
+      (err) => {
+        if (err?.code === 3) {
+          navigator.geolocation.getCurrentPosition(
+            (pos) => {
+              finish({
+                lat: pos.coords.latitude,
+                lon: pos.coords.longitude,
+                accuracy: pos.coords.accuracy,
+                source: 'gps',
+              });
+            },
+            (err2) => finish(null, geolocationErrorMessage(err2)),
+            { enableHighAccuracy: false, timeout: 25000, maximumAge: 120_000 }
+          );
+          return;
+        }
+        finish(null, geolocationErrorMessage(err));
+      },
+      { enableHighAccuracy: false, timeout: 20000, maximumAge: 30_000 }
     );
   });
 }
@@ -127,13 +184,15 @@ export async function resolveWorkingCoords(
     if (cached) return cached;
   }
 
-  const gps = await tryGps();
-  if (gps) {
-    markLocationGranted(gps);
-    if (options.userId && api) {
-      api.updateLocation({ ...gps, userId: options.userId, connectionsVisible: true }).catch(() => {});
+  if (options.refreshGps) {
+    const gps = await tryGps(20000, false);
+    if (gps) {
+      markLocationGranted(gps);
+      if (options.userId && api) {
+        api.updateLocation({ ...gps, userId: options.userId, connectionsVisible: true }).catch(() => {});
+      }
+      return gps;
     }
-    return gps;
   }
 
   if (options.userId && api) {

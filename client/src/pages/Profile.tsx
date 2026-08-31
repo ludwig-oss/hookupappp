@@ -14,20 +14,9 @@ import { chatAPI } from '../api/chat';
 import { isVideoMediaUrl } from '../lib/media';
 import { prepareAndUploadFile } from '../lib/uploadMedia';
 import { formatAxiosError } from '../lib/apiError';
-import ProfileMedia from '../components/ProfileMedia';
+import { connectionsAPI } from '../api/connections';
+import { requestGpsFromUserTap, markLocationGranted } from '../lib/locationSession';
 import './Dashboard.css';
-
-const NOMINATIM_REVERSE = 'https://nominatim.openstreetmap.org/reverse';
-async function reverseGeocodeFromBrowser(lat: number, lon: number): Promise<{ country: string; city: string }> {
-  const url = `${NOMINATIM_REVERSE}?lat=${lat}&lon=${lon}&format=json&addressdetails=1`;
-  const res = await fetch(url, { headers: { 'User-Agent': 'ASWP-Profile/1.0' } });
-  if (!res.ok) throw new Error('Location lookup failed');
-  const data = await res.json();
-  const addr = data.address || {};
-  const city = addr.city || addr.town || addr.village || addr.municipality || addr.county || '';
-  const country = addr.country || '';
-  return { country, city };
-}
 
 function buildSessionProfile(user: {
   id: string;
@@ -273,35 +262,41 @@ const Profile = () => {
     await saveWithUpdates(updates);
   };
 
-  const handleUseMyLocation = () => {
-    if (!navigator?.geolocation) {
-      setError('Location is not supported by your browser.');
-      return;
-    }
+  const handleUseMyLocation = async () => {
+    if (!user?.id) return;
     setError('');
     setLocationDetecting(true);
-    navigator.geolocation.getCurrentPosition(
-      async (position) => {
-        try {
-          const { country: c, city: ct } = await reverseGeocodeFromBrowser(
-            position.coords.latitude,
-            position.coords.longitude
-          );
-          setCountry(c);
-          setCity(ct);
-          pendingProfileRef.current = { ...pendingProfileRef.current, country: c, city: ct };
-        } catch (e) {
-          setError('Could not get address from location. Try entering manually.');
-        } finally {
-          setLocationDetecting(false);
-        }
-      },
-      () => {
-        setError('Location access denied or unavailable. Enable location and try again.');
-        setLocationDetecting(false);
-      },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
-    );
+    try {
+      const { coords, error: gpsError } = await requestGpsFromUserTap();
+      if (!coords) {
+        setError(gpsError || 'Could not get GPS. Type your city and country, then Save — that works on phones and computers.');
+        return;
+      }
+      markLocationGranted(coords);
+      await connectionsAPI.updateLocation({
+        lat: coords.lat,
+        lon: coords.lon,
+        accuracy: coords.accuracy,
+        userId: user.id,
+        connectionsVisible: true,
+      }).catch(() => {});
+      try {
+        const geo = await connectionsAPI.reverseGeocode(coords.lat, coords.lon);
+        const c = geo.country || '';
+        const ct = geo.city || '';
+        if (c) setCountry(c);
+        if (ct) setCity(ct);
+        pendingProfileRef.current = {
+          ...pendingProfileRef.current,
+          country: c || pendingProfileRef.current.country,
+          city: ct || pendingProfileRef.current.city,
+        };
+      } catch {
+        /* coords are saved even if the address lookup fails */
+      }
+    } finally {
+      setLocationDetecting(false);
+    }
   };
 
   const saveProfileFields = () => {

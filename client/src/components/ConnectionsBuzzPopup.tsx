@@ -22,28 +22,22 @@ export default function ConnectionsBuzzPopup({ onOpenConnections }: Props) {
     if (!user?.id) return;
     try {
       const { received } = await connectionsAPI.getMyBuzzes(user.id);
-      const pending = received.filter((b) => b.status === 'pending');
-      if (!readyRef.current) {
-        pending.forEach((b) => knownIdsRef.current.add(b.id));
-        readyRef.current = true;
-        return;
-      }
-      const fresh = pending.find(
-        (b) => !knownIdsRef.current.has(b.id) && shouldShowProximityBanner('buzz-incoming', b.fromUserId)
-      );
+      const pending = received.filter((b) => b.status === 'pending' && shouldShowProximityBanner('buzz-incoming', b.fromUserId));
+      const fresh = pending.find((b) => !knownIdsRef.current.has(b.id));
       pending.forEach((b) => knownIdsRef.current.add(b.id));
       if (fresh) {
         setIncoming(fresh);
         if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
           try {
             new Notification('Hook Up — nearby interest', {
-              body: 'Someone matching your preferences is nearby. Tap to respond.',
+              body: 'Someone wants to connect. Accept or decline.',
             });
           } catch {
             /* ignore */
           }
         }
       }
+      readyRef.current = true;
     } catch {
       /* offline */
     }
@@ -100,10 +94,10 @@ export default function ConnectionsBuzzPopup({ onOpenConnections }: Props) {
             Later
           </button>
           <button type="button" className="walk-btn-secondary" disabled={loading} onClick={() => respond('rejected')}>
-            No
+            Decline
           </button>
           <button type="button" className="walk-btn-primary" disabled={loading} onClick={() => respond('accepted')}>
-            Yes — buzz back
+            {loading ? '…' : 'Accept — talk'}
           </button>
         </div>
       </div>

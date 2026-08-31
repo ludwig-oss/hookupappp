@@ -14,6 +14,7 @@ import { updateUserLocation, getUserById, updateUserProfile } from '../models/us
 import { ensureMatchConversation } from '../models/chat.js';
 import { fetchVenuesByType } from '../utils/overpass.js';
 import { sanitizeBuzzLocation } from '../utils/sanitize.js';
+import { runWithSystem } from '../db/context.js';
 
 export const sendBuzz = async (req: Request, res: Response) => {
   try {
@@ -27,14 +28,16 @@ export const sendBuzz = async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'User ID is required' });
     }
 
-    const buzz = await createBuzz({
-      fromUserId: userId,
-      toUserId,
-      location: sanitizeBuzzLocation(location),
-    });
+    const buzz = await runWithSystem(() =>
+      createBuzz({
+        fromUserId: userId,
+        toUserId,
+        location: sanitizeBuzzLocation(location),
+      })
+    );
 
     // Mutual interest: they already sent you a pending buzz → match + chat now
-    const mutual = await tryMutualBuzzMatch(userId, toUserId);
+    const mutual = await runWithSystem(() => tryMutualBuzzMatch(userId, toUserId));
     if (mutual.matched && mutual.chatUserId) {
       await ensureMatchConversation(userId, mutual.chatUserId);
       return res.json({
@@ -59,8 +62,8 @@ export const getMyBuzzes = async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'User ID is required' });
     }
 
-    const receivedRaw = await getBuzzesForUser(userId);
-    let sent = await getSentBuzzes(userId);
+    const receivedRaw = await runWithSystem(() => getBuzzesForUser(userId));
+    let sent = await runWithSystem(() => getSentBuzzes(userId));
 
     const received = await Promise.all(
       receivedRaw.map(async (b) => {
@@ -89,7 +92,7 @@ export const respondBuzz = async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Buzz ID and response (accepted, rejected, or talk_later) are required' });
     }
 
-    const result = await respondToBuzz(buzzId, response);
+    const result = await runWithSystem(() => respondToBuzz(buzzId, response));
     const userId = (req as any).userId;
     const otherId =
       result.buzz.fromUserId === userId ? result.buzz.toUserId : result.buzz.fromUserId;
@@ -210,7 +213,7 @@ export const getNearby = async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Latitude and longitude are required' });
     }
 
-    const nearby = await getNearbyUsers(userId, lat, lon, radius);
+    const nearby = await runWithSystem(() => getNearbyUsers(userId, lat, lon, radius));
     res.json({ users: nearby });
   } catch (error) {
     console.error('Get nearby users error:', error);

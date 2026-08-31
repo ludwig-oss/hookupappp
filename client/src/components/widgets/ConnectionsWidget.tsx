@@ -3,7 +3,7 @@ import { AuthContext } from '../../context/AuthContext';
 import { connectionsAPI, NearbyUser, VenueCount, Buzz } from '../../api/connections';
 import { openChatWithUser } from '../../lib/openChat';
 import { formatAxiosError } from '../../lib/apiError';
-import { markLocationGranted, clearLocationGranted, isLocationGranted, readStoredCoords, nearbyRadiusForCoords, resolveWorkingCoords } from '../../lib/locationSession';
+import { markLocationGranted, clearLocationGranted, isLocationGranted, readStoredCoords, nearbyRadiusForCoords, resolveWorkingCoords, requestGpsFromUserTap } from '../../lib/locationSession';
 import './Widget.css';
 
 const NEARBY_DISCOVERY_RADIUS_M = 500;
@@ -97,62 +97,18 @@ const ConnectionsWidget = () => {
     updateUser({ connectionsVisible: vis });
   }, [user?.id, connectionsVisible, updateUser]);
 
-  const ensureLocation = useCallback((): Promise<{ lat: number; lon: number; accuracy?: number }> => {
-    return new Promise((resolve, reject) => {
-      if (!navigator?.geolocation) {
-        reject(new Error('Location is not supported on this device'));
-        return;
-      }
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          const coords = {
-            lat: position.coords.latitude,
-            lon: position.coords.longitude,
-            accuracy: position.coords.accuracy,
-          };
-          setLocation(coords);
-          setLocationDeclined(false);
-          setError('');
-          markLocationGranted(coords);
-          fetchPlaceLabel(coords.lat, coords.lon);
-          pushLocation(coords, true).catch(() => {});
-          setConnectionsVisible(true);
-
-          if (locationWatchRef.current != null) {
-            navigator.geolocation.clearWatch(locationWatchRef.current);
-          }
-          locationWatchRef.current = navigator.geolocation.watchPosition(
-            (pos) => {
-              const next = {
-                lat: pos.coords.latitude,
-                lon: pos.coords.longitude,
-                accuracy: pos.coords.accuracy,
-              };
-              setLocation(next);
-              markLocationGranted(next);
-              fetchPlaceLabel(next.lat, next.lon);
-            },
-            () => {},
-            { enableHighAccuracy: true, maximumAge: 15000, timeout: 20000 }
-          );
-
-          resolve(coords);
-        },
-        (geoErr) => {
-          const code = geoErr?.code;
-          if (code === 1) {
-            reject(new Error('Location blocked. On iPhone: Settings → Safari → Location → Allow, then tap Yes again.'));
-          } else if (code === 2) {
-            reject(new Error('Could not find your location. Try again outdoors or with Wi‑Fi on.'));
-          } else if (code === 3) {
-            reject(new Error('Location timed out. Tap Yes to try again.'));
-          } else {
-            reject(new Error('Location needed to see who\'s nearby.'));
-          }
-        },
-        { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }
-      );
-    });
+  const ensureLocation = useCallback(async (): Promise<{ lat: number; lon: number; accuracy?: number }> => {
+    const { coords, error } = await requestGpsFromUserTap();
+    if (!coords) {
+      throw new Error(error || 'Location needed to see who is nearby.');
+    }
+    setLocation(coords);
+    setLocationDeclined(false);
+    setError('');
+    fetchPlaceLabel(coords.lat, coords.lon);
+    pushLocation(coords, true).catch(() => {});
+    setConnectionsVisible(true);
+    return coords;
   }, [pushLocation]);
 
   const requestLocationAccess = useCallback(async () => {

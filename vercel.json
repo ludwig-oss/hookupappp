@@ -16,5 +16,13 @@
     { "handle": "filesystem" },
     { "src": "/api/(.*)", "dest": "/api/[...path].js" },
     { "src": "/(.*)", "dest": "/index.html" }
+  ],
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        { "key": "Permissions-Policy", "value": "geolocation=(self)" }
+      ]
+    }
   ]
 }

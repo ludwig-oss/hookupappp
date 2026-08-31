@@ -13,7 +13,6 @@ type UserLoc = { id: string; city?: string; country?: string };
 
 /** Keep location fresh on phone, tablet, and laptop while Dashboard is open. */
 export function useDashboardLocation(user?: UserLoc) {
-  const watchRef = useRef<number | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const coordsRef = useRef(readStoredCoords());
 
@@ -41,21 +40,6 @@ export function useDashboardLocation(user?: UserLoc) {
       if (coords) push(coords);
     });
 
-    if (typeof navigator !== 'undefined' && navigator.geolocation) {
-      watchRef.current = navigator.geolocation.watchPosition(
-        (pos) => {
-          push({
-            lat: pos.coords.latitude,
-            lon: pos.coords.longitude,
-            accuracy: pos.coords.accuracy,
-            source: 'gps',
-          });
-        },
-        () => {},
-        { enableHighAccuracy: false, maximumAge: 60_000, timeout: 25_000 }
-      );
-    }
-
     intervalRef.current = setInterval(() => {
       const c = coordsRef.current || readStoredCoords();
       if (c) push(c);
@@ -70,9 +54,6 @@ export function useDashboardLocation(user?: UserLoc) {
     }, 45_000);
 
     return () => {
-      if (watchRef.current != null && navigator.geolocation) {
-        navigator.geolocation.clearWatch(watchRef.current);
-      }
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
   }, [user?.id, user?.city, user?.country]);

@@ -13,7 +13,7 @@ import {
 import { getUserById } from '../models/user.js';
 import { checkContent } from '../utils/moderation.js';
 import { sanitizeMessageContent, sanitizeForStorage, sanitizeTags, LIMITS } from '../utils/sanitize.js';
-import { uploadMedia } from '../utils/storage.js';
+import { uploadMedia, uploadMediaBuffer } from '../utils/storage.js';
 import { inferMediaTypeFromUrl } from '../utils/mediaType.js';
 import {
   recordFeedLike,
@@ -47,6 +47,32 @@ export const uploadPostMedia = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Upload post media error:', error);
     res.status(500).json({ error: 'Could not upload media' });
+  }
+};
+
+/** Raw file bytes (not JSON/base64) — used by profile highlights and stories. */
+export const uploadPostFile = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).userId;
+    if (!userId) return res.status(401).json({ error: 'Sign in required' });
+    const buf = req.body;
+    if (!Buffer.isBuffer(buf) || buf.length === 0) {
+      return res.status(400).json({ error: 'File is required' });
+    }
+    const mimeHeader = String(req.headers['x-upload-content-type'] || req.headers['content-type'] || 'application/octet-stream');
+    const mime = mimeHeader.split(';')[0].trim();
+    if (!mime.startsWith('image/') && !mime.startsWith('video/')) {
+      return res.status(400).json({ error: 'Please upload a photo or video' });
+    }
+    const folderRaw = req.headers['x-upload-folder'];
+    const folder = (typeof folderRaw === 'string' ? folderRaw : 'posts').slice(0, 40);
+    const url = await uploadMediaBuffer(buf, mime, folder);
+    const contentType = inferMediaTypeFromUrl(url) === 'video' ? 'video' : 'image';
+    res.json({ url, contentType });
+  } catch (error) {
+    console.error('Upload post file error:', error);
+    const msg = error instanceof Error ? error.message : '';
+    res.status(500).json({ error: msg.includes('too large') ? msg : 'Could not upload media' });
   }
 };
 

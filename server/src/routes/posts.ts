@@ -2,6 +2,7 @@ import express from 'express';
 import {
   createDatingPost,
   uploadPostMedia,
+  uploadPostFile,
   getDatingPosts,
   getFeed,
   getRecommendations,
@@ -23,6 +24,12 @@ router.get('/recommendations', optionalAuthenticateToken, getRecommendations);
 router.get('/blowing-up-count', getBlowingUpCountHandler);
 
 router.post('/upload-media', authenticateToken, uploadPostMedia);
+router.post(
+  '/upload-file',
+  authenticateToken,
+  express.raw({ type: '*/*', limit: '80mb' }),
+  uploadPostFile
+);
 router.post('/', authenticateToken, createDatingPost);
 
 router.use(authenticateToken);

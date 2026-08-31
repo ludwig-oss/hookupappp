@@ -50,7 +50,7 @@ export function formatAxiosError(err: unknown, fallback: string): string {
       return 'Request timed out. Check your connection and try again.';
     }
     if (msg === 'Network Error' || code === 'ERR_NETWORK' || msg.includes('Failed to fetch')) {
-      return "Can't reach the server. On the live site, set BACKEND_URL on Vercel to your API (e.g. Render).";
+      return "Can't reach the server. Check your connection, or try a smaller photo / shorter video.";
     }
     if (msg) return msg;
   }

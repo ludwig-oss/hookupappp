@@ -19,7 +19,7 @@ import type { AuthRequest } from '../middleware/auth.js';
 import { readFile, writeFile } from 'fs/promises';
 import { join } from 'path';
 import { v4 as uuidv4 } from 'uuid';
-import { uploadImage, uploadMedia } from '../utils/storage.js';
+import { uploadImage, uploadMedia, isRemoteMediaUrl } from '../utils/storage.js';
 import { inferMediaTypeFromUrl } from '../utils/mediaType.js';
 import {
   sanitizeName,
@@ -48,6 +48,11 @@ function base64ToDataUrl(base64: string, mimeType: string = 'image/jpeg'): strin
     return base64;
   }
   return `data:${mimeType};base64,${base64}`;
+}
+
+function mediaPayload(raw: string): string {
+  if (raw.startsWith('data:') || isRemoteMediaUrl(raw)) return raw.trim();
+  return base64ToDataUrl(raw);
 }
 
 export const uploadProfilePicture = async (req: Request, res: Response) => {
@@ -218,8 +223,7 @@ export const addUserHighlight = async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Image or media (data URL / base64) is required' });
     }
 
-    const dataPayload = raw.startsWith('data:') ? raw : base64ToDataUrl(raw);
-    const mediaUrl = await uploadMedia(dataPayload, 'highlights');
+    const mediaUrl = await uploadMedia(mediaPayload(raw), 'highlights');
     const mediaType = inferMediaTypeFromUrl(mediaUrl);
     const highlight = await addHighlight(userId, mediaUrl, highlightId, mediaType);
 
@@ -251,8 +255,7 @@ export const addUserStory = async (req: Request, res: Response) => {
     }
 
     const aud = audience === 'closeFriends' ? 'closeFriends' : 'all';
-    const dataPayload = raw.startsWith('data:') ? raw : base64ToDataUrl(raw);
-    const mediaUrl = await uploadMedia(dataPayload, 'stories');
+    const mediaUrl = await uploadMedia(mediaPayload(raw), 'stories');
     const mediaType = inferMediaTypeFromUrl(mediaUrl);
     const story = await addStory(userId, mediaUrl, mediaType, aud);
     if (!story) {

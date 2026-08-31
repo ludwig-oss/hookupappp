@@ -3,6 +3,8 @@ import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { createPortal } from 'react-dom';
 import { AuthContext } from '../context/AuthContext';
 import { profileAPI } from '../api/profile';
+import { prepareAndUploadFile } from '../lib/uploadMedia';
+import { formatAxiosError } from '../lib/apiError';
 import PhotoVerificationModal from '../components/PhotoVerificationModal';
 import { improvementAPI } from '../api/improvement';
 import ConnectionsWidget from '../components/widgets/ConnectionsWidget';
@@ -207,6 +209,8 @@ const Dashboard = () => {
 
   const handleHighlightChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    const highlightId = selectedHighlightId;
+    e.target.value = '';
     if (!file || !user?.id) return;
 
     if (!file.type.startsWith('image/') && !file.type.startsWith('video/')) {
@@ -216,24 +220,16 @@ const Dashboard = () => {
 
     setUploading(true);
     try {
-      const reader = new FileReader();
-      reader.onloadend = async () => {
-        const base64 = reader.result as string;
-        const base64Data = base64.split(',')[1];
-        await profileAPI.addHighlight(base64Data, user.id, selectedHighlightId || undefined);
-        await loadHighlights();
-        setSelectedHighlightId(null);
-      };
-      reader.readAsDataURL(file);
+      await new Promise((r) => setTimeout(r, 30));
+      const mediaUrl = await prepareAndUploadFile(file, 'highlights');
+      await profileAPI.addHighlight(mediaUrl, user.id, highlightId || undefined);
+      await loadHighlights();
+      setSelectedHighlightId(null);
     } catch (error) {
       console.error('Failed to upload highlight:', error);
-      alert('Failed to upload highlight');
+      alert(formatAxiosError(error, 'Failed to upload highlight. Try a smaller photo or a shorter video.'));
     } finally {
       setUploading(false);
-      setSelectedHighlightId(null);
-      if (highlightInputRef.current) {
-        highlightInputRef.current.value = '';
-      }
     }
   };
 

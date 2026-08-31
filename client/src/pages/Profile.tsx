@@ -12,7 +12,8 @@ import { getCountryFlagCode } from '../constants/countryFlags';
 import { useTranslation } from '../context/LanguageContext';
 import { chatAPI } from '../api/chat';
 import { isVideoMediaUrl } from '../lib/media';
-import { prepareMediaForUpload } from '../lib/prepareMediaUpload';
+import { prepareAndUploadFile } from '../lib/uploadMedia';
+import { formatAxiosError } from '../lib/apiError';
 import ProfileMedia from '../components/ProfileMedia';
 import './Dashboard.css';
 
@@ -69,8 +70,9 @@ const Profile = () => {
   const [city, setCity] = useState('');
   const [viewingHighlight, setViewingHighlight] = useState<any>(null);
   const [selectedHighlightId, setSelectedHighlightId] = useState<string | null>(null);
-  const [pendingStoryMedia, setPendingStoryMedia] = useState<string | null>(null);
+  const [pendingStoryFile, setPendingStoryFile] = useState<File | null>(null);
   const [showStoryAudiencePicker, setShowStoryAudiencePicker] = useState(false);
+  const [storyAudienceBusy, setStoryAudienceBusy] = useState<'all' | 'closeFriends' | null>(null);
   const [viewingStories, setViewingStories] = useState<{ items: any[]; index: number } | null>(null);
   const [closeFriendCandidates, setCloseFriendCandidates] = useState<Array<{ id: string; name: string }>>([]);
   const [highlightPickForStory, setHighlightPickForStory] = useState<string>('__new__');
@@ -331,31 +333,31 @@ const Profile = () => {
 
   const handleStoryFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      setPendingStoryMedia(reader.result as string);
-      setShowStoryAudiencePicker(true);
-    };
-    reader.readAsDataURL(file);
     e.target.value = '';
+    if (!file) return;
+    if (!file.type.startsWith('image/') && !file.type.startsWith('video/')) {
+      setError('Please choose a photo or video.');
+      return;
+    }
+    setPendingStoryFile(file);
+    setShowStoryAudiencePicker(true);
   };
 
   const submitStoryWithAudience = async (audience: 'all' | 'closeFriends') => {
-    if (!pendingStoryMedia || !user?.id) return;
-    setUploading(true);
+    if (!pendingStoryFile || !user?.id || storyAudienceBusy) return;
+    setStoryAudienceBusy(audience);
     setError('');
     try {
-      const media = await prepareMediaForUpload(pendingStoryMedia);
-      await profileAPI.addStory(media, audience);
+      await new Promise((r) => setTimeout(r, 30));
+      const mediaUrl = await prepareAndUploadFile(pendingStoryFile, 'stories');
+      await profileAPI.addStory(mediaUrl, audience);
       setShowStoryAudiencePicker(false);
-      setPendingStoryMedia(null);
+      setPendingStoryFile(null);
       await loadProfile();
     } catch (err: unknown) {
-      const ax = err as { response?: { data?: { error?: string } }; message?: string };
-      setError(ax.response?.data?.error || ax.message || 'Story upload failed');
+      setError(formatAxiosError(err, 'Story upload failed. Try a smaller photo or a shorter video.'));
     } finally {
-      setUploading(false);
+      setStoryAudienceBusy(null);
     }
   };
 
@@ -387,63 +389,46 @@ const Profile = () => {
 
   const handleProfilePictureChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    e.target.value = '';
     if (!file || !user?.id) return;
     setUploading(true);
     setError('');
     try {
-      const reader = new FileReader();
-      reader.onloadend = async () => {
-        try {
-          let dataUrl = reader.result as string;
-          if (!isVideoMediaUrl(dataUrl)) {
-            dataUrl = await prepareMediaForUpload(dataUrl);
-          }
-          await profileAPI.uploadProfilePicture(dataUrl, user.id);
-          await loadProfile();
-          if (!isVideoMediaUrl(dataUrl)) {
-            setShowPhotoVerification(true);
-          }
-        } catch (err: unknown) {
-          const ax = err as { response?: { data?: { error?: string } }; message?: string };
-          setError(ax.response?.data?.error || ax.message || 'Upload failed');
-        } finally {
-          setUploading(false);
-        }
-      };
-      reader.readAsDataURL(file);
+      await new Promise((r) => setTimeout(r, 30));
+      const mediaUrl = await prepareAndUploadFile(file, 'profile');
+      await profileAPI.uploadProfilePicture(mediaUrl, user.id);
+      await loadProfile();
+      if (!file.type.startsWith('video/')) {
+        setShowPhotoVerification(true);
+      }
     } catch (err: unknown) {
-      const ax = err as { response?: { data?: { error?: string } }; message?: string };
-      setError(ax.response?.data?.error || ax.message || 'Upload failed');
+      setError(formatAxiosError(err, 'Upload failed. Try a smaller photo.'));
+    } finally {
       setUploading(false);
     }
-    e.target.value = '';
   };
 
   const handleHighlightChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    const highlightId = selectedHighlightId;
+    e.target.value = '';
     if (!file || !user?.id) return;
+    if (!file.type.startsWith('image/') && !file.type.startsWith('video/')) {
+      setError('Please choose a photo or video.');
+      return;
+    }
     setUploading(true);
+    setError('');
     try {
-      const reader = new FileReader();
-      reader.onloadend = async () => {
-        try {
-          const dataUrl = reader.result as string;
-          const media = await prepareMediaForUpload(dataUrl);
-          await profileAPI.addHighlight(media, user.id, selectedHighlightId || undefined);
-          await loadProfile();
-          setSelectedHighlightId(null);
-        } catch (err: unknown) {
-          const ax = err as { response?: { data?: { error?: string } }; message?: string };
-          setError(ax.response?.data?.error || ax.message || 'Highlight upload failed');
-        } finally {
-          setUploading(false);
-        }
-      };
-      reader.readAsDataURL(file);
+      await new Promise((r) => setTimeout(r, 30));
+      const mediaUrl = await prepareAndUploadFile(file, 'highlights');
+      await profileAPI.addHighlight(mediaUrl, user.id, highlightId || undefined);
+      await loadProfile();
+      setSelectedHighlightId(null);
+    } catch (err: unknown) {
+      setError(formatAxiosError(err, 'Highlight upload failed. Try a smaller photo or a shorter video.'));
     } finally {
       setUploading(false);
-      setSelectedHighlightId(null);
-      if (highlightInputRef.current) highlightInputRef.current.value = '';
     }
   };
 
@@ -642,12 +627,12 @@ const Profile = () => {
             <div className="stories-section" style={{ marginTop: 16 }}>
               <div className="highlights-header">
                 <span className="highlights-title">{t('stories').toUpperCase()}</span>
-                <button type="button" className="add-highlight-btn" onClick={handleAddStoryClick} disabled={uploading} title={t('addStory')}>+</button>
+                <button type="button" className="add-highlight-btn" onClick={handleAddStoryClick} disabled={uploading || !!storyAudienceBusy} title={t('addStory')}>+</button>
               </div>
               <p className="stories-expires-note">{t('storyExpiresNote')}</p>
               <input ref={storyInputRef} type="file" accept="image/*,video/*" style={{ display: 'none' }} onChange={handleStoryFileChange} />
               <div className="stories-rings-scroll">
-                <button type="button" className="story-ring story-ring-add" onClick={handleAddStoryClick} disabled={uploading}>
+                <button type="button" className="story-ring story-ring-add" onClick={handleAddStoryClick} disabled={uploading || !!storyAudienceBusy}>
                   <span className="story-ring-inner">+</span>
                   <span className="story-ring-label">{t('addStory')}</span>
                 </button>
@@ -709,7 +694,7 @@ const Profile = () => {
             <div className="highlights-section" style={{ marginTop: 16 }}>
               <div className="highlights-header">
                 <span className="highlights-title">{t('highlights').toUpperCase()}</span>
-                <button type="button" className="add-highlight-btn" onClick={() => handleHighlightClick()} disabled={uploading}>+</button>
+                <button type="button" className="add-highlight-btn" onClick={() => handleHighlightClick()} disabled={uploading || !!storyAudienceBusy}>+</button>
               </div>
               <input ref={highlightInputRef} type="file" accept="image/*,video/*" style={{ display: 'none' }} onChange={handleHighlightChange} />
               <div className="highlights-scrollable">
@@ -1142,19 +1127,20 @@ const Profile = () => {
         <button className="console-btn logout" onClick={handleLogout}>{t('logout').toUpperCase()}</button>
       </div>
 
-      {showStoryAudiencePicker && pendingStoryMedia && createPortal(
-        <div className="story-audience-overlay" role="dialog" aria-modal onClick={() => { if (!uploading) { setShowStoryAudiencePicker(false); setPendingStoryMedia(null); } }}>
+      {showStoryAudiencePicker && pendingStoryFile && createPortal(
+        <div className="story-audience-overlay" role="dialog" aria-modal onClick={() => { if (!storyAudienceBusy) { setShowStoryAudiencePicker(false); setPendingStoryFile(null); } }}>
           <div className="story-audience-panel" onClick={(e) => e.stopPropagation()}>
             <h3 className="story-audience-title">{t('addStory')}</h3>
             <p className="story-audience-question">Who can see this story?</p>
+            {error && <p className="profile-save-error" style={{ color: '#ff6b6b', fontSize: 13, margin: '0 0 10px' }}>{error}</p>}
             <div className="story-audience-actions">
-              <button type="button" className="story-audience-btn story-audience-everyone" disabled={uploading} onClick={() => submitStoryWithAudience('all')}>
-                {uploading ? `${t('loading')}…` : t('storyAudienceEveryone')}
+              <button type="button" className="story-audience-btn story-audience-everyone" disabled={!!storyAudienceBusy} onClick={() => submitStoryWithAudience('all')}>
+                {storyAudienceBusy === 'all' ? 'Uploading…' : t('storyAudienceEveryone')}
               </button>
-              <button type="button" className="story-audience-btn story-audience-close" disabled={uploading} onClick={() => submitStoryWithAudience('closeFriends')}>
-                {uploading ? `${t('loading')}…` : t('storyAudienceCloseFriends')}
+              <button type="button" className="story-audience-btn story-audience-close" disabled={!!storyAudienceBusy} onClick={() => submitStoryWithAudience('closeFriends')}>
+                {storyAudienceBusy === 'closeFriends' ? 'Uploading…' : t('storyAudienceCloseFriends')}
               </button>
-              <button type="button" className="story-audience-cancel" disabled={uploading} onClick={() => { setShowStoryAudiencePicker(false); setPendingStoryMedia(null); }}>
+              <button type="button" className="story-audience-cancel" disabled={!!storyAudienceBusy} onClick={() => { setShowStoryAudiencePicker(false); setPendingStoryFile(null); }}>
                 {t('cancel')}
               </button>
             </div>

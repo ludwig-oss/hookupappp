@@ -94,9 +94,12 @@ export const profileAPI = {
 
   addHighlight: async (mediaBase64OrDataUrl: string, userId: string, highlightId?: string): Promise<{ highlight: any }> => {
     const body: Record<string, string | undefined> = { userId, highlightId };
-    if (mediaBase64OrDataUrl.startsWith('data:')) (body as any).media = mediaBase64OrDataUrl;
-    else body.image = mediaBase64OrDataUrl;
-    const response = await axios.post(`${MEDIA_API_URL}/highlights`, body, { headers: getAuthHeaders() });
+    if (mediaBase64OrDataUrl.startsWith('data:') || /^https?:\/\//i.test(mediaBase64OrDataUrl)) {
+      (body as { media?: string }).media = mediaBase64OrDataUrl;
+    } else {
+      body.image = mediaBase64OrDataUrl;
+    }
+    const response = await axios.post(`${MEDIA_API_URL}/highlights`, body, { headers: getAuthHeaders(), timeout: 60_000 });
     return response.data;
   },
 
@@ -105,9 +108,12 @@ export const profileAPI = {
     audience: 'all' | 'closeFriends'
   ): Promise<{ story: any }> => {
     const body: Record<string, string> = { audience };
-    if (mediaBase64OrDataUrl.startsWith('data:')) body.media = mediaBase64OrDataUrl;
-    else body.image = mediaBase64OrDataUrl;
-    const response = await axios.post(`${MEDIA_API_URL}/stories`, body, { headers: getAuthHeaders() });
+    if (mediaBase64OrDataUrl.startsWith('data:') || /^https?:\/\//i.test(mediaBase64OrDataUrl)) {
+      body.media = mediaBase64OrDataUrl;
+    } else {
+      body.image = mediaBase64OrDataUrl;
+    }
+    const response = await axios.post(`${MEDIA_API_URL}/stories`, body, { headers: getAuthHeaders(), timeout: 60_000 });
     return response.data;
   },
 

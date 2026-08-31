@@ -6,7 +6,7 @@ import { prepareAndUploadFile } from '../../lib/uploadMedia';
 import { formatAxiosError } from '../../lib/apiError';
 import PhotoVerificationModal from '../PhotoVerificationModal';
 import { discoverAPI, UserPreference } from '../../api/discover';
-import { settingsAPI, UserSettings } from '../../api/settings';
+import { mergeUserSettings, settingsAPI, UserSettings } from '../../api/settings';
 import { gamificationAPI } from '../../api/gamification';
 import { reportsAPI } from '../../api/reports';
 import { verificationAPI, Verification } from '../../api/verification';
@@ -169,10 +169,9 @@ const SettingsWidgetFull = () => {
   const loadSettings = async () => {
     try {
       const response = await settingsAPI.getSettings();
-      setSettings(response.settings);
-      if (response.settings?.accessibility?.theme) {
-        applyAppTheme(response.settings.accessibility.theme);
-      }
+      const merged = mergeUserSettings(response.settings);
+      setSettings(merged);
+      applyAppTheme(merged.accessibility.theme);
     } catch (err) {
       console.error('Failed to load settings', err);
     }
@@ -314,9 +313,9 @@ const SettingsWidgetFull = () => {
 
   const handleThemeChange = (theme: AppTheme) => {
     applyAppTheme(theme);
-    if (settings) {
-      handleSaveSettings('accessibility', { ...settings.accessibility, theme });
-    }
+    if (!settings) return;
+    const accessibility = mergeUserSettings(settings).accessibility;
+    handleSaveSettings('accessibility', { ...accessibility, theme });
   };
 
   const themeButtons: { id: AppTheme; label: string }[] = [
@@ -541,7 +540,7 @@ const SettingsWidgetFull = () => {
                   key={opt.id}
                   type="button"
                   onClick={() => handleThemeChange(opt.id)}
-                  className={settings?.accessibility.theme === opt.id ? 'select-user-btn' : 'back-btn'}
+                  className={settings?.accessibility?.theme === opt.id ? 'select-user-btn' : 'back-btn'}
                   style={{ flex: 1 }}
                 >
                   {opt.label}
@@ -1410,7 +1409,7 @@ const SettingsWidgetFull = () => {
                   key={opt.id}
                   type="button"
                   onClick={() => handleThemeChange(opt.id)}
-                  className={settings.accessibility.theme === opt.id ? 'select-user-btn' : 'back-btn'}
+                  className={settings.accessibility?.theme === opt.id ? 'select-user-btn' : 'back-btn'}
                   style={{ flex: 1 }}
                 >
                   {opt.label}
@@ -1421,7 +1420,7 @@ const SettingsWidgetFull = () => {
 
           <div className="form-group" style={{ marginBottom: '20px' }}>
             <label style={{ display: 'block', marginBottom: '8px', fontWeight: 600 }}>Font Size</label>
-            <select value={settings.accessibility.fontSize} onChange={(e) => handleSaveSettings('accessibility', { ...settings.accessibility, fontSize: e.target.value as any })} style={{ width: '100%', padding: '12px', border: '2px solid #e5e7eb', borderRadius: '8px', fontSize: '16px' }}>
+            <select value={settings.accessibility?.fontSize || 'medium'} onChange={(e) => handleSaveSettings('accessibility', { ...mergeUserSettings(settings).accessibility, fontSize: e.target.value as any })} style={{ width: '100%', padding: '12px', border: '2px solid #e5e7eb', borderRadius: '8px', fontSize: '16px' }}>
               <option value="small">Small</option>
               <option value="medium">Medium</option>
               <option value="large">Large</option>
@@ -1430,14 +1429,14 @@ const SettingsWidgetFull = () => {
 
           <div className="form-group" style={{ marginBottom: '20px' }}>
             <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}>
-              <input type="checkbox" checked={settings.accessibility.screenReader} onChange={(e) => handleSaveSettings('accessibility', { ...settings.accessibility, screenReader: e.target.checked })} style={{ width: '20px', height: '20px', cursor: 'pointer' }} />
+              <input type="checkbox" checked={!!settings.accessibility?.screenReader} onChange={(e) => handleSaveSettings('accessibility', { ...mergeUserSettings(settings).accessibility, screenReader: e.target.checked })} style={{ width: '20px', height: '20px', cursor: 'pointer' }} />
               <span style={{ fontWeight: 600 }}>Screen Reader Support</span>
             </label>
           </div>
 
           <div className="form-group" style={{ marginBottom: '20px' }}>
             <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}>
-              <input type="checkbox" checked={settings.accessibility.highContrast} onChange={(e) => handleSaveSettings('accessibility', { ...settings.accessibility, highContrast: e.target.checked })} style={{ width: '20px', height: '20px', cursor: 'pointer' }} />
+              <input type="checkbox" checked={!!settings.accessibility?.highContrast} onChange={(e) => handleSaveSettings('accessibility', { ...mergeUserSettings(settings).accessibility, highContrast: e.target.checked })} style={{ width: '20px', height: '20px', cursor: 'pointer' }} />
               <span style={{ fontWeight: 600 }}>High Contrast Mode</span>
             </label>
           </div>

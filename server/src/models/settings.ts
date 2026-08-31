@@ -131,18 +131,33 @@ const defaultSettings: Omit<UserSettings, 'userId'> = {
   },
 };
 
+function hydrateSettings(userSettings: Partial<UserSettings> & { userId: string }): UserSettings {
+  return {
+    userId: userSettings.userId,
+    notifications: {
+      ...defaultSettings.notifications,
+      ...userSettings.notifications,
+      quietHours: {
+        ...defaultSettings.notifications.quietHours,
+        ...userSettings.notifications?.quietHours,
+      },
+    },
+    privacy: { ...defaultSettings.privacy, ...userSettings.privacy },
+    filters: { ...defaultSettings.filters, ...userSettings.filters },
+    accessibility: { ...defaultSettings.accessibility, ...userSettings.accessibility },
+    localization: { ...defaultSettings.localization, ...userSettings.localization },
+    video: { ...defaultSettings.video, ...userSettings.video },
+    matching: { ...defaultSettings.matching, ...userSettings.matching },
+    findFriends: { ...defaultSettings.findFriends, ...userSettings.findFriends },
+  };
+}
+
 export async function getUserSettings(userId: string): Promise<UserSettings> {
   const settings = await readSettings();
   const userSettings = settings.find(s => s.userId === userId);
   
   if (userSettings) {
-    if (userSettings.privacy && (userSettings.privacy as any).showProfilePicture === undefined) {
-      (userSettings.privacy as any).showProfilePicture = true;
-    }
-    const n = userSettings.notifications;
-    if (n.interestAlerts === undefined) n.interestAlerts = defaultSettings.notifications.interestAlerts;
-    if (n.interestVibrate === undefined) n.interestVibrate = defaultSettings.notifications.interestVibrate;
-    return userSettings;
+    return hydrateSettings(userSettings);
   }
   
   // Create default settings
@@ -160,18 +175,38 @@ export async function updateUserSettings(userId: string, updates: Partial<UserSe
   const index = settings.findIndex(s => s.userId === userId);
   
   if (index !== -1) {
-    settings[index] = { ...settings[index], ...updates };
+    const current = settings[index];
+    settings[index] = hydrateSettings({
+      ...current,
+      ...updates,
+      userId,
+      notifications: updates.notifications
+        ? { ...current.notifications, ...updates.notifications }
+        : current.notifications,
+      privacy: updates.privacy ? { ...current.privacy, ...updates.privacy } : current.privacy,
+      filters: updates.filters ? { ...current.filters, ...updates.filters } : current.filters,
+      accessibility: updates.accessibility
+        ? { ...current.accessibility, ...updates.accessibility }
+        : current.accessibility,
+      localization: updates.localization
+        ? { ...current.localization, ...updates.localization }
+        : current.localization,
+      video: updates.video ? { ...current.video, ...updates.video } : current.video,
+      matching: updates.matching ? { ...current.matching, ...updates.matching } : current.matching,
+      findFriends: updates.findFriends
+        ? { ...current.findFriends, ...updates.findFriends }
+        : current.findFriends,
+    });
   } else {
-    const newSettings: UserSettings = {
+    settings.push(hydrateSettings({
       userId,
       ...defaultSettings,
       ...updates,
-    };
-    settings.push(newSettings);
+    }));
   }
   
   await writeSettings(settings);
-  return settings.find(s => s.userId === userId) || { userId, ...defaultSettings };
+  return hydrateSettings(settings.find(s => s.userId === userId) || { userId, ...defaultSettings });
 }
 
 

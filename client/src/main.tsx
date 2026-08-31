@@ -3,7 +3,7 @@ import ReactDOM from 'react-dom/client';
 import './api/http';
 import { BrowserRouter } from 'react-router-dom';
 import App from './App';
-import { ErrorBoundary } from './ErrorBoundary';
+import { RouteErrorBoundary } from './ErrorBoundary';
 import './index.css';
 
 function showLoadError(message: string, err?: unknown) {
@@ -26,11 +26,11 @@ try {
   } else {
     ReactDOM.createRoot(rootEl).render(
       <React.StrictMode>
-        <ErrorBoundary>
-          <BrowserRouter>
+        <BrowserRouter>
+          <RouteErrorBoundary>
             <App />
-          </BrowserRouter>
-        </ErrorBoundary>
+          </RouteErrorBoundary>
+        </BrowserRouter>
       </React.StrictMode>
     );
   }

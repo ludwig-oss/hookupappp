@@ -12,16 +12,22 @@ export function readStoredTheme(): AppTheme {
   return 'system';
 }
 
+export function coerceAppTheme(v: unknown): AppTheme {
+  if (v === 'light' || v === 'dark' || v === 'system') return v;
+  return readStoredTheme();
+}
+
 export function applyAppTheme(theme: AppTheme = readStoredTheme()): void {
+  const next = coerceAppTheme(theme);
   try {
-    localStorage.setItem(THEME_KEY, theme);
+    localStorage.setItem(THEME_KEY, next);
   } catch {
     /* ignore */
   }
 
   const hour = new Date().getHours();
   const autoNight = hour < 7 || hour >= 19;
-  const night = theme === 'dark' || (theme === 'system' && autoNight);
+  const night = next === 'dark' || (next === 'system' && autoNight);
   const day = !night;
 
   document.documentElement.classList.toggle('theme-night', night);

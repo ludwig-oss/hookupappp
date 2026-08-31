@@ -10,7 +10,7 @@ import {
   getUserByUsername,
   updateUserProfile,
 } from '../models/user.js';
-import { assertUsernameAvailable, reserveUsername, normalizeUsernameKey } from '../models/usernameRegistry.js';
+import { claimUsername, reserveUsername, normalizeUsernameKey } from '../models/usernameRegistry.js';
 import {
   findLookalikeConflict,
   identifyByFace,
@@ -82,9 +82,9 @@ export async function signupWithFace(req: Request, res: Response) {
     }
 
     try {
-      await assertUsernameAvailable(username);
+      await claimUsername(username);
     } catch (e: unknown) {
-      return res.status(400).json({ error: e instanceof Error ? e.message : 'Username not available' });
+      return res.status(400).json({ error: e instanceof Error ? e.message : 'This username is already taken. Sign in instead.' });
     }
 
     if (!password) {
@@ -103,12 +103,10 @@ export async function signupWithFace(req: Request, res: Response) {
     const signupEmail =
       email && String(email).includes('@')
         ? String(email).trim().toLowerCase()
-        : `${username}@noreply.local`;
+        : `${normalizeUsernameKey(username)}@noreply.local`;
 
-    if (signupEmail.includes('@') && !signupEmail.endsWith('@noreply.local')) {
-      if (await getUserByEmail(signupEmail)) {
-        return res.status(400).json({ error: 'Email is already registered' });
-      }
+    if (await getUserByEmail(signupEmail)) {
+      return res.status(400).json({ error: 'This username is already taken. Sign in instead.' });
     }
 
     const normalizedPhone = phoneNumber ? String(phoneNumber).replace(/\D/g, '') : null;
@@ -121,7 +119,7 @@ export async function signupWithFace(req: Request, res: Response) {
       email: signupEmail,
       password: hashedPassword,
       name,
-      username,
+      username: normalizeUsernameKey(username),
       improvementCategories,
       passwordHint1: sanitizeForStorage(passwordHint1 || 'face-signup', LIMITS.PASSWORD_HINT),
       passwordHint2: sanitizeForStorage(passwordHint2 || 'face-signup', LIMITS.PASSWORD_HINT),
@@ -145,6 +143,10 @@ export async function signupWithFace(req: Request, res: Response) {
       faceRegistered: true,
     });
   } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : '';
+    if (msg === 'USERNAME_TAKEN' || /already taken|unique|duplicate/i.test(msg)) {
+      return res.status(400).json({ error: 'This username is already taken. Sign in instead.' });
+    }
     console.error('signupWithFace:', error);
     res.status(500).json({ error: 'Could not create account with face sign-up.' });
   }

@@ -203,10 +203,18 @@ export async function createUser(
     passwordHint2: userData.passwordHint2,
     passwordHint3: userData.passwordHint3,
   });
-  await query(
-    'INSERT INTO users (id, email, password, name, username, data) VALUES ($1, $2, $3, $4, $5, $6)',
-    [id, userData.email, userData.password, userData.name, userData.username, JSON.stringify(data)]
-  );
+  try {
+    await query(
+      'INSERT INTO users (id, email, password, name, username, data) VALUES ($1, $2, $3, $4, $5, $6)',
+      [id, userData.email, userData.password, userData.name, userData.username, JSON.stringify(data)]
+    );
+  } catch (err: unknown) {
+    const code = typeof err === 'object' && err && 'code' in err ? String((err as { code: unknown }).code) : '';
+    if (code === '23505') {
+      throw new Error('USERNAME_TAKEN');
+    }
+    throw err;
+  }
   const user = await getUserById(id);
   if (!user) throw new Error('User not found after insert');
   return user;
@@ -214,7 +222,7 @@ export async function createUser(
 
 export async function getUserByEmail(email: string): Promise<User | null> {
   const res = await query<{ id: string; email: string; password: string; name: string; username: string; data: unknown }>(
-    `SELECT ${USER_COLS} FROM users WHERE email = $1`,
+    `SELECT ${USER_COLS} FROM users WHERE lower(btrim(email)) = lower(btrim($1))`,
     [email]
   );
   return res.rows[0] ? rowToUser(res.rows[0]) : null;

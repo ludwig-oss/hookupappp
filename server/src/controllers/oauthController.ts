@@ -6,10 +6,12 @@ import {
   createUser,
   getUserByEmail,
   getUserById,
+  getUserByUsername,
   getAllUsers,
   updateUserProfile,
   type User,
 } from '../models/user.js';
+import { isUsernameReserved, reserveUsername } from '../models/usernameRegistry.js';
 
 const JWT_EXPIRES_IN = '7d';
 
@@ -109,7 +111,7 @@ async function uniqueUsername(base: string): Promise<string> {
   if (clean.length < 3) clean = `user${clean}`;
   let candidate = clean;
   let i = 0;
-  while (await import('../models/user.js').then((m) => m.getUserByUsername(candidate))) {
+  while ((await getUserByUsername(candidate)) || (await isUsernameReserved(candidate))) {
     i += 1;
     candidate = `${clean.slice(0, 12)}${i}`;
   }
@@ -163,6 +165,7 @@ async function upsertOAuthUser(opts: {
     passwordHint2: 'oauth',
     passwordHint3: 'oauth',
   });
+  await reserveUsername(username, user.id);
   const idPatch =
     provider === 'google'
       ? ({ googleId: providerId } as any)

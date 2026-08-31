@@ -219,9 +219,11 @@ async function start() {
     }
   }
   try {
-    const users = await getAllUsers();
-    const n = await seedRegistryFromUsers(users);
-    if (n > 0) console.log(`✓ Locked ${n} existing usernames (never re-used)`);
+    await runWithSystem(async () => {
+      const users = await getAllUsers();
+      const n = await seedRegistryFromUsers(users);
+      if (n > 0) console.log(`✓ Locked ${n} existing usernames (never re-used)`);
+    });
   } catch {
     /* non-fatal */
   }

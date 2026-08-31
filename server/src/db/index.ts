@@ -87,6 +87,28 @@ CREATE TABLE IF NOT EXISTS users (
 );
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
+CREATE TABLE IF NOT EXISTS reserved_usernames (
+  username TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  reserved_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_users_username_lower') THEN
+    BEGIN
+      CREATE UNIQUE INDEX idx_users_username_lower ON users (lower(btrim(username)));
+    EXCEPTION WHEN unique_violation THEN
+      NULL;
+    END;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_users_email_lower') THEN
+    BEGIN
+      CREATE UNIQUE INDEX idx_users_email_lower ON users (lower(btrim(email)));
+    EXCEPTION WHEN unique_violation THEN
+      NULL;
+    END;
+  END IF;
+END $$;
 -- Matching: location-based filtering and discover (city, age, gender)
 CREATE INDEX IF NOT EXISTS idx_users_data_city ON users ((data->>'city')) WHERE data->>'city' IS NOT NULL AND data->>'city' != '';
 CREATE INDEX IF NOT EXISTS idx_users_data_age ON users ((data->>'age')) WHERE data->>'age' IS NOT NULL AND data->>'age' != '';

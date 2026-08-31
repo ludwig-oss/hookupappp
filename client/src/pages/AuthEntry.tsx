@@ -117,6 +117,10 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
       setError('Agree to Terms and Privacy to continue');
       return;
     }
+    if (usernameCheck && !usernameCheck.startsWith('✓')) {
+      setError('This username is already taken. Sign in instead.');
+      return;
+    }
     setError('');
     setLoading(true);
     try {

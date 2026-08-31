@@ -283,6 +283,11 @@ async function writeUsers(users: User[]): Promise<void> {
 export async function createUser(userData: Omit<User, 'id' | 'resetToken' | 'resetTokenExpiry' | 'profilePicture' | 'highlights' | 'disappearingPhotos' | 'profileSetupComplete' | 'improvementCategories' | 'blockedUsers' | 'mutedUsers' | 'unmatchedUsers' | 'profiles' | 'activeProfileId' | 'emailVerified' | 'emailVerificationToken' | 'emailVerificationTokenExpiry' | 'emailVerificationCode' | 'emailVerificationCodeExpiry' | 'phoneNumber'> & { improvementCategories?: string[]; passwordHint1?: string; passwordHint2?: string; passwordHint3?: string }): Promise<User> {
   if (usePostgres()) return pgUsers.createUser(userData);
   const users = await readUsers();
+  const usernameKey = String(userData.username || '').trim().toLowerCase();
+  const emailKey = String(userData.email || '').trim().toLowerCase();
+  if (users.some((u) => u.username?.trim().toLowerCase() === usernameKey || u.email?.trim().toLowerCase() === emailKey)) {
+    throw new Error('USERNAME_TAKEN');
+  }
   const user: User = {
     ...userData,
     id: Date.now().toString(),

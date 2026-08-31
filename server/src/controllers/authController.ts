@@ -6,7 +6,7 @@ import { createUser, getUserByEmail, getUserByUsername, getUserByResetToken, upd
 import { sendPasswordResetEmail, sendVerificationEmail } from '../utils/email.js';
 import { sendPasswordResetSMS, sendVerificationSMS } from '../utils/sms.js';
 import { sanitizeName, sanitizeUsername, sanitizeForStorage, LIMITS } from '../utils/sanitize.js';
-import { assertUsernameAvailable, reserveUsername, normalizeUsernameKey } from '../models/usernameRegistry.js';
+import { claimUsername, reserveUsername, normalizeUsernameKey } from '../models/usernameRegistry.js';
 import { resolveUserByIdentifier, verifyLoginSecret, loginFailureMessage, upgradeLegacyPasswordHashes } from '../utils/loginUser.js';
 import { isValidPinFormat, normalizePinDigits } from '../utils/pin.js';
 import { runWithSystem } from '../db/context.js';
@@ -93,15 +93,10 @@ export const signup = async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Username must be 3-20 characters and contain only letters, numbers, and underscores' });
     }
 
-    const existingUserByUsername = await getUserByUsername(username);
-    if (existingUserByUsername) {
-      return res.status(400).json({ error: 'This username is taken forever — pick another one.' });
-    }
-
     try {
-      await assertUsernameAvailable(username);
+      await claimUsername(username);
     } catch (e: unknown) {
-      return res.status(400).json({ error: e instanceof Error ? e.message : 'Username not available' });
+      return res.status(400).json({ error: e instanceof Error ? e.message : 'This username is already taken. Sign in instead.' });
     }
 
     const hashedPassword = await bcrypt.hash(password, BCRYPT_ROUNDS);
@@ -111,11 +106,8 @@ export const signup = async (req: Request, res: Response) => {
         ? String(email).trim().toLowerCase()
         : `${username}@noreply.local`;
 
-    if (signupEmail.includes('@') && !signupEmail.endsWith('@noreply.local')) {
-      const existingEmail = await getUserByEmail(signupEmail);
-      if (existingEmail) {
-        return res.status(400).json({ error: 'Email is already registered' });
-      }
+    if (await getUserByEmail(signupEmail)) {
+      return res.status(400).json({ error: 'This username is already taken. Sign in instead.' });
     }
 
     if (normalizedPhone) {
@@ -161,6 +153,9 @@ export const signup = async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Missing required account information. Check all fields and try again.' });
     }
     const msg = error instanceof Error ? error.message : '';
+    if (msg === 'USERNAME_TAKEN' || /already taken/i.test(msg)) {
+      return res.status(400).json({ error: 'This username is already taken. Sign in instead.' });
+    }
     if (msg.includes('JWT_SECRET')) {
       return res.status(503).json({ error: 'Server configuration error. Try again later or contact support.' });
     }

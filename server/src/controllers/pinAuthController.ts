@@ -14,7 +14,7 @@ import {
   getUserByResetToken,
   getAllUsers,
 } from '../models/user.js';
-import { assertUsernameAvailable, reserveUsername, checkUsernameAvailable, normalizeUsernameKey } from '../models/usernameRegistry.js';
+import { claimUsername, reserveUsername, checkUsernameAvailable, normalizeUsernameKey } from '../models/usernameRegistry.js';
 import { getUserConversations } from '../models/chat.js';
 import { sanitizeName, sanitizeUsername, sanitizeForStorage, LIMITS } from '../utils/sanitize.js';
 import { validateStrongPassword } from './authController.js';
@@ -128,9 +128,9 @@ export async function signupWithPin(req: Request, res: Response) {
     }
 
     try {
-      await assertUsernameAvailable(username);
+      await claimUsername(username);
     } catch (e: unknown) {
-      return res.status(400).json({ error: e instanceof Error ? e.message : 'Username not available' });
+      return res.status(400).json({ error: e instanceof Error ? e.message : 'This username is already taken. Sign in instead.' });
     }
 
     if (!improvementCategories || !Array.isArray(improvementCategories) || improvementCategories.length === 0) {
@@ -142,10 +142,8 @@ export async function signupWithPin(req: Request, res: Response) {
         ? String(email).trim().toLowerCase()
         : `${normalizeUsernameKey(username)}@noreply.local`;
 
-    if (signupEmail.includes('@') && !signupEmail.endsWith('@noreply.local')) {
-      if (await getUserByEmail(signupEmail)) {
-        return res.status(400).json({ error: 'Email is already registered' });
-      }
+    if (await getUserByEmail(signupEmail)) {
+      return res.status(400).json({ error: 'This username is already taken. Sign in instead.' });
     }
 
     const normalizedPhone = phoneNumber ? String(phoneNumber).replace(/\D/g, '') : null;
@@ -194,6 +192,10 @@ export async function signupWithPin(req: Request, res: Response) {
       user: toClientUser(user),
     });
   } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : '';
+    if (msg === 'USERNAME_TAKEN' || /unique|duplicate/i.test(msg)) {
+      return res.status(400).json({ error: 'This username is already taken. Sign in instead.' });
+    }
     console.error('signupWithPin:', error);
     res.status(500).json({ error: 'Could not create account' });
   }

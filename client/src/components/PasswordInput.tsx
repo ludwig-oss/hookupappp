@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { normalizePinDigits } from '../lib/pin';
 
 type Props = {

@@ -1,5 +1,4 @@
 import { Link } from 'react-router-dom';
-import LandingCupidAngel from '../components/LandingCupidAngel';
 import './Landing.css';
 
 const ROMANCE_IMAGES = [
@@ -33,8 +32,6 @@ const Landing = () => {
         </div>
       </div>
       <div className="landing-bg-overlay" />
-
-      <LandingCupidAngel />
 
       {/* Floating hearts */}
       <div className="landing-hearts" aria-hidden>

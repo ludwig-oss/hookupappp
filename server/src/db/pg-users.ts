@@ -1,12 +1,23 @@
-import { query, usePostgres } from './index.js';
-import type { User, Highlight, HighlightItem, DisappearingPhoto, DatingProfile, Story, StoryAudience } from '../models/user.js';
-import { STORY_TTL_MS } from '../constants/socialMedia.js';
+import { query } from './index.js';
+import type { User, Highlight, HighlightItem, DisappearingPhoto, Story, StoryAudience } from '../models/user.js';
 import { inferMediaTypeFromUrl } from '../utils/mediaType.js';
+import * as profileMedia from './pg-profile-media.js';
 
 const USER_COLS = 'id, email, password, name, username, data';
 
 function rowToUser(row: { id: string; email: string; password: string; name: string; username: string; data: unknown }): User {
-  const data = (row.data as Record<string, unknown>) || {};
+  const dataRaw = row.data;
+  const data = (
+    typeof dataRaw === 'string'
+      ? (() => {
+          try {
+            return JSON.parse(dataRaw) as Record<string, unknown>;
+          } catch {
+            return {};
+          }
+        })()
+      : (dataRaw as Record<string, unknown>)
+  ) || {};
   const parseDate = (v: unknown): Date | string | null => v == null ? null : typeof v === 'string' ? new Date(v) : (v as Date);
   return {
     id: row.id,
@@ -220,12 +231,26 @@ export async function createUser(
   return user;
 }
 
+async function hydrateUserMedia(user: User): Promise<User> {
+  try {
+    await profileMedia.migrateJsonMediaIfNeeded(user.id, user.stories, user.highlights);
+    const [stories, highlights] = await Promise.all([
+      profileMedia.listStories(user.id),
+      profileMedia.listHighlights(user.id),
+    ]);
+    return { ...user, stories, highlights };
+  } catch (err) {
+    console.error('hydrateUserMedia failed:', err);
+    return user;
+  }
+}
+
 export async function getUserByEmail(email: string): Promise<User | null> {
   const res = await query<{ id: string; email: string; password: string; name: string; username: string; data: unknown }>(
     `SELECT ${USER_COLS} FROM users WHERE lower(btrim(email)) = lower(btrim($1))`,
     [email]
   );
-  return res.rows[0] ? rowToUser(res.rows[0]) : null;
+  return res.rows[0] ? hydrateUserMedia(rowToUser(res.rows[0])) : null;
 }
 
 export async function getUserByUsername(username: string): Promise<User | null> {
@@ -239,7 +264,7 @@ export async function getUserByUsername(username: string): Promise<User | null> 
      LIMIT 1`,
     [key]
   );
-  return res.rows[0] ? rowToUser(res.rows[0]) : null;
+  return res.rows[0] ? hydrateUserMedia(rowToUser(res.rows[0])) : null;
 }
 
 export async function getUserByPhone(phoneNumber: string): Promise<User | null> {
@@ -266,15 +291,36 @@ export async function getUserById(userId: string): Promise<User | null> {
     `SELECT ${USER_COLS} FROM users WHERE id = $1`,
     [userId]
   );
-  return res.rows[0] ? rowToUser(res.rows[0]) : null;
+  return res.rows[0] ? hydrateUserMedia(rowToUser(res.rows[0])) : null;
 }
 
 export async function updateUserProfile(userId: string, updates: Partial<User>): Promise<User | null> {
-  const u = await getUserById(userId);
-  if (!u) return null;
-  const { id, email, password, name, username, ...rest } = { ...u, ...updates };
-  const data = userToData(rest);
-  await query('UPDATE users SET name = $1, username = $2, data = $3 WHERE id = $4', [name, username, JSON.stringify(data), userId]);
+  const exists = await query<{ id: string }>('SELECT id FROM users WHERE id = $1', [userId]);
+  if (!exists.rows[0]) return null;
+  const name = updates.name;
+  const username = updates.username;
+  const dataPatch = userToData(updates);
+  delete dataPatch.highlights;
+  delete dataPatch.stories;
+
+  const sets: string[] = [];
+  const params: unknown[] = [];
+  if (name !== undefined) {
+    params.push(name);
+    sets.push(`name = $${params.length}`);
+  }
+  if (username !== undefined) {
+    params.push(username);
+    sets.push(`username = $${params.length}`);
+  }
+  if (Object.keys(dataPatch).length > 0) {
+    params.push(JSON.stringify(dataPatch));
+    sets.push(`data = COALESCE(data, '{}'::jsonb) || $${params.length}::jsonb`);
+  }
+  if (sets.length > 0) {
+    params.push(userId);
+    await query(`UPDATE users SET ${sets.join(', ')} WHERE id = $${params.length}`, params);
+  }
   return getUserById(userId);
 }
 
@@ -290,41 +336,18 @@ export async function addHighlight(
   highlightId?: string,
   mediaType?: 'image' | 'video'
 ): Promise<Highlight | null> {
-  const u = await getUserById(userId);
-  if (!u) return null;
+  const exists = await query<{ id: string }>('SELECT id FROM users WHERE id = $1', [userId]);
+  if (!exists.rows[0]) return null;
   const mt = mediaType || inferMediaTypeFromUrl(imageUrl);
-  const highlights = [...(u.highlights || [])];
   if (highlightId) {
-    const hi = highlights.findIndex(h => h.id === highlightId);
-    if (hi !== -1) {
-      const newItem: HighlightItem = { id: Date.now().toString(), imageUrl, mediaType: mt, createdAt: new Date() };
-      highlights[hi].items = [...highlights[hi].items, newItem];
-      if (!highlights[hi].coverImage) highlights[hi].coverImage = imageUrl;
-      await updateUserProfile(userId, { highlights });
-      return highlights[hi];
-    }
+    const appended = await profileMedia.appendHighlightItem(userId, highlightId, imageUrl, mt);
+    if (appended) return appended;
   }
-  const highlight: Highlight = {
-    id: Date.now().toString(),
-    title: '',
-    items: [{ id: Date.now().toString() + '_item', imageUrl, mediaType: mt, createdAt: new Date() }],
-    createdAt: new Date(),
-    coverImage: imageUrl,
-  };
-  highlights.push(highlight);
-  await updateUserProfile(userId, { highlights });
-  return highlight;
+  return profileMedia.insertHighlight(userId, imageUrl, mt);
 }
 
 export async function pruneExpiredStories(userId: string): Promise<void> {
-  const u = await getUserById(userId);
-  if (!u) return;
-  const list = u.stories || [];
-  const now = Date.now();
-  const kept = list.filter(s => new Date(s.expiresAt).getTime() > now);
-  if (kept.length !== list.length) {
-    await updateUserProfile(userId, { stories: kept });
-  }
+  await profileMedia.listStories(userId);
 }
 
 export async function addStory(
@@ -333,57 +356,21 @@ export async function addStory(
   mediaType: 'image' | 'video',
   audience: StoryAudience
 ): Promise<Story | null> {
-  await pruneExpiredStories(userId);
-  const u = await getUserById(userId);
-  if (!u) return null;
-  const story: Story = {
-    id: `${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
-    mediaUrl,
-    mediaType,
-    createdAt: new Date(),
-    expiresAt: new Date(Date.now() + STORY_TTL_MS),
-    audience,
-  };
-  await updateUserProfile(userId, { stories: [...(u.stories || []), story] });
-  return story;
+  const exists = await query<{ id: string }>('SELECT id FROM users WHERE id = $1', [userId]);
+  if (!exists.rows[0]) return null;
+  return profileMedia.insertStory(userId, mediaUrl, mediaType, audience);
 }
 
 export async function removeStory(userId: string, storyId: string): Promise<boolean> {
-  const u = await getUserById(userId);
-  if (!u) return false;
-  const list = u.stories || [];
-  const next = list.filter(s => s.id !== storyId);
-  if (next.length === list.length) return false;
-  await updateUserProfile(userId, { stories: next });
-  return true;
+  return profileMedia.deleteStory(userId, storyId);
 }
 
 export async function reorderHighlights(userId: string, orderedIds: string[]): Promise<boolean> {
-  const u = await getUserById(userId);
-  if (!u) return false;
-  const highlights = u.highlights || [];
-  const map = new Map(highlights.map(h => [h.id, h]));
-  const ordered = orderedIds.map(id => map.get(id)).filter(Boolean) as Highlight[];
-  const missing = highlights.filter(h => !orderedIds.includes(h.id));
-  await updateUserProfile(userId, { highlights: [...ordered, ...missing] });
-  return true;
+  return profileMedia.reorderHighlights(userId, orderedIds);
 }
 
 export async function removeHighlight(userId: string, highlightId: string, itemId?: string): Promise<boolean> {
-  const u = await getUserById(userId);
-  if (!u) return false;
-  const highlights = [...(u.highlights || [])];
-  const hi = highlights.findIndex(h => h.id === highlightId);
-  if (hi === -1) return false;
-  if (itemId) {
-    highlights[hi].items = highlights[hi].items.filter(item => item.id !== itemId);
-    if (highlights[hi].items.length === 0) highlights.splice(hi, 1);
-    else highlights[hi].coverImage = highlights[hi].items[0]?.imageUrl;
-  } else {
-    highlights.splice(hi, 1);
-  }
-  await updateUserProfile(userId, { highlights });
-  return true;
+  return profileMedia.deleteHighlight(userId, highlightId, itemId);
 }
 
 export async function addDisappearingPhoto(userId: string, imageUrl: string): Promise<DisappearingPhoto | null> {

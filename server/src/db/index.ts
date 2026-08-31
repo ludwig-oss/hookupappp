@@ -165,7 +165,29 @@ CREATE TABLE IF NOT EXISTS connection_buzzes (
 );
 CREATE INDEX IF NOT EXISTS idx_buzzes_to ON connection_buzzes(to_user_id, status);
 CREATE INDEX IF NOT EXISTS idx_buzzes_from ON connection_buzzes(from_user_id);
-`;
+
+CREATE TABLE IF NOT EXISTS profile_stories (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  media_url TEXT NOT NULL,
+  media_type TEXT NOT NULL,
+  audience TEXT NOT NULL DEFAULT 'all',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  expires_at TIMESTAMPTZ NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_profile_stories_user ON profile_stories(user_id, expires_at);
+
+CREATE TABLE IF NOT EXISTS profile_highlights (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  title TEXT NOT NULL DEFAULT '',
+  cover_image TEXT,
+  items JSONB NOT NULL DEFAULT '[]',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  sort_order INT NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_profile_highlights_user ON profile_highlights(user_id, sort_order);
+`
 
 /** Run schema to create tables if they don't exist. Safe to call on startup. */
 export async function runSchema(): Promise<void> {

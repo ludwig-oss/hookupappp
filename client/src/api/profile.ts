@@ -59,19 +59,19 @@ export interface ProfileData {
 export const profileAPI = {
   /** Get current user's full profile (requires Authorization header). Use after login to sync from server. */
   getCurrentUser: async (): Promise<ProfileData> => {
-    const response = await axios.get(`${API_URL}/me`, { headers: getAuthHeaders() });
+    const response = await axios.get(`${MEDIA_API_URL}/me`, { headers: getAuthHeaders() });
     return response.data;
   },
 
   getUserProfile: async (userId: string): Promise<ProfileData> => {
     try {
-      const response = await axios.get(`${API_URL}/${userId}`, { headers: getAuthHeaders() });
+      const response = await axios.get(`${MEDIA_API_URL}/${userId}`, { headers: getAuthHeaders() });
       return response.data;
     } catch (err: any) {
       // If userId route fails, try /me route for current user
       if (err.response?.status === 404 || err.response?.status === 400) {
         try {
-          const meResponse = await axios.get(`${API_URL}/me`, { headers: getAuthHeaders() });
+          const meResponse = await axios.get(`${MEDIA_API_URL}/me`, { headers: getAuthHeaders() });
           return meResponse.data;
         } catch (meErr) {
           throw err; // Throw original error

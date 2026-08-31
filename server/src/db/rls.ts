@@ -93,4 +93,42 @@ CREATE POLICY users_delete ON users FOR DELETE USING (
   app_rls_bypass()
   OR id = app_current_user_id()
 );
-`;
+
+-- ========== profile_stories ==========
+ALTER TABLE profile_stories ENABLE ROW LEVEL SECURITY;
+ALTER TABLE profile_stories FORCE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS profile_stories_select ON profile_stories;
+CREATE POLICY profile_stories_select ON profile_stories FOR SELECT USING (
+  app_rls_bypass()
+  OR app_current_user_id() IS NOT NULL
+);
+
+DROP POLICY IF EXISTS profile_stories_write ON profile_stories;
+CREATE POLICY profile_stories_write ON profile_stories FOR ALL USING (
+  app_rls_bypass()
+  OR user_id = app_current_user_id()
+) WITH CHECK (
+  app_rls_bypass()
+  OR user_id = app_current_user_id()
+);
+
+-- ========== profile_highlights ==========
+ALTER TABLE profile_highlights ENABLE ROW LEVEL SECURITY;
+ALTER TABLE profile_highlights FORCE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS profile_highlights_select ON profile_highlights;
+CREATE POLICY profile_highlights_select ON profile_highlights FOR SELECT USING (
+  app_rls_bypass()
+  OR app_current_user_id() IS NOT NULL
+);
+
+DROP POLICY IF EXISTS profile_highlights_write ON profile_highlights;
+CREATE POLICY profile_highlights_write ON profile_highlights FOR ALL USING (
+  app_rls_bypass()
+  OR user_id = app_current_user_id()
+) WITH CHECK (
+  app_rls_bypass()
+  OR user_id = app_current_user_id()
+);
+`

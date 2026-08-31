@@ -27,6 +27,8 @@ function buildSessionProfile(user: {
   profileSetupComplete?: boolean;
   gender?: string;
   photoVerifiedAt?: string | null;
+  highlights?: ProfileData['highlights'];
+  stories?: ProfileData['stories'];
 }): ProfileData {
   return {
     id: user.id,
@@ -35,8 +37,8 @@ function buildSessionProfile(user: {
     username: user.username || '',
     profilePicture: user.profilePicture ?? null,
     profileSetupComplete: Boolean(user.profileSetupComplete),
-    highlights: [],
-    stories: [],
+    highlights: user.highlights || [],
+    stories: user.stories || [],
     disappearingPhotos: [],
     gender: user.gender,
     photoVerifiedAt: user.photoVerifiedAt ?? null,
@@ -96,18 +98,24 @@ const Profile = () => {
   const publicFigureUniqueInputRef = useRef<HTMLInputElement>(null);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingProfileRef = useRef<{ age: string; country: string; city: string }>({ age: '', country: '', city: '' });
+  const uploadingMediaRef = useRef(false);
 
   useEffect(() => {
     if (!user?.id) {
       setLoading(false);
       return;
     }
-    setProfile(buildSessionProfile(user));
     setAge(String(user.age ?? ''));
     setCountry(String(user.country ?? ''));
     setCity(String(user.city ?? ''));
     setError('');
     setSyncWarning('');
+    setProfile((prev) => {
+      if (prev?.id === user.id && ((prev.highlights?.length || 0) > 0 || (prev.stories?.length || 0) > 0)) {
+        return prev;
+      }
+      return buildSessionProfile(user);
+    });
     setLoading(false);
     loadProfileFromServer();
   }, [user?.id]);
@@ -224,7 +232,16 @@ const Profile = () => {
     setError('');
     try {
       const { user: updated } = await profileAPI.updateProfile(updates);
-      if (updated) updateUser(updated);
+      if (updated) {
+        updateUser({
+          name: updated.name,
+          username: updated.username,
+          age: updated.age,
+          country: updated.country,
+          city: updated.city,
+          profilePicture: updated.profilePicture,
+        });
+      }
       await loadProfile();
       setSaveStatus('saved');
       setTimeout(() => setSaveStatus('idle'), 2500);
@@ -313,6 +330,7 @@ const Profile = () => {
   useEffect(() => {
     return () => {
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+      if (uploadingMediaRef.current) return;
       if (!localStorage.getItem('token') || !userIdRef.current) return;
       flushSave();
     };
@@ -342,16 +360,21 @@ const Profile = () => {
     if (!pendingStoryFile || !user?.id || storyAudienceBusy) return;
     setStoryAudienceBusy(audience);
     setError('');
+    uploadingMediaRef.current = true;
     try {
       await new Promise((r) => setTimeout(r, 30));
       const mediaUrl = await prepareAndUploadFile(pendingStoryFile, 'stories');
-      await profileAPI.addStory(mediaUrl, audience);
+      const { story } = await profileAPI.addStory(mediaUrl, audience);
+      if (story) {
+        setProfile((prev) => prev ? { ...prev, stories: [story, ...(prev.stories || []).filter((s: { id: string }) => s.id !== story.id)] } : prev);
+      }
       setShowStoryAudiencePicker(false);
       setPendingStoryFile(null);
       await loadProfile();
     } catch (err: unknown) {
       setError(formatAxiosError(err, 'Story upload failed. Try a smaller photo or a shorter video.'));
     } finally {
+      uploadingMediaRef.current = false;
       setStoryAudienceBusy(null);
     }
   };
@@ -388,6 +411,7 @@ const Profile = () => {
     if (!file || !user?.id) return;
     setUploading(true);
     setError('');
+    uploadingMediaRef.current = true;
     try {
       await new Promise((r) => setTimeout(r, 30));
       const mediaUrl = await prepareAndUploadFile(file, 'profile');
@@ -399,6 +423,7 @@ const Profile = () => {
     } catch (err: unknown) {
       setError(formatAxiosError(err, 'Upload failed. Try a smaller photo.'));
     } finally {
+      uploadingMediaRef.current = false;
       setUploading(false);
     }
   };
@@ -414,15 +439,24 @@ const Profile = () => {
     }
     setUploading(true);
     setError('');
+    uploadingMediaRef.current = true;
     try {
       await new Promise((r) => setTimeout(r, 30));
       const mediaUrl = await prepareAndUploadFile(file, 'highlights');
-      await profileAPI.addHighlight(mediaUrl, user.id, highlightId || undefined);
+      const { highlight } = await profileAPI.addHighlight(mediaUrl, user.id, highlightId || undefined);
+      if (highlight) {
+        setProfile((prev) => {
+          if (!prev) return prev;
+          const rest = (prev.highlights || []).filter((h: { id: string }) => h.id !== highlight.id);
+          return { ...prev, highlights: [...rest, highlight] };
+        });
+      }
       await loadProfile();
       setSelectedHighlightId(null);
     } catch (err: unknown) {
       setError(formatAxiosError(err, 'Highlight upload failed. Try a smaller photo or a shorter video.'));
     } finally {
+      uploadingMediaRef.current = false;
       setUploading(false);
     }
   };

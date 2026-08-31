@@ -164,12 +164,16 @@ export const getUserProfile = async (req: Request, res: Response) => {
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
-    await pruneExpiredStories(user.id);
+    const ownerId = user.id;
+    await runWithSystem(() => pruneExpiredStories(ownerId));
+    const fresh = await runWithSystem(() => getUserById(ownerId));
+    if (fresh) user = fresh;
     const viewingOwnProfile = isOwnProfileRequest || authUserId === user.id;
     const now = Date.now();
     const ownerCloseFriends = user.closeFriendIds || [];
     const visibleStories = (user.stories || []).filter((s) => {
-      if (new Date(s.expiresAt).getTime() <= now) return false;
+      const exp = new Date(s.expiresAt).getTime();
+      if (Number.isFinite(exp) && exp <= now) return false;
       if (viewingOwnProfile) return true;
       if (s.audience === 'all') return true;
       return ownerCloseFriends.includes(authUserId);
@@ -214,8 +218,10 @@ export const getUserProfile = async (req: Request, res: Response) => {
 
 export const addUserHighlight = async (req: Request, res: Response) => {
   try {
-    const userId = (req as any).userId || req.body.userId;
-    if (!userId) {
+    const authUserId = (req as AuthRequest).userId as string;
+    const authEmail = (req as AuthRequest).userEmail;
+    const existing = await resolveOwnUser(authUserId, authEmail);
+    if (!existing) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
@@ -227,7 +233,7 @@ export const addUserHighlight = async (req: Request, res: Response) => {
 
     const mediaUrl = await uploadMedia(mediaPayload(raw), 'highlights');
     const mediaType = inferMediaTypeFromUrl(mediaUrl);
-    const highlight = await addHighlight(userId, mediaUrl, highlightId, mediaType);
+    const highlight = await runWithSystem(() => addHighlight(existing.id, mediaUrl, highlightId, mediaType));
 
     if (!highlight) {
       return res.status(404).json({ error: 'User not found' });
@@ -245,8 +251,10 @@ export const addUserHighlight = async (req: Request, res: Response) => {
 
 export const addUserStory = async (req: Request, res: Response) => {
   try {
-    const userId = (req as any).userId;
-    if (!userId) {
+    const authUserId = (req as AuthRequest).userId as string;
+    const authEmail = (req as AuthRequest).userEmail;
+    const existing = await resolveOwnUser(authUserId, authEmail);
+    if (!existing) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
@@ -259,7 +267,7 @@ export const addUserStory = async (req: Request, res: Response) => {
     const aud = audience === 'closeFriends' ? 'closeFriends' : 'all';
     const mediaUrl = await uploadMedia(mediaPayload(raw), 'stories');
     const mediaType = inferMediaTypeFromUrl(mediaUrl);
-    const story = await addStory(userId, mediaUrl, mediaType, aud);
+    const story = await runWithSystem(() => addStory(existing.id, mediaUrl, mediaType, aud));
     if (!story) {
       return res.status(404).json({ error: 'User not found' });
     }
@@ -273,15 +281,17 @@ export const addUserStory = async (req: Request, res: Response) => {
 
 export const deleteUserStory = async (req: Request, res: Response) => {
   try {
-    const userId = (req as any).userId;
+    const authUserId = (req as AuthRequest).userId as string;
+    const authEmail = (req as AuthRequest).userEmail;
+    const existing = await resolveOwnUser(authUserId, authEmail);
     const { storyId } = req.params;
-    if (!userId) {
+    if (!existing) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
     if (!storyId) {
       return res.status(400).json({ error: 'Story ID is required' });
     }
-    const ok = await removeStory(userId, storyId);
+    const ok = await runWithSystem(() => removeStory(existing.id, storyId));
     if (!ok) {
       return res.status(404).json({ error: 'Story not found' });
     }
@@ -294,15 +304,17 @@ export const deleteUserStory = async (req: Request, res: Response) => {
 
 export const reorderUserHighlights = async (req: Request, res: Response) => {
   try {
-    const userId = (req as any).userId;
-    if (!userId) {
+    const authUserId = (req as AuthRequest).userId as string;
+    const authEmail = (req as AuthRequest).userEmail;
+    const existing = await resolveOwnUser(authUserId, authEmail);
+    if (!existing) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
     const { orderedIds } = req.body;
     if (!Array.isArray(orderedIds) || !orderedIds.every((id: unknown) => typeof id === 'string')) {
       return res.status(400).json({ error: 'orderedIds must be an array of highlight id strings' });
     }
-    await reorderHighlights(userId, orderedIds);
+    await runWithSystem(() => reorderHighlights(existing.id, orderedIds));
     res.json({ message: 'Highlights reordered' });
   } catch (error) {
     console.error('Reorder highlights error:', error);
@@ -312,20 +324,22 @@ export const reorderUserHighlights = async (req: Request, res: Response) => {
 
 export const addHighlightFromStory = async (req: Request, res: Response) => {
   try {
-    const userId = (req as any).userId;
-    if (!userId) {
+    const authUserId = (req as AuthRequest).userId as string;
+    const authEmail = (req as AuthRequest).userEmail;
+    const existing = await resolveOwnUser(authUserId, authEmail);
+    if (!existing) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
     const { storyId, highlightId } = req.body;
     if (!storyId || typeof storyId !== 'string') {
       return res.status(400).json({ error: 'storyId is required' });
     }
-    const owner = await getUserById(userId);
+    const owner = await runWithSystem(() => getUserById(existing.id));
     const story = owner?.stories?.find((s) => s.id === storyId);
     if (!story || new Date(story.expiresAt).getTime() <= Date.now()) {
       return res.status(404).json({ error: 'Story not found or expired' });
     }
-    const highlight = await addHighlight(userId, story.mediaUrl, highlightId, story.mediaType);
+    const highlight = await runWithSystem(() => addHighlight(existing.id, story.mediaUrl, highlightId, story.mediaType));
     if (!highlight) {
       return res.status(404).json({ error: 'Could not add highlight' });
     }
@@ -341,11 +355,13 @@ export const addHighlightFromStory = async (req: Request, res: Response) => {
 
 export const deleteUserHighlight = async (req: Request, res: Response) => {
   try {
-    const userId = (req as any).userId || req.body.userId;
+    const authUserId = (req as AuthRequest).userId as string;
+    const authEmail = (req as AuthRequest).userEmail;
+    const existing = await resolveOwnUser(authUserId, authEmail);
     const { highlightId } = req.params;
-    const { itemId } = req.body; // Optional: delete specific item instead of entire highlight
+    const { itemId } = req.body;
 
-    if (!userId) {
+    if (!existing) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
@@ -353,7 +369,7 @@ export const deleteUserHighlight = async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Highlight ID is required' });
     }
 
-    const success = await removeHighlight(userId, highlightId, itemId);
+    const success = await runWithSystem(() => removeHighlight(existing.id, highlightId, itemId));
     if (!success) {
       return res.status(404).json({ error: 'Highlight not found' });
     }
@@ -458,12 +474,15 @@ export const completeProfileSetup = async (req: Request, res: Response) => {
 
 export const updateUserProfileInfo = async (req: Request, res: Response) => {
   try {
-    const userId = (req as any).userId;
+    const authUserId = (req as AuthRequest).userId as string;
+    const authEmail = (req as AuthRequest).userEmail;
     const body = req.body || {};
 
-    if (!userId) {
+    const existing = await resolveOwnUser(authUserId, authEmail);
+    if (!existing) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
+    const userId = existing.id;
 
     const { name, username, phoneNumber, age, bio, gender, height, education, occupation, relationshipStatus } = body;
 
@@ -538,7 +557,7 @@ export const updateUserProfileInfo = async (req: Request, res: Response) => {
       updates.closeFriendIds = body.closeFriendIds.filter((id: unknown) => typeof id === 'string');
     }
 
-    const user = await updateUserProfile(userId, updates);
+    const user = await runWithSystem(() => updateUserProfile(existing.id, updates));
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }

@@ -1,7 +1,7 @@
 import { query } from './index.js';
 import type { Buzz, BuzzStatus } from '../models/connections.js';
 
-function rowToBuzz(row: {
+type BuzzRow = {
   id: string;
   from_user_id: string;
   to_user_id: string;
@@ -9,7 +9,9 @@ function rowToBuzz(row: {
   location: unknown;
   created_at: Date | string;
   responded_at: Date | string | null;
-}): Buzz {
+};
+
+function rowToBuzz(row: BuzzRow): Buzz {
   return {
     id: row.id,
     fromUserId: row.from_user_id,
@@ -45,15 +47,16 @@ export async function createBuzz(data: {
      VALUES ($1, $2, $3, 'pending', $4)`,
     [id, data.fromUserId, data.toUserId, data.location ? JSON.stringify(data.location) : null]
   );
-  const res = await query(
+  const res = await query<BuzzRow>(
     'SELECT * FROM connection_buzzes WHERE id = $1',
     [id]
   );
+  if (!res.rows[0]) throw new Error('Buzz not saved');
   return rowToBuzz(res.rows[0]);
 }
 
 export async function getBuzzesForUser(userId: string): Promise<Buzz[]> {
-  const res = await query(
+  const res = await query<BuzzRow>(
     `SELECT * FROM connection_buzzes WHERE to_user_id = $1 AND status = 'pending' ORDER BY created_at DESC`,
     [userId]
   );
@@ -61,7 +64,7 @@ export async function getBuzzesForUser(userId: string): Promise<Buzz[]> {
 }
 
 export async function getSentBuzzes(userId: string): Promise<Buzz[]> {
-  const res = await query(
+  const res = await query<BuzzRow>(
     `SELECT * FROM connection_buzzes WHERE from_user_id = $1 ORDER BY created_at DESC`,
     [userId]
   );
@@ -76,7 +79,7 @@ export async function respondToBuzz(
     `UPDATE connection_buzzes SET status = $2, responded_at = NOW() WHERE id = $1`,
     [buzzId, status]
   );
-  const res = await query('SELECT * FROM connection_buzzes WHERE id = $1', [buzzId]);
+  const res = await query<BuzzRow>('SELECT * FROM connection_buzzes WHERE id = $1', [buzzId]);
   return res.rows[0] ? rowToBuzz(res.rows[0]) : null;
 }
 

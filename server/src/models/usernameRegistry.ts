@@ -1,6 +1,6 @@
 import { readFile, writeFile, mkdir } from 'fs/promises';
 import { join } from 'path';
-import { getUserByUsername } from './user.js';
+import { getUserById, getUserByUsername } from './user.js';
 import { query, usePostgres } from '../db/index.js';
 import { runWithSystem } from '../db/context.js';
 
@@ -11,9 +11,14 @@ export interface ReservedUsername {
 }
 
 const REGISTRY_PATH = join(process.cwd(), 'server', 'data', 'username-registry.json');
+const TAKEN_MSG = 'This username is already taken. Sign in instead.';
 
 export function normalizeUsernameKey(username: string): string {
   return username.trim().toLowerCase();
+}
+
+function isRealUserId(userId: string | null | undefined): boolean {
+  return Boolean(userId && userId !== 'pending');
 }
 
 async function readFileRegistry(): Promise<ReservedUsername[]> {
@@ -32,12 +37,50 @@ async function writeFileRegistry(list: ReservedUsername[]): Promise<void> {
   await writeFile(REGISTRY_PATH, JSON.stringify(list, null, 2));
 }
 
-async function isUsernameReservedDb(key: string): Promise<boolean> {
-  const res = await query<{ username: string }>(
-    'SELECT username FROM reserved_usernames WHERE username = $1 LIMIT 1',
-    [key]
-  );
-  return res.rows.length > 0;
+/** Drop locks that never became a real account (failed signup left user_id = pending). */
+async function releaseOrphanClaim(key: string): Promise<void> {
+  if (usePostgres()) {
+    await query(
+      `DELETE FROM reserved_usernames r
+       WHERE r.username = $1
+         AND (
+           r.user_id = 'pending'
+           OR r.user_id IS NULL
+           OR r.user_id = ''
+           OR NOT EXISTS (SELECT 1 FROM users u WHERE u.id = r.user_id)
+         )`,
+      [key]
+    );
+    return;
+  }
+  const list = (await readFileRegistry()).filter((r) => {
+    if (r.username !== key) return true;
+    return isRealUserId(r.userId);
+  });
+  await writeFileRegistry(list);
+}
+
+export async function purgeOrphanUsernameClaims(): Promise<void> {
+  await runWithSystem(async () => {
+    if (usePostgres()) {
+      await query(
+        `DELETE FROM reserved_usernames r
+         WHERE r.user_id = 'pending'
+            OR r.user_id IS NULL
+            OR r.user_id = ''
+            OR NOT EXISTS (SELECT 1 FROM users u WHERE u.id = r.user_id)`
+      );
+      return;
+    }
+    const list = await readFileRegistry();
+    const kept: ReservedUsername[] = [];
+    for (const r of list) {
+      if (!isRealUserId(r.userId)) continue;
+      const u = await getUserById(r.userId);
+      if (u) kept.push(r);
+    }
+    await writeFileRegistry(kept);
+  });
 }
 
 async function getRegisteredUserIdDb(key: string): Promise<string | null> {
@@ -45,49 +88,50 @@ async function getRegisteredUserIdDb(key: string): Promise<string | null> {
     'SELECT user_id FROM reserved_usernames WHERE username = $1 LIMIT 1',
     [key]
   );
-  return res.rows[0]?.user_id ?? null;
+  const id = res.rows[0]?.user_id ?? null;
+  return isRealUserId(id) ? id : null;
 }
 
 async function reserveUsernameDb(key: string, userId: string): Promise<void> {
   await query(
     `INSERT INTO reserved_usernames (username, user_id) VALUES ($1, $2)
-     ON CONFLICT (username) DO UPDATE SET user_id = EXCLUDED.user_id
-     WHERE reserved_usernames.user_id = 'pending'`,
+     ON CONFLICT (username) DO UPDATE SET user_id = EXCLUDED.user_id`,
     [key, userId]
   );
 }
 
-function isUniqueViolation(err: unknown): boolean {
-  return typeof err === 'object' && err !== null && 'code' in err && String((err as { code: unknown }).code) === '23505';
-}
-
-const TAKEN_MSG = 'This username is already taken. Sign in instead.';
-
+/** True only when a real account owns this username. */
 export async function isUsernameReserved(username: string): Promise<boolean> {
   const key = normalizeUsernameKey(username);
   if (!key) return true;
-  if (usePostgres()) return isUsernameReservedDb(key);
-  const list = await readFileRegistry();
-  return list.some((r) => r.username === key);
+  return runWithSystem(async () => {
+    const active = await getUserByUsername(key);
+    if (active) return true;
+    const registeredId = usePostgres()
+      ? await getRegisteredUserIdDb(key)
+      : (await readFileRegistry()).find((r) => r.username === key && isRealUserId(r.userId))?.userId ?? null;
+    if (!registeredId) return false;
+    const owner = await getUserById(registeredId);
+    return Boolean(owner);
+  });
 }
 
-/** Resolve user id from reserved username (handles username column drift). */
+/** Resolve user id from reserved username (ignores leftover pending locks). */
 export async function getRegisteredUserId(username: string): Promise<string | null> {
   const key = normalizeUsernameKey(username);
   if (!key) return null;
   if (usePostgres()) return getRegisteredUserIdDb(key);
   const list = await readFileRegistry();
-  return list.find((r) => r.username === key)?.userId ?? null;
+  const id = list.find((r) => r.username === key)?.userId ?? null;
+  return isRealUserId(id) ? id : null;
 }
 
-/** Instagram-style: once taken, never available again (even if account is removed). */
+/** Block signup only if a real account already has this username. */
 export async function assertUsernameAvailable(username: string): Promise<void> {
   const key = normalizeUsernameKey(username);
   if (!key) throw new Error('Invalid username');
   await runWithSystem(async () => {
-    if (await isUsernameReserved(key)) {
-      throw new Error(TAKEN_MSG);
-    }
+    await releaseOrphanClaim(key);
     const active = await getUserByUsername(key);
     if (active) {
       await reserveUsername(key, active.id);
@@ -96,67 +140,38 @@ export async function assertUsernameAvailable(username: string): Promise<void> {
   });
 }
 
-/**
- * Lock the username in Postgres before insert. Two parallel signups cannot both get the same name.
- * Call this before createUser; bind the real user id afterward with reserveUsername.
- */
+/** Same as assert — do not lock the name until createUser succeeds. */
 export async function claimUsername(username: string): Promise<void> {
-  const key = normalizeUsernameKey(username);
-  if (!key) throw new Error('Invalid username');
-  await runWithSystem(async () => {
-    const active = await getUserByUsername(key);
-    if (active) {
-      await reserveUsername(key, active.id);
-      throw new Error(TAKEN_MSG);
-    }
-    if (usePostgres()) {
-      try {
-        await query(
-          'INSERT INTO reserved_usernames (username, user_id) VALUES ($1, $2)',
-          [key, 'pending']
-        );
-      } catch (err: unknown) {
-        if (isUniqueViolation(err) || (await isUsernameReserved(key))) {
-          throw new Error(TAKEN_MSG);
-        }
-        throw err;
-      }
-      return;
-    }
-    if (await isUsernameReserved(key)) {
-      throw new Error(TAKEN_MSG);
-    }
-    await reserveUsername(key, 'pending');
-  });
+  await assertUsernameAvailable(username);
 }
 
 export async function reserveUsername(username: string, userId: string): Promise<void> {
   const key = normalizeUsernameKey(username);
-  if (!key || !userId) return;
+  if (!key || !isRealUserId(userId)) return;
   if (usePostgres()) {
     await reserveUsernameDb(key, userId);
     return;
   }
   const list = await readFileRegistry();
-  if (list.some((r) => r.username === key)) return;
-  list.push({
+  const rest = list.filter((r) => r.username !== key);
+  rest.push({
     username: key,
     userId,
     reservedAt: new Date().toISOString(),
   });
-  await writeFileRegistry(list);
+  await writeFileRegistry(rest);
 }
 
 /** One-time backfill so existing accounts lock their usernames. */
 export async function seedRegistryFromUsers(
   users: { id: string; username?: string | null }[]
 ): Promise<number> {
+  await purgeOrphanUsernameClaims();
   let added = 0;
   for (const u of users) {
-    if (!u.username) continue;
+    if (!u.username || !isRealUserId(u.id)) continue;
     const key = normalizeUsernameKey(u.username);
     if (!key) continue;
-    if (await isUsernameReserved(key)) continue;
     await reserveUsername(key, u.id);
     added++;
   }
@@ -172,9 +187,7 @@ export async function checkUsernameAvailable(username: string): Promise<{ availa
     return { available: false, reason: 'Letters, numbers, and underscore only' };
   }
   return runWithSystem(async () => {
-    if (await isUsernameReserved(key)) {
-      return { available: false, reason: 'Already taken. Sign in instead.' };
-    }
+    await releaseOrphanClaim(key);
     const active = await getUserByUsername(key);
     if (active) {
       await reserveUsername(key, active.id);

@@ -142,7 +142,7 @@ export async function signupWithPin(req: Request, res: Response) {
         ? String(email).trim().toLowerCase()
         : `${normalizeUsernameKey(username)}@noreply.local`;
 
-    if (await getUserByEmail(signupEmail)) {
+    if (await runWithSystem(() => getUserByEmail(signupEmail))) {
       return res.status(400).json({ error: 'This username is already taken. Sign in instead.' });
     }
 

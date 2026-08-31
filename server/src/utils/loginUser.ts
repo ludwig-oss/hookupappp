@@ -63,11 +63,14 @@ export async function resolveUserByIdentifier(rawId: string): Promise<User | nul
   // Username registry — account exists even if username column drifted.
   for (const key of [sanitized, normalized].filter(Boolean)) {
     const userId = await getRegisteredUserId(key);
-    if (userId) {
+    if (userId && userId !== 'pending') {
       const byId = await getUserById(userId);
       if (byId) return byId;
     }
   }
+
+  const byNoreply = await getUserByEmail(`${normalized}@noreply.local`);
+  if (byNoreply) return byNoreply;
 
   if (trimmed.includes('@')) {
     const byEmail = await getUserByEmail(trimmed.toLowerCase());

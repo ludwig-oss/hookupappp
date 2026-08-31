@@ -11,6 +11,7 @@ import {
   deletePost,
 } from '../models/posts.js';
 import { getUserById } from '../models/user.js';
+import { runWithSystem } from '../db/context.js';
 import { checkContent } from '../utils/moderation.js';
 import { sanitizeMessageContent, sanitizeForStorage, sanitizeTags, LIMITS } from '../utils/sanitize.js';
 import { uploadMedia, uploadMediaBuffer } from '../utils/storage.js';
@@ -96,22 +97,26 @@ export const createDatingPost = async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Type must be "warning" or "positive"' });
     }
 
-    const textToCheck = [content, title].filter(Boolean).join(' ');
-    const moderation = checkContent(textToCheck);
-    if (!moderation.allowed) {
-      return res.status(400).json({ error: moderation.reason || 'Post contains content that violates our guidelines.' });
+    const textToCheck = [title, !/^https?:\/\//i.test(content) ? content : '']
+      .filter(Boolean)
+      .join(' ');
+    if (textToCheck) {
+      const moderation = checkContent(textToCheck);
+      if (!moderation.allowed) {
+        return res.status(400).json({ error: moderation.reason || 'Post contains content that violates our guidelines.' });
+      }
     }
 
-    const post = await createPost({
+    const post = await runWithSystem(() => createPost({
       userId,
       type,
       contentType,
       content,
       title,
       tags,
-    });
+    }));
 
-    const user = await getUserById(userId);
+    const user = await runWithSystem(() => getUserById(userId));
     if (user) {
       (post as any).user = {
         id: user.id,

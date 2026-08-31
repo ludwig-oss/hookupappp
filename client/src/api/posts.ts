@@ -1,7 +1,8 @@
 import axios from 'axios';
-import { API_BASE } from './config';
+import { API_BASE, MEDIA_API_BASE } from './config';
 
 const API_URL = API_BASE + '/api/posts';
+const WRITE_API_URL = `${MEDIA_API_BASE || API_BASE}/api/posts`;
 
 /** Feed can wait on cold Render wake-up; avoid infinite "Loading feed…" */
 const FEED_TIMEOUT_MS = 25_000;
@@ -78,7 +79,10 @@ export const postsAPI = {
     title?: string;
     tags?: string[];
   }): Promise<{ post: DatingPost }> => {
-    const response = await axios.post(API_URL, data, { headers: getAuthHeaders() });
+    const response = await axios.post(WRITE_API_URL, data, {
+      headers: getAuthHeaders(),
+      timeout: 60_000,
+    });
     return response.data;
   },
 

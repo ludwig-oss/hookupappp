@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { AuthContext } from '../../context/AuthContext';
 import { postsAPI, DatingPost, FeedMode } from '../../api/posts';
 import { formatAxiosError } from '../../lib/apiError';
-import { uploadMediaDataUrl } from '../../lib/uploadMedia';
+import { prepareAndUploadFile } from '../../lib/uploadMedia';
 import './Widget.css';
 
 const BLOWING_UP_LIKES = 25;
@@ -275,10 +275,9 @@ export default function LoveFeedWidget({ onShareToFriends }: { onShareToFriends?
   const [postContent, setPostContent] = useState('');
   const [postTitle, setPostTitle] = useState('');
   const [postTags, setPostTags] = useState('');
-  const [mediaData, setMediaData] = useState<string | null>(null);
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [selectedMediaType, setSelectedMediaType] = useState<'image' | 'video' | null>(null);
-  const [mediaLoading, setMediaLoading] = useState(false);
   const [posting, setPosting] = useState(false);
   const [fullScreenMedia, setFullScreenMedia] = useState<{ type: 'image' | 'video'; src: string; postId: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -291,7 +290,7 @@ export default function LoveFeedWidget({ onShareToFriends }: { onShareToFriends?
 
   const closeCreateModal = () => {
     revokePreview();
-    setMediaData(null);
+    setPendingFile(null);
     setSelectedMediaType(null);
     setPostContent('');
     setPostTitle('');
@@ -363,26 +362,23 @@ export default function LoveFeedWidget({ onShareToFriends }: { onShareToFriends?
   }, [posts, recommendations, user, trackPostView]);
 
   const handleCreatePost = async () => {
-    if (!postContent.trim() && !mediaData) {
+    if (!postContent.trim() && !pendingFile) {
       alert('Add a statement, image or video');
       return;
     }
-    let content = mediaData || postContent.trim();
-    if (!content) return;
-    let resolvedContentType: 'text' | 'image' | 'video' = mediaData
-      ? (mediaData.startsWith('data:video/') || selectedMediaType === 'video' ? 'video' : 'image')
-      : 'text';
     setPosting(true);
     try {
-      if (mediaData && content.startsWith('data:') && (resolvedContentType === 'video' || content.length > 350_000)) {
-        content = await uploadMediaDataUrl(content, 'posts');
-        resolvedContentType = /\.(mp4|webm|mov|m4v)(\?|$)/i.test(content) ? 'video' : 'image';
+      let content = postContent.trim();
+      let resolvedContentType: 'text' | 'image' | 'video' = 'text';
+      if (pendingFile) {
+        content = await prepareAndUploadFile(pendingFile, 'posts');
+        resolvedContentType = pendingFile.type.startsWith('video/') ? 'video' : 'image';
       }
       await postsAPI.createPost({
         type: postType,
         contentType: resolvedContentType,
         content,
-        title: postTitle || undefined,
+        title: postTitle.trim() || (pendingFile ? postContent.trim() : '') || undefined,
         tags: postTags
           .split(/[,\s#]+/)
           .map((t) => t.trim())
@@ -390,14 +386,9 @@ export default function LoveFeedWidget({ onShareToFriends }: { onShareToFriends?
       });
       closeCreateModal();
       await loadFeed(feedMode);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Failed to create post', err);
-      const msg = err?.response?.data?.error || err?.message || 'Failed to create post';
-      if (err?.response?.status === 413 || msg.toLowerCase().includes('too large')) {
-        alert('Upload failed — try again on Wi‑Fi or use a shorter clip.');
-      } else {
-        alert(msg);
-      }
+      alert(formatAxiosError(err, 'Could not post. Try a shorter video or a smaller photo.'));
     } finally {
       setPosting(false);
     }
@@ -471,24 +462,18 @@ export default function LoveFeedWidget({ onShareToFriends }: { onShareToFriends?
   const processFile = (file: File) => {
     const isImage = file.type.startsWith('image/');
     const isVideo = file.type.startsWith('video/');
-    if (!isImage && !isVideo) return;
+    if (!isImage && !isVideo) {
+      alert('Please choose a photo or video.');
+      return;
+    }
+    if (isVideo && file.size > 80 * 1024 * 1024) {
+      alert('Video is too large (max 80MB). Try a shorter clip.');
+      return;
+    }
     revokePreview();
-    setMediaData(null);
+    setPendingFile(file);
     setSelectedMediaType(isVideo ? 'video' : 'image');
-    const objectUrl = URL.createObjectURL(file);
-    setPreviewUrl(objectUrl);
-    setMediaLoading(true);
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      setMediaData(reader.result as string);
-      setMediaLoading(false);
-    };
-    reader.onerror = () => {
-      setMediaLoading(false);
-      revokePreview();
-      alert('Could not read file. Try another.');
-    };
-    reader.readAsDataURL(file);
+    setPreviewUrl(URL.createObjectURL(file));
   };
 
   const handleMediaSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -790,17 +775,16 @@ export default function LoveFeedWidget({ onShareToFriends }: { onShareToFriends?
                 <input ref={captureImageRef} type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={handleMediaSelect} />
                 <input ref={captureVideoRef} type="file" accept="video/*" capture="user" style={{ display: 'none' }} onChange={handleMediaSelect} />
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
-                  <button type="button" className="love-feed-create-btn" style={{ padding: '6px 12px', fontSize: 13 }} onClick={() => fileInputRef.current?.click()} disabled={mediaLoading}>
+                  <button type="button" className="love-feed-create-btn" style={{ padding: '6px 12px', fontSize: 13 }} onClick={() => fileInputRef.current?.click()} disabled={posting}>
                     Choose file
                   </button>
-                  <button type="button" className="profile-location-btn" style={{ padding: '6px 12px', fontSize: 13 }} onClick={() => captureImageRef.current?.click()} disabled={mediaLoading}>
+                  <button type="button" className="profile-location-btn" style={{ padding: '6px 12px', fontSize: 13 }} onClick={() => captureImageRef.current?.click()} disabled={posting}>
                     📷 Take photo
                   </button>
-                  <button type="button" className="profile-location-btn" style={{ padding: '6px 12px', fontSize: 13 }} onClick={() => captureVideoRef.current?.click()} disabled={mediaLoading}>
+                  <button type="button" className="profile-location-btn" style={{ padding: '6px 12px', fontSize: 13 }} onClick={() => captureVideoRef.current?.click()} disabled={posting}>
                     🎬 Record video
                   </button>
                 </div>
-                {mediaLoading && selectedMediaType === 'video' && <p style={{ marginTop: 4, color: '#00d4ff', fontSize: 12 }}>Preparing video for post…</p>}
               </div>
               {previewUrl && (
                 <div className="love-feed-preview-wrap" style={{ marginTop: 12 }}>
@@ -821,7 +805,7 @@ export default function LoveFeedWidget({ onShareToFriends }: { onShareToFriends?
                     <img src={previewUrl} alt="Preview" style={{ maxWidth: '100%', maxHeight: 200, display: 'block', borderRadius: 8 }} />
                   )}
                   <div style={{ marginTop: 8, display: 'flex', gap: 8, alignItems: 'center' }}>
-                    <button type="button" className="profile-location-btn" style={{ padding: '6px 12px', fontSize: 12 }} onClick={() => { revokePreview(); setMediaData(null); setSelectedMediaType(null); if (fileInputRef.current) fileInputRef.current.value = ''; if (captureImageRef.current) captureImageRef.current.value = ''; if (captureVideoRef.current) captureVideoRef.current.value = ''; }}>
+                    <button type="button" className="profile-location-btn" style={{ padding: '6px 12px', fontSize: 12 }} onClick={() => { revokePreview(); setPendingFile(null); setSelectedMediaType(null); if (fileInputRef.current) fileInputRef.current.value = ''; if (captureImageRef.current) captureImageRef.current.value = ''; if (captureVideoRef.current) captureVideoRef.current.value = ''; }} disabled={posting}>
                       Remove & choose another
                     </button>
                   </div>
@@ -830,8 +814,8 @@ export default function LoveFeedWidget({ onShareToFriends }: { onShareToFriends?
             </div>
             <div className="love-feed-modal-footer">
               <button type="button" onClick={closeCreateModal} disabled={posting}>Cancel</button>
-              <button type="button" className="love-feed-create-btn" onClick={handleCreatePost} disabled={posting || (selectedMediaType === 'video' && mediaLoading)}>
-                {posting ? 'Posting…' : (selectedMediaType === 'video' && mediaLoading ? 'Preparing…' : 'Post')}
+              <button type="button" className="love-feed-create-btn" onClick={handleCreatePost} disabled={posting}>
+                {posting ? 'Posting…' : 'Post'}
               </button>
             </div>
           </div>

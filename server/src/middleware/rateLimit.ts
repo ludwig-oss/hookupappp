@@ -1,4 +1,5 @@
 import rateLimit from 'express-rate-limit';
+import jwt from 'jsonwebtoken';
 import type { Request } from 'express';
 
 const getWindowMs = (minutes: number) => minutes * 60 * 1000;
@@ -46,13 +47,45 @@ export const loginLimiter = rateLimit({
   keyGenerator: (req) => `login:${clientIp(req)}`,
 });
 
-/** General API rate limit per IP (applied to /api/*) */
+function authedUserId(req: Request): string | null {
+  const header = req.headers.authorization;
+  if (typeof header !== 'string' || !header.startsWith('Bearer ')) return null;
+  try {
+    const decoded = jwt.decode(header.slice(7));
+    if (decoded && typeof decoded === 'object' && decoded.userId != null) {
+      return String(decoded.userId);
+    }
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
+
+function isReadRequest(req: Request): boolean {
+  const method = (req.method || 'GET').toUpperCase();
+  if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') return true;
+  const path = `${req.originalUrl || ''} ${req.path || ''}`.toLowerCase();
+  return path.includes('/health');
+}
+
+/**
+ * Writes only, keyed by the signed-in person (not a shared Vercel/Render IP).
+ * Polling GET nearby/buzzes/profile must never trip this — that is not "too many requests".
+ */
 export const apiLimiter = rateLimit({
   windowMs: getWindowMs(1),
-  max: isProd ? 180 : 600,
+  max: isProd ? 90 : 400,
   message: { error: 'Too many requests. Please slow down.' },
   standardHeaders: true,
   legacyHeaders: false,
   validate: { trustProxy: isProd },
-  keyGenerator: (req) => `api:${clientIp(req)}`,
+  skip: (req) => isReadRequest(req),
+  keyGenerator: (req) => {
+    const uid = authedUserId(req);
+    if (uid) return `api:user:${uid}`;
+    return `api:ip:${clientIp(req)}`;
+  },
+  handler: (req, res, _next, options) => {
+    res.status(429).json(options.message);
+  },
 });

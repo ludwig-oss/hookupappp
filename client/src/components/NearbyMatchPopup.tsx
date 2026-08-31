@@ -1,7 +1,7 @@
 import { useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { AuthContext } from '../context/AuthContext';
 import { connectionsAPI, NearbyUser } from '../api/connections';
-import { markProximityBannerShown, shouldShowProximityBanner } from '../lib/proximitySession';
+import { markProximityBannerShown, setConnectionsStartView, shouldShowProximityBanner } from '../lib/proximitySession';
 import { nearbyRadiusForCoords, resolveWorkingCoords } from '../lib/locationSession';
 import { formatAxiosError } from '../lib/apiError';
 import { openChatWithUser } from '../lib/openChat';
@@ -21,11 +21,10 @@ const locationApi = {
 /** Proactive popup when someone matching your preferences is nearby (profile only). */
 export default function NearbyMatchPopup({ onOpenConnections }: Props) {
   const { user } = useContext(AuthContext);
-  const [match, setMatch] = useState<NearbyUser | null>(null);
+  const [queue, setQueue] = useState<NearbyUser[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const readyRef = useRef(false);
-  const seenRef = useRef<Set<string>>(new Set());
+  const queuedIdsRef = useRef<Set<string>>(new Set());
 
   const poll = useCallback(async () => {
     if (!user?.id) return;
@@ -41,27 +40,25 @@ export default function NearbyMatchPopup({ onOpenConnections }: Props) {
         radius: nearbyRadiusForCoords(coords),
         userId: user.id,
       });
-      if (!readyRef.current) {
-        users.forEach((u) => seenRef.current.add(u.id));
-        readyRef.current = true;
-        return;
-      }
-      const fresh = users.find(
-        (u) =>
-          !seenRef.current.has(u.id) &&
-          shouldShowProximityBanner('nearby-match', u.id)
+      const fresh = users.filter(
+        (u) => !queuedIdsRef.current.has(u.id) && shouldShowProximityBanner('nearby-match', u.id)
       );
-      users.forEach((u) => seenRef.current.add(u.id));
-      if (fresh) {
-        setMatch(fresh);
-        if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-          try {
-            new Notification('Hook Up — nearby match', {
-              body: 'Someone matching your preferences is nearby. Tap to respond.',
-            });
-          } catch {
-            /* ignore */
-          }
+      if (!fresh.length) return;
+      fresh.forEach((u) => queuedIdsRef.current.add(u.id));
+      setQueue((prev) => {
+        const have = new Set(prev.map((p) => p.id));
+        const add = fresh.filter((u) => !have.has(u.id));
+        return add.length ? [...prev, ...add] : prev;
+      });
+      if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+        try {
+          new Notification('Hook Up — nearby match', {
+            body: fresh.length > 1
+              ? `${fresh.length} people matching you are nearby.`
+              : 'Someone matching your preferences is nearby. Tap to respond.',
+          });
+        } catch {
+          /* ignore */
         }
       }
     } catch {
@@ -76,9 +73,14 @@ export default function NearbyMatchPopup({ onOpenConnections }: Props) {
     return () => window.clearInterval(t);
   }, [user?.id, poll]);
 
-  const dismiss = (otherId: string) => {
-    markProximityBannerShown('nearby-match', otherId);
-    setMatch(null);
+  const match = queue[0] || null;
+  const moreCount = Math.max(0, queue.length - 1);
+
+  const dropCurrent = (permanent: boolean) => {
+    if (!match) return;
+    if (permanent) markProximityBannerShown('nearby-match', match.id);
+    setQueue((prev) => prev.filter((u) => u.id !== match.id));
+    setError('');
   };
 
   const sendInterest = async () => {
@@ -100,13 +102,20 @@ export default function NearbyMatchPopup({ onOpenConnections }: Props) {
         userId: user.id,
       });
       const chatId = result.chatUserId;
-      dismiss(match.id);
+      dropCurrent(true);
       if (chatId) openChatWithUser(chatId);
     } catch (err: unknown) {
       setError(formatAxiosError(err, 'Could not send interest'));
     } finally {
       setLoading(false);
     }
+  };
+
+  const openList = () => {
+    setConnectionsStartView('nearby');
+    setQueue([]);
+    setError('');
+    onOpenConnections?.();
   };
 
   if (!match) return null;
@@ -117,6 +126,11 @@ export default function NearbyMatchPopup({ onOpenConnections }: Props) {
         <p className="walk-popup-badge">Nearby · your type</p>
         <h2>Someone matching you is nearby</h2>
         <p className="walk-popup-sub">Profile only — name hidden until you both match.</p>
+        {moreCount > 0 && (
+          <p className="walk-popup-sub" style={{ color: '#00d4ff' }}>
+            {moreCount} more nearby — Open list to see everyone.
+          </p>
+        )}
         <div
           className="walk-popup-avatar"
           style={{ overflow: 'hidden', padding: 0, border: '3px solid rgba(0, 212, 255, 0.6)' }}
@@ -129,18 +143,10 @@ export default function NearbyMatchPopup({ onOpenConnections }: Props) {
         </div>
         {error && <p className="walk-popup-error">{error}</p>}
         <div className="walk-popup-actions">
-          <button
-            type="button"
-            className="walk-btn-secondary"
-            disabled={loading}
-            onClick={() => {
-              dismiss(match.id);
-              onOpenConnections?.();
-            }}
-          >
+          <button type="button" className="walk-btn-secondary" disabled={loading} onClick={openList}>
             Open list
           </button>
-          <button type="button" className="walk-btn-secondary" disabled={loading} onClick={() => dismiss(match.id)}>
+          <button type="button" className="walk-btn-secondary" disabled={loading} onClick={() => dropCurrent(true)}>
             Later
           </button>
           <button type="button" className="walk-btn-primary" disabled={loading} onClick={sendInterest}>

@@ -20,6 +20,27 @@ export function shouldShowProximityBanner(
   return true;
 }
 
+const CONNECTIONS_START_KEY = 'hookup:connectionsStartView';
+
+export function setConnectionsStartView(view: 'nearby' | 'buzzes'): void {
+  try {
+    sessionStorage.setItem(CONNECTIONS_START_KEY, view);
+  } catch {
+    /* ignore */
+  }
+}
+
+export function takeConnectionsStartView(): 'nearby' | 'buzzes' | null {
+  try {
+    const v = sessionStorage.getItem(CONNECTIONS_START_KEY);
+    sessionStorage.removeItem(CONNECTIONS_START_KEY);
+    if (v === 'nearby' || v === 'buzzes') return v;
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
+
 /** Mark this person as handled — they will not pop up again. */
 export function markProximityBannerShown(
   kind: 'walk-suggest' | 'walk-incoming' | 'buzz-incoming' | 'nearby-match',

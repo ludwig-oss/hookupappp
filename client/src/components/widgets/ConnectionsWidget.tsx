@@ -4,6 +4,7 @@ import { connectionsAPI, NearbyUser, VenueCount, Buzz } from '../../api/connecti
 import { openChatWithUser } from '../../lib/openChat';
 import { formatAxiosError } from '../../lib/apiError';
 import { markLocationGranted, clearLocationGranted, isLocationGranted, readStoredCoords, nearbyRadiusForCoords, resolveWorkingCoords, requestGpsFromUserTap } from '../../lib/locationSession';
+import { takeConnectionsStartView } from '../../lib/proximitySession';
 import './Widget.css';
 
 const NEARBY_DISCOVERY_RADIUS_M = 500;
@@ -48,7 +49,7 @@ const PLACE_TYPES = [
 
 const ConnectionsWidget = () => {
   const { user, updateUser } = useContext(AuthContext);
-  const [view, setView] = useState<'main' | 'nearby' | 'venues' | 'buzzes' | 'search_places'>('main');
+  const [view, setView] = useState<'main' | 'nearby' | 'venues' | 'buzzes' | 'search_places'>(() => takeConnectionsStartView() || 'main');
   const [venues, setVenues] = useState<VenueCount[]>([]);
   const [nearbyUsers, setNearbyUsers] = useState<NearbyUser[]>([]);
   const [buzzes, setBuzzes] = useState<{ received: Buzz[]; sent: Buzz[] }>({ received: [], sent: [] });

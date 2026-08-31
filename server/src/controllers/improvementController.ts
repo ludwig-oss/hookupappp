@@ -107,7 +107,7 @@ export const applyAsGuide = async (req: Request, res: Response) => {
         entry.instagramHandle = handle.replace(/^@/, '');
       } else if (proofType === 'video') {
         const videoUrl = sanitizeHttpUrl(val?.videoUrl) || sanitizeForStorage(val?.videoUrl, LIMITS.HTTP_URL);
-        if (!videoUrl) return res.status(400).json({ error: `Video proof URL required for ${catKey}` });
+        if (!videoUrl) return res.status(400).json({ error: `Upload a video for ${catKey}` });
         entry.videoUrl = videoUrl;
       } else {
         const rawUrls = Array.isArray(val?.imageUrls)
@@ -118,7 +118,7 @@ export const applyAsGuide = async (req: Request, res: Response) => {
         const urls = rawUrls
           .map((u) => sanitizeHttpUrl(String(u)) || sanitizeForStorage(String(u), LIMITS.HTTP_URL))
           .filter(Boolean) as string[];
-        if (!urls.length) return res.status(400).json({ error: `Photo proof required for ${catKey}` });
+        if (!urls.length) return res.status(400).json({ error: `Upload a photo for ${catKey}` });
         entry.imageUrls = urls;
       }
       sanitizedProof[catKey] = entry;

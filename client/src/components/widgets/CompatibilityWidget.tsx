@@ -15,6 +15,8 @@ import {
 } from '../../api/improvement';
 import CoachVoteWidget from './CoachVoteWidget';
 import GuidePrepayPanel from './GuidePrepayPanel';
+import { prepareAndUploadFile } from '../../lib/uploadMedia';
+import { formatAxiosError } from '../../lib/apiError';
 import './Widget.css';
 
 const VIDEO_CALL_BASE = 'https://meet.jit.si';
@@ -63,6 +65,7 @@ export default function CompatibilityWidget() {
   const [applyProofPerCategory, setApplyProofPerCategory] = useState<
     Record<string, { whyGood: string; proofType: 'instagram' | 'pictures' | 'video'; instagramHandle: string; imageUrls: string; videoUrl: string }>
   >({});
+  const [proofUploading, setProofUploading] = useState<Record<string, boolean>>({});
   const [applyRegion, setApplyRegion] = useState('');
   // Expert set availability
   const [availStart, setAvailStart] = useState('');
@@ -292,6 +295,46 @@ export default function CompatibilityWidget() {
     loadAvailability(guide.id);
   };
 
+  const emptyProof = {
+    whyGood: '',
+    proofType: 'pictures' as const,
+    instagramHandle: '',
+    imageUrls: '',
+    videoUrl: '',
+  };
+
+  const uploadCategoryProof = async (catId: string, files: FileList | null, kind: 'pictures' | 'video') => {
+    if (!files?.length) return;
+    const current = applyProofPerCategory[catId] || emptyProof;
+    setProofUploading((prev) => ({ ...prev, [catId]: true }));
+    setError('');
+    try {
+      const picked = kind === 'video' ? [files[0]] : Array.from(files).slice(0, 8);
+      const urls: string[] = [];
+      for (const file of picked) {
+        if (kind === 'pictures' && !file.type.startsWith('image/')) continue;
+        if (kind === 'video' && !file.type.startsWith('video/')) continue;
+        urls.push(await prepareAndUploadFile(file, 'guide-proof'));
+      }
+      if (!urls.length) {
+        setError(kind === 'video' ? 'Please choose a video file.' : 'Please choose a photo.');
+        return;
+      }
+      setApplyProofPerCategory((prev) => {
+        const cur = prev[catId] || { ...emptyProof, ...current };
+        if (kind === 'video') {
+          return { ...prev, [catId]: { ...cur, proofType: 'video', videoUrl: urls[0] } };
+        }
+        const existing = cur.imageUrls.split(/[\s,]+/).filter(Boolean);
+        return { ...prev, [catId]: { ...cur, proofType: 'pictures', imageUrls: [...existing, ...urls].join(',') } };
+      });
+    } catch (err) {
+      setError(formatAxiosError(err, 'Could not upload proof. Try a smaller photo or a shorter video.'));
+    } finally {
+      setProofUploading((prev) => ({ ...prev, [catId]: false }));
+    }
+  };
+
   const handleSubmitExpertApplication = async () => {
     if (!user?.id) return;
     if (applyCategories.length === 0) {
@@ -328,11 +371,11 @@ export default function CompatibilityWidget() {
         return;
       }
       if (proofType === 'pictures' && !p.imageUrls?.trim()) {
-        setError(`Photo proof required for ${categories.find((c) => c.id === catId)?.name || catId}`);
+        setError(`Upload at least one photo for ${categories.find((c) => c.id === catId)?.name || catId}`);
         return;
       }
       if (proofType === 'video' && !p.videoUrl?.trim()) {
-        setError(`Video proof URL required for ${categories.find((c) => c.id === catId)?.name || catId}`);
+        setError(`Upload a video for ${categories.find((c) => c.id === catId)?.name || catId}`);
         return;
       }
       proofPerCategory[catId] = {
@@ -1075,8 +1118,8 @@ export default function CompatibilityWidget() {
                   style={{ width: '100%', padding: '8px', marginBottom: '8px', background: 'rgba(0,0,0,0.5)', border: '2px solid rgba(0, 212, 255, 0.4)', borderRadius: '8px', color: '#fff', fontSize: '12px' }}
                 >
                   <option value="instagram">Instagram proof (@handle or profile)</option>
-                  <option value="pictures">Photo proof (URLs)</option>
-                  <option value="video">Video proof (URL)</option>
+                  <option value="pictures">Photo proof (upload)</option>
+                  <option value="video">Video proof (upload)</option>
                 </select>
                 {proof.proofType === 'instagram' && (
                   <input
@@ -1088,22 +1131,71 @@ export default function CompatibilityWidget() {
                   />
                 )}
                 {proof.proofType === 'pictures' && (
-                  <input
-                    type="text"
-                    value={proof.imageUrls}
-                    onChange={e => setApplyProofPerCategory(prev => ({ ...prev, [catId]: { ...proof, imageUrls: e.target.value } }))}
-                    placeholder="Photo URLs (comma separated)"
-                    style={{ width: '100%', padding: '8px', background: 'rgba(0,0,0,0.5)', border: '2px solid rgba(0, 212, 255, 0.4)', borderRadius: '8px', color: '#fff', fontSize: '11px' }}
-                  />
+                  <div>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      disabled={!!proofUploading[catId]}
+                      onChange={(e) => {
+                        void uploadCategoryProof(catId, e.target.files, 'pictures');
+                        e.target.value = '';
+                      }}
+                      style={{ width: '100%', padding: '8px', background: 'rgba(0,0,0,0.5)', border: '2px solid rgba(0, 212, 255, 0.4)', borderRadius: '8px', color: '#fff', fontSize: '11px' }}
+                    />
+                    <p style={{ fontSize: 11, color: '#9ca3af', margin: '6px 0 0' }}>
+                      {proofUploading[catId] ? 'Uploading photo…' : 'Choose one or more photos from your phone or computer.'}
+                    </p>
+                    {proof.imageUrls.trim() && (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
+                        {proof.imageUrls.split(/[\s,]+/).filter(Boolean).map((url) => (
+                          <div key={url} style={{ position: 'relative' }}>
+                            <img src={url} alt="" style={{ width: 64, height: 64, objectFit: 'cover', borderRadius: 8, border: '1px solid rgba(0,212,255,0.4)' }} />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const next = proof.imageUrls.split(/[\s,]+/).filter((u) => u && u !== url).join(',');
+                                setApplyProofPerCategory((prev) => ({ ...prev, [catId]: { ...proof, imageUrls: next } }));
+                              }}
+                              style={{ position: 'absolute', top: -6, right: -6, width: 20, height: 20, borderRadius: '50%', border: 'none', background: '#ef4444', color: '#fff', cursor: 'pointer', fontSize: 12, lineHeight: '20px' }}
+                              aria-label="Remove photo"
+                            >
+                              ×
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 )}
                 {proof.proofType === 'video' && (
-                  <input
-                    type="text"
-                    value={proof.videoUrl}
-                    onChange={e => setApplyProofPerCategory(prev => ({ ...prev, [catId]: { ...proof, videoUrl: e.target.value } }))}
-                    placeholder="Video URL showing your skills"
-                    style={{ width: '100%', padding: '8px', background: 'rgba(0,0,0,0.5)', border: '2px solid rgba(0, 212, 255, 0.4)', borderRadius: '8px', color: '#fff', fontSize: '11px' }}
-                  />
+                  <div>
+                    <input
+                      type="file"
+                      accept="video/*"
+                      disabled={!!proofUploading[catId]}
+                      onChange={(e) => {
+                        void uploadCategoryProof(catId, e.target.files, 'video');
+                        e.target.value = '';
+                      }}
+                      style={{ width: '100%', padding: '8px', background: 'rgba(0,0,0,0.5)', border: '2px solid rgba(0, 212, 255, 0.4)', borderRadius: '8px', color: '#fff', fontSize: '11px' }}
+                    />
+                    <p style={{ fontSize: 11, color: '#9ca3af', margin: '6px 0 0' }}>
+                      {proofUploading[catId] ? 'Uploading video…' : 'Choose a video from your phone or computer.'}
+                    </p>
+                    {proof.videoUrl.trim() && (
+                      <div style={{ marginTop: 8 }}>
+                        <video src={proof.videoUrl} controls playsInline style={{ width: '100%', maxHeight: 180, borderRadius: 8, background: '#000' }} />
+                        <button
+                          type="button"
+                          onClick={() => setApplyProofPerCategory((prev) => ({ ...prev, [catId]: { ...proof, videoUrl: '' } }))}
+                          style={{ marginTop: 6, background: 'transparent', border: '1px solid #ef4444', color: '#ef4444', borderRadius: 6, padding: '4px 8px', fontSize: 11, cursor: 'pointer' }}
+                        >
+                          Remove video
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
             );
@@ -1112,7 +1204,7 @@ export default function CompatibilityWidget() {
             <>
               <label style={{ display: 'block', marginBottom: '6px', color: '#00d4ff', fontSize: '12px' }}>Your region (required)</label>
               <input type="text" value={applyRegion} onChange={e => setApplyRegion(e.target.value)} placeholder="e.g. Munich, Europe, Global" style={{ width: '100%', padding: '10px', marginBottom: '16px', background: 'rgba(0,0,0,0.5)', border: '2px solid rgba(0, 212, 255, 0.4)', borderRadius: '8px', color: '#fff', fontSize: '12px' }} />
-              <button type="button" onClick={handleSubmitExpertApplication} disabled={loading} style={{ padding: '12px 20px', background: 'rgba(0, 212, 255, 0.3)', border: '2px solid #00d4ff', borderRadius: '8px', color: '#00d4ff', fontFamily: 'Orbitron, monospace', fontWeight: 'bold', cursor: 'pointer' }}>{loading ? 'Submitting...' : 'Submit application'}</button>
+              <button type="button" onClick={handleSubmitExpertApplication} disabled={loading || Object.values(proofUploading).some(Boolean)} style={{ padding: '12px 20px', background: 'rgba(0, 212, 255, 0.3)', border: '2px solid #00d4ff', borderRadius: '8px', color: '#00d4ff', fontFamily: 'Orbitron, monospace', fontWeight: 'bold', cursor: 'pointer' }}>{loading ? 'Submitting...' : Object.values(proofUploading).some(Boolean) ? 'Uploading proof…' : 'Submit application'}</button>
             </>
           )}
         </div>

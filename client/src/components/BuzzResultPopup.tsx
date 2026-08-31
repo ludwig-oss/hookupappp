@@ -2,6 +2,7 @@ import { useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { AuthContext } from '../context/AuthContext';
 import { connectionsAPI, Buzz } from '../api/connections';
 import { openChatWithUser } from '../lib/openChat';
+import { notifyDevice } from '../lib/deviceNotify';
 import './WalkingPartnerPopup.css';
 
 const SEEN_KEY = 'hookup:buzz-outcome-seen';
@@ -52,17 +53,12 @@ export default function BuzzResultPopup() {
         seenRef.current.add(next.id);
         writeSeen(seenRef.current);
         setOutcome(next);
-        if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-          const body =
-            next.status === 'rejected'
-              ? 'They declined your request.'
-              : 'They accepted — you can talk in Communications.';
-          try {
-            new Notification('Hook Up', { body });
-          } catch {
-            /* ignore */
-          }
-        }
+        notifyDevice(
+          'Hook Up',
+          next.status === 'rejected'
+            ? 'They declined. They were not added to chat.'
+            : 'They accepted — you can talk in Communications.'
+        );
       }
     } catch {
       /* offline */

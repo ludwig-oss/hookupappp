@@ -67,12 +67,37 @@ export function readStoredCoords(): StoredCoords | null {
   }
 }
 
-/** Wider search when coords come from profile/IP (laptop/tablet without GPS). */
+/** 50 m nearby. Indoor GPS is noisy, so pad by reported accuracy (cap 250 m). City-typed coords stay wider. */
+export const NEARBY_TARGET_M = 50;
+
 export function nearbyRadiusForCoords(coords: StoredCoords | null): number {
-  if (!coords) return 500;
+  if (!coords) return NEARBY_TARGET_M;
   if (coords.source === 'profile' || coords.source === 'server') return 12_000;
   if (typeof coords.accuracy === 'number' && coords.accuracy > 3000) return 12_000;
-  return 500;
+  const pad = typeof coords.accuracy === 'number' ? Math.max(0, coords.accuracy) : 80;
+  return Math.min(250, NEARBY_TARGET_M + pad);
+}
+
+export function startGpsWatch(onFix: (coords: StoredCoords) => void): () => void {
+  if (typeof navigator === 'undefined' || !navigator.geolocation) return () => {};
+  const id = navigator.geolocation.watchPosition(
+    (pos) => {
+      const coords = coordsFromPosition(pos);
+      markLocationGranted(coords);
+      onFix(coords);
+    },
+    () => {
+      /* keep watching — indoor GPS often errors once then succeeds */
+    },
+    { enableHighAccuracy: true, timeout: 30000, maximumAge: 10000 }
+  );
+  return () => {
+    try {
+      navigator.geolocation.clearWatch(id);
+    } catch {
+      /* ignore */
+    }
+  };
 }
 
 function tryGps(timeoutMs = 20000, highAccuracy = false): Promise<StoredCoords | null> {
@@ -149,9 +174,9 @@ export function requestGpsFromUserTap(): Promise<{ coords: StoredCoords | null; 
     const onOk = (pos: GeolocationPosition) => finish(coordsFromPosition(pos));
 
     const options: PositionOptions = {
-      enableHighAccuracy: false,
-      timeout: 20000,
-      maximumAge: 300_000,
+      enableHighAccuracy: true,
+      timeout: 25000,
+      maximumAge: 15_000,
     };
 
     // iOS Safari often succeeds with watchPosition after a false first "denied".

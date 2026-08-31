@@ -1,13 +1,18 @@
 .personal-safety-shield {
-  position: fixed;
-  bottom: 16px;
-  right: 16px;
-  z-index: 10050;
+  position: relative;
+  width: 100%;
+  max-width: 520px;
+  margin: 0 auto;
   display: flex;
   flex-direction: column;
-  align-items: flex-end;
+  align-items: stretch;
   gap: 8px;
-  max-width: min(360px, calc(100vw - 32px));
+}
+
+.pss-embed {
+  position: relative;
+  right: auto;
+  bottom: auto;
 }
 
 .pss-fab {

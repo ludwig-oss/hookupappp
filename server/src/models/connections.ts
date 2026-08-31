@@ -236,15 +236,7 @@ export async function getNearbyUsers(
       otherUser.location.lat, otherUser.location.lon
     );
 
-    const viewerCity = (user.city || '').toLowerCase().trim();
-    const otherCity = (otherUser.city || '').toLowerCase().trim();
-    const sameCity =
-      viewerCity.length > 0 &&
-      otherCity.length > 0 &&
-      (viewerCity === otherCity || viewerCity.includes(otherCity) || otherCity.includes(viewerCity));
-    const matchRadius = sameCity ? Math.max(radius, 12_000) : radius;
-
-    if (distance <= matchRadius) {
+    if (distance <= radius) {
       const otherPref = await getUserPreference(otherUser.id);
       if (!usersMatchPreferences(user, otherUser, userPref, otherPref)) continue;
 

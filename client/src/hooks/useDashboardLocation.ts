@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { connectionsAPI } from '../api/connections';
-import { markLocationGranted, readStoredCoords, resolveWorkingCoords } from '../lib/locationSession';
+import { markLocationGranted, readStoredCoords, resolveWorkingCoords, startGpsWatch } from '../lib/locationSession';
 
 const locationApi = {
   getMyLocation: () => connectionsAPI.getMyLocation(),
@@ -40,6 +40,8 @@ export function useDashboardLocation(user?: UserLoc) {
       if (coords) push(coords);
     });
 
+    const stopWatch = startGpsWatch((coords) => push(coords));
+
     intervalRef.current = setInterval(() => {
       const c = coordsRef.current || readStoredCoords();
       if (c) push(c);
@@ -54,6 +56,7 @@ export function useDashboardLocation(user?: UserLoc) {
     }, 45_000);
 
     return () => {
+      stopWatch();
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
   }, [user?.id, user?.city, user?.country]);

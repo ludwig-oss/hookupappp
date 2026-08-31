@@ -5,9 +5,8 @@ import { useVolumeTripleSOS } from '../hooks/useVolumeTripleSOS';
 import { useScreenTapSOS } from '../hooks/useScreenTapSOS';
 import './PersonalSafetyShield.css';
 
-export default function PersonalSafetyShield() {
+export default function PersonalSafetyShield({ visible = false }: { visible?: boolean }) {
   const { user } = useContext(AuthContext);
-  const [open, setOpen] = useState(false);
   const [settings, setSettings] = useState<ShieldSettings | null>(null);
   const [ready, setReady] = useState(false);
   const [missing, setMissing] = useState<string[]>([]);
@@ -149,26 +148,15 @@ export default function PersonalSafetyShield() {
     setPhraseInput('');
   };
 
-  if (!user?.id) return null;
+  if (!user?.id || !visible) return null;
 
   return (
-    <div className="personal-safety-shield">
+    <div className="personal-safety-shield pss-embed">
       {settings?.armed && !activeId && (
         <span className="pss-status-chip">Shield armed · {settings.screenTapCount} taps · volume ×3 · secret word</span>
       )}
       {activeId && <span className="pss-status-chip">Safety signal active — server keeps alerting if phone dies</span>}
 
-      <button
-        type="button"
-        className={`pss-fab ${settings?.armed ? 'armed' : ''} ${activeId ? 'active-alert' : ''}`}
-        onClick={() => setOpen((o) => !o)}
-        aria-label="Personal safety shield"
-      >
-        <span>{activeId ? '🆘' : settings?.armed ? '🛡️' : '⚙️'}</span>
-        <span>{activeId ? 'Signal active' : settings?.armed ? 'Shield on' : 'Safety shield'}</span>
-      </button>
-
-      {open && (
         <div className="pss-panel" role="dialog">
           <h3>Personal safety shield</h3>
           <p className="pss-hint">
@@ -280,11 +268,7 @@ export default function PersonalSafetyShield() {
           )}
 
           {status && <p className="pss-hint" style={{ color: '#86efac', marginTop: 10 }}>{status}</p>}
-          <button type="button" className="pss-btn ghost" style={{ marginTop: 8 }} onClick={() => setOpen(false)}>
-            Close
-          </button>
         </div>
-      )}
     </div>
   );
 }

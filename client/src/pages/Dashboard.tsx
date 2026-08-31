@@ -24,6 +24,7 @@ import ConnectionsBuzzPopup from '../components/ConnectionsBuzzPopup';
 import BuzzResultPopup from '../components/BuzzResultPopup';
 import NearbyMatchPopup from '../components/NearbyMatchPopup';
 import { useDashboardLocation } from '../hooks/useDashboardLocation';
+import { askNotifyPermission } from '../lib/deviceNotify';
 import CoachVoteSwipePopup from '../components/CoachVoteSwipePopup';
 import DateSafetyMonitor from '../components/DateSafetyMonitor';
 import SchoolDailyNotification from '../components/SchoolDailyNotification';
@@ -55,7 +56,7 @@ const Dashboard = () => {
   const [uploading, setUploading] = useState(false);
   const [selectedHighlightId, setSelectedHighlightId] = useState<string | null>(null);
   const [viewingHighlight, setViewingHighlight] = useState<any | null>(null);
-  type WidgetId = 'activity' | 'compatibility' | 'connections' | 'highlights' | 'lovefeed' | 'advice' | 'confession' | 'chat' | 'events' | 'help' | null;
+  type WidgetId = 'activity' | 'compatibility' | 'connections' | 'highlights' | 'lovefeed' | 'advice' | 'confession' | 'chat' | 'events' | 'help' | 'safety' | null;
   const [openWidget, setOpenWidget] = useState<WidgetId>(null);
   const [returnToWidget, setReturnToWidget] = useState<'help' | null>(null);
 
@@ -92,6 +93,10 @@ const Dashboard = () => {
   const [inRelationship, setInRelationship] = useState(false);
 
   useDashboardLocation(user?.id ? { id: user.id, city: user.city, country: user.country } : undefined);
+
+  useEffect(() => {
+    askNotifyPermission();
+  }, []);
 
   useEffect(() => {
     if (user?.id) {
@@ -323,7 +328,6 @@ const Dashboard = () => {
       <MensDatingTipPopup />
       <WomensDatingTipPopup />
       <MensRespectSafetyPopup />
-      {!openWidget && <PersonalSafetyShield />}
       <div className="stars-background" aria-hidden>
         <div className="love-bg-hearts" />
         <div className="love-bg-float">
@@ -393,6 +397,10 @@ const Dashboard = () => {
             <div className="widget-card-icon">?</div>
             <div className="widget-card-title">Help</div>
           </div>
+          <div className="widget-card" onClick={() => openWidgetFromHome('safety')} role="button" tabIndex={0} onKeyDown={(e) => e.key === 'Enter' && openWidgetFromHome('safety')}>
+            <div className="widget-card-icon">🛡</div>
+            <div className="widget-card-title">Safety shield</div>
+          </div>
         </div>
       ) : (
         <div className="widget-open-panel">
@@ -436,6 +444,7 @@ const Dashboard = () => {
             {openWidget === 'advice' && <DatingAdviceWidget />}
             {openWidget === 'confession' && <ConfessionBoothWidget />}
             {openWidget === 'events' && <EventsWidget />}
+            {openWidget === 'safety' && <PersonalSafetyShield visible />}
             {openWidget === 'help' && (
               <HelpWidget
                 onOpenChat={() => {

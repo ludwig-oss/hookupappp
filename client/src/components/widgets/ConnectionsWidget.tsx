@@ -3,11 +3,10 @@ import { AuthContext } from '../../context/AuthContext';
 import { connectionsAPI, NearbyUser, VenueCount, Buzz } from '../../api/connections';
 import { openChatWithUser } from '../../lib/openChat';
 import { formatAxiosError } from '../../lib/apiError';
-import { markLocationGranted, clearLocationGranted, isLocationGranted, readStoredCoords, nearbyRadiusForCoords, resolveWorkingCoords, requestGpsFromUserTap } from '../../lib/locationSession';
+import { markLocationGranted, clearLocationGranted, isLocationGranted, readStoredCoords, nearbyRadiusForCoords, resolveWorkingCoords, requestGpsFromUserTap, startGpsWatch } from '../../lib/locationSession';
+import { askNotifyPermission, notifyDevice } from '../../lib/deviceNotify';
 import { takeConnectionsStartView } from '../../lib/proximitySession';
 import './Widget.css';
-
-const NEARBY_DISCOVERY_RADIUS_M = 500;
 
 const locationApi = {
   getMyLocation: () => connectionsAPI.getMyLocation(),
@@ -143,6 +142,25 @@ const ConnectionsWidget = () => {
     }
   }, [ensureLocation]);
 
+  useEffect(() => {
+    askNotifyPermission();
+    let stop = () => {};
+    const beginWatch = () => {
+      stop();
+      stop = startGpsWatch((coords) => {
+        applyCoords(coords);
+      });
+    };
+    if (isLocationGranted() || readStoredCoords()) {
+      beginWatch();
+    } else if (typeof navigator !== 'undefined' && navigator.permissions?.query) {
+      navigator.permissions.query({ name: 'geolocation' as PermissionName }).then((p) => {
+        if (p.state === 'granted') beginWatch();
+      }).catch(() => {});
+    }
+    return () => stop();
+  }, [applyCoords]);
+
   const loadBuzzes = useCallback(async () => {
     if (!user?.id) return;
     try {
@@ -155,13 +173,7 @@ const ConnectionsWidget = () => {
         if (newBuzzes.length > 0) {
           setComfortingMessage('Someone nearby showed interest — respond below.');
           setTimeout(() => setComfortingMessage(null), 6000);
-          if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-            try {
-              new Notification('Hook Up', { body: 'Someone nearby wants to connect!' });
-            } catch {
-              /* ignore */
-            }
-          }
+          notifyDevice('Hook Up', 'Someone nearby wants to connect!');
         }
       } else {
         buzzInitializedRef.current = true;
@@ -364,9 +376,11 @@ const ConnectionsWidget = () => {
       await refreshNearby();
       const chatId = (result as { chatUserId?: string }).chatUserId;
       if (chatId) {
+        notifyDevice('Hook Up', "It's a match — they're in Communications.");
         openChatWithUser(chatId);
         setComfortingMessage("It's a match! They're in your Communications — start chatting.");
       } else {
+        notifyDevice('Hook Up', 'Interest sent. You will be notified when they answer.');
         setComfortingMessage("Interest sent! When they respond Yes or Talk later, they'll appear in Communications.");
       }
       setTimeout(() => setComfortingMessage(null), 4000);
@@ -388,6 +402,7 @@ const ConnectionsWidget = () => {
       }
       if (response === 'accepted' || response === 'talk_later') {
         const chatId = (result as any).chatUserId;
+        notifyDevice('Hook Up', "They're in Communications. You can talk now.");
         setComfortingMessage(response === 'talk_later'
           ? "They're in your Communications. Chat when you're both ready!"
           : "They're in your Communications. You can start chatting now!");
@@ -395,6 +410,8 @@ const ConnectionsWidget = () => {
         if (chatId) {
           openChatWithUser(chatId);
         }
+      } else {
+        notifyDevice('Hook Up', 'Declined. They were not added to chat.');
       }
       await loadBuzzes();
       await refreshNearby();
@@ -445,33 +462,55 @@ const ConnectionsWidget = () => {
           background: 'rgba(255, 107, 157, 0.12)',
         }}
       >
-        <p style={{ margin: '0 0 8px', fontWeight: 700, color: '#fff', fontFamily: 'Orbitron, monospace', fontSize: 13 }}>
-          Use your location?
+        <p style={{ margin: '0 0 6px', fontWeight: 700, color: '#fff', fontFamily: 'Orbitron, monospace', fontSize: 12 }}>
+          Nearby (50 m)
         </p>
-        <p style={{ margin: '0 0 12px', fontSize: 12, color: '#d1d5db', lineHeight: 1.45 }}>
-          See who&apos;s nearby and match with people around you. Tap <strong>Yes</strong> — your phone will ask to allow location (you can say no there too).
+        <p style={{ margin: '0 0 8px', fontSize: 11, color: '#d1d5db', lineHeight: 1.4 }}>
+          Tap Yes so we can find people next to you, including indoors.
         </p>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 6 }}>
           <button
             type="button"
-            className="auth-button"
             disabled={requestingLocation || loading}
-            onClick={requestLocationAccess}
-            style={{ flex: 1, minWidth: 120, margin: 0 }}
+            onClick={() => {
+              askNotifyPermission();
+              requestLocationAccess();
+            }}
+            style={{
+              flex: 1,
+              margin: 0,
+              padding: '7px 10px',
+              fontSize: 12,
+              fontFamily: 'Orbitron, monospace',
+              fontWeight: 700,
+              borderRadius: 8,
+              border: '1px solid #00d4ff',
+              background: 'rgba(0, 212, 255, 0.15)',
+              color: '#00d4ff',
+            }}
           >
-            {requestingLocation ? 'Waiting…' : 'Yes, use location'}
+            {requestingLocation ? '…' : 'Yes'}
           </button>
           <button
             type="button"
-            className="auth-button secondary"
             disabled={requestingLocation || loading}
             onClick={() => {
               setLocationDeclined(true);
               clearLocationGranted();
             }}
-            style={{ flex: 1, minWidth: 100, margin: 0, background: 'rgba(255,255,255,0.1)' }}
+            style={{
+              flex: 1,
+              margin: 0,
+              padding: '7px 10px',
+              fontSize: 12,
+              fontFamily: 'Orbitron, monospace',
+              borderRadius: 8,
+              border: '1px solid rgba(255,255,255,0.25)',
+              background: 'rgba(255,255,255,0.08)',
+              color: '#d1d5db',
+            }}
           >
-            No thanks
+            No
           </button>
         </div>
         <p style={{ margin: '14px 0 8px', fontSize: 12, color: '#d1d5db' }}>
@@ -493,7 +532,6 @@ const ConnectionsWidget = () => {
         />
         <button
           type="button"
-          className="auth-button"
           disabled={requestingLocation || loading}
           onClick={async () => {
             const city = placeCity.trim();

@@ -4,6 +4,7 @@ import { connectionsAPI, Buzz } from '../api/connections';
 import { openChatWithUser } from '../lib/openChat';
 import { markProximityBannerShown, setConnectionsStartView, shouldShowProximityBanner } from '../lib/proximitySession';
 import { formatAxiosError } from '../lib/apiError';
+import { notifyDevice } from '../lib/deviceNotify';
 import './WalkingPartnerPopup.css';
 
 type Props = {
@@ -32,17 +33,12 @@ export default function ConnectionsBuzzPopup({ onOpenConnections }: Props) {
         const add = fresh.filter((b) => !have.has(b.id));
         return add.length ? [...prev, ...add] : prev;
       });
-      if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-        try {
-          new Notification('Hook Up — nearby interest', {
-            body: fresh.length > 1
-              ? `${fresh.length} people want to connect.`
-              : 'Someone wants to connect. Accept or decline.',
-          });
-        } catch {
-          /* ignore */
-        }
-      }
+      notifyDevice(
+        'Hook Up — nearby interest',
+        fresh.length > 1
+          ? `${fresh.length} people want to connect.`
+          : 'Someone wants to connect. Accept or decline.'
+      );
     } catch {
       /* offline */
     }

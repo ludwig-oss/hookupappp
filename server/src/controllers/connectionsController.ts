@@ -15,6 +15,7 @@ import { ensureMatchConversation } from '../models/chat.js';
 import { fetchVenuesByType } from '../utils/overpass.js';
 import { sanitizeBuzzLocation } from '../utils/sanitize.js';
 import { runWithSystem } from '../db/context.js';
+import { sendPushToUser } from '../realtime/push.js';
 
 export const sendBuzz = async (req: Request, res: Response) => {
   try {
@@ -40,6 +41,16 @@ export const sendBuzz = async (req: Request, res: Response) => {
     const mutual = await runWithSystem(() => tryMutualBuzzMatch(userId, toUserId));
     if (mutual.matched && mutual.chatUserId) {
       await ensureMatchConversation(userId, mutual.chatUserId);
+      sendPushToUser(toUserId, {
+        title: 'Hook Up',
+        body: "It's a match — you can talk in Communications.",
+        data: { type: 'buzz_match', vibrate: '1' },
+      }).catch(() => {});
+      sendPushToUser(userId, {
+        title: 'Hook Up',
+        body: "It's a match — you can talk in Communications.",
+        data: { type: 'buzz_match', vibrate: '1' },
+      }).catch(() => {});
       return res.json({
         message: "It's a match! They're in your Communications.",
         buzz,
@@ -47,6 +58,12 @@ export const sendBuzz = async (req: Request, res: Response) => {
         chatUserId: mutual.chatUserId,
       });
     }
+
+    sendPushToUser(toUserId, {
+      title: 'Someone nearby is interested',
+      body: 'Open Connections to accept or decline.',
+      data: { type: 'buzz_incoming', vibrate: '1' },
+    }).catch(() => {});
 
     res.json({ message: 'Buzz sent successfully', buzz });
   } catch (error: any) {
@@ -99,11 +116,23 @@ export const respondBuzz = async (req: Request, res: Response) => {
 
     if ((response === 'accepted' || response === 'talk_later') && result.buzz && userId && otherId) {
       await ensureMatchConversation(userId, otherId);
+      sendPushToUser(otherId, {
+        title: 'They are interested too',
+        body: 'You can talk in Communications now.',
+        data: { type: 'buzz_accepted', vibrate: '1' },
+      }).catch(() => {});
       return res.json({
         ...result,
         openChat: true,
         chatUserId: otherId,
       });
+    }
+    if (response === 'rejected' && otherId) {
+      sendPushToUser(otherId, {
+        title: 'Not interested',
+        body: 'They declined. They were not added to chat.',
+        data: { type: 'buzz_rejected', vibrate: '1' },
+      }).catch(() => {});
     }
     res.json(result);
   } catch (error: any) {
@@ -207,7 +236,7 @@ export const getNearby = async (req: Request, res: Response) => {
 
     const lat = parseFloat(req.query.lat as string);
     const lon = parseFloat(req.query.lon as string);
-    const radius = parseInt(req.query.radius as string, 10) || 500;
+    const radius = parseInt(req.query.radius as string, 10) || 50;
 
     if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
       return res.status(400).json({ error: 'Latitude and longitude are required' });

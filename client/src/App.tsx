@@ -28,6 +28,7 @@ import { profileAPI } from './api/profile';
 import { settingsAPI } from './api/settings';
 import { setStoredLanguage } from './i18n/languageStorage';
 import { userForStorage } from './lib/userStorage';
+import { applyAppTheme } from './lib/theme';
 import './api/http';
 
 function isPlainObject(v: unknown): v is Record<string, any> {
@@ -233,14 +234,8 @@ function App() {
   };
 
   useEffect(() => {
-    const apply = () => {
-      const hour = new Date().getHours();
-      const night = hour < 7 || hour >= 19;
-      document.documentElement.classList.toggle('theme-night', night);
-      document.documentElement.classList.toggle('theme-day', !night);
-    };
-    apply();
-    const t = window.setInterval(apply, 60_000);
+    applyAppTheme();
+    const t = window.setInterval(() => applyAppTheme(), 60_000);
     return () => window.clearInterval(t);
   }, []);
 

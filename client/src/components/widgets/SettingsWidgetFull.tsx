@@ -18,6 +18,7 @@ import ReportModal from './ReportModal';
 import { safetyAPI } from '../../api/safety';
 import { personalSafetyAPI } from '../../api/personalSafety';
 import { authAPI } from '../../api/auth';
+import { applyAppTheme, type AppTheme } from '../../lib/theme';
 import { normalizeUsernameInput, USERNAME_HINT } from '../../lib/username';
 import { walletAPI, GuideWalletSummary } from '../../api/improvement';
 import { LANGUAGES } from '../../constants/languages';
@@ -169,6 +170,9 @@ const SettingsWidgetFull = () => {
     try {
       const response = await settingsAPI.getSettings();
       setSettings(response.settings);
+      if (response.settings?.accessibility?.theme) {
+        applyAppTheme(response.settings.accessibility.theme);
+      }
     } catch (err) {
       console.error('Failed to load settings', err);
     }
@@ -308,17 +312,18 @@ const SettingsWidgetFull = () => {
     }
   };
 
-  const handleThemeChange = (theme: 'light' | 'dark' | 'system') => {
+  const handleThemeChange = (theme: AppTheme) => {
+    applyAppTheme(theme);
     if (settings) {
       handleSaveSettings('accessibility', { ...settings.accessibility, theme });
-      // Apply theme immediately
-      if (theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
-        document.documentElement.classList.add('dark-mode');
-      } else {
-        document.documentElement.classList.remove('dark-mode');
-      }
     }
   };
+
+  const themeButtons: { id: AppTheme; label: string }[] = [
+    { id: 'light', label: 'Bright' },
+    { id: 'dark', label: 'Dark' },
+    { id: 'system', label: 'Automatic' },
+  ];
 
   const tabs: { id: TabType; label: string; icon: string }[] = [
     { id: 'profile', label: 'Profile', icon: '👤' },
@@ -526,6 +531,24 @@ const SettingsWidgetFull = () => {
       {activeTab === 'preferences' && (
         <div className="settings-section">
           <h3 style={{ marginBottom: '20px', fontSize: '20px' }}>Dating Preferences</h3>
+
+          <div className="form-group" style={{ marginBottom: '20px' }}>
+            <label style={{ display: 'block', marginBottom: '8px', fontWeight: 600 }}>Theme</label>
+            <p style={{ fontSize: 12, color: '#6b7280', margin: '0 0 10px' }}>Bright in the day, dark at night — or lock one.</p>
+            <div style={{ display: 'flex', gap: '10px' }}>
+              {themeButtons.map((opt) => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => handleThemeChange(opt.id)}
+                  className={settings?.accessibility.theme === opt.id ? 'select-user-btn' : 'back-btn'}
+                  style={{ flex: 1 }}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
 
           <div className="form-group" style={{ marginBottom: '20px' }}>
             <label style={{ display: 'block', marginBottom: '8px', fontWeight: 600 }}>Orientation</label>
@@ -1380,15 +1403,17 @@ const SettingsWidgetFull = () => {
 
           <div className="form-group" style={{ marginBottom: '20px' }}>
             <label style={{ display: 'block', marginBottom: '8px', fontWeight: 600 }}>Theme</label>
+            <p style={{ fontSize: 12, color: '#6b7280', margin: '0 0 10px' }}>Bright, dark, or automatic (bright 7:00–19:00, dark at night).</p>
             <div style={{ display: 'flex', gap: '10px' }}>
-              {(['light', 'dark', 'system'] as const).map(theme => (
+              {themeButtons.map((opt) => (
                 <button
-                  key={theme}
-                  onClick={() => handleThemeChange(theme)}
-                  className={settings.accessibility.theme === theme ? 'select-user-btn' : 'back-btn'}
-                  style={{ flex: 1, textTransform: 'capitalize' }}
+                  key={opt.id}
+                  type="button"
+                  onClick={() => handleThemeChange(opt.id)}
+                  className={settings.accessibility.theme === opt.id ? 'select-user-btn' : 'back-btn'}
+                  style={{ flex: 1 }}
                 >
-                  {theme}
+                  {opt.label}
                 </button>
               ))}
             </div>

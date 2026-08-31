@@ -10,11 +10,11 @@ export function clampClipRange(duration: number, start: number, end: number): { 
 }
 
 /** Trim a video blob to a short looping clip (GIF-style profile video). */
-export async function trimVideoToDataUrl(
+export async function trimVideoToBlob(
   source: Blob,
   startSec: number,
   endSec: number
-): Promise<string> {
+): Promise<Blob> {
   const url = URL.createObjectURL(source);
   try {
     const video = document.createElement('video');
@@ -82,16 +82,24 @@ export async function trimVideoToDataUrl(
     draw();
     const blob = await done;
     video.pause();
-
-    return await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(String(reader.result));
-      reader.onerror = () => reject(new Error('Could not encode video'));
-      reader.readAsDataURL(blob);
-    });
+    return blob;
   } finally {
     URL.revokeObjectURL(url);
   }
+}
+
+export async function trimVideoToDataUrl(
+  source: Blob,
+  startSec: number,
+  endSec: number
+): Promise<string> {
+  const blob = await trimVideoToBlob(source, startSec, endSec);
+  return await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(new Error('Could not encode video'));
+    reader.readAsDataURL(blob);
+  });
 }
 
 export function isVideoDataUrl(url: string): boolean {

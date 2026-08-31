@@ -139,7 +139,11 @@ export const profileAPI = {
   },
 
   completeProfileSetup: async (profilePicture: string | null, userId: string): Promise<{ user: any }> => {
-    const response = await axios.post(`${MEDIA_API_URL}/setup`, { profilePicture, userId }, { headers: getAuthHeaders() });
+    const response = await axios.post(
+      `${API_URL}/setup`,
+      { profilePicture, userId },
+      { headers: getAuthHeaders(), timeout: 45_000 }
+    );
     return response.data;
   },
 

@@ -50,6 +50,9 @@ export async function uploadMediaFile(file: Blob, folder = 'posts', _filename = 
     if (err instanceof DOMException && err.name === 'AbortError') {
       throw new Error('Upload timed out. Try a smaller photo or a shorter video.');
     }
+    if (err instanceof TypeError) {
+      throw new Error("Can't reach the server. Check your connection, or try a smaller photo.");
+    }
     throw err;
   } finally {
     window.clearTimeout(timer);

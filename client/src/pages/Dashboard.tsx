@@ -171,19 +171,14 @@ const Dashboard = () => {
 
     setUploading(true);
     try {
-      const reader = new FileReader();
-      reader.onloadend = async () => {
-        const base64 = reader.result as string;
-        const base64Data = base64.split(',')[1];
-        const res = await profileAPI.uploadProfilePicture(base64Data, user.id);
-        setProfilePicture(base64);
-        updateUser({ profilePicture: base64, photoVerifiedAt: res.photoVerifiedAt ?? null });
-        setShowPhotoVerification(true);
-      };
-      reader.readAsDataURL(file);
+      const mediaUrl = await prepareAndUploadFile(file, 'profile');
+      const res = await profileAPI.uploadProfilePicture(mediaUrl, user.id);
+      setProfilePicture(mediaUrl);
+      updateUser({ profilePicture: mediaUrl, photoVerifiedAt: res.photoVerifiedAt ?? null });
+      setShowPhotoVerification(true);
     } catch (error) {
       console.error('Failed to upload profile picture:', error);
-      alert('Failed to upload profile picture');
+      alert(formatAxiosError(error, 'Failed to upload profile picture'));
     } finally {
       setUploading(false);
     }

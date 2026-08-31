@@ -2,6 +2,8 @@ import { useState, useEffect, useContext, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { AuthContext } from '../../context/AuthContext';
 import { profileAPI } from '../../api/profile';
+import { prepareAndUploadFile } from '../../lib/uploadMedia';
+import { formatAxiosError } from '../../lib/apiError';
 import PhotoVerificationModal from '../PhotoVerificationModal';
 import { discoverAPI, UserPreference } from '../../api/discover';
 import { settingsAPI, UserSettings } from '../../api/settings';
@@ -266,25 +268,16 @@ const SettingsWidgetFull = () => {
     setLoading(true);
     setError('');
     try {
-      const reader = new FileReader();
-      reader.onloadend = async () => {
-        const base64 = reader.result as string;
-        try {
-          const res = await profileAPI.uploadProfilePicture(base64, user!.id);
-          setProfilePicture(base64);
-          updateUser({ ...user!, profilePicture: base64, photoVerifiedAt: res.photoVerifiedAt ?? null });
-          setSuccess('Profile picture updated! Verify it\'s you to get the green badge.');
-          setTimeout(() => setSuccess(''), 4000);
-          setShowPhotoVerification(true);
-        } catch (err: any) {
-          setError(err.response?.data?.error || 'Upload failed');
-        } finally {
-          setLoading(false);
-        }
-      };
-      reader.readAsDataURL(file);
-    } catch (err: any) {
-      setError('Failed to process image');
+      const mediaUrl = await prepareAndUploadFile(file, 'profile');
+      const res = await profileAPI.uploadProfilePicture(mediaUrl, user!.id);
+      setProfilePicture(mediaUrl);
+      updateUser({ ...user!, profilePicture: mediaUrl, photoVerifiedAt: res.photoVerifiedAt ?? null });
+      setSuccess('Profile picture updated! Verify it\'s you to get the green badge.');
+      setTimeout(() => setSuccess(''), 4000);
+      setShowPhotoVerification(true);
+    } catch (err: unknown) {
+      setError(formatAxiosError(err, 'Upload failed'));
+    } finally {
       setLoading(false);
     }
   };

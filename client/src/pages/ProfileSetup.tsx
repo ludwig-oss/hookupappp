@@ -1,18 +1,25 @@
-import { useState, useContext, useRef, useCallback } from 'react';
+import { useState, useContext, useRef, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
 import { profileAPI } from '../api/profile';
 import { formatAxiosError } from '../lib/apiError';
-import { prepareMediaForUpload } from '../lib/prepareMediaUpload';
-import { trimVideoToDataUrl, isVideoDataUrl, clampClipRange, MAX_CLIP_SEC } from '../lib/trimVideo';
+import { prepareAndUploadFile } from '../lib/uploadMedia';
+import { trimVideoToBlob, clampClipRange, MAX_CLIP_SEC } from '../lib/trimVideo';
 import './ProfileSetup.css';
 
 type MediaMode = 'photo' | 'clip';
 
+function asUploadFile(blob: Blob, fallbackName: string): File {
+  if (blob instanceof File && blob.name) return blob;
+  const ext = blob.type.includes('webm') ? 'webm' : blob.type.includes('mp4') ? 'mp4' : blob.type.startsWith('image/') ? 'jpg' : 'bin';
+  return new File([blob], fallbackName.replace(/\.[^.]+$/, '') + '.' + ext, { type: blob.type || 'application/octet-stream' });
+}
+
 const ProfileSetup = () => {
   const { user, login } = useContext(AuthContext);
   const navigate = useNavigate();
-  const [profileMedia, setProfileMedia] = useState<string | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [uploadBlob, setUploadBlob] = useState<Blob | null>(null);
   const [mediaMode, setMediaMode] = useState<MediaMode>('photo');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -29,9 +36,23 @@ const ProfileSetup = () => {
   const recordStreamRef = useRef<MediaStream | null>(null);
   const recordTimerRef = useRef<number | null>(null);
 
-  const isVideo = profileMedia ? isVideoDataUrl(profileMedia) : false;
+  const isVideo = mediaMode === 'clip' || Boolean(uploadBlob?.type.startsWith('video/'));
 
-  const finishSetup = async (media: string | null) => {
+  useEffect(() => {
+    return () => {
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+    };
+  }, [previewUrl]);
+
+  const setMediaFromBlob = (blob: Blob) => {
+    setPreviewUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return URL.createObjectURL(blob);
+    });
+    setUploadBlob(blob);
+  };
+
+  const finishSetup = async (blob: Blob | null) => {
     if (!user?.id) {
       setError('Session expired. Please log in again.');
       return;
@@ -39,17 +60,18 @@ const ProfileSetup = () => {
     setLoading(true);
     setError('');
     try {
-      let payload = media;
-      if (payload) {
-        payload = await prepareMediaForUpload(payload);
+      let pictureUrl: string | null = null;
+      if (blob) {
+        const file = asUploadFile(blob, mediaMode === 'clip' ? 'clip.webm' : 'photo.jpg');
+        pictureUrl = await prepareAndUploadFile(file, 'profile');
       }
-      const response = await profileAPI.completeProfileSetup(payload, user.id);
+      const response = await profileAPI.completeProfileSetup(pictureUrl, user.id);
       const token = localStorage.getItem('token') || '';
       login(
         {
           ...user,
           profileSetupComplete: true,
-          profilePicture: response.user?.profilePicture ?? payload,
+          profilePicture: response.user?.profilePicture ?? pictureUrl,
         },
         token
       );
@@ -82,9 +104,7 @@ const ProfileSetup = () => {
     }
     setError('');
     setRawVideoBlob(null);
-    const reader = new FileReader();
-    reader.onloadend = () => setProfileMedia(reader.result as string);
-    reader.readAsDataURL(file);
+    setMediaFromBlob(file);
     e.target.value = '';
   };
 
@@ -92,8 +112,8 @@ const ProfileSetup = () => {
     setTrimming(true);
     setError('');
     try {
-      const dataUrl = await trimVideoToDataUrl(blob, start, end);
-      setProfileMedia(dataUrl);
+      const clipped = await trimVideoToBlob(blob, start, end);
+      setMediaFromBlob(clipped);
     } catch {
       setError('Could not trim video — try a shorter clip');
     } finally {
@@ -182,7 +202,11 @@ const ProfileSetup = () => {
 
   const switchMode = (mode: MediaMode) => {
     setMediaMode(mode);
-    setProfileMedia(null);
+    setPreviewUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return null;
+    });
+    setUploadBlob(null);
     setRawVideoBlob(null);
     setError('');
   };
@@ -211,11 +235,11 @@ const ProfileSetup = () => {
             onClick={openCirclePicker}
             aria-label={mediaMode === 'photo' ? 'Upload photo' : 'Upload short clip'}
           >
-            {profileMedia ? (
+            {previewUrl ? (
               isVideo ? (
-                <video src={profileMedia} className="preview-image" autoPlay loop muted playsInline />
+                <video src={previewUrl} className="preview-image" autoPlay loop muted playsInline />
               ) : (
-                <img src={profileMedia} alt="Profile" className="preview-image" />
+                <img src={previewUrl} alt="Profile" className="preview-image" />
               )
             ) : (
               <div className="placeholder-circle">
@@ -227,7 +251,7 @@ const ProfileSetup = () => {
 
           {mediaMode === 'photo' ? (
             <button type="button" onClick={() => photoInputRef.current?.click()} className="upload-button" disabled={loading}>
-              {profileMedia ? 'Change Photo' : 'Choose Photo'}
+              {previewUrl ? 'Change Photo' : 'Choose Photo'}
             </button>
           ) : (
             <div className="clip-actions">
@@ -283,9 +307,9 @@ const ProfileSetup = () => {
 
         <button
           type="button"
-          onClick={() => finishSetup(profileMedia)}
+          onClick={() => finishSetup(uploadBlob)}
           className="continue-button"
-          disabled={loading || trimming || !profileMedia}
+          disabled={loading || trimming || !uploadBlob}
         >
           {loading ? 'Setting up...' : 'Continue'}
         </button>

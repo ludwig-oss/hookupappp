@@ -1,6 +1,8 @@
 import { useState, useEffect, useContext, useRef } from 'react';
 import { AuthContext } from '../../context/AuthContext';
 import { profileAPI, ProfileData } from '../../api/profile';
+import { prepareAndUploadFile } from '../../lib/uploadMedia';
+import { formatAxiosError } from '../../lib/apiError';
 import WidgetModal from './WidgetModal';
 import './Widget.css';
 
@@ -48,25 +50,16 @@ const ProfileWidget = () => {
     setError('');
 
     try {
-      const reader = new FileReader();
-      reader.onloadend = async () => {
-        const base64 = reader.result as string;
-        try {
-          if (isDisappearing) {
-            await profileAPI.addDisappearingPhoto(base64, user!.id);
-          } else {
-            await profileAPI.uploadProfilePicture(base64, user!.id);
-          }
-          await loadProfile();
-        } catch (err: any) {
-          setError(err.response?.data?.error || 'Upload failed');
-        } finally {
-          setUploading(false);
-        }
-      };
-      reader.readAsDataURL(file);
-    } catch (err: any) {
-      setError('Failed to process image');
+      const mediaUrl = await prepareAndUploadFile(file, isDisappearing ? 'disappearing' : 'profile');
+      if (isDisappearing) {
+        await profileAPI.addDisappearingPhoto(mediaUrl, user!.id);
+      } else {
+        await profileAPI.uploadProfilePicture(mediaUrl, user!.id);
+      }
+      await loadProfile();
+    } catch (err: unknown) {
+      setError(formatAxiosError(err, 'Upload failed'));
+    } finally {
       setUploading(false);
     }
   };

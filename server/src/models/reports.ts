@@ -1,7 +1,7 @@
 import { readFile, writeFile } from 'fs/promises';
 import { join } from 'path';
 
-export type ReportCategory = 'harassment' | 'fake' | 'inappropriate' | 'spam' | 'scam' | 'underage' | 'violence' | 'other';
+export type ReportCategory = 'harassment' | 'fake' | 'inappropriate' | 'spam' | 'scam' | 'underage' | 'violence' | 'stolen' | 'other';
 
 export interface Report {
   id: string;

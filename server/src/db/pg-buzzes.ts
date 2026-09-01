@@ -71,6 +71,21 @@ export async function getSentBuzzes(userId: string): Promise<Buzz[]> {
   return res.rows.map(rowToBuzz);
 }
 
+/** People you already sent interest to, or already answered — hide from nearby. */
+export async function getInteractedNearbyUserIds(userId: string): Promise<Set<string>> {
+  const res = await query<{ other_id: string }>(
+    `SELECT CASE
+       WHEN from_user_id = $1 THEN to_user_id
+       ELSE from_user_id
+     END AS other_id
+     FROM connection_buzzes
+     WHERE from_user_id = $1
+        OR (to_user_id = $1 AND status <> 'pending')`,
+    [userId]
+  );
+  return new Set(res.rows.map((row) => row.other_id));
+}
+
 export async function respondToBuzz(
   buzzId: string,
   status: Exclude<BuzzStatus, 'pending'>

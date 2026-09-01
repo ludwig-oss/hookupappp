@@ -1,4 +1,4 @@
-/** Proximity popups (walk nearby, incoming interest) — never show the same person again after you act. */
+/** Proximity popups and nearby list — never show the same person again after you act. */
 
 const PERMANENT_PREFIX = 'proximity:permanent:';
 
@@ -41,7 +41,9 @@ export function takeConnectionsStartView(): 'nearby' | 'buzzes' | null {
   return null;
 }
 
-/** Mark this person as handled — they will not pop up again. */
+/** Mark this person as handled — they will not pop up or reappear in Nearby. */
+export const NEARBY_HANDLED_EVENT = 'hookup:nearby-handled';
+
 export function markProximityBannerShown(
   kind: 'walk-suggest' | 'walk-incoming' | 'buzz-incoming' | 'nearby-match',
   otherUserId: string
@@ -52,4 +54,18 @@ export function markProximityBannerShown(
   } catch {
     /* ignore */
   }
+  try {
+    window.dispatchEvent(new Event(NEARBY_HANDLED_EVENT));
+  } catch {
+    /* ignore */
+  }
+}
+
+/** True if you already acted on this person (popup Send interest / Later / Yes / No). */
+export function hasHandledNearbyPerson(otherUserId: string): boolean {
+  if (!otherUserId) return false;
+  return (
+    !shouldShowProximityBanner('nearby-match', otherUserId) ||
+    !shouldShowProximityBanner('buzz-incoming', otherUserId)
+  );
 }

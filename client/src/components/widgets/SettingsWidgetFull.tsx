@@ -19,6 +19,7 @@ import { safetyAPI } from '../../api/safety';
 import { personalSafetyAPI } from '../../api/personalSafety';
 import { authAPI } from '../../api/auth';
 import { applyAppTheme, type AppTheme } from '../../lib/theme';
+import { applyStayLoggedIn, getStayLoggedIn } from '../../lib/authStorage';
 import { normalizeUsernameInput, USERNAME_HINT } from '../../lib/username';
 import { walletAPI, GuideWalletSummary } from '../../api/improvement';
 import { LANGUAGES } from '../../constants/languages';
@@ -46,6 +47,7 @@ const SettingsWidgetFull = () => {
   const [newPassword, setNewPassword] = useState('');
   const [confirmNewPassword, setConfirmNewPassword] = useState('');
   const [passwordError, setPasswordError] = useState('');
+  const [stayLoggedIn, setStayLoggedIn] = useState(true);
   const [passwordSuccess, setPasswordSuccess] = useState('');
   const [age, setAge] = useState<number | ''>('');
   const [gender, setGender] = useState('');
@@ -113,6 +115,7 @@ const SettingsWidgetFull = () => {
       setEmail(user.email || '');
       setUserPhoneNumber(formatPhoneNumber((user as any).phoneNumber || ''));
       setProfilePicture(user.profilePicture || null);
+      setStayLoggedIn(getStayLoggedIn());
       loadAllData();
     }
   }, [user?.id]);
@@ -1498,6 +1501,26 @@ const SettingsWidgetFull = () => {
       {activeTab === 'account' && (
         <div className="settings-section">
           <h3 style={{ marginBottom: '20px', fontSize: '20px' }}>Account Management</h3>
+
+          <div style={{ marginBottom: '30px', padding: '20px', background: '#fff', border: '2px solid #e5e7eb', borderRadius: '12px' }}>
+            <h4 style={{ marginBottom: '8px' }}>Stay logged in</h4>
+            <p style={{ fontSize: 13, color: '#6b7280', marginBottom: 12 }}>
+              Like Instagram: when this is on, you don’t have to enter your PIN or password again on this device. Turn it off to sign in again next time you close the app.
+            </p>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontWeight: 600 }}>
+              <input
+                type="checkbox"
+                checked={stayLoggedIn}
+                onChange={(e) => {
+                  const on = e.target.checked;
+                  setStayLoggedIn(on);
+                  applyStayLoggedIn(on);
+                }}
+                style={{ width: 20, height: 20 }}
+              />
+              Stay logged in on this device
+            </label>
+          </div>
 
           <div style={{ marginBottom: '30px', padding: '20px', background: '#f9fafb', borderRadius: '12px' }}>
             <h4 style={{ marginBottom: '12px' }}>Account Information</h4>

@@ -4,6 +4,7 @@ import { chatAPI, Message, Conversation, User } from '../../api/chat';
 import { safetyAPI, EmergencyContact, TextingCoach, CoachingSession } from '../../api/safety';
 import { ratingsAPI, AverageRatings, UnmatchReason } from '../../api/ratings';
 import ExperienceReviewModal from '../ExperienceReviewModal';
+import { renderMessageContent } from '../ChatGifBubble';
 import { chatEngagementAPI, ProofOfLove, ConnectionPrompt, ChatChallenge } from '../../api/chatEngagement';
 import './Widget.css';
 
@@ -882,7 +883,7 @@ const ChatWidgetFull = () => {
                         textAlign: msg.fromUserId === user?.id ? 'right' : 'left',
                       }}
                     >
-                      <p style={{ margin: 0, color: '#fff' }}>{msg.content}</p>
+                      {renderMessageContent(msg.content)}
                       <span style={{ fontSize: '10px', color: '#9ca3af' }}>
                         {new Date(msg.createdAt).toLocaleTimeString()}
                       </span>

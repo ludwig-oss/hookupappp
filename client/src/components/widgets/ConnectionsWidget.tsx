@@ -5,7 +5,7 @@ import { openChatWithUser } from '../../lib/openChat';
 import { formatAxiosError } from '../../lib/apiError';
 import { markLocationGranted, clearLocationGranted, isLocationGranted, readStoredCoords, nearbyRadiusForCoords, resolveWorkingCoords, requestGpsFromUserTap, startGpsWatch } from '../../lib/locationSession';
 import { askNotifyPermission, notifyDevice } from '../../lib/deviceNotify';
-import { takeConnectionsStartView } from '../../lib/proximitySession';
+import { hasHandledNearbyPerson, markProximityBannerShown, NEARBY_HANDLED_EVENT, takeConnectionsStartView } from '../../lib/proximitySession';
 import './Widget.css';
 
 const locationApi = {
@@ -47,7 +47,7 @@ const PLACE_TYPES = [
 ];
 
 const ConnectionsWidget = () => {
-  const { user, updateUser } = useContext(AuthContext);
+  const { user } = useContext(AuthContext);
   const [view, setView] = useState<'main' | 'nearby' | 'venues' | 'buzzes' | 'search_places'>(() => takeConnectionsStartView() || 'main');
   const [venues, setVenues] = useState<VenueCount[]>([]);
   const [nearbyUsers, setNearbyUsers] = useState<NearbyUser[]>([]);
@@ -74,6 +74,13 @@ const ConnectionsWidget = () => {
   const [requestingLocation, setRequestingLocation] = useState(false);
   const [placeCity, setPlaceCity] = useState(() => String((user as { city?: string } | null)?.city || ''));
   const [placeCountry, setPlaceCountry] = useState(() => String((user as { country?: string } | null)?.country || ''));
+  const [handledRev, setHandledRev] = useState(0);
+
+  useEffect(() => {
+    const onHandled = () => setHandledRev((n) => n + 1);
+    window.addEventListener(NEARBY_HANDLED_EVENT, onHandled);
+    return () => window.removeEventListener(NEARBY_HANDLED_EVENT, onHandled);
+  }, []);
 
   const fetchPlaceLabel = async (lat: number, lon: number) => {
     try {
@@ -96,8 +103,7 @@ const ConnectionsWidget = () => {
       userId: user.id,
       connectionsVisible: vis,
     });
-    updateUser({ connectionsVisible: vis });
-  }, [user?.id, connectionsVisible, updateUser]);
+  }, [user?.id, connectionsVisible]);
 
   const applyCoords = useCallback((coords: { lat: number; lon: number; accuracy?: number }) => {
     setLocation(coords);
@@ -142,13 +148,16 @@ const ConnectionsWidget = () => {
     }
   }, [ensureLocation]);
 
+  const applyCoordsRef = useRef(applyCoords);
+  applyCoordsRef.current = applyCoords;
+
   useEffect(() => {
     askNotifyPermission();
     let stop = () => {};
     const beginWatch = () => {
       stop();
       stop = startGpsWatch((coords) => {
-        applyCoords(coords);
+        applyCoordsRef.current(coords);
       });
     };
     if (isLocationGranted() || readStoredCoords()) {
@@ -159,7 +168,7 @@ const ConnectionsWidget = () => {
       }).catch(() => {});
     }
     return () => stop();
-  }, [applyCoords]);
+  }, []);
 
   const loadBuzzes = useCallback(async () => {
     if (!user?.id) return;
@@ -190,7 +199,6 @@ const ConnectionsWidget = () => {
     if (!loc) return;
     const radiusCoords = readStoredCoords() || loc;
     try {
-      await pushLocation(loc, connectionsVisible);
       const response = await connectionsAPI.getNearby({
         lat: loc.lat,
         lon: loc.lon,
@@ -201,7 +209,7 @@ const ConnectionsWidget = () => {
     } catch (err: unknown) {
       setError(formatAxiosError(err, 'Could not refresh nearby'));
     }
-  }, [user?.id, location, connectionsVisible, pushLocation]);
+  }, [user?.id, location]);
 
   useEffect(() => {
     const city = (user as { city?: string } | null)?.city;
@@ -372,6 +380,7 @@ const ConnectionsWidget = () => {
         },
         userId: user.id,
       });
+      markProximityBannerShown('nearby-match', toUserId);
       await loadBuzzes();
       await refreshNearby();
       const chatId = (result as { chatUserId?: string }).chatUserId;
@@ -396,6 +405,8 @@ const ConnectionsWidget = () => {
     setError('');
     try {
       const result = await connectionsAPI.respondBuzz({ buzzId, response });
+      const otherId = buzzes.received.find((b) => b.id === buzzId)?.fromUserId;
+      if (otherId) markProximityBannerShown('buzz-incoming', otherId);
       if (response === 'rejected' && result.comfortingMessage) {
         setComfortingMessage(result.comfortingMessage);
         setTimeout(() => setComfortingMessage(null), 8000);
@@ -422,14 +433,22 @@ const ConnectionsWidget = () => {
     }
   };
 
-  const nearbyIds = new Set(nearbyUsers.map((u) => u.id));
+  const visibleNearbyUsers = nearbyUsers.filter((u) => {
+    void handledRev;
+    const pendingIncoming = buzzes.received.some((b) => b.fromUserId === u.id && b.status === 'pending');
+    if (pendingIncoming) return true;
+    if (hasHandledNearbyPerson(u.id)) return false;
+    if (buzzes.sent.some((b) => b.toUserId === u.id)) return false;
+    return true;
+  });
+  const nearbyIds = new Set(visibleNearbyUsers.map((u) => u.id));
   const pendingBuzzNotNearby = buzzes.received.filter(
     (b) => b.status === 'pending' && !nearbyIds.has(b.fromUserId)
   );
 
   const renderPersonActions = (personId: string, receivedBuzz?: Buzz) => {
     const buzz = receivedBuzz || buzzes.received.find((b) => b.fromUserId === personId && b.status === 'pending');
-    const alreadyBuzzed = buzzes.sent.some((b) => b.toUserId === personId && b.status === 'pending');
+    const alreadyBuzzed = buzzes.sent.some((b) => b.toUserId === personId);
 
     if (buzz) {
       return (
@@ -580,7 +599,7 @@ const ConnectionsWidget = () => {
         </p>
       );
     }
-    if (nearbyUsers.length === 0 && pendingBuzzNotNearby.length === 0) {
+    if (visibleNearbyUsers.length === 0 && pendingBuzzNotNearby.length === 0) {
       return (
         <p style={{ color: '#9ca3af', fontSize: '12px', fontFamily: 'Orbitron, monospace', textAlign: 'center', padding: '20px 0' }}>
           No one nearby right now. The list updates automatically — check again in a moment.
@@ -616,7 +635,7 @@ const ConnectionsWidget = () => {
             {renderPersonActions(buzz.fromUserId, buzz)}
           </div>
         ))}
-        {nearbyUsers.map((nearbyUser) => (
+        {visibleNearbyUsers.map((nearbyUser) => (
           <div
             key={nearbyUser.id}
             style={{
@@ -719,8 +738,8 @@ const ConnectionsWidget = () => {
           )}
           <div style={{ marginBottom: 14 }}>
             <strong style={{ color: '#00d4ff', fontSize: 13, fontFamily: 'Orbitron, monospace', display: 'block', marginBottom: 8 }}>
-              Nearby now{buzzes.received.filter((b) => b.status === 'pending').length > 0 || nearbyUsers.length > 0
-                ? ` · ${nearbyUsers.length} visible${buzzes.received.filter((b) => b.status === 'pending').length > 0 ? ` · ${buzzes.received.filter((b) => b.status === 'pending').length} buzz` : ''}`
+              Nearby now{buzzes.received.filter((b) => b.status === 'pending').length > 0 || visibleNearbyUsers.length > 0
+                ? ` · ${visibleNearbyUsers.length} visible${buzzes.received.filter((b) => b.status === 'pending').length > 0 ? ` · ${buzzes.received.filter((b) => b.status === 'pending').length} buzz` : ''}`
                 : ''}
             </strong>
             {renderNearbyList()}

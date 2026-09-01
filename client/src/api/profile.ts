@@ -59,7 +59,9 @@ export interface ProfileData {
 export const profileAPI = {
   /** Get current user's full profile (requires Authorization header). Use after login to sync from server. */
   getCurrentUser: async (): Promise<ProfileData> => {
-    const response = await axios.get(`${MEDIA_API_URL}/me`, { headers: getAuthHeaders() });
+    // Same origin as signup/login so a just-created session is not fetched from a
+    // different host (Render) that can 404/CORS-fail and wipe the new account.
+    const response = await axios.get(`${API_URL}/me`, { headers: getAuthHeaders() });
     return response.data;
   },
 

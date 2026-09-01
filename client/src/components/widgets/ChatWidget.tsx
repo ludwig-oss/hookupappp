@@ -16,6 +16,9 @@ import RelationshipCouplePanel from './RelationshipCouplePanel';
 import VoiceSafetyPanel from '../VoiceSafetyPanel';
 import ProfileMedia from '../ProfileMedia';
 import TranslateButton from '../TranslateButton';
+import GifEmojiPicker from '../GifEmojiPicker';
+import { messageTranslateText, renderMessageContent } from '../ChatGifBubble';
+import { parseChatGif, previewChatContent } from '../../lib/chatGif';
 import { voiceRecordingAPI } from '../../api/voiceRecording';
 import '../../pages/Dashboard.css';
 
@@ -34,22 +37,6 @@ const formatMessageTime = (createdAt: string | Date) => {
 };
 
 const MEETUP_KEYWORDS = /\b(meet|meeting|date|meet up|meetup|see you|coffee|dinner|movie|tonight|tomorrow|get together|hang out|pick me up|drop by|meet me|meeting up|meetup|catch up|grab a drink|go out)\b/i;
-
-function renderMessageContent(content: string) {
-  if (content.startsWith('data:image/') || content.startsWith('data:image/gif')) {
-    return <img src={content} alt="GIF" className="chat-bubble-media" />;
-  }
-  if (content.startsWith('data:video/')) {
-    return <video src={content} className="chat-bubble-media" controls />;
-  }
-  if (content.startsWith('data:audio/')) {
-    return <audio src={content} className="chat-bubble-audio" controls />;
-  }
-  if (/^https?:\/\//.test(content) && (content.includes('gif') || /\.(gif|webp|png|jpg|jpeg)/i.test(content))) {
-    return <img src={content} alt="GIF" className="chat-bubble-media" />;
-  }
-  return <div className="chat-bubble-content">{content}</div>;
-}
 
 export interface EnrichedMeetupPlan extends MeetupPlan {
   emergencyContactName?: string;
@@ -211,8 +198,8 @@ const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId, onOpenGuides }: Ch
   const [convoPrompt, setConvoPrompt] = useState<string | null>(null);
   const convoPromptRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const [gifUrl, setGifUrl] = useState('');
-  const [showGifInput, setShowGifInput] = useState(false);
+  const [showGifPicker, setShowGifPicker] = useState(false);
+  const [gifPickerTab, setGifPickerTab] = useState<'gifs' | 'emojis'>('gifs');
   const [recordingAudio, setRecordingAudio] = useState(false);
   const [recordingVideo, setRecordingVideo] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -481,11 +468,11 @@ const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId, onOpenGuides }: Ch
       setMessages((prev) => [...prev, message]);
       if (nextDeadline) setReplyDeadline(nextDeadline);
       await loadConversations();
-      if (!content.startsWith('data:') && !meetupDismissedForChat && MEETUP_KEYWORDS.test(content)) {
+      if (!content.startsWith('data:') && !parseChatGif(content) && !meetupDismissedForChat && MEETUP_KEYWORDS.test(content)) {
         if (!boundariesDismissedForChat) setShowBoundariesModal(true);
         else setShowMeetupPopup(true);
       }
-      if (relationship?.status === 'active' && selectedUserId === relationship.partnerUserId && !content.startsWith('data:')) {
+      if (relationship?.status === 'active' && selectedUserId === relationship.partnerUserId && !content.startsWith('data:') && !parseChatGif(content)) {
         voiceRecordingAPI.detectGathering(selectedUserId, content).catch(() => {});
       }
     } catch (e: any) {
@@ -520,14 +507,6 @@ const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId, onOpenGuides }: Ch
     if (!text || !selectedUserId || !user?.id) return;
     setInputText('');
     await sendContent(text);
-  };
-
-  const handleSendGif = () => {
-    const url = gifUrl.trim();
-    if (!url) return;
-    setGifUrl('');
-    setShowGifInput(false);
-    sendContent(url);
   };
 
   const startAudioRecording = async () => {
@@ -1469,8 +1448,7 @@ const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId, onOpenGuides }: Ch
                       </span>
                     <span className="chat-list-preview">
                       {c.lastMessage.fromUserId === user?.id ? 'You: ' : ''}
-                      {c.lastMessage.content.startsWith('data:') ? (c.lastMessage.content.startsWith('data:image') || c.lastMessage.content.startsWith('data:video') ? '📷 Media' : c.lastMessage.content.startsWith('data:audio') ? '🎤 Voice' : 'Media') : /^https?:\/\//.test(c.lastMessage.content) && (c.lastMessage.content.includes('gif') || /\.(gif|webp|png|jpg)/i.test(c.lastMessage.content)) ? '🖼️ GIF' : c.lastMessage.content.slice(0, 40)}
-                      {!c.lastMessage.content.startsWith('data:') && !/^https?:\/\//.test(c.lastMessage.content) && c.lastMessage.content.length > 40 ? '…' : ''}
+                      {previewChatContent(c.lastMessage.content)}
                     </span>
                     </div>
                     <span className="chat-list-time">{formatMessageTime(c.lastMessage.createdAt)}</span>
@@ -1732,7 +1710,7 @@ const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId, onOpenGuides }: Ch
                   className={`chat-bubble ${isMe ? 'chat-bubble-sent' : 'chat-bubble-received'} ${isSafetyMessage ? 'chat-bubble-safety' : ''}`}
                 >
                   {renderMessageContent(msg.content)}
-                  <TranslateButton text={msg.content.replace(/\[Safety\]/g, '').trim()} />
+                  <TranslateButton text={messageTranslateText(msg.content)} />
                   <div className="chat-bubble-time">{formatMessageTime(msg.createdAt)}</div>
                 </div>
               );
@@ -1863,19 +1841,17 @@ const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId, onOpenGuides }: Ch
               <button type="button" className="chat-back-btn" style={{ marginTop: 8 }} onClick={() => setShowConflictSolutions([])}>Dismiss</button>
             </div>
           )}
-          {showGifInput && (
-            <div className="chat-gif-row">
-              <input
-                type="url"
-                className="chat-input"
-                placeholder="Paste GIF or image URL..."
-                value={gifUrl}
-                onChange={(e) => setGifUrl(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleSendGif()}
-              />
-              <button type="button" className="chat-send-btn" onClick={handleSendGif} disabled={!gifUrl.trim()}>Send GIF</button>
-              <button type="button" className="chat-back-btn" onClick={() => { setShowGifInput(false); setGifUrl(''); }}>Cancel</button>
-            </div>
+          {showGifPicker && user?.id && (
+            <GifEmojiPicker
+              userId={user.id}
+              startTab={gifPickerTab}
+              onSend={(encoded) => {
+                setShowGifPicker(false);
+                sendContent(encoded);
+              }}
+              onInsertEmoji={(emoji) => setInputText((prev) => `${prev}${emoji}`)}
+              onClose={() => setShowGifPicker(false)}
+            />
           )}
           <div className="chat-toolbar">
             {isRelationshipThread && (
@@ -1883,8 +1859,27 @@ const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId, onOpenGuides }: Ch
                 💡 Solutions
               </button>
             )}
-            <button type="button" className="chat-toolbar-btn" onClick={() => setShowGifInput((v) => !v)} title="GIF">
+            <button
+              type="button"
+              className="chat-toolbar-btn"
+              onClick={() => {
+                setGifPickerTab('gifs');
+                setShowGifPicker((v) => !(v && gifPickerTab === 'gifs'));
+              }}
+              title="GIFs"
+            >
               GIF
+            </button>
+            <button
+              type="button"
+              className="chat-toolbar-btn"
+              onClick={() => {
+                setGifPickerTab('emojis');
+                setShowGifPicker((v) => !(v && gifPickerTab === 'emojis'));
+              }}
+              title="Emojis"
+            >
+              😊
             </button>
             <button
               type="button"

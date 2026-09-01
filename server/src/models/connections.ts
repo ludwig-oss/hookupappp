@@ -150,6 +150,18 @@ export async function getSentBuzzes(userId: string): Promise<Buzz[]> {
   return buzzes.filter(b => b.fromUserId === userId);
 }
 
+/** People you already sent interest to, or already answered — not pending incoming. */
+export async function getInteractedNearbyUserIds(userId: string): Promise<Set<string>> {
+  if (usePostgres()) return pgBuzzes.getInteractedNearbyUserIds(userId);
+  const buzzes = await readBuzzes();
+  const ids = new Set<string>();
+  for (const b of buzzes) {
+    if (b.fromUserId === userId) ids.add(b.toUserId);
+    else if (b.toUserId === userId && b.status !== 'pending') ids.add(b.fromUserId);
+  }
+  return ids;
+}
+
 export type RespondBuzzResponse = 'accepted' | 'rejected' | 'talk_later';
 
 export async function respondToBuzz(buzzId: string, response: RespondBuzzResponse): Promise<{ buzz: Buzz; comfortingMessage?: string }> {
@@ -217,10 +229,12 @@ export async function getNearbyUsers(
   if (!user) return [];
 
   const userPref = await getUserPreference(userId);
+  const interactedIds = await getInteractedNearbyUserIds(userId);
   const nearby: NearbyUser[] = [];
 
   for (const otherUser of users) {
     if (otherUser.id === userId) continue;
+    if (interactedIds.has(otherUser.id)) continue;
     if (!isConnectionsVisible(otherUser)) continue;
     if (user.blockedUsers?.includes(otherUser.id)) continue;
     if (user.unmatchedUsers?.includes(otherUser.id)) continue;

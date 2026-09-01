@@ -1,6 +1,7 @@
 import { ReactNode, useContext } from 'react';
 import { Navigate } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
+import { getAuthToken } from '../lib/authStorage';
 
 /** Login/signup pages — redirect finished accounts (avoids /login ↔ /home loops). */
 export function GuestOnly({ children }: { children: ReactNode }) {
@@ -14,12 +15,11 @@ export function GuestOnly({ children }: { children: ReactNode }) {
 /** App pages that require a session. */
 export function RequireAuth({ children }: { children: ReactNode }) {
   const { user } = useContext(AuthContext);
-  const hasToken =
-    typeof localStorage !== 'undefined' && !!localStorage.getItem('token');
+  const hasToken = !!getAuthToken();
 
   if (user) return <>{children}</>;
 
-  // Token without React user yet — App is restoring /me; don't flash to login
+  // Token without React user yet — App is restoring /me; don't flash to landing
   if (hasToken) {
     return (
       <div
@@ -38,5 +38,5 @@ export function RequireAuth({ children }: { children: ReactNode }) {
     );
   }
 
-  return <Navigate to="/" replace />;
+  return <Navigate to="/login" replace />;
 }

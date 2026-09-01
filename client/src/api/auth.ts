@@ -70,14 +70,17 @@ export const authAPI = {
     email?: string;
     phoneNumber?: string;
     improvementCategories?: string[];
-    password?: string;
+    password: string;
+    passwordHint1: string;
+    passwordHint2: string;
+    passwordHint3: string;
   }): Promise<AuthResponse> => {
     const response = await authPost<AuthResponse>('/signup-pin', data);
     return response.data;
   },
 
-  loginWithPin: async (username: string, pin: string): Promise<AuthResponse> => {
-    const response = await authPost<AuthResponse>('/login-pin', { username, pin });
+  loginWithPin: async (username: string, pin: string, stayLoggedIn = true): Promise<AuthResponse> => {
+    const response = await authPost<AuthResponse>('/login-pin', { username, pin, stayLoggedIn });
     return response.data;
   },
 
@@ -93,36 +96,58 @@ export const authAPI = {
       hint1: string;
       hint2: string;
       hint3: string;
+      pinHint1?: string;
+      pinHint2?: string;
+      pinHint3?: string;
+      passwordHint1?: string;
+      passwordHint2?: string;
+      passwordHint3?: string;
       chatRecoveryAvailable: boolean;
+      faceRecoveryAvailable?: boolean;
     };
   },
 
   forgotPinLastChatChallenge: async (username: string) => {
     const response = await authPost('/forgot-pin/last-chat', { username });
-    return response.data as { question: string; options: string[]; challengeToken: string };
+    return response.data as { question: string; options: string[]; challengeToken: string; askTopic?: boolean };
   },
 
-  forgotPinVerifyLastChat: async (username: string, challengeToken: string, answer: string) => {
-    const response = await authPost('/forgot-pin/verify-last-chat', { username, challengeToken, answer });
-    return response.data as { resetToken: string; message: string };
+  forgotPinVerifyLastChat: async (username: string, challengeToken: string, answer: string, topic: string) => {
+    const response = await authPost('/forgot-pin/verify-last-chat', { username, challengeToken, answer, topic });
+    return response.data as { identityToken: string; resetToken?: string; message: string };
   },
 
   forgotPinVerifyChatNames: async (username: string, usernames: string[]) => {
     const response = await authPost('/forgot-pin/verify-chat-names', { username, usernames });
+    return response.data as { identityToken: string; resetToken?: string; message: string };
+  },
+
+  forgotPinVerifyDescribe: async (username: string, description: string) => {
+    const response = await authPost('/forgot-pin/describe', { username, description });
+    return response.data as { identityToken: string; message: string };
+  },
+
+  forgotPinSubmitSelfie: async (username: string, identityToken: string, selfie: string, faceDescriptor?: number[]) => {
+    const response = await authPost('/forgot-pin/selfie', { username, identityToken, selfie, faceDescriptor });
     return response.data as { resetToken: string; message: string };
   },
 
-  resetPin: async (resetToken: string, newPin: string) => {
-    const response = await authPost('/reset-pin', { resetToken, newPin });
+  reportStolenAccount: async (username: string, details: string, contact?: string) => {
+    const response = await authPost('/report-stolen', { username, details, contact });
+    return response.data as { message: string };
+  },
+
+  resetPin: async (resetToken: string, newPin?: string, newPassword?: string) => {
+    const response = await authPost('/reset-pin', { resetToken, newPin, newPassword });
     return response.data as { message: string };
   },
 
   identifyFace: async (faceDescriptor: number[], username?: string): Promise<{ userId: string; username: string; message: string }> => {
-    const response = await authPost('/face/identify', { faceDescriptor, username: username?.trim() || undefined });
+    const response = await authPost<{ userId: string; username: string; message: string }>('/face/identify', { faceDescriptor, username: username?.trim() || undefined });
     return response.data;
   },
 
-  login: async (data: LoginData): Promise<AuthResponse> => {
+  login: async (data: LoginData & { stayLoggedIn?: boolean }): Promise<AuthResponse> => {
     const response = await authPost<AuthResponse>('/login', data);
     return response.data;
   },
@@ -138,12 +163,12 @@ export const authAPI = {
   },
 
   forgotPassword: async (username?: string, phoneNumber?: string, email?: string): Promise<{ message: string; resetLink?: string; hint1?: string; hint2?: string; hint3?: string }> => {
-    const response = await authPost('/forgot-password', { username, phoneNumber, email });
+    const response = await authPost<{ message: string; resetLink?: string; hint1?: string; hint2?: string; hint3?: string }>('/forgot-password', { username, phoneNumber, email });
     return response.data;
   },
 
   resetPassword: async (token: string, newPassword: string): Promise<{ message: string }> => {
-    const response = await authPost('/reset-password', { token, newPassword });
+    const response = await authPost<{ message: string }>('/reset-password', { token, newPassword });
     return response.data;
   },
 
@@ -153,12 +178,12 @@ export const authAPI = {
   },
 
   resendVerificationEmail: async (email?: string, phoneNumber?: string, method?: 'email' | 'phone'): Promise<{ message: string }> => {
-    const response = await authPost('/resend-verification', { email, phoneNumber, method });
+    const response = await authPost<{ message: string }>('/resend-verification', { email, phoneNumber, method });
     return response.data;
   },
 
   changePassword: async (currentPassword: string, newPassword: string): Promise<{ message: string }> => {
-    const response = await authPost('/change-password', { currentPassword, newPassword });
+    const response = await authPost<{ message: string }>('/change-password', { currentPassword, newPassword });
     return response.data;
   },
 

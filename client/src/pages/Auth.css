@@ -479,6 +479,37 @@
   border-radius: 8px;
 }
 
+.stay-logged-in {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 13px;
+  color: #e8fbff;
+  cursor: pointer;
+  line-height: 1.4;
+}
+
+.stay-logged-in input {
+  margin-top: 3px;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+.recovery-helper {
+  margin-top: 8px;
+  padding: 12px;
+  border: 1px solid rgba(0, 212, 255, 0.35);
+  border-radius: 10px;
+  font-size: 13px;
+  color: #dbeafe;
+  line-height: 1.5;
+}
+
+.recovery-helper a {
+  color: #00d4ff;
+}
+
 .signup-qr-link {
   margin: 10px 0 0;
   font-size: 11px;

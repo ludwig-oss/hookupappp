@@ -68,18 +68,30 @@ function isReadRequest(req: Request): boolean {
   return path.includes('/health');
 }
 
+/** Location pings while Connections is open — not the user hammering the server. */
+function isLocationHeartbeat(req: Request): boolean {
+  const method = (req.method || '').toUpperCase();
+  if (method !== 'POST' && method !== 'PUT' && method !== 'PATCH') return false;
+  const path = `${req.originalUrl || ''} ${req.path || ''}`.toLowerCase();
+  return (
+    path.includes('/connections/location') ||
+    path.includes('/nearby/location') ||
+    /walk-match.*location|location.*walk-match/.test(path)
+  );
+}
+
 /**
  * Writes only, keyed by the signed-in person (not a shared Vercel/Render IP).
  * Polling GET nearby/buzzes/profile must never trip this — that is not "too many requests".
  */
 export const apiLimiter = rateLimit({
   windowMs: getWindowMs(1),
-  max: isProd ? 90 : 400,
+  max: isProd ? 180 : 800,
   message: { error: 'Too many requests. Please slow down.' },
   standardHeaders: true,
   legacyHeaders: false,
   validate: { trustProxy: isProd },
-  skip: (req) => isReadRequest(req),
+  skip: (req) => isReadRequest(req) || isLocationHeartbeat(req),
   keyGenerator: (req) => {
     const uid = authedUserId(req);
     if (uid) return `api:user:${uid}`;

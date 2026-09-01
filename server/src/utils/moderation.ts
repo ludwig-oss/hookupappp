@@ -32,6 +32,7 @@ export function checkContent(content: string): { allowed: boolean; reason?: stri
   // Skip moderation for media-only content (data URLs)
   const trimmed = content.trim();
   if (trimmed.startsWith('data:') && trimmed.length > 100) return { allowed: true };
+  if (trimmed.startsWith('HOOKUPGIF:')) return { allowed: true };
   const lower = trimmed.toLowerCase();
   for (const re of BANNED_PATTERNS) {
     if (re.test(trimmed)) {

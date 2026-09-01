@@ -42,6 +42,24 @@ export interface VenueCount {
   }>;
 }
 
+/** GPS watch + Connections poll used to POST /location dozens of times a minute. Cap it. */
+let lastLocationPingAt = 0;
+let lastLocationPingKey = '';
+
+function shouldSkipLocationPing(data: {
+  lat: number;
+  lon: number;
+  connectionsVisible?: boolean;
+}): boolean {
+  const now = Date.now();
+  const key = `${data.lat.toFixed(4)},${data.lon.toFixed(4)},${data.connectionsVisible !== false ? 1 : 0}`;
+  if (key === lastLocationPingKey && now - lastLocationPingAt < 20_000) return true;
+  if (now - lastLocationPingAt < 4_000) return true;
+  lastLocationPingAt = now;
+  lastLocationPingKey = key;
+  return false;
+}
+
 export const connectionsAPI = {
   sendBuzz: async (data: {
     toUserId: string;
@@ -74,6 +92,9 @@ export const connectionsAPI = {
     userId: string;
     connectionsVisible?: boolean;
   }): Promise<{ message: string }> => {
+    if (shouldSkipLocationPing(data)) {
+      return { message: 'ok' };
+    }
     const response = await axios.post(`${API_URL}/location`, data);
     return response.data;
   },

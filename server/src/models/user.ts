@@ -113,6 +113,10 @@ export interface User {
   passwordHint1?: string;
   passwordHint2?: string;
   passwordHint3?: string;
+  /** Hints to remember the backup password (never the password itself). */
+  backupPasswordHint1?: string;
+  backupPasswordHint2?: string;
+  backupPasswordHint3?: string;
   /** Optional backup password hash (PIN accounts sign in with username + password via this). */
   backupPasswordHash?: string | null;
   /** True when account primary sign-in is a 6-digit PIN (signup-pin). */

@@ -29,6 +29,9 @@ import {
   forgotPinLastChatChallenge,
   forgotPinVerifyLastChat,
   forgotPinVerifyChatNames,
+  forgotPinVerifyDescribe,
+  forgotPinSubmitSelfie,
+  reportStolenAccount,
   resetPin,
 } from '../controllers/pinAuthController.js';
 
@@ -46,6 +49,9 @@ router.post('/forgot-pin/hints', loginLimiter, forgotPinHints);
 router.post('/forgot-pin/last-chat', loginLimiter, forgotPinLastChatChallenge);
 router.post('/forgot-pin/verify-last-chat', loginLimiter, forgotPinVerifyLastChat);
 router.post('/forgot-pin/verify-chat-names', loginLimiter, forgotPinVerifyChatNames);
+router.post('/forgot-pin/describe', loginLimiter, forgotPinVerifyDescribe);
+router.post('/forgot-pin/selfie', loginLimiter, forgotPinSubmitSelfie);
+router.post('/report-stolen', loginLimiter, reportStolenAccount);
 router.post('/reset-pin', loginLimiter, resetPin);
 router.post('/face/identify', loginLimiter, identifyFaceForLogin);
 router.post('/login', loginLimiter, login);

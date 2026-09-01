@@ -10,6 +10,7 @@ import { claimUsername, reserveUsername, normalizeUsernameKey } from '../models/
 import { resolveUserByIdentifier, verifyLoginSecret, loginFailureMessage, upgradeLegacyPasswordHashes } from '../utils/loginUser.js';
 import { isValidPinFormat, normalizePinDigits } from '../utils/pin.js';
 import { runWithSystem } from '../db/context.js';
+import { signAuthToken, wantsStayLoggedIn } from '../utils/authToken.js';
 
 const JWT_EXPIRES_IN = '7d';
 
@@ -165,7 +166,7 @@ export const signup = async (req: Request, res: Response) => {
 
 export const login = async (req: Request, res: Response) => {
   try {
-    const { username, password, email, phoneNumber, identifier, pin } = req.body;
+    const { username, password, email, phoneNumber, identifier, pin, stayLoggedIn } = req.body;
     const rawId = String(identifier || username || email || phoneNumber || '').trim();
     const secret = String(password || pin || '').trim();
     if (!rawId || !secret) {
@@ -174,20 +175,21 @@ export const login = async (req: Request, res: Response) => {
 
     const user = await runWithSystem(() => resolveUserByIdentifier(rawId));
     if (!user) {
-      return res.status(401).json({ error: loginFailureMessage(null) });
+      return res.status(401).json({ error: loginFailureMessage(null), suggestRecovery: true });
     }
 
     const isValidPassword = await verifyLoginSecret(user, secret);
     if (!isValidPassword) {
       const pinLogin = isValidPinFormat(normalizePinDigits(secret));
-      return res.status(401).json({ error: loginFailureMessage(user, { pinLogin, attemptedSecret: secret }) });
+      return res.status(401).json({
+        error: loginFailureMessage(user, { pinLogin, attemptedSecret: secret }),
+        suggestRecovery: true,
+      });
     }
 
     await upgradeLegacyPasswordHashes(user, secret);
 
-    const token = jwt.sign({ userId: user.id, email: user.email }, getJwtSecret(), {
-      expiresIn: JWT_EXPIRES_IN,
-    });
+    const token = signAuthToken(user, wantsStayLoggedIn({ stayLoggedIn }));
 
     res.json({
       message: 'Login successful',

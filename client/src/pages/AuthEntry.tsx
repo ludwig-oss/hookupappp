@@ -1,4 +1,4 @@
-import { useState, useContext, useMemo, useEffect, useCallback } from 'react';
+import { useState, useContext, useEffect, useCallback } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
 import { authAPI } from '../api/auth';
@@ -44,6 +44,11 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
   const [passwordHint1, setPasswordHint1] = useState('');
   const [passwordHint2, setPasswordHint2] = useState('');
   const [passwordHint3, setPasswordHint3] = useState('');
+  const [stayLoggedIn, setStayLoggedIn] = useState(true);
+  const [failedTries, setFailedTries] = useState(0);
+  const [pwHint1, setPwHint1] = useState('');
+  const [pwHint2, setPwHint2] = useState('');
+  const [pwHint3, setPwHint3] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
   const [loginIdentifier, setLoginIdentifier] = useState('');
   const [loginSecret, setLoginSecret] = useState('');
@@ -90,9 +95,9 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
   const finishAuth = useCallback((user: { profileSetupComplete?: boolean }, token: string) => {
     const id = coerceUserId((user as { id?: unknown }).id);
     if (!id) throw new Error('Invalid user');
-    login({ ...user, id }, token);
+    login({ ...user, id }, token, { stayLoggedIn });
     navigate(user.profileSetupComplete ? '/home' : '/profile-setup', { replace: true });
-  }, [login, navigate]);
+  }, [login, navigate, stayLoggedIn]);
 
   const handlePinSignup = async (e?: React.FormEvent) => {
     e?.preventDefault();
@@ -110,7 +115,15 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
       return;
     }
     if (!passwordHint1.trim() || !passwordHint2.trim() || !passwordHint3.trim()) {
-      setError('Add 3 PIN hints so you can recover if you forget');
+      setError('Add 3 PIN hints to help you remember — do not write the PIN itself');
+      return;
+    }
+    if (!password.trim()) {
+      setError('A password is required');
+      return;
+    }
+    if (!pwHint1.trim() || !pwHint2.trim() || !pwHint3.trim()) {
+      setError('Add 3 password hints to help you remember — do not write the password itself');
       return;
     }
     if (!agreedToTerms) {
@@ -130,11 +143,14 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
         email: email.trim() || undefined,
         phoneNumber: phoneNumber.replace(/\D/g, '') || undefined,
         improvementCategories: [DEFAULT_SIGNUP_CATEGORY],
-        password: password.trim() || undefined,
+        password: password.trim(),
+        passwordHint1: pwHint1.trim(),
+        passwordHint2: pwHint2.trim(),
+        passwordHint3: pwHint3.trim(),
       });
       const id = coerceUserId(response.user?.id);
       if (!response.token || !id) throw new Error('Invalid server response');
-      login({ ...response.user, id }, response.token);
+      login({ ...response.user, id }, response.token, { stayLoggedIn: true });
       const ageNum = parseInt(age, 10);
       if (!Number.isNaN(ageNum) && gender) {
         walkMatchAPI.updateSettings({ age: ageNum, gender }).catch(() => {});
@@ -145,6 +161,7 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
         userId: id,
       }).catch(() => {});
       navigate('/profile-setup', { replace: true });
+      return;
     } catch (err: unknown) {
       setError(formatAxiosError(err, 'Sign-up failed'));
     } finally {
@@ -168,14 +185,15 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
         if (pinDigits.length !== 6) {
           throw new Error('PIN must be exactly 6 digits');
         }
-        response = await authAPI.loginWithPin(id, pinDigits);
+        response = await authAPI.loginWithPin(id, pinDigits, stayLoggedIn);
       } else {
-        response = await authAPI.login({ identifier: id, username: id, password: secret });
+        response = await authAPI.login({ identifier: id, username: id, password: secret, stayLoggedIn });
       }
 
       if (!response.token || !response.user) throw new Error('Invalid login response');
       finishAuth(response.user, response.token);
     } catch (err: unknown) {
+      setFailedTries((n) => n + 1);
       setError(formatAxiosError(err, loginMethod === 'pin' ? 'Wrong username or PIN' : 'Wrong username or password'));
     } finally {
       setLoading(false);
@@ -228,8 +246,8 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
         <h1 className="auth-title">{mode === 'signup' ? 'Join Hook Up' : 'Welcome Back'}</h1>
         <p className="auth-subtitle">
           {mode === 'signup'
-            ? 'Pick a username forever, a 6-digit PIN, and 3 hints — add an optional password for sign-in too.'
-            : 'Same username as sign-up. PIN tab = 6-digit PIN only. Password tab = if you signed up with a long password.'}
+            ? 'Username is yours forever. PIN + password are both required. Hints help you remember — never write the real PIN or password.'
+            : 'Same username as sign-up. PIN tab = 6-digit PIN. Password tab = the password you set at sign-up.'}
         </p>
 
         {error && <div className="error-message">{error}</div>}
@@ -282,20 +300,27 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
               />
             </div>
             <div className="form-group">
-              <label>PIN hints (if you forget — only you see these on recovery)</label>
+              <label>PIN hints (help you remember — do not write the PIN)</label>
               <input type="text" value={passwordHint1} onChange={(e) => setPasswordHint1(e.target.value)} placeholder="Hint 1 — e.g. pet name" maxLength={200} style={{ marginBottom: 6 }} required />
               <input type="text" value={passwordHint2} onChange={(e) => setPasswordHint2(e.target.value)} placeholder="Hint 2" maxLength={200} style={{ marginBottom: 6 }} required />
               <input type="text" value={passwordHint3} onChange={(e) => setPasswordHint3(e.target.value)} placeholder="Hint 3" maxLength={200} required />
             </div>
             <div className="form-group">
-              <label htmlFor="backup-password">Password (optional — sign in with username + password)</label>
+              <label htmlFor="backup-password">Password (required)</label>
               <PasswordInput
                 id="backup-password"
                 value={password}
                 onChange={setPassword}
                 autoComplete="new-password"
                 placeholder="8+ chars, upper, lower, number, symbol"
+                required
               />
+            </div>
+            <div className="form-group">
+              <label>Password hints (help you remember — do not write the password)</label>
+              <input type="text" value={pwHint1} onChange={(e) => setPwHint1(e.target.value)} placeholder="Hint 1" maxLength={200} style={{ marginBottom: 6 }} required />
+              <input type="text" value={pwHint2} onChange={(e) => setPwHint2(e.target.value)} placeholder="Hint 2" maxLength={200} style={{ marginBottom: 6 }} required />
+              <input type="text" value={pwHint3} onChange={(e) => setPwHint3(e.target.value)} placeholder="Hint 3" maxLength={200} required />
             </div>
             <div className="form-group">
               <label htmlFor="email">Email (optional)</label>
@@ -357,7 +382,7 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
                     value={loginSecret}
                     onChange={setLoginSecret}
                     autoComplete={loginMethod === 'pin' ? 'one-time-code' : 'current-password'}
-                    placeholder={loginMethod === 'pin' ? '6-digit PIN' : 'Your backup password'}
+                    placeholder={loginMethod === 'pin' ? '6-digit PIN' : 'Your password'}
                     inputMode={loginMethod === 'pin' ? 'numeric' : 'text'}
                     maxLength={loginMethod === 'pin' ? 6 : undefined}
                     digitsOnly={loginMethod === 'pin'}
@@ -369,9 +394,23 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
                 ) : (
                   <Link to="/forgot-password" className="forgot-link">Forgot password?</Link>
                 )}
+                <label className="stay-logged-in">
+                  <input type="checkbox" checked={stayLoggedIn} onChange={(e) => setStayLoggedIn(e.target.checked)} />
+                  Stay logged in — you won’t need your PIN or password again on this device
+                </label>
                 <button type="submit" className="auth-button face-id-primary" disabled={loading}>
                   {loading ? 'Signing in…' : 'Sign in'}
                 </button>
+                {failedTries >= 3 && (
+                  <div className="recovery-helper">
+                    <p>Having trouble? This helper only works for <strong>your</strong> username. We show hints to help you remember — never the real PIN or password.</p>
+                    <Link to="/forgot-pin">Recover PIN</Link>
+                    {' · '}
+                    <Link to="/forgot-password">Recover password</Link>
+                    {' · '}
+                    <Link to="/forgot-pin">Report stolen account</Link>
+                  </div>
+                )}
               </form>
             ) : loginMethod === 'phone' ? (
               <form onSubmit={handlePhoneCodeLogin} className="auth-form">
@@ -390,10 +429,22 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
                       <input value={loginCode} onChange={(e) => setLoginCode(e.target.value.replace(/\D/g, '').slice(0, 6))} inputMode="numeric" maxLength={6} required />
                     </div>
                     <button type="submit" className="auth-button" disabled={loading}>{loading ? 'Verifying…' : 'Sign in with code'}</button>
+                    <label className="stay-logged-in">
+                      <input type="checkbox" checked={stayLoggedIn} onChange={(e) => setStayLoggedIn(e.target.checked)} />
+                      Stay logged in
+                    </label>
                   </>
                 )}
               </form>
             ) : null}
+            <div className="recovery-helper" style={{ marginTop: 16 }}>
+              <p style={{ marginBottom: 8 }}>Can’t sign in? This helper asks recovery questions for <strong>your username only</strong>.</p>
+              <Link to="/forgot-pin">Forgot PIN</Link>
+              {' · '}
+              <Link to="/forgot-password">Forgot password</Link>
+              {' · '}
+              <Link to="/forgot-pin">Report stolen account</Link>
+            </div>
           </>
         )}
 

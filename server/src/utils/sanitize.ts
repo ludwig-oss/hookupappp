@@ -82,6 +82,9 @@ export function sanitizeMessageContent(input: unknown, maxTextLength: number = L
   ) {
     return trimmed.slice(0, LIMITS.MEDIA_DATA_URL);
   }
+  if (trimmed.startsWith('HOOKUPGIF:')) {
+    return trimmed.slice(0, LIMITS.MEDIA_DATA_URL);
+  }
   if (/^https?:\/\//i.test(trimmed)) {
     return sanitizeHttpUrl(trimmed);
   }
@@ -172,7 +175,7 @@ export function preCommFieldsWithDefaults(
 }
 
 const REPORT_CATEGORIES = [
-  'harassment', 'fake', 'inappropriate', 'spam', 'scam', 'underage', 'violence', 'other',
+  'harassment', 'fake', 'inappropriate', 'spam', 'scam', 'underage', 'violence', 'stolen', 'other',
 ] as const;
 
 export type SanitizedReportCategory = (typeof REPORT_CATEGORIES)[number];

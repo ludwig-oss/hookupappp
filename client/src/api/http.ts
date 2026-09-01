@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { getAuthToken } from '../lib/authStorage';
 
 const RETRY_STATUSES = new Set([502, 503, 504]);
 const RETRY_METHODS = new Set(['get', 'post', 'put', 'patch', 'delete']);
@@ -11,11 +12,11 @@ axios.interceptors.request.use((config) => {
   if (typeof localStorage === 'undefined') return config;
   const url = String(config.url || '');
   const skipAuth =
-    /\/api\/auth\/(login|login-pin|signup|signup-pin|forgot-pin|forgot-password|reset-pin|reset-password|send-login-code|login-with-code)/.test(
+    /\/api\/auth\/(login|login-pin|signup|signup-pin|forgot-pin|forgot-password|reset-pin|reset-password|send-login-code|login-with-code|report-stolen)/.test(
       url
     );
   if (skipAuth) return config;
-  const token = localStorage.getItem('token');
+  const token = getAuthToken();
   if (token) {
     config.headers = config.headers ?? {};
     if (!config.headers.Authorization) {

@@ -1,5 +1,6 @@
 import { Routes, Route } from 'react-router-dom';
 import { useState, useEffect, useRef } from 'react';
+import { flushSync } from 'react-dom';
 import axios from 'axios';
 import { GuestOnly, RequireAuth } from './components/AuthRouteGuards';
 import AuthEntry from './pages/AuthEntry';
@@ -29,6 +30,7 @@ import { settingsAPI } from './api/settings';
 import { setStoredLanguage } from './i18n/languageStorage';
 import { userForStorage } from './lib/userStorage';
 import { applyAppTheme } from './lib/theme';
+import { clearAuth, getAuthToken, getAuthUserRaw, persistAuth, writeAuthUser } from './lib/authStorage';
 import './api/http';
 
 function isPlainObject(v: unknown): v is Record<string, any> {
@@ -63,7 +65,7 @@ function App() {
       const normalized = { ...userForStorage(fullProfile as Record<string, unknown>), id };
       setUser(normalized);
       try {
-        localStorage.setItem('user', JSON.stringify(normalized));
+        writeAuthUser(normalized);
       } catch {
         /* quota — token session still valid */
       }
@@ -75,8 +77,8 @@ function App() {
     };
 
     try {
-      const token = localStorage.getItem('token');
-      const userData = localStorage.getItem('user');
+      const token = getAuthToken();
+      const userData = getAuthUserRaw();
       if (token) {
         axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
       }
@@ -88,7 +90,7 @@ function App() {
           finishBoot();
           return;
         }
-        localStorage.removeItem('user');
+        clearAuth();
       }
       if (token) {
         profileAPI
@@ -99,8 +101,7 @@ function App() {
           .catch((err: unknown) => {
             const status = (err as { response?: { status?: number } })?.response?.status;
             if (status === 401 || status === 404) {
-              localStorage.removeItem('token');
-              localStorage.removeItem('user');
+              clearAuth();
               setUser(null);
             }
           })
@@ -108,7 +109,7 @@ function App() {
         return;
       }
     } catch {
-      localStorage.removeItem('user');
+      clearAuth();
     }
     finishBoot();
 
@@ -120,7 +121,7 @@ function App() {
   // Mid-session: token present but user cleared — rebuild once from /me
   useEffect(() => {
     if (loading || user?.id) return;
-    const token = localStorage.getItem('token');
+    const token = getAuthToken();
     if (!token) return;
     let cancelled = false;
     profileAPI
@@ -132,16 +133,18 @@ function App() {
         const normalized = { ...userForStorage(fullProfile as unknown as Record<string, unknown>), id };
         setUser(normalized);
         try {
-          localStorage.setItem('user', JSON.stringify(normalized));
+          writeAuthUser(normalized);
         } catch {
           /* ignore */
         }
       })
       .catch((err: unknown) => {
+        if (cancelled) return;
         const status = (err as { response?: { status?: number } })?.response?.status;
-        if (status === 401 || status === 404) {
-          localStorage.removeItem('token');
-          localStorage.removeItem('user');
+        // Only a true invalid token should drop a session-less restore.
+        // 404 here is a lookup miss (RLS/proxy) and must not race with a just-finished signup.
+        if (status === 401) {
+          clearAuth();
           setUser(null);
         }
       });
@@ -153,7 +156,7 @@ function App() {
   // After load: refresh full profile from server so pictures, highlights, etc. are always current
   useEffect(() => {
     if (loading || !user?.id || hasRefreshedProfile.current) return;
-    const token = localStorage.getItem('token');
+    const token = getAuthToken();
     if (!token) return;
     hasRefreshedProfile.current = true;
     const gen = ++refreshGen.current;
@@ -173,7 +176,7 @@ function App() {
           ? { ...userForStorage(fullProfile as unknown as Record<string, unknown>), id }
           : userForStorage(fullProfile as unknown as Record<string, unknown>);
         setUser(normalized);
-        localStorage.setItem('user', JSON.stringify(normalized));
+        writeAuthUser(normalized);
         const lang = settingsRes?.settings?.localization?.language;
         if (typeof lang === 'string' && lang.trim()) {
           setStoredLanguage(lang.trim());
@@ -182,20 +185,13 @@ function App() {
       .catch((err: any) => {
         if (gen !== refreshGen.current) return;
         const status = err?.response?.status;
-        if (status === 401 || status === 404) {
-          refreshGen.current += 1;
-          setUser(null);
-          localStorage.removeItem('token');
-          localStorage.removeItem('user');
-          delete axios.defaults.headers.common['Authorization'];
-          hasRefreshedProfile.current = false;
-          return;
-        }
+        // Keep the session from login/signup. A cold /me 404 used to dump new accounts
+        // back to the landing screen ("Loading...") right after Create account.
         console.warn('Profile refresh failed (session kept):', status || err?.message);
       });
   }, [loading, user?.id]);
 
-  const login = (userData: any, token: string) => {
+  const login = (userData: any, token: string, options?: { stayLoggedIn?: boolean }) => {
     const id = normalizeUserId(userData?.id);
     if (!isPlainObject(userData) || !id || typeof token !== 'string' || !token) {
       throw new Error('Invalid login payload');
@@ -203,21 +199,19 @@ function App() {
     const normalized = { ...userForStorage(userData as Record<string, unknown>), id };
     refreshGen.current += 1;
     hasRefreshedProfile.current = false;
-    setUser(normalized);
-    localStorage.setItem('token', token);
-    try {
-      localStorage.setItem('user', JSON.stringify(normalized));
-    } catch {
-      /* Quota exceeded — session still works via token + /me refresh */
-    }
+    persistAuth(normalized, token, options?.stayLoggedIn !== false);
     axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+    // Commit user before the caller navigates so /profile-setup does not
+    // briefly see a missing session and bounce to the landing page.
+    flushSync(() => {
+      setUser(normalized);
+    });
   };
 
   const logout = () => {
     refreshGen.current += 1;
     setUser(null);
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
+    clearAuth();
     delete axios.defaults.headers.common['Authorization'];
     hasRefreshedProfile.current = false;
   };
@@ -227,7 +221,7 @@ function App() {
       if (!prev) return prev;
       const next = { ...prev, ...updates };
       try {
-        localStorage.setItem('user', JSON.stringify(next));
+        writeAuthUser(next);
       } catch (_) {}
       return next;
     });

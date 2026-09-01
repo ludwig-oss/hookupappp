@@ -80,9 +80,19 @@ export function nearbyRadiusForCoords(coords: StoredCoords | null): number {
 
 export function startGpsWatch(onFix: (coords: StoredCoords) => void): () => void {
   if (typeof navigator === 'undefined' || !navigator.geolocation) return () => {};
+  let lastAt = 0;
+  let lastLat = 0;
+  let lastLon = 0;
   const id = navigator.geolocation.watchPosition(
     (pos) => {
       const coords = coordsFromPosition(pos);
+      const now = Date.now();
+      const moved =
+        Math.abs(coords.lat - lastLat) > 0.0002 || Math.abs(coords.lon - lastLon) > 0.0002;
+      if (!moved && now - lastAt < 15_000) return;
+      lastAt = now;
+      lastLat = coords.lat;
+      lastLon = coords.lon;
       markLocationGranted(coords);
       onFix(coords);
     },

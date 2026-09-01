@@ -1,11 +1,10 @@
 import { useState, useEffect, useContext, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { AuthContext } from '../../context/AuthContext';
 import { chatAPI, Conversation, Message, ReplyDeadlineStatus, User } from '../../api/chat';
 import { relationshipAPI, RelationshipState } from '../../api/relationship';
-import { profileAPI, ProfileData } from '../../api/profile';
+import { profileAPI } from '../../api/profile';
 import { activityAPI } from '../../api/activity';
-import { healthAPI, HealthTest } from '../../api/health';
-import HealthProofSection from '../HealthProofSection';
 import { safetyAPI, MeetupPlan, EmergencyContact, MeetupWeekStatus } from '../../api/safety';
 import DateVenuePicker from '../DateVenuePicker';
 import { reviewsAPI, ReviewAttributes, REVIEW_ATTRIBUTE_LABELS } from '../../api/reviews';
@@ -14,7 +13,6 @@ import { speedDateAPI, SpeedDate } from '../../api/speedDate';
 import { connectionJourneyAPI, ConnectionJourneyResponse } from '../../api/connectionJourney';
 import RelationshipCouplePanel from './RelationshipCouplePanel';
 import VoiceSafetyPanel from '../VoiceSafetyPanel';
-import ProfileMedia from '../ProfileMedia';
 import TranslateButton from '../TranslateButton';
 import GifEmojiPicker from '../GifEmojiPicker';
 import { messageTranslateText, renderMessageContent } from '../ChatGifBubble';
@@ -52,6 +50,7 @@ interface ChatWidgetProps {
 
 const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId, onOpenGuides }: ChatWidgetProps) => {
   const { user } = useContext(AuthContext);
+  const navigate = useNavigate();
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [selectedName, setSelectedName] = useState<string | null>(null);
@@ -67,11 +66,6 @@ const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId, onOpenGuides }: Ch
   const [menuOpen, setMenuOpen] = useState(false);
   const threadEndRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
-
-  // Profile view (click name in chat)
-  const [showProfileUserId, setShowProfileUserId] = useState<string | null>(null);
-  const [profileData, setProfileData] = useState<ProfileData | null>(null);
-  const [profileLoading, setProfileLoading] = useState(false);
 
   // Meetup safety popup
   const [showMeetupPopup, setShowMeetupPopup] = useState(false);
@@ -155,16 +149,6 @@ const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId, onOpenGuides }: Ch
   const [ndaModal, setNdaModal] = useState<{ otherUserId: string; otherName: string; otherAvatar: string | null; interestId: string; agreementText: string } | null>(null);
   const [ndaSignature, setNdaSignature] = useState('');
   const [ndaSigning, setNdaSigning] = useState(false);
-
-  // Health (before you meet)
-  const [healthViewStatus, setHealthViewStatus] = useState<{
-    request: { status: string } | null;
-    canView: boolean;
-    canRequest?: boolean;
-    results: { tests: HealthTest[]; lastUpdated: string } | null;
-  } | null>(null);
-  const [healthViewLoading, setHealthViewLoading] = useState(false);
-  const [healthRequesting, setHealthRequesting] = useState(false);
 
   // Experience review (before unmatch / end chat)
   const [showReviewModal, setShowReviewModal] = useState(false);
@@ -925,31 +909,15 @@ const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId, onOpenGuides }: Ch
     setShowReviewModal(true);
   };
 
-  const handleOpenProfile = async () => {
+  const handleOpenProfile = () => {
     if (!selectedUserId) return;
-    setShowProfileUserId(selectedUserId);
-    setProfileLoading(true);
-    setProfileData(null);
-    setHealthViewStatus(null);
-    try {
-      const data = await profileAPI.getUserProfile(selectedUserId);
-      setProfileData(data);
-      if (selectedUserId !== user?.id) {
-        setHealthViewLoading(true);
-        try {
-          const status = await healthAPI.getViewStatus(selectedUserId);
-          setHealthViewStatus(status);
-        } catch (_) {
-          setHealthViewStatus(null);
-        } finally {
-          setHealthViewLoading(false);
-        }
-      }
-    } catch (_) {
-      setProfileData(null);
-    } finally {
-      setProfileLoading(false);
+    if (selectedUserId === user?.id) {
+      navigate('/profile');
+      return;
     }
+    navigate(`/profile/${selectedUserId}`, {
+      state: { fromChat: true, chatUserId: selectedUserId },
+    });
   };
 
   const handleSearchFriends = () => {
@@ -1934,99 +1902,6 @@ const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId, onOpenGuides }: Ch
             ← Back to chats
           </button>
         </>
-      )}
-
-      {showProfileUserId && (
-        <div className="chat-profile-overlay" onClick={() => { setShowProfileUserId(null); setProfileData(null); setHealthViewStatus(null); }}>
-          <div className="chat-profile-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="chat-profile-header">
-              <h3>Profile</h3>
-              <button type="button" className="chat-profile-close" onClick={() => { setShowProfileUserId(null); setProfileData(null); setHealthViewStatus(null); }}>×</button>
-            </div>
-            <div className="chat-profile-body">
-              {profileLoading && <div className="chat-loading">Loading...</div>}
-              {!profileLoading && profileData && (
-                <>
-                  <div className="chat-profile-avatar">
-                    {profileData.profilePicture ? (
-                      <ProfileMedia src={profileData.profilePicture} alt="" />
-                    ) : (
-                      <span>{(profileData as any).name?.[0] || '?'}</span>
-                    )}
-                  </div>
-                  <div className="chat-profile-name">{(profileData as any).name}</div>
-                  {profileData.inRelationship && (
-                    <div className="chat-profile-detail" style={{ color: '#ff00ff', fontWeight: 'bold' }}>💑 In a relationship</div>
-                  )}
-                  {(profileData as any).age && <div className="chat-profile-detail">Age: {(profileData as any).age}</div>}
-                  {(profileData as any).country && <div className="chat-profile-detail">{(profileData as any).country}{(profileData as any).city ? `, ${(profileData as any).city}` : ''}</div>}
-                  {profileData.highlights && profileData.highlights.length > 0 && (
-                    <div className="chat-profile-highlights">
-                      <div className="chat-profile-highlights-title">Highlights</div>
-                      <div className="chat-profile-highlights-scroll">
-                        {profileData.highlights.map((h: any) => {
-                          const cover = h.coverImage || h.items?.[0]?.imageUrl || h.imageUrl;
-                          return (
-                            <div key={h.id} className="chat-profile-highlight-item">
-                              {cover && (cover.startsWith('data:video') ? <video src={cover} /> : <img src={cover} alt="" />)}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-                  {showProfileUserId && showProfileUserId !== user?.id && (
-                    <div className="chat-profile-health-block" style={{ marginTop: 16 }}>
-                      {healthViewLoading && <div className="chat-loading">Loading...</div>}
-                      {!healthViewLoading && healthViewStatus && !healthViewStatus.canView && (
-                        <HealthProofSection
-                          mode="visitor"
-                          visitorTests={[]}
-                          visitorGate={(
-                            <>
-                              <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.8)', marginBottom: 10 }}>
-                                Plan a meetup first, then request their doctor/hospital stamped STI proofs before you meet. They approve who can view.
-                              </p>
-                              {healthViewStatus.request?.status === 'pending' && <p style={{ fontSize: 13, color: '#eab308' }}>Request sent. Waiting for approval.</p>}
-                              {healthViewStatus.request?.status === 'rejected' && <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.7)' }}>They declined to share lab reports.</p>}
-                              {!healthViewStatus.request && healthViewStatus.canRequest === false && (
-                                <p style={{ fontSize: 12, color: '#fca5a5' }}>Create a meetup plan in Date safety first, then you can request their stamped reports.</p>
-                              )}
-                              {!healthViewStatus.request && healthViewStatus.canRequest !== false && (
-                                <button type="button" className="profile-save-btn" style={{ padding: '8px 16px', fontSize: 13 }} disabled={healthRequesting} onClick={async () => {
-                                  if (!showProfileUserId) return;
-                                  setHealthRequesting(true);
-                                  try {
-                                    await healthAPI.requestToView(showProfileUserId);
-                                    const status = await healthAPI.getViewStatus(showProfileUserId);
-                                    setHealthViewStatus(status);
-                                  } catch (err: unknown) {
-                                    const ax = err as { response?: { data?: { error?: string } } };
-                                    window.alert(ax.response?.data?.error || 'Could not send request');
-                                  } finally {
-                                    setHealthRequesting(false);
-                                  }
-                                }}>{healthRequesting ? 'Sending...' : 'Request stamped lab reports'}</button>
-                              )}
-                            </>
-                          )}
-                        />
-                      )}
-                      {!healthViewLoading && healthViewStatus?.canView && healthViewStatus.results && (
-                        <HealthProofSection
-                          mode="visitor"
-                          visitorTests={healthViewStatus.results.tests}
-                          visitorLastUpdated={healthViewStatus.results.lastUpdated}
-                        />
-                      )}
-                    </div>
-                  )}
-                </>
-              )}
-              {!profileLoading && !profileData && <div className="chat-empty">Could not load profile.</div>}
-            </div>
-          </div>
-        </div>
       )}
 
       {showReviewModal && selectedUserId && (

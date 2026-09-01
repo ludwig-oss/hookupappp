@@ -14,6 +14,19 @@ type CoachApp = {
   status: string;
   applicantName?: string;
   applicantUsername?: string;
+  applicantPicture?: string | null;
+  applicantAge?: number | null;
+  applicantCity?: string | null;
+  applicantCountry?: string | null;
+  widgetAnswers?: Array<{
+    categoryId: string;
+    whyGood: string;
+    proofType?: string;
+    instagramHandle?: string;
+    imageUrls?: string[];
+    videoUrl?: string;
+  }>;
+  proofPerCategory?: Record<string, { whyGood?: string; description?: string; proofType?: string; instagramHandle?: string; imageUrls?: string[]; videoUrl?: string }>;
 };
 
 const AdminCoachReview = () => {
@@ -123,10 +136,45 @@ const AdminCoachReview = () => {
         {selected && (
           <div className="admin-safety-detail">
             <h2>{selected.applicantName}</h2>
+            <p><strong>@{selected.applicantUsername}</strong></p>
+            <p>
+              <Link to={`/profile/${selected.userId}`}>View full profile</Link>
+            </p>
+            {selected.applicantPicture && (
+              <img src={selected.applicantPicture} alt="" style={{ width: 80, height: 80, borderRadius: '50%', objectFit: 'cover' }} />
+            )}
             <p><strong>Region:</strong> {selected.region}</p>
             <p><strong>Categories:</strong> {selected.categories?.join(', ')}</p>
             <p><strong>Experience:</strong> {selected.experience}</p>
             <p><strong>Qualifications:</strong> {selected.qualifications}</p>
+            {(selected.widgetAnswers?.length || Object.keys(selected.proofPerCategory || {}).length > 0) && (
+              <div style={{ marginTop: 16 }}>
+                <h3>Compatibility proofs</h3>
+                {(selected.widgetAnswers?.length
+                  ? selected.widgetAnswers
+                  : Object.entries(selected.proofPerCategory || {}).map(([categoryId, p]) => ({
+                      categoryId,
+                      whyGood: p.whyGood || p.description || '',
+                      proofType: p.proofType,
+                      instagramHandle: p.instagramHandle,
+                      imageUrls: p.imageUrls,
+                      videoUrl: p.videoUrl,
+                    }))
+                ).map((a) => (
+                  <div key={a.categoryId} style={{ marginBottom: 12, padding: 10, border: '1px solid rgba(255,255,255,0.15)', borderRadius: 8 }}>
+                    <strong>{a.categoryId}</strong>
+                    <p>{a.whyGood}</p>
+                    {a.instagramHandle && <p>Instagram: @{a.instagramHandle}</p>}
+                    {a.imageUrls?.map((url) => (
+                      <a key={url} href={url} target="_blank" rel="noreferrer">
+                        <img src={url} alt="" style={{ width: 72, height: 72, objectFit: 'cover', marginRight: 6 }} />
+                      </a>
+                    ))}
+                    {a.videoUrl && <video src={a.videoUrl} controls style={{ width: '100%', maxHeight: 180 }} />}
+                  </div>
+                ))}
+              </div>
+            )}
             <label style={{ display: 'block', marginTop: 16 }}>
               Qualification star rating (1–5)
               <input

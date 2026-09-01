@@ -25,6 +25,7 @@ import BuzzResultPopup from '../components/BuzzResultPopup';
 import NearbyMatchPopup from '../components/NearbyMatchPopup';
 import { useDashboardLocation } from '../hooks/useDashboardLocation';
 import { askNotifyPermission } from '../lib/deviceNotify';
+import { useGuideApplicationNotifications } from '../hooks/useGuideApplicationNotifications';
 import CoachVoteSwipePopup from '../components/CoachVoteSwipePopup';
 import DateSafetyMonitor from '../components/DateSafetyMonitor';
 import SchoolDailyNotification from '../components/SchoolDailyNotification';
@@ -93,6 +94,7 @@ const Dashboard = () => {
   const [inRelationship, setInRelationship] = useState(false);
 
   useDashboardLocation(user?.id ? { id: user.id, city: user.city, country: user.country } : undefined);
+  useGuideApplicationNotifications(user?.id);
 
   useEffect(() => {
     askNotifyPermission();
@@ -284,13 +286,18 @@ const Dashboard = () => {
   }, []);
 
   useEffect(() => {
-    const state = location.state as { openWidget?: WidgetId } | null;
-    if (state?.openWidget === 'help') {
+    const state = location.state as { openWidget?: WidgetId; openChatWithUserId?: string } | null;
+    if (!state?.openWidget) return;
+    if (state.openWidget === 'help') {
       setOpenWidget('help');
       setReturnToWidget(null);
-      navigate('/home', { replace: true, state: null });
+      return;
     }
-  }, [location.state, navigate]);
+    if (state.openWidget === 'chat') {
+      if (state.openChatWithUserId) setOpenChatWithUserId(state.openChatWithUserId);
+      setOpenWidget('chat');
+    }
+  }, [location.state]);
 
   useEffect(() => {
     const onOpen = (e: Event) => {

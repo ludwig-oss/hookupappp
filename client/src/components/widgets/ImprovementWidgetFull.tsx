@@ -525,7 +525,7 @@ const GuideApplicationForm = ({ onBack }: { onBack: () => void }) => {
         <div style={{ fontSize: '48px', marginBottom: '16px' }}>✅</div>
         <h3 style={{ marginBottom: '12px' }}>Application Submitted!</h3>
         <p style={{ color: '#6b7280', marginBottom: '20px' }}>
-          Your application will be reviewed within 48 hours. You'll be notified once a decision is made.
+          You will get an answer within 48 hours. Qualified guides review your Compatibility proofs. If you are approved, you will be notified that you can start guiding others.
         </p>
         <button onClick={onBack} className="select-user-btn">Back to Categories</button>
       </div>
@@ -629,7 +629,7 @@ const GuideApplicationForm = ({ onBack }: { onBack: () => void }) => {
           }}
         />
         <small style={{ color: '#6b7280', fontSize: '12px' }}>
-          Upload a valid ID for verification. Your application will be reviewed within 48 hours.
+          Apply from Compatibility with text and file proofs. Fewer than 10 qualified guides are approved immediately; otherwise you get an answer within 48 hours.
         </small>
       </div>
 

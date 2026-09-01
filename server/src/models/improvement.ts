@@ -1,5 +1,7 @@
 import { readFile, writeFile } from 'fs/promises';
 import { join } from 'path';
+import { usePostgres } from '../db/index.js';
+import * as pgApps from '../db/pg-guide-applications.js';
 
 export interface ImprovementCategory {
   id: string;
@@ -44,6 +46,10 @@ export const IMPROVEMENT_CATEGORIES: ImprovementCategory[] = [
 ];
 
 export const SESSION_PRICE_EUR = 50;
+/** First N qualified guide admins are auto-approved so they can review later applicants. */
+export const QUALIFIED_ADMIN_SEED_LIMIT = 10;
+/** Applicants past the seed limit are told they will hear back within this many hours. */
+export const GUIDE_REVIEW_SLA_HOURS = 48;
 
 /** Per-category: why you're good + proof (Instagram, photos, or video). */
 export type CategoryProofType = 'instagram' | 'pictures' | 'video';
@@ -59,6 +65,18 @@ export interface CategoryProof {
   videoUrl?: string;
 }
 
+/** Compatibility widget answers stored on the application (text + uploaded files). */
+export interface GuideWidgetAnswer {
+  categoryId: string;
+  whyGood: string;
+  proofType: CategoryProofType;
+  instagramHandle?: string;
+  imageUrls?: string[];
+  videoUrl?: string;
+  /** Photo/video URLs from the Compatibility widget (same files as imageUrls/videoUrl). */
+  fileUrls?: string[];
+}
+
 export interface GuideApplication {
   id: string;
   userId: string;
@@ -69,7 +87,13 @@ export interface GuideApplication {
   identificationUrl: string; // URL to uploaded ID or main proof document
   /** Proof per category: e.g. appearance = photos, communications = credentials + proof it's you */
   proofPerCategory?: Record<string, CategoryProof>;
+  /** Compatibility widget text/file responses (canonical copy for admin review). */
+  widgetAnswers?: GuideWidgetAnswer[];
   status: 'pending' | 'approved' | 'rejected';
+  /** True when this was one of the first 10 auto-approved guide admins. */
+  autoApproved?: boolean;
+  /** Applicant is told they will get a decision by this time (apply + 48h). */
+  decisionDueAt?: Date | string | null;
   appliedAt: Date | string;
   reviewedAt: Date | string | null;
   reviewedBy: string | null;
@@ -143,11 +167,15 @@ const BOOKINGS_PATH = join(process.cwd(), 'server', 'data', 'bookings.json');
 const REQUESTS_PATH = join(process.cwd(), 'server', 'data', 'guide-requests.json');
 
 async function readApplications(): Promise<GuideApplication[]> {
+  if (usePostgres()) return pgApps.listApplications();
   try {
     const data = await readFile(APPLICATIONS_PATH, 'utf-8');
     const apps = JSON.parse(data);
     return apps.map((app: GuideApplication) => ({
       ...app,
+      widgetAnswers: app.widgetAnswers || [],
+      autoApproved: Boolean(app.autoApproved),
+      decisionDueAt: app.decisionDueAt ? new Date(app.decisionDueAt) : null,
       appliedAt: app.appliedAt ? new Date(app.appliedAt) : new Date(),
       reviewedAt: app.reviewedAt ? new Date(app.reviewedAt) : null,
     }));
@@ -157,9 +185,75 @@ async function readApplications(): Promise<GuideApplication[]> {
 }
 
 async function writeApplications(apps: GuideApplication[]): Promise<void> {
+  if (usePostgres()) return;
   const dir = join(process.cwd(), 'server', 'data');
   await import('fs/promises').then(fs => fs.mkdir(dir, { recursive: true }));
   await writeFile(APPLICATIONS_PATH, JSON.stringify(apps, null, 2));
+}
+
+export function widgetAnswersFromProof(
+  proof: Record<string, CategoryProof> | undefined
+): GuideWidgetAnswer[] {
+  if (!proof) return [];
+  return Object.entries(proof).map(([categoryId, p]) => {
+    const fileUrls = [...(p.imageUrls || []), ...(p.videoUrl ? [p.videoUrl] : [])];
+    return {
+      categoryId,
+      whyGood: p.whyGood || p.description || '',
+      proofType: p.proofType || 'pictures',
+      instagramHandle: p.instagramHandle,
+      imageUrls: p.imageUrls,
+      videoUrl: p.videoUrl,
+      fileUrls,
+    };
+  });
+}
+
+/** How many people currently have the qualified guide-admin badge. */
+export async function countQualifiedAdmins(): Promise<number> {
+  const { getAllUsers } = await import('./user.js');
+  const users = await getAllUsers();
+  const ids = new Set<string>();
+  for (const u of users) {
+    if (u.qualifiedCoach) ids.add(u.id);
+  }
+  const guides = await readGuides();
+  for (const g of guides) {
+    if (g.isActive && g.userId) ids.add(g.userId);
+  }
+  const approved = (await readApplications()).filter((a) => a.status === 'approved');
+  for (const a of approved) {
+    if (a.userId) ids.add(a.userId);
+  }
+  return ids.size;
+}
+
+export async function isQualifiedAdmin(userId: string): Promise<boolean> {
+  const { getUserById } = await import('./user.js');
+  const u = await getUserById(userId);
+  if (u?.qualifiedCoach) return true;
+  const guide = await getGuideByUserId(userId);
+  if (guide?.isActive) return true;
+  const app = await getApplicationByUserId(userId);
+  return app?.status === 'approved';
+}
+
+export async function getQualifiedAdminUserIds(): Promise<string[]> {
+  const { getAllUsers } = await import('./user.js');
+  const users = await getAllUsers();
+  const ids = new Set<string>();
+  for (const u of users) {
+    if (u.qualifiedCoach) ids.add(u.id);
+  }
+  const guides = await readGuides();
+  for (const g of guides) {
+    if (g.isActive && g.userId) ids.add(g.userId);
+  }
+  const approved = (await readApplications()).filter((a) => a.status === 'approved');
+  for (const a of approved) {
+    if (a.userId) ids.add(a.userId);
+  }
+  return [...ids];
 }
 
 function normalizeGuide(g: any): Guide {
@@ -226,28 +320,44 @@ async function writeBookings(bookings: Booking[]): Promise<void> {
   await writeFile(BOOKINGS_PATH, JSON.stringify(bookings, null, 2));
 }
 
-export async function createApplication(appData: Omit<GuideApplication, 'id' | 'status' | 'appliedAt' | 'reviewedAt' | 'reviewedBy'>): Promise<GuideApplication> {
-  const apps = await readApplications();
+export async function createApplication(
+  appData: Omit<GuideApplication, 'id' | 'appliedAt' | 'reviewedAt' | 'reviewedBy'> & {
+    status?: GuideApplication['status'];
+  }
+): Promise<GuideApplication> {
+  const now = new Date();
   const application: GuideApplication = {
     ...appData,
-    region: (appData as any).region || 'Global',
+    region: appData.region || 'Global',
+    widgetAnswers: appData.widgetAnswers?.length
+      ? appData.widgetAnswers
+      : widgetAnswersFromProof(appData.proofPerCategory),
     id: Date.now().toString(),
-    status: 'pending',
-    appliedAt: new Date(),
+    status: appData.status || 'pending',
+    autoApproved: Boolean(appData.autoApproved),
+    decisionDueAt: appData.decisionDueAt || new Date(now.getTime() + GUIDE_REVIEW_SLA_HOURS * 60 * 60 * 1000),
+    appliedAt: now,
     reviewedAt: null,
     reviewedBy: null,
   };
+  if (usePostgres()) {
+    await pgApps.insertApplication(application);
+    return application;
+  }
+  const apps = await readApplications();
   apps.push(application);
   await writeApplications(apps);
   return application;
 }
 
 export async function getApplicationByUserId(userId: string): Promise<GuideApplication | null> {
+  if (usePostgres()) return pgApps.getByUserId(userId);
   const apps = await readApplications();
   return apps.find(a => a.userId === userId) || null;
 }
 
 export async function getApplicationById(id: string): Promise<GuideApplication | null> {
+  if (usePostgres()) return pgApps.getById(id);
   const apps = await readApplications();
   return apps.find(a => a.id === id) || null;
 }
@@ -256,19 +366,67 @@ export async function getAllApplications(): Promise<GuideApplication[]> {
   return readApplications();
 }
 
+export async function getPendingApplications(): Promise<GuideApplication[]> {
+  const apps = await readApplications();
+  return apps.filter((a) => a.status === 'pending');
+}
+
+async function persistApplication(updated: GuideApplication): Promise<void> {
+  if (usePostgres()) {
+    await pgApps.updateApplication(updated);
+    return;
+  }
+  const apps = await readApplications();
+  const i = apps.findIndex((a) => a.id === updated.id);
+  if (i < 0) throw new Error('Application not found');
+  apps[i] = updated;
+  await writeApplications(apps);
+}
+
+/** Replace a rejected application with a new Compatibility submission so they can apply again. */
+export async function resubmitRejectedApplication(
+  existing: GuideApplication,
+  updates: Pick<
+    GuideApplication,
+    'categories' | 'region' | 'experience' | 'qualifications' | 'identificationUrl' | 'proofPerCategory' | 'widgetAnswers'
+  >
+): Promise<GuideApplication> {
+  if (existing.status !== 'rejected') {
+    throw new Error('Only a rejected application can be resubmitted');
+  }
+  const now = new Date();
+  const updated: GuideApplication = {
+    ...existing,
+    ...updates,
+    status: 'pending',
+    autoApproved: false,
+    decisionDueAt: new Date(now.getTime() + GUIDE_REVIEW_SLA_HOURS * 60 * 60 * 1000),
+    appliedAt: now,
+    reviewedAt: null,
+    reviewedBy: null,
+  };
+  await persistApplication(updated);
+  return updated;
+}
+
 export async function approveApplication(
   applicationId: string,
   reviewerId: string,
-  coachStarRating = 4.5
+  coachStarRating = 4.5,
+  options?: { autoApproved?: boolean }
 ): Promise<Guide> {
-  const apps = await readApplications();
-  const app = apps.find(a => a.id === applicationId);
+  const app = await getApplicationById(applicationId);
   if (!app) throw new Error('Application not found');
+  if (app.status === 'approved') {
+    const existing = await getGuideByUserId(app.userId);
+    if (existing) return existing;
+  }
 
   app.status = 'approved';
   app.reviewedAt = new Date();
   app.reviewedBy = reviewerId;
-  await writeApplications(apps);
+  if (options?.autoApproved) app.autoApproved = true;
+  await persistApplication(app);
 
   const guides = await readGuides();
   const guide: Guide = {
@@ -289,23 +447,25 @@ export async function approveApplication(
   await writeGuides(guides);
 
   const { updateUserProfile } = await import('./user.js');
-  await updateUserProfile(app.userId, {
+  const patched = await updateUserProfile(app.userId, {
     qualifiedCoach: true,
     coachStarRating,
   });
+  if (!patched?.qualifiedCoach) {
+    console.warn(`Could not persist qualifiedCoach on user ${app.userId}; guide record is still active.`);
+  }
 
   return guide;
 }
 
 export async function rejectApplication(applicationId: string, reviewerId: string): Promise<void> {
-  const apps = await readApplications();
-  const app = apps.find(a => a.id === applicationId);
+  const app = await getApplicationById(applicationId);
   if (!app) throw new Error('Application not found');
 
   app.status = 'rejected';
   app.reviewedAt = new Date();
   app.reviewedBy = reviewerId;
-  await writeApplications(apps);
+  await persistApplication(app);
 }
 
 export async function getGuideByUserId(userId: string): Promise<Guide | null> {

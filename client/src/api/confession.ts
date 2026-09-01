@@ -27,6 +27,11 @@ export interface ConfessionSessionView {
   createdAt: string;
   startedAt: string | null;
   endedAt: string | null;
+  voiceCall?: {
+    callerRole: 'seeker' | 'guide' | null;
+    incoming: boolean;
+    active: boolean;
+  };
 }
 
 export interface BlurredConfessionGuide {
@@ -36,6 +41,15 @@ export interface BlurredConfessionGuide {
   totalSessions: number;
   experienceSnippet: string;
   scope: 'local' | 'international';
+}
+
+export interface ConfessionCallState {
+  callerRole: 'seeker' | 'guide' | null;
+  offer: { type: 'offer' | 'answer'; sdp: string } | null;
+  answer: { type: 'offer' | 'answer'; sdp: string } | null;
+  ice: Array<{ id: string; fromRole: 'seeker' | 'guide'; candidate: string }>;
+  incoming: boolean;
+  active: boolean;
 }
 
 export const confessionAPI = {
@@ -118,5 +132,30 @@ export const confessionAPI = {
   endSession: async (sessionId: string) => {
     const res = await axios.post(`${API_URL}/sessions/${sessionId}/end`);
     return res.data as { session: ConfessionSessionView };
+  },
+
+  getCall: async (sessionId: string) => {
+    const res = await axios.get(`${API_URL}/sessions/${sessionId}/call`);
+    return res.data as { call: ConfessionCallState };
+  },
+
+  sendCallOffer: async (sessionId: string, sdp: string) => {
+    const res = await axios.post(`${API_URL}/sessions/${sessionId}/call/offer`, { sdp });
+    return res.data as { call: ConfessionCallState };
+  },
+
+  sendCallAnswer: async (sessionId: string, sdp: string) => {
+    const res = await axios.post(`${API_URL}/sessions/${sessionId}/call/answer`, { sdp });
+    return res.data as { call: ConfessionCallState };
+  },
+
+  sendCallIce: async (sessionId: string, candidate: string) => {
+    const res = await axios.post(`${API_URL}/sessions/${sessionId}/call/ice`, { candidate });
+    return res.data as { call: ConfessionCallState };
+  },
+
+  hangupCall: async (sessionId: string) => {
+    const res = await axios.post(`${API_URL}/sessions/${sessionId}/call/hangup`);
+    return res.data as { call: ConfessionCallState };
   },
 };

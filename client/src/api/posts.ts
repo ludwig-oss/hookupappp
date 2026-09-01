@@ -50,6 +50,14 @@ export const postsAPI = {
     return response.data;
   },
 
+  getPostsByUser: async (userId: string): Promise<{ posts: DatingPost[] }> => {
+    const { posts } = await postsAPI.getPosts();
+    const uid = String(userId);
+    return {
+      posts: posts.filter((p) => String(p.userId) === uid || String(p.user?.id || '') === uid),
+    };
+  },
+
   getFeed: async (mode: FeedMode = 'for_you'): Promise<{
     posts: DatingPost[];
     feedMeta?: { mode: string; personalized: boolean; trendingTags: string[]; description?: string };

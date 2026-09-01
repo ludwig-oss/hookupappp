@@ -4,6 +4,7 @@ import {
   applyAsGuide,
   getMyApplication,
   getAllApplicationsAdmin,
+  getPendingApplicationsForReview,
   approveGuideApplication,
   rejectGuideApplication,
   getMyGuideProfile,
@@ -58,9 +59,10 @@ router.use(authenticateToken);
 // Guide Applications
 router.post('/guides/apply', applyAsGuide);
 router.get('/guides/my-application', getMyApplication);
-router.get('/guides/applications', getAllApplicationsAdmin); // Admin only
-router.post('/guides/approve', approveGuideApplication); // Admin only
-router.post('/guides/reject', rejectGuideApplication); // Admin only
+router.get('/guides/applications', getAllApplicationsAdmin); // Qualified guide admins
+router.get('/guides/applications/pending-review', getPendingApplicationsForReview);
+router.post('/guides/approve', approveGuideApplication); // Qualified guide admins
+router.post('/guides/reject', rejectGuideApplication); // Qualified guide admins
 
 // Guides
 router.get('/guides/my-profile', getMyGuideProfile);

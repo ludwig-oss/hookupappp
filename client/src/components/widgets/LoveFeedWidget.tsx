@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useContext, useCallback } from 'react';
 import { createPortal } from 'react-dom';
+import { useNavigate } from 'react-router-dom';
 import { AuthContext } from '../../context/AuthContext';
 import { postsAPI, DatingPost, FeedMode } from '../../api/posts';
 import { formatAxiosError } from '../../lib/apiError';
@@ -260,6 +261,7 @@ function VideoPostPlayer({ dataUrl, onOpenFullScreen }: { dataUrl: string; onOpe
 
 export default function LoveFeedWidget({ onShareToFriends }: { onShareToFriends?: (post: DatingPost) => void }) {
   const { user } = useContext(AuthContext);
+  const navigate = useNavigate();
   const [posts, setPosts] = useState<DatingPost[]>([]);
   const [recommendations, setRecommendations] = useState<DatingPost[]>([]);
   const [trendingTags, setTrendingTags] = useState<string[]>([]);
@@ -448,6 +450,16 @@ export default function LoveFeedWidget({ onShareToFriends }: { onShareToFriends?
     return fromPost === uid || fromNested === uid;
   };
 
+  const openAuthorProfile = (post: DatingPost) => {
+    const id = (post.userId && String(post.userId)) || (post.user?.id && String(post.user.id)) || '';
+    if (!id) return;
+    if (user?.id && id === String(user.id)) {
+      navigate('/profile');
+      return;
+    }
+    navigate(`/profile/${id}`);
+  };
+
   const formatCount = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(n));
   const formatDate = (d: string) => {
     const date = new Date(d);
@@ -542,10 +554,10 @@ export default function LoveFeedWidget({ onShareToFriends }: { onShareToFriends?
             <div className="love-feed-avatar-placeholder">{post.user?.name?.[0] || '?'}</div>
           )}
           <div className="love-feed-card-author-info">
-            <span className="love-feed-author-name">
+            <button type="button" className="love-feed-author-name" onClick={() => openAuthorProfile(post)}>
               {post.user?.name || 'Anonymous'}
               <span className="love-feed-verified" aria-hidden>✓</span>
-            </span>
+            </button>
             <span className="love-feed-card-date">{formatDate(post.createdAt)}</span>
             {post.feedReason && !opts?.compact && (
               <span style={{ display: 'block', fontSize: 11, color: '#f472b6', marginTop: 2 }}>✦ {post.feedReason}</span>

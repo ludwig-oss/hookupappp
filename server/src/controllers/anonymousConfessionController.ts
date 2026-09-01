@@ -15,6 +15,11 @@ import {
   retryGuideMatching,
   sanitizeSessionForClient,
   listBlurredConfessionGuides,
+  getVoiceCallForClient,
+  setVoiceCallOffer,
+  setVoiceCallAnswer,
+  addVoiceCallIce,
+  hangupVoiceCall,
   SEEKER_SAFETY_AGREEMENT,
   GUIDE_NDA_AGREEMENT,
 } from '../models/anonymousConfession.js';
@@ -360,6 +365,72 @@ export async function endSessionHandler(req: Request, res: Response) {
     const userId = (req as any).userId as string;
     const session = await endConfessionSession(req.params.sessionId, userId);
     res.json({ session: sanitizeSessionForClient(session, userId) });
+  } catch (e: any) {
+    res.status(400).json({ error: e.message || 'Failed' });
+  }
+}
+
+export async function getVoiceCallHandler(req: Request, res: Response) {
+  try {
+    const userId = (req as any).userId as string;
+    const session = await getSessionById(req.params.sessionId);
+    if (!session) return res.status(404).json({ error: 'Session not found' });
+    res.json({ call: getVoiceCallForClient(session, userId) });
+  } catch (e: any) {
+    res.status(400).json({ error: e.message || 'Failed' });
+  }
+}
+
+export async function postVoiceCallOfferHandler(req: Request, res: Response) {
+  try {
+    const userId = (req as any).userId as string;
+    const { sdp } = req.body as { sdp?: string };
+    if (!sdp) return res.status(400).json({ error: 'Offer required' });
+    const session = await setVoiceCallOffer(req.params.sessionId, userId, { type: 'offer', sdp });
+    const recipientId = session.seekerUserId === userId ? session.guideUserId : session.seekerUserId;
+    if (recipientId) {
+      notifyConfessionMessage(recipientId, { sessionId: session.id, preview: 'Incoming veiled voice call' });
+      sendPushToUser(recipientId, {
+        title: 'Confession booth',
+        body: 'Incoming veiled voice call — tap to answer. You will not hear their real voice.',
+        data: { type: 'confession_call', sessionId: session.id },
+      }).catch(() => {});
+    }
+    res.json({ call: getVoiceCallForClient(session, userId) });
+  } catch (e: any) {
+    res.status(400).json({ error: e.message || 'Failed' });
+  }
+}
+
+export async function postVoiceCallAnswerHandler(req: Request, res: Response) {
+  try {
+    const userId = (req as any).userId as string;
+    const { sdp } = req.body as { sdp?: string };
+    if (!sdp) return res.status(400).json({ error: 'Answer required' });
+    const session = await setVoiceCallAnswer(req.params.sessionId, userId, { type: 'answer', sdp });
+    res.json({ call: getVoiceCallForClient(session, userId) });
+  } catch (e: any) {
+    res.status(400).json({ error: e.message || 'Failed' });
+  }
+}
+
+export async function postVoiceCallIceHandler(req: Request, res: Response) {
+  try {
+    const userId = (req as any).userId as string;
+    const { candidate } = req.body as { candidate?: string };
+    if (!candidate) return res.status(400).json({ error: 'Candidate required' });
+    const session = await addVoiceCallIce(req.params.sessionId, userId, candidate);
+    res.json({ call: getVoiceCallForClient(session, userId) });
+  } catch (e: any) {
+    res.status(400).json({ error: 'Failed' });
+  }
+}
+
+export async function hangupVoiceCallHandler(req: Request, res: Response) {
+  try {
+    const userId = (req as any).userId as string;
+    const session = await hangupVoiceCall(req.params.sessionId, userId);
+    res.json({ call: getVoiceCallForClient(session, userId) });
   } catch (e: any) {
     res.status(400).json({ error: e.message || 'Failed' });
   }

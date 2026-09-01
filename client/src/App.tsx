@@ -268,6 +268,7 @@ function App() {
           <Route path="/verify-email-pending" element={<VerifyEmailPending />} />
           <Route path="/dashboard" element={<RequireAuth><Dashboard /></RequireAuth>} />
           <Route path="/profile" element={<RequireAuth><Profile /></RequireAuth>} />
+          <Route path="/profile/:userId" element={<RequireAuth><Profile /></RequireAuth>} />
           <Route path="/settings" element={<RequireAuth><Settings /></RequireAuth>} />
           <Route path="/profile-setup" element={<RequireAuth><ProfileSetup /></RequireAuth>} />
           <Route path="/home" element={<RequireAuth><Dashboard /></RequireAuth>} />

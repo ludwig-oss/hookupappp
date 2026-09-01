@@ -3,9 +3,14 @@ import { sanitizeForStorage, sanitizeHttpUrl, LIMITS } from '../utils/sanitize.j
 import {
   IMPROVEMENT_CATEGORIES,
   SESSION_PRICE_EUR,
+  QUALIFIED_ADMIN_SEED_LIMIT,
+  GUIDE_REVIEW_SLA_HOURS,
   createApplication,
   getApplicationByUserId,
+  getApplicationById,
   getAllApplications,
+  resubmitRejectedApplication,
+  getPendingApplications,
   approveApplication,
   rejectApplication,
   getGuideByUserId,
@@ -37,8 +42,18 @@ import {
   completeCourse,
   getUserImprovementPercentage,
   getCompletedCoursesByUser,
+  countQualifiedAdmins,
+  isQualifiedAdmin,
+  getQualifiedAdminUserIds,
+  widgetAnswersFromProof,
 } from '../models/improvement.js';
 import { getUserById } from '../models/user.js';
+import {
+  notifyGuideApplicationReceived,
+  notifyGuideApplicationDecision,
+  notifyGuideApplicationPendingReview,
+} from '../realtime/notifications.js';
+import { sendPushToUser } from '../realtime/push.js';
 
 export const getCategories = async (req: Request, res: Response) => {
   try {
@@ -134,15 +149,23 @@ export const applyAsGuide = async (req: Request, res: Response) => {
       .map(([id, p]) => `${id}: ${p.whyGood}`)
       .join('\n');
 
+    const widgetAnswers = widgetAnswersFromProof(sanitizedProof);
+
     const existing = await getApplicationByUserId(userId);
-    if (existing) {
-      return res.status(400).json({ error: 'You have already submitted an application' });
+    if (existing?.status === 'pending') {
+      return res.status(400).json({ error: 'You have already submitted an application. You will get an answer within 48 hours.' });
+    }
+    if (existing?.status === 'approved') {
+      return res.status(400).json({ error: 'You are already a qualified guide' });
     }
 
-    const sanitizedProofOldRemoved = sanitizedProof;
+    const qualifiedCount = await countQualifiedAdmins();
+    const seedSlotsLeft = Math.max(0, QUALIFIED_ADMIN_SEED_LIMIT - qualifiedCount);
+    const autoApprove = seedSlotsLeft > 0;
+    const now = new Date();
+    const decisionDueAt = new Date(now.getTime() + GUIDE_REVIEW_SLA_HOURS * 60 * 60 * 1000);
 
-    const application = await createApplication({
-      userId,
+    const payload = {
       categories,
       region: sanitizeForStorage(region || 'Global', LIMITS.CITY),
       experience: sanitizeForStorage(experience || summaryExperience, LIMITS.EXPERIENCE),
@@ -150,17 +173,71 @@ export const applyAsGuide = async (req: Request, res: Response) => {
       identificationUrl: identificationUrl
         ? sanitizeHttpUrl(identificationUrl) || sanitizeForStorage(identificationUrl, LIMITS.HTTP_URL)
         : '',
-      proofPerCategory: sanitizedProofOldRemoved,
-    });
+      proofPerCategory: sanitizedProof,
+      widgetAnswers,
+    };
 
-    const { startVoteForApplication } = await import('./coachVoteController.js');
-    await startVoteForApplication(application.id, userId);
+    const application =
+      existing?.status === 'rejected'
+        ? await resubmitRejectedApplication(existing, payload)
+        : await createApplication({
+            userId,
+            ...payload,
+            status: 'pending',
+            decisionDueAt,
+          });
+
+    if (autoApprove) {
+      const guide = await approveApplication(application.id, 'system-seed', 4.5, { autoApproved: true });
+      const fresh = await getApplicationByUserId(userId);
+      notifyGuideApplicationDecision(userId, { approved: true, autoApproved: true });
+      sendPushToUser(userId, {
+        title: 'You are a qualified guide',
+        body: 'You can start guiding others now. Open Compatibility to use your expert dashboard.',
+        data: { url: '/home' },
+      }).catch(() => {});
+      return res.json({
+        message:
+          'You are a qualified guide admin. You can start guiding others now from Compatibility.',
+        application: fresh || { ...application, status: 'approved', autoApproved: true },
+        guide,
+        autoApproved: true,
+        qualifiedAdminCount: qualifiedCount + 1,
+        seedLimit: QUALIFIED_ADMIN_SEED_LIMIT,
+        reviewSlaHours: GUIDE_REVIEW_SLA_HOURS,
+      });
+    }
+
+    notifyGuideApplicationReceived(userId, { hours: GUIDE_REVIEW_SLA_HOURS, applicationId: application.id });
+    sendPushToUser(userId, {
+      title: 'Guide application received',
+      body: `You will get an answer within ${GUIDE_REVIEW_SLA_HOURS} hours. Qualified guides are reviewing your profile and proofs.`,
+      data: { url: '/home' },
+    }).catch(() => {});
+
+    const applicant = await getUserById(userId);
+    const applicantName = applicant?.name || applicant?.username || 'A member';
+    const adminIds = (await getQualifiedAdminUserIds()).filter((id) => id !== userId);
+    for (const adminId of adminIds) {
+      notifyGuideApplicationPendingReview(adminId, {
+        applicationId: application.id,
+        applicantName,
+      });
+      sendPushToUser(adminId, {
+        title: 'New guide application to review',
+        body: `${applicantName} applied. Open Compatibility → Expert dashboard to approve or decline.`,
+        data: { url: '/home' },
+      }).catch(() => {});
+    }
 
     res.json({
-      message:
-        'Application submitted. Hired guides in your region and categories will vote for 48 hours — more yes than no and you qualify.',
+      message: `You will get an answer within ${GUIDE_REVIEW_SLA_HOURS} hours. Existing qualified guides will review your profile and what you submitted.`,
       application,
-      peerVoteStarted: true,
+      autoApproved: false,
+      qualifiedAdminCount: qualifiedCount,
+      seedLimit: QUALIFIED_ADMIN_SEED_LIMIT,
+      reviewSlaHours: GUIDE_REVIEW_SLA_HOURS,
+      decisionDueAt,
     });
   } catch (error) {
     console.error('Apply as guide error:', error);
@@ -185,11 +262,53 @@ export const getMyApplication = async (req: Request, res: Response) => {
 
 export const getAllApplicationsAdmin = async (req: Request, res: Response) => {
   try {
-    // In production, check if user is admin
+    const userId = (req as any).userId as string;
+    if (!(await isQualifiedAdmin(userId))) {
+      return res.status(403).json({ error: 'Only qualified guide admins can view applications' });
+    }
     const applications = await getAllApplications();
     res.json({ applications });
   } catch (error) {
     console.error('Get all applications error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+export const getPendingApplicationsForReview = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).userId as string;
+    if (!(await isQualifiedAdmin(userId))) {
+      return res.status(403).json({ error: 'Only qualified guide admins can review applications' });
+    }
+    const pending = await getPendingApplications();
+    const applications = await Promise.all(
+      pending
+        .filter((app) => app.userId !== userId)
+        .map(async (app) => {
+          const u = await getUserById(app.userId);
+          return {
+            ...app,
+            applicant: u
+              ? {
+                  id: u.id,
+                  name: u.name,
+                  username: u.username,
+                  profilePicture: u.profilePicture ?? null,
+                  age: u.age ?? null,
+                  city: u.city ?? null,
+                  country: u.country ?? null,
+                }
+              : null,
+          };
+        })
+    );
+    res.json({
+      applications,
+      reviewSlaHours: GUIDE_REVIEW_SLA_HOURS,
+      qualifiedAdminCount: await countQualifiedAdmins(),
+    });
+  } catch (error) {
+    console.error('Get pending guide applications error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 };
@@ -202,14 +321,32 @@ export const approveGuideApplication = async (req: Request, res: Response) => {
     if (!reviewerId || !applicationId) {
       return res.status(400).json({ error: 'Reviewer ID and application ID are required' });
     }
+    if (!(await isQualifiedAdmin(reviewerId))) {
+      return res.status(403).json({ error: 'Only qualified guide admins can approve applicants' });
+    }
+
+    const app = await getApplicationById(applicationId);
+    if (!app) return res.status(404).json({ error: 'Application not found' });
+    if (app.status !== 'pending') {
+      return res.status(400).json({ error: 'This application is no longer pending' });
+    }
+    if (app.userId === reviewerId) {
+      return res.status(400).json({ error: 'You cannot approve your own application' });
+    }
 
     const guide = await approveApplication(
       applicationId,
       reviewerId,
       typeof req.body.coachStarRating === 'number' ? req.body.coachStarRating : 4.5
     );
+    notifyGuideApplicationDecision(app.userId, { approved: true });
+    sendPushToUser(app.userId, {
+      title: 'You are a qualified guide',
+      body: 'You were approved. You can start guiding others now from Compatibility.',
+      data: { url: '/home' },
+    }).catch(() => {});
     res.json({
-      message: 'Application approved. Guide badge has been assigned.',
+      message: 'They are approved. They can start guiding others.',
       guide,
     });
   } catch (error: any) {
@@ -226,8 +363,26 @@ export const rejectGuideApplication = async (req: Request, res: Response) => {
     if (!reviewerId || !applicationId) {
       return res.status(400).json({ error: 'Reviewer ID and application ID are required' });
     }
+    if (!(await isQualifiedAdmin(reviewerId))) {
+      return res.status(403).json({ error: 'Only qualified guide admins can reject applicants' });
+    }
+
+    const app = await getApplicationById(applicationId);
+    if (!app) return res.status(404).json({ error: 'Application not found' });
+    if (app.status !== 'pending') {
+      return res.status(400).json({ error: 'This application is no longer pending' });
+    }
+    if (app.userId === reviewerId) {
+      return res.status(400).json({ error: 'You cannot reject your own application' });
+    }
 
     await rejectApplication(applicationId, reviewerId);
+    notifyGuideApplicationDecision(app.userId, { approved: false });
+    sendPushToUser(app.userId, {
+      title: 'Guide application update',
+      body: 'Your application was not approved. You can improve your proofs and try again later.',
+      data: { url: '/home' },
+    }).catch(() => {});
     res.json({ message: 'Application rejected.' });
   } catch (error: any) {
     console.error('Reject application error:', error);
@@ -244,13 +399,19 @@ export const getMyGuideProfile = async (req: Request, res: Response) => {
 
     const guide = await getGuideByUserId(userId);
     const user = await getUserById(userId);
-    const canVote = Boolean(guide?.isActive && user?.qualifiedCoach);
 
-    if (!guide || !canVote) {
+    if (!guide || !guide.isActive) {
       return res.json({
         guide: null,
         user: null,
         canVote: false,
+      });
+    }
+
+    if (user && !user.qualifiedCoach) {
+      await (await import('../models/user.js')).updateUserProfile(userId, {
+        qualifiedCoach: true,
+        coachStarRating: guide.rating,
       });
     }
 

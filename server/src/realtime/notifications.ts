@@ -112,6 +112,39 @@ export function notifyConfessionMessage(recipientUserId: string, payload: { sess
   list.forEach((res) => sendEvent(res, 'confession_message', data));
 }
 
+/** Notify applicant they will hear back within 48 hours. */
+export function notifyGuideApplicationReceived(
+  recipientUserId: string,
+  payload: { hours: number; applicationId: string }
+): void {
+  const list = connections.get(recipientUserId);
+  if (!list?.length) return;
+  const data = { type: 'guide_application_received', ...payload };
+  list.forEach((res) => sendEvent(res, 'guide_application_received', data));
+}
+
+/** Notify applicant of the review decision. */
+export function notifyGuideApplicationDecision(
+  recipientUserId: string,
+  payload: { approved: boolean; autoApproved?: boolean }
+): void {
+  const list = connections.get(recipientUserId);
+  if (!list?.length) return;
+  const data = { type: 'guide_application_decision', ...payload };
+  list.forEach((res) => sendEvent(res, 'guide_application_decision', data));
+}
+
+/** Notify a qualified guide-admin that someone applied and needs review. */
+export function notifyGuideApplicationPendingReview(
+  recipientUserId: string,
+  payload: { applicationId: string; applicantName: string }
+): void {
+  const list = connections.get(recipientUserId);
+  if (!list?.length) return;
+  const data = { type: 'guide_application_pending_review', ...payload };
+  list.forEach((res) => sendEvent(res, 'guide_application_pending_review', data));
+}
+
 /** Someone sent an interest request (Discover). Recipient has 24h to respond. */
 export function notifyNewInterest(recipientUserId: string, payload: { fromUserId: string; interestId: string }): void {
   const list = connections.get(recipientUserId);

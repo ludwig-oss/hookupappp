@@ -41,5 +41,29 @@ CREATE TABLE IF NOT EXISTS messages (
 CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(from_user_id, to_user_id);
 CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages(created_at);
 
+CREATE TABLE IF NOT EXISTS guide_applications (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending',
+  categories JSONB NOT NULL DEFAULT '[]',
+  region TEXT,
+  experience TEXT,
+  qualifications TEXT,
+  identification_url TEXT,
+  widget_answers JSONB NOT NULL DEFAULT '[]',
+  proof_per_category JSONB NOT NULL DEFAULT '{}',
+  auto_approved BOOLEAN NOT NULL DEFAULT false,
+  decision_due_at TIMESTAMPTZ,
+  reviewed_at TIMESTAMPTZ,
+  reviewed_by TEXT,
+  applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_guide_applications_user ON guide_applications(user_id);
+CREATE INDEX IF NOT EXISTS idx_guide_applications_status ON guide_applications(status);
+ALTER TABLE guide_applications ADD COLUMN IF NOT EXISTS widget_answers JSONB NOT NULL DEFAULT '[]';
+ALTER TABLE guide_applications ADD COLUMN IF NOT EXISTS proof_per_category JSONB NOT NULL DEFAULT '{}';
+ALTER TABLE guide_applications ADD COLUMN IF NOT EXISTS auto_approved BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE guide_applications ADD COLUMN IF NOT EXISTS decision_due_at TIMESTAMPTZ;
+
 -- Row Level Security is enabled at runtime via server/src/db/rls.ts (runSchema on startup).
 -- Policies use session vars app.current_user_id and app.bypass_rls set per request.

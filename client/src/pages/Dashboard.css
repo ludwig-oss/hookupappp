@@ -1309,6 +1309,15 @@ html.theme-night .dashboard-container {
   display: flex;
   align-items: center;
   gap: 6px;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+}
+.love-feed-author-name:hover {
+  text-decoration: underline;
 }
 
 .love-feed-verified {
@@ -3904,6 +3913,30 @@ img.celeb-blur-img {
 .chat-uplifting { font-size: 14px; color: #ff00ff; margin: 16px 0 !important; text-shadow: 0 0 10px rgba(255,0,255,0.4); }
 
 .profile-reviews-section { margin-top: 24px; padding-top: 20px; border-top: 1px solid rgba(0, 212, 255, 0.3); }
+.profile-posts-section { margin-top: 24px; padding-top: 20px; border-top: 1px solid rgba(0, 212, 255, 0.3); }
+.profile-posts-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-top: 10px;
+}
+.profile-posts-grid .love-feed-card {
+  min-width: 0;
+  width: 100%;
+}
+.profile-visitor-details {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+.profile-message-btn {
+  margin-top: 10px;
+  width: fit-content;
+}
+.avatar-circle-readonly .avatar-overlay {
+  display: none;
+}
 .profile-reviews-note { font-size: 11px; color: #9ca3af; margin: 0 0 12px; font-family: 'Orbitron', monospace; }
 .profile-overall-rating {
   display: flex;

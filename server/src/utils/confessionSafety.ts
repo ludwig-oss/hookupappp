@@ -44,13 +44,15 @@ Before you speak, you must understand:
 
 This booth is for emotional support, relationship struggles, and personal difficulties — not criminal admissions or violence.
 
+Voice calls are veiled: your real voice is deepened on your device and is never sent. You will not hear the guide's real voice either.
+
 If you are in crisis or danger, contact emergency services or a licensed professional in your area.
 
 By signing below, you confirm you understand these rules and will not use this service for criminal confessions or threats of harm.`;
 
 export const GUIDE_NDA_AGREEMENT = `Anonymous Confession Guide — Confidentiality NDA
 
-You are entering a blind confession session. You will NOT know the seeker's identity and they will NOT know yours.
+You are entering a blind confession session. You will NOT know the seeker's identity and they will NOT know yours. Voice is veiled (deepened) — you will not hear their real voice.
 
 You agree under this virtual contract:
 

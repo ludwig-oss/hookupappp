@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { API_BASE, MEDIA_API_BASE } from './config';
+import { getAuthUserRaw } from '../lib/authStorage';
 
 const API_URL = `${API_BASE}/api/profile`;
 const MEDIA_API_URL = `${MEDIA_API_BASE || API_BASE}/api/profile`;
@@ -70,8 +71,18 @@ export const profileAPI = {
       const response = await axios.get(`${MEDIA_API_URL}/${userId}`, { headers: getAuthHeaders() });
       return response.data;
     } catch (err: any) {
-      // If userId route fails, try /me route for current user
-      if (err.response?.status === 404 || err.response?.status === 400) {
+      // Only fall back to /me when this really is the signed-in user — never swap in
+      // your own profile when someone else's page failed to load.
+      const lookingAtSelf = (() => {
+        try {
+          const raw = getAuthUserRaw();
+          const me = raw ? JSON.parse(raw) : null;
+          return me?.id && String(me.id) === String(userId);
+        } catch {
+          return false;
+        }
+      })();
+      if (lookingAtSelf && (err.response?.status === 404 || err.response?.status === 400)) {
         try {
           const meResponse = await axios.get(`${MEDIA_API_URL}/me`, { headers: getAuthHeaders() });
           return meResponse.data;

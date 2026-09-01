@@ -15,6 +15,11 @@ import {
   guideRespondAppointmentHandler,
   postMessageHandler,
   endSessionHandler,
+  getVoiceCallHandler,
+  postVoiceCallOfferHandler,
+  postVoiceCallAnswerHandler,
+  postVoiceCallIceHandler,
+  hangupVoiceCallHandler,
 } from '../controllers/anonymousConfessionController.js';
 
 const router = express.Router();
@@ -35,5 +40,10 @@ router.post('/sessions/:sessionId/accept', guideAcceptHandler);
 router.post('/sessions/:sessionId/respond-appointment', guideRespondAppointmentHandler);
 router.post('/sessions/:sessionId/messages', postMessageHandler);
 router.post('/sessions/:sessionId/end', endSessionHandler);
+router.get('/sessions/:sessionId/call', getVoiceCallHandler);
+router.post('/sessions/:sessionId/call/offer', postVoiceCallOfferHandler);
+router.post('/sessions/:sessionId/call/answer', postVoiceCallAnswerHandler);
+router.post('/sessions/:sessionId/call/ice', postVoiceCallIceHandler);
+router.post('/sessions/:sessionId/call/hangup', hangupVoiceCallHandler);
 
 export default router;

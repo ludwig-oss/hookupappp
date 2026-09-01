@@ -1,5 +1,5 @@
 import { useState, useEffect, useContext, useRef } from 'react';
-import { useNavigate, Link, useLocation } from 'react-router-dom';
+import { useNavigate, Link, useLocation, useParams } from 'react-router-dom';
 import { createPortal } from 'react-dom';
 import { AuthContext } from '../context/AuthContext';
 import { profileAPI, ProfileData } from '../api/profile';
@@ -8,6 +8,8 @@ import { activityAPI } from '../api/activity';
 import { improvementAPI } from '../api/improvement';
 import { reviewsAPI, Review, OverallStarRating, REVIEW_ATTRIBUTE_LABELS } from '../api/reviews';
 import HealthProofSection from '../components/HealthProofSection';
+import { healthAPI, HealthTest } from '../api/health';
+import { postsAPI, DatingPost } from '../api/posts';
 import ProfileMedia from '../components/ProfileMedia';
 import { getCountryFlagCode } from '../constants/countryFlags';
 import { useTranslation } from '../context/LanguageContext';
@@ -51,7 +53,14 @@ const Profile = () => {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const location = useLocation();
+  const { userId: paramUserId } = useParams<{ userId?: string }>();
   const fromHelp = !!(location.state as { fromHelp?: boolean } | null)?.fromHelp;
+  const fromChat = !!(location.state as { fromChat?: boolean } | null)?.fromChat;
+  const returnChatUserId = (location.state as { chatUserId?: string } | null)?.chatUserId;
+  const pathUserId = location.pathname.match(/^\/profile\/([^/]+)$/)?.[1];
+  const routeUserId = paramUserId || pathUserId;
+  const viewingUserId = routeUserId && routeUserId !== 'me' ? routeUserId : user?.id;
+  const isOwnProfile = Boolean(user?.id && viewingUserId && String(viewingUserId) === String(user.id));
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -91,6 +100,17 @@ const Profile = () => {
   const [inRelationship, setInRelationship] = useState(false);
   const [showPhotoVerification, setShowPhotoVerification] = useState(false);
   const [syncWarning, setSyncWarning] = useState('');
+  const [profilePosts, setProfilePosts] = useState<DatingPost[]>([]);
+  const [expandedPostComments, setExpandedPostComments] = useState<string | null>(null);
+  const [postCommentDraft, setPostCommentDraft] = useState<Record<string, string>>({});
+  const [healthViewStatus, setHealthViewStatus] = useState<{
+    request: { status: string } | null;
+    canView: boolean;
+    canRequest?: boolean;
+    results: { tests: HealthTest[]; lastUpdated: string } | null;
+  } | null>(null);
+  const [healthViewLoading, setHealthViewLoading] = useState(false);
+  const [healthRequesting, setHealthRequesting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const highlightInputRef = useRef<HTMLInputElement>(null);
   const storyInputRef = useRef<HTMLInputElement>(null);
@@ -100,31 +120,44 @@ const Profile = () => {
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingProfileRef = useRef<{ age: string; country: string; city: string }>({ age: '', country: '', city: '' });
   const uploadingMediaRef = useRef(false);
+  const userIdRef = useRef(user?.id);
+  const isOwnProfileRef = useRef(isOwnProfile);
 
   useEffect(() => {
     if (!user?.id) {
       setLoading(false);
       return;
     }
+    setError('');
+    setSyncWarning('');
+    setHealthViewStatus(null);
+    setExpandedPostComments(null);
+    if (!isOwnProfile) {
+      setProfile(null);
+      setReviews([]);
+      setOverallRating(null);
+      setProfilePosts([]);
+      setLoading(true);
+      loadProfileFromServer();
+      return;
+    }
     setAge(String(user.age ?? ''));
     setCountry(String(user.country ?? ''));
     setCity(String(user.city ?? ''));
-    setError('');
-    setSyncWarning('');
     setProfile((prev) => {
-      if (prev?.id === user.id && ((prev.highlights?.length || 0) > 0 || (prev.stories?.length || 0) > 0)) {
+      if (prev && prev.id === user.id && ((prev.highlights?.length || 0) > 0 || (prev.stories?.length || 0) > 0)) {
         return prev;
       }
       return buildSessionProfile(user);
     });
     setLoading(false);
     loadProfileFromServer();
-  }, [user?.id]);
+  }, [user?.id, viewingUserId, location.pathname]);
 
   useEffect(() => {
-    if (!user?.id) return;
+    if (!user?.id || !isOwnProfile) return;
     chatAPI.getAvailableUsers(user.id).then(({ users }) => setCloseFriendCandidates(users)).catch(() => setCloseFriendCandidates([]));
-  }, [user?.id]);
+  }, [user?.id, isOwnProfile]);
 
   useEffect(() => {
     if (!viewingStories) return;
@@ -163,51 +196,88 @@ const Profile = () => {
   };
 
   const loadProfileFromServer = async () => {
-    if (!user?.id) return;
+    const pathId = typeof window !== 'undefined'
+      ? window.location.pathname.match(/^\/profile\/([^/]+)$/)?.[1]
+      : undefined;
+    const targetId = (pathId && pathId !== 'me') ? pathId : (viewingUserId || user?.id);
+    if (!user?.id || !targetId) {
+      setLoading(false);
+      return;
+    }
+    const own = String(targetId) === String(user.id);
     try {
-      const profileData = await profileAPI.getCurrentUser();
+      const profileData = own
+        ? await profileAPI.getCurrentUser()
+        : await profileAPI.getUserProfile(String(targetId));
       if (!profileData?.id) throw new Error('Invalid profile response');
       setProfile(profileData);
       applyProfileFields(profileData as ProfileData & Record<string, unknown>);
       setInRelationship(!!(profileData as any).inRelationship);
       setSyncWarning('');
-      updateUser({
-        name: profileData.name,
-        username: profileData.username,
-        profilePicture: profileData.profilePicture,
-        profileSetupComplete: profileData.profileSetupComplete,
-        photoVerifiedAt: (profileData as any).photoVerifiedAt ?? null,
-        age: (profileData as any).age,
-        country: (profileData as any).country,
-        city: (profileData as any).city,
-      });
-      if ((profileData as any).publicFigureVerified && user?.id) {
-        activityAPI.getMyInterests().then(({ sent, received }) => {
-          const accepted = [...sent, ...received].filter((i: any) => i.status === 'accepted');
-          const others = accepted.map((i: any) => {
-            const otherId = i.fromUserId === user.id ? i.toUserId : i.fromUserId;
-            return { id: otherId, name: (i as any).otherUser?.name || 'User' };
-          });
-          const byId = new Map(others.map((o) => [o.id, o]));
-          setCelebConnections(Array.from(byId.values()));
-        }).catch(() => setCelebConnections([]));
-      } else {
-        setCelebConnections([]);
+      setLoading(false);
+      if (own) {
+        updateUser({
+          name: profileData.name,
+          username: profileData.username,
+          profilePicture: profileData.profilePicture,
+          profileSetupComplete: profileData.profileSetupComplete,
+          photoVerifiedAt: (profileData as any).photoVerifiedAt ?? null,
+          age: (profileData as any).age,
+          country: (profileData as any).country,
+          city: (profileData as any).city,
+        });
+        if ((profileData as any).publicFigureVerified) {
+          activityAPI.getMyInterests().then(({ sent, received }) => {
+            const accepted = [...sent, ...received].filter((i: any) => i.status === 'accepted');
+            const others = accepted.map((i: any) => {
+              const otherId = i.fromUserId === user.id ? i.toUserId : i.fromUserId;
+              return { id: otherId, name: (i as any).otherUser?.name || 'User' };
+            });
+            const byId = new Map(others.map((o) => [o.id, o]));
+            setCelebConnections(Array.from(byId.values()));
+          }).catch(() => setCelebConnections([]));
+        } else {
+          setCelebConnections([]);
+        }
       }
-      const improvement = await improvementAPI.getUserImprovement(user.id).catch(() => ({ improvementPercentage: 0 }));
+      const [improvement, revData, postsResult] = await Promise.all([
+        improvementAPI.getUserImprovement(String(targetId)).catch(() => ({ improvementPercentage: 0 })),
+        reviewsAPI.getReviews(String(targetId)).catch(() => ({ reviews: [] as Review[], overall: null })),
+        postsAPI.getPostsByUser(String(targetId)).catch(() => ({ posts: [] as DatingPost[] })),
+      ]);
       setMatchScore(improvement.improvementPercentage ?? 0);
-      const revData = await reviewsAPI.getReviews(user.id).catch(() => ({ reviews: [], overall: null }));
       setReviews(revData.reviews);
       setOverallRating(revData.overall ?? null);
+      setProfilePosts(postsResult.posts);
+      if (!own) {
+        setHealthViewLoading(true);
+        try {
+          const status = await healthAPI.getViewStatus(String(targetId));
+          setHealthViewStatus(status);
+        } catch {
+          setHealthViewStatus(null);
+        } finally {
+          setHealthViewLoading(false);
+        }
+      }
     } catch (err: any) {
       console.warn('Profile sync failed (showing saved session):', err?.response?.status || err?.message);
+      if (!own) {
+        setProfile(null);
+        setError('Could not load this profile.');
+        setLoading(false);
+        return;
+      }
       if (!localStorage.getItem('token')) {
         setProfile(null);
         setError('Session expired. Please sign in again.');
+        setLoading(false);
         return;
       }
       setProfile((prev) => prev ?? buildSessionProfile(user));
       setSyncWarning('Could not refresh from server. Showing your saved profile — tap Retry to sync.');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -227,6 +297,7 @@ const Profile = () => {
   };
 
   const saveWithUpdates = async (updates: { age?: number; country?: string; city?: string }) => {
+    if (!isOwnProfileRef.current) return;
     const uid = userIdRef.current;
     if (!uid || Object.keys(updates).length === 0) return;
     setSaveStatus('saving');
@@ -273,7 +344,7 @@ const Profile = () => {
   };
 
   const handleSaveClick = async () => {
-    if (!user?.id) return;
+    if (!user?.id || !isOwnProfile) return;
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     saveTimeoutRef.current = null;
     const updates = buildUpdates({ age, country, city });
@@ -318,20 +389,21 @@ const Profile = () => {
   };
 
   const saveProfileFields = () => {
-    if (!user?.id) return;
+    if (!user?.id || !isOwnProfileRef.current) return;
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     saveTimeoutRef.current = setTimeout(flushSave, 600);
   };
 
-  const userIdRef = useRef(user?.id);
   useEffect(() => {
     userIdRef.current = user?.id;
-  }, [user?.id]);
+    isOwnProfileRef.current = isOwnProfile;
+  }, [user?.id, isOwnProfile]);
 
   useEffect(() => {
     return () => {
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
       if (uploadingMediaRef.current) return;
+      if (!isOwnProfileRef.current) return;
       if (!localStorage.getItem('token') || !userIdRef.current) return;
       flushSave();
     };
@@ -381,6 +453,7 @@ const Profile = () => {
   };
 
   const handleDeleteStory = async (storyId: string) => {
+    if (!isOwnProfile) return;
     if (!confirm(t('deleteStory') + '?')) return;
     try {
       await profileAPI.deleteStory(storyId);
@@ -388,6 +461,38 @@ const Profile = () => {
       setViewingStories(null);
     } catch {
       setError('Failed to delete story');
+    }
+  };
+
+  const openTheirChat = () => {
+    const id = returnChatUserId || viewingUserId;
+    if (!id) {
+      navigate('/home');
+      return;
+    }
+    navigate('/home', { state: { openWidget: 'chat', openChatWithUserId: id } });
+  };
+
+  const handleLikeProfilePost = async (postId: string) => {
+    try {
+      await postsAPI.likePost(postId);
+      const { posts } = await postsAPI.getPostsByUser(viewingUserId || '');
+      setProfilePosts(posts);
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const handleCommentProfilePost = async (postId: string) => {
+    const text = postCommentDraft[postId]?.trim();
+    if (!text) return;
+    try {
+      await postsAPI.commentOnPost(postId, text);
+      setPostCommentDraft((prev) => ({ ...prev, [postId]: '' }));
+      const { posts } = await postsAPI.getPostsByUser(viewingUserId || '');
+      setProfilePosts(posts);
+    } catch {
+      setError('Could not comment');
     }
   };
 
@@ -538,8 +643,14 @@ const Profile = () => {
         {fromHelp && (
           <Link to="/home" state={{ openWidget: 'help' }} className="dashboard-back-link">← {t('backToHelp')}</Link>
         )}
-        <Link to="/home" className="dashboard-back-link">← {t('backToHome')}</Link>
-        <Link to="/settings" className="dashboard-back-link">⚙️ {t('settings')}</Link>
+        {fromChat ? (
+          <button type="button" className="dashboard-back-link" onClick={openTheirChat}>← Back to chat</button>
+        ) : (
+          <Link to="/home" className="dashboard-back-link">← {t('backToHome')}</Link>
+        )}
+        {isOwnProfile && (
+          <Link to="/settings" className="dashboard-back-link">⚙️ {t('settings')}</Link>
+        )}
       </div>
 
       {syncWarning && (
@@ -561,7 +672,11 @@ const Profile = () => {
         <div className="holographic-panel left-panel" style={{ maxHeight: 'none' }}>
           <div className="widget profile-match-widget">
             <div className="profile-avatar">
-              <div className="avatar-circle" onClick={handleProfilePictureClick} style={{ cursor: 'pointer', position: 'relative' }}>
+              <div
+                className={`avatar-circle ${isOwnProfile ? '' : 'avatar-circle-readonly'}`}
+                onClick={isOwnProfile ? handleProfilePictureClick : undefined}
+                style={{ cursor: isOwnProfile ? 'pointer' : 'default', position: 'relative' }}
+              >
                 {profile.profilePicture ? (
                   <div className="avatar-image-wrapper">
                     <ProfileMedia src={profile.profilePicture} className="avatar-image" alt="Profile" />
@@ -569,31 +684,39 @@ const Profile = () => {
                 ) : (
                   <div className="avatar-icon">👤</div>
                 )}
-                <div className="avatar-overlay"><span className="upload-icon">📷</span></div>
+                {isOwnProfile && <div className="avatar-overlay"><span className="upload-icon">📷</span></div>}
               </div>
-              <div className="avatar-actions">
-                <button className="avatar-btn" onClick={handleProfilePictureClick} disabled={uploading}>
-                  {uploading ? `${t('loading')}` : t('change')}
-                </button>
-                {profile.profilePicture && (
-                  <button className="avatar-btn remove" onClick={async () => {
-                    if (!user?.id || !confirm('Remove photo?')) return;
-                    await profileAPI.uploadProfilePicture('', user.id);
-                    await loadProfile();
-                  }}>Remove</button>
-                )}
-              </div>
-              <input ref={fileInputRef} type="file" accept="image/*,video/*" style={{ display: 'none' }} onChange={handleProfilePictureChange} />
+              {isOwnProfile && (
+                <>
+                  <div className="avatar-actions">
+                    <button className="avatar-btn" onClick={handleProfilePictureClick} disabled={uploading}>
+                      {uploading ? `${t('loading')}` : t('change')}
+                    </button>
+                    {profile.profilePicture && (
+                      <button className="avatar-btn remove" onClick={async () => {
+                        if (!user?.id || !confirm('Remove photo?')) return;
+                        await profileAPI.uploadProfilePicture('', user.id);
+                        await loadProfile();
+                      }}>Remove</button>
+                    )}
+                  </div>
+                  <input ref={fileInputRef} type="file" accept="image/*,video/*" style={{ display: 'none' }} onChange={handleProfilePictureChange} />
+                </>
+              )}
             </div>
             <div className="profile-info">
               <div className="profile-name">
-                {profile.name || user?.name || 'Zorp'}
+                {profile.name || (isOwnProfile ? user?.name : '') || 'Zorp'}
                 {(profile as any).photoVerifiedAt && (
                   <span className="profile-photo-verified-badge" title="Photo verified — not catfishing">
                     ✓ Photo verified
                   </span>
                 )}
+                {(profile as any).publicFigureVerified && (
+                  <span className="profile-photo-verified-badge" title="Public figure">⭐</span>
+                )}
               </div>
+              {isOwnProfile ? (
               <div className="profile-details-editable">
                 <input
                   type="number"
@@ -651,21 +774,43 @@ const Profile = () => {
               </button>
               {error && <p className="profile-save-error" style={{ marginTop: 8, color: '#ff6b6b', fontSize: 14 }}>{error}</p>}
               </div>
-              {city && <div className="profile-detail">📍 {city}</div>}
+              ) : (
+              <div className="profile-visitor-details">
+                {profile.username && <div className="profile-detail">@{profile.username}</div>}
+                {age && <div className="profile-detail">Age {age}</div>}
+                {(country || city) && (
+                  <div className="profile-detail">
+                    {getCountryFlagCode(country) ? (
+                      <img src={`https://flagcdn.com/w40/${getCountryFlagCode(country)}.png`} alt="" className="country-flag-img" style={{ width: 18, height: 12, marginRight: 6, verticalAlign: 'middle' }} />
+                    ) : null}
+                    {country}{city ? `, ${city}` : ''}
+                  </div>
+                )}
+                {inRelationship && <div className="profile-detail" style={{ color: '#ff00ff', fontWeight: 'bold' }}>💑 In a relationship</div>}
+                <button type="button" className="profile-save-btn profile-message-btn" onClick={openTheirChat}>
+                  Message
+                </button>
+              </div>
+              )}
+              {isOwnProfile && city && <div className="profile-detail">📍 {city}</div>}
             </div>
 
             <div className="stories-section" style={{ marginTop: 16 }}>
               <div className="highlights-header">
                 <span className="highlights-title">{t('stories').toUpperCase()}</span>
-                <button type="button" className="add-highlight-btn" onClick={handleAddStoryClick} disabled={uploading || !!storyAudienceBusy} title={t('addStory')}>+</button>
+                {isOwnProfile && (
+                  <button type="button" className="add-highlight-btn" onClick={handleAddStoryClick} disabled={uploading || !!storyAudienceBusy} title={t('addStory')}>+</button>
+                )}
               </div>
-              <p className="stories-expires-note">{t('storyExpiresNote')}</p>
-              <input ref={storyInputRef} type="file" accept="image/*,video/*" style={{ display: 'none' }} onChange={handleStoryFileChange} />
+              {isOwnProfile && <p className="stories-expires-note">{t('storyExpiresNote')}</p>}
+              {isOwnProfile && <input ref={storyInputRef} type="file" accept="image/*,video/*" style={{ display: 'none' }} onChange={handleStoryFileChange} />}
               <div className="stories-rings-scroll">
+                {isOwnProfile && (
                 <button type="button" className="story-ring story-ring-add" onClick={handleAddStoryClick} disabled={uploading || !!storyAudienceBusy}>
                   <span className="story-ring-inner">+</span>
                   <span className="story-ring-label">{t('addStory')}</span>
                 </button>
+                )}
                 {storiesSorted.map((story: any, idx: number) => {
                   const thumbIsVideo = story.mediaType === 'video' || isVideoMediaUrl(story.mediaUrl);
                   return (
@@ -686,7 +831,11 @@ const Profile = () => {
                     </button>
                   );
                 })}
+                {!isOwnProfile && storiesSorted.length === 0 && (
+                  <p className="chat-empty" style={{ margin: '8px 0 0' }}>No stories right now.</p>
+                )}
               </div>
+              {isOwnProfile && (
               <details className="close-friends-details">
                 <summary className="close-friends-summary">{t('manageCloseFriends')}</summary>
                 <p className="close-friends-hint">{t('storyAudienceCloseFriends')} — {t('closeFriends').toLowerCase()}.</p>
@@ -719,14 +868,17 @@ const Profile = () => {
                   )}
                 </div>
               </details>
+              )}
             </div>
 
             <div className="highlights-section" style={{ marginTop: 16 }}>
               <div className="highlights-header">
                 <span className="highlights-title">{t('highlights').toUpperCase()}</span>
-                <button type="button" className="add-highlight-btn" onClick={() => handleHighlightClick()} disabled={uploading || !!storyAudienceBusy}>+</button>
+                {isOwnProfile && (
+                  <button type="button" className="add-highlight-btn" onClick={() => handleHighlightClick()} disabled={uploading || !!storyAudienceBusy}>+</button>
+                )}
               </div>
-              <input ref={highlightInputRef} type="file" accept="image/*,video/*" style={{ display: 'none' }} onChange={handleHighlightChange} />
+              {isOwnProfile && <input ref={highlightInputRef} type="file" accept="image/*,video/*" style={{ display: 'none' }} onChange={handleHighlightChange} />}
               <div className="highlights-scrollable">
                 {highlights.map((highlight: any) => {
                   const items = highlight.items || (highlight.imageUrl ? [{ id: highlight.id + '_item', imageUrl: highlight.imageUrl }] : []);
@@ -735,10 +887,12 @@ const Profile = () => {
                   const coverIsVideo = items[0]?.mediaType === 'video' || isVideoMediaUrl(coverImage || '');
                   return (
                     <div key={highlight.id} className="highlight-card">
+                      {isOwnProfile && (
                       <div className="highlight-reorder">
                         <button type="button" className="highlight-move-btn" title={t('highlightMoveLeft')} onClick={(e) => { e.stopPropagation(); moveHighlight(highlight.id, 'left'); }}>‹</button>
                         <button type="button" className="highlight-move-btn" title={t('highlightMoveRight')} onClick={(e) => { e.stopPropagation(); moveHighlight(highlight.id, 'right'); }}>›</button>
                       </div>
+                      )}
                       <div className="highlight-media-wrapper" onClick={() => setViewingHighlight({ ...highlight, items })}>
                         {coverImage && (
                           coverIsVideo ? (
@@ -748,23 +902,31 @@ const Profile = () => {
                           )
                         )}
                         {itemCount > 1 && <div className="highlight-count-badge">{itemCount}</div>}
+                        {isOwnProfile && (
                         <div className="highlight-add-overlay">
                           <button type="button" className="add-to-highlight-btn" onClick={(e) => { e.stopPropagation(); handleHighlightClick(highlight.id); }} title="Add more">+</button>
                         </div>
+                        )}
                       </div>
-                      <button type="button" className="highlight-delete" onClick={() => handleDeleteHighlight(highlight.id)} title="Delete">×</button>
+                      {isOwnProfile && (
+                        <button type="button" className="highlight-delete" onClick={() => handleDeleteHighlight(highlight.id)} title="Delete">×</button>
+                      )}
                     </div>
                   );
                 })}
-                {highlights.length === 0 && (
+                {highlights.length === 0 && isOwnProfile && (
                   <div className="highlight-placeholder" onClick={() => handleHighlightClick()}>
                     <div className="placeholder-icon">+</div>
                     <div className="placeholder-text">{t('addHighlight')}</div>
                   </div>
                 )}
+                {highlights.length === 0 && !isOwnProfile && (
+                  <p className="chat-empty">No highlights yet.</p>
+                )}
               </div>
             </div>
 
+            {isOwnProfile && (
             <div className="profile-public-figure-section" style={{ marginTop: 20, padding: 16, border: '1px solid rgba(0,212,255,0.3)', borderRadius: 12, background: 'rgba(0,0,0,0.2)' }}>
               <div className="highlights-title" style={{ marginBottom: 8 }}>⭐ PUBLIC FIGURE / CELEBRITY</div>
               <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.8)', marginBottom: 12 }}>
@@ -968,16 +1130,130 @@ const Profile = () => {
                 </>
               )}
             </div>
+            )}
 
-            <HealthProofSection inRelationship={inRelationship} />
+            {isOwnProfile ? (
+              <HealthProofSection inRelationship={inRelationship} />
+            ) : (
+              <div className="chat-profile-health-block" style={{ marginTop: 16 }}>
+                {healthViewLoading && <div className="chat-loading">Loading...</div>}
+                {!healthViewLoading && healthViewStatus && !healthViewStatus.canView && viewingUserId && (
+                  <HealthProofSection
+                    mode="visitor"
+                    visitorTests={[]}
+                    visitorGate={(
+                      <>
+                        <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.8)', marginBottom: 10 }}>
+                          Plan a meetup first, then request their doctor/hospital stamped STI proofs before you meet. They approve who can view.
+                        </p>
+                        {healthViewStatus.request?.status === 'pending' && <p style={{ fontSize: 13, color: '#eab308' }}>Request sent. Waiting for approval.</p>}
+                        {healthViewStatus.request?.status === 'rejected' && <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.7)' }}>They declined to share lab reports.</p>}
+                        {!healthViewStatus.request && healthViewStatus.canRequest === false && (
+                          <p style={{ fontSize: 12, color: '#fca5a5' }}>Create a meetup plan in Date safety first, then you can request their stamped reports.</p>
+                        )}
+                        {!healthViewStatus.request && healthViewStatus.canRequest !== false && (
+                          <button type="button" className="profile-save-btn" style={{ padding: '8px 16px', fontSize: 13 }} disabled={healthRequesting} onClick={async () => {
+                            if (!viewingUserId) return;
+                            setHealthRequesting(true);
+                            try {
+                              await healthAPI.requestToView(viewingUserId);
+                              const status = await healthAPI.getViewStatus(viewingUserId);
+                              setHealthViewStatus(status);
+                            } catch (err: unknown) {
+                              const ax = err as { response?: { data?: { error?: string } } };
+                              window.alert(ax.response?.data?.error || 'Could not send request');
+                            } finally {
+                              setHealthRequesting(false);
+                            }
+                          }}>{healthRequesting ? 'Sending...' : 'Request stamped lab reports'}</button>
+                        )}
+                      </>
+                    )}
+                  />
+                )}
+                {!healthViewLoading && healthViewStatus?.canView && healthViewStatus.results && (
+                  <HealthProofSection
+                    mode="visitor"
+                    visitorTests={healthViewStatus.results.tests}
+                    visitorLastUpdated={healthViewStatus.results.lastUpdated}
+                  />
+                )}
+              </div>
+            )}
 
-            <div className="match-score">{Math.round(matchScore)}% MATCH</div>
+            {isOwnProfile && <div className="match-score">{Math.round(matchScore)}% MATCH</div>}
+          </div>
+
+          <div className="profile-posts-section">
+            <div className="highlights-title">POSTS</div>
+            {profilePosts.length === 0 ? (
+              <p className="chat-empty">{isOwnProfile ? 'You have not posted yet.' : 'No posts yet.'}</p>
+            ) : (
+              <div className="profile-posts-grid">
+                {profilePosts.map((post) => (
+                  <div key={post.id} className="love-feed-card">
+                    <div className="love-feed-card-media">
+                      {post.contentType === 'video' ? (
+                        <video src={post.content} controls playsInline preload="metadata" />
+                      ) : post.contentType === 'image' ? (
+                        <img src={post.content} alt="" />
+                      ) : (
+                        <div className="love-feed-card-media-text">{post.content}</div>
+                      )}
+                    </div>
+                    <div className="love-feed-card-meta">
+                      {post.title && <p className="love-feed-card-headline">"{post.title}"</p>}
+                      {post.contentType !== 'text' && post.content && !post.title && (
+                        <p className="love-feed-card-headline">{post.contentType === 'video' ? 'Shared a video' : 'Shared a post'}</p>
+                      )}
+                    </div>
+                    <div className="love-feed-card-actions">
+                      <div className="love-feed-actions-primary">
+                        <button type="button" className="love-feed-action" onClick={() => handleLikeProfilePost(post.id)}>
+                          <span className="love-feed-icon">♥</span>
+                          <span>{post.likes || 0}</span>
+                        </button>
+                        <button
+                          type="button"
+                          className="love-feed-action"
+                          onClick={() => setExpandedPostComments(expandedPostComments === post.id ? null : post.id)}
+                        >
+                          <span className="love-feed-icon">💬</span>
+                          <span>{post.comments?.length || 0}</span>
+                        </button>
+                      </div>
+                    </div>
+                    {expandedPostComments === post.id && (
+                      <div className="love-feed-comments">
+                        {(post.comments || []).map((c) => (
+                          <div key={c.id} className="love-feed-comment">
+                            <strong>{c.userName}</strong>: {c.content}
+                          </div>
+                        ))}
+                        <div className="love-feed-comment-form">
+                          <input
+                            type="text"
+                            placeholder="Write a comment..."
+                            value={postCommentDraft[post.id] ?? ''}
+                            onChange={(e) => setPostCommentDraft((prev) => ({ ...prev, [post.id]: e.target.value }))}
+                            onKeyDown={(e) => { if (e.key === 'Enter') handleCommentProfilePost(post.id); }}
+                          />
+                          <button type="button" onClick={() => handleCommentProfilePost(post.id)}>Reply</button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="profile-reviews-section">
             <div className="highlights-title">{t('reviews').toUpperCase()}</div>
             <p className="profile-reviews-note">
-              Reviews cannot be deleted. You can reply once. False or malicious claims may lead to ban or suspension.
+              {isOwnProfile
+                ? 'Reviews cannot be deleted. You can reply once. False or malicious claims may lead to ban or suspension.'
+                : 'Reviews other people left for them. You can like and comment on their posts above.'}
             </p>
             {overallRating && overallRating.totalReviews > 0 && (
               <div className="profile-overall-rating">
@@ -1030,8 +1306,8 @@ const Profile = () => {
                         </span>
                       </div>
                     )}
-                    {r.replyText && <p className="profile-review-reply"><em>Your reply:</em> {r.replyText}</p>}
-                    {!r.replyText && user?.id && (
+                    {r.replyText && <p className="profile-review-reply"><em>{isOwnProfile ? 'Your reply:' : 'Reply:'}</em> {r.replyText}</p>}
+                    {!r.replyText && isOwnProfile && user?.id && (
                       <div className="profile-review-reply-form">
                         <input
                           type="text"
@@ -1138,14 +1414,18 @@ const Profile = () => {
                       ) : (
                         <img src={item.imageUrl} alt="" className="viewer-media" />
                       )}
+                      {isOwnProfile && (
                       <button className="viewer-item-delete" onClick={() => {
                         if (viewingHighlight.items.length > 1) handleDeleteHighlight(viewingHighlight.id, item.id);
                         else { handleDeleteHighlight(viewingHighlight.id); setViewingHighlight(null); }
                       }}>Delete</button>
+                      )}
                     </div>
                   ))}
                 </div>
+                {isOwnProfile && (
                 <button className="add-more-to-highlight-btn" onClick={() => { setViewingHighlight(null); handleHighlightClick(viewingHighlight.id); }}>+ Add More</button>
+                )}
               </div>
             </div>
           )}
@@ -1218,32 +1498,36 @@ const Profile = () => {
             })()}
           </div>
           <div className="story-viewer-toolbar" onClick={(e) => e.stopPropagation()}>
-            <button type="button" className="story-toolbar-btn" onClick={() => {
-              const cur = viewingStories.items[viewingStories.index];
-              if (cur) handleDeleteStory(cur.id);
-            }}>{t('deleteStory')}</button>
-            <select
-              className="story-highlight-select"
-              value={highlightPickForStory}
-              onChange={(e) => setHighlightPickForStory(e.target.value)}
-              aria-label="Add to highlight"
-            >
-              <option value="__new__">{t('addHighlight')}</option>
-              {highlights.map((h: any) => (
-                <option key={h.id} value={h.id}>{h.title || 'Highlight'}</option>
-              ))}
-            </select>
-            <button type="button" className="story-toolbar-btn" onClick={async () => {
-              const cur = viewingStories.items[viewingStories.index];
-              if (!cur || !user?.id) return;
-              try {
-                await profileAPI.addHighlightFromStory(cur.id, highlightPickForStory === '__new__' ? undefined : highlightPickForStory);
-                await loadProfile();
-                setViewingStories(null);
-              } catch {
-                setError('Could not add to highlight');
-              }
-            }}>{t('addToHighlight')}</button>
+            {isOwnProfile && (
+              <>
+                <button type="button" className="story-toolbar-btn" onClick={() => {
+                  const cur = viewingStories.items[viewingStories.index];
+                  if (cur) handleDeleteStory(cur.id);
+                }}>{t('deleteStory')}</button>
+                <select
+                  className="story-highlight-select"
+                  value={highlightPickForStory}
+                  onChange={(e) => setHighlightPickForStory(e.target.value)}
+                  aria-label="Add to highlight"
+                >
+                  <option value="__new__">{t('addHighlight')}</option>
+                  {highlights.map((h: any) => (
+                    <option key={h.id} value={h.id}>{h.title || 'Highlight'}</option>
+                  ))}
+                </select>
+                <button type="button" className="story-toolbar-btn" onClick={async () => {
+                  const cur = viewingStories.items[viewingStories.index];
+                  if (!cur || !user?.id) return;
+                  try {
+                    await profileAPI.addHighlightFromStory(cur.id, highlightPickForStory === '__new__' ? undefined : highlightPickForStory);
+                    await loadProfile();
+                    setViewingStories(null);
+                  } catch {
+                    setError('Could not add to highlight');
+                  }
+                }}>{t('addToHighlight')}</button>
+              </>
+            )}
             <button type="button" className="story-toolbar-close" onClick={() => setViewingStories(null)}>×</button>
           </div>
         </div>,

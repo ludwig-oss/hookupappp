@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { confessionAPI, ConfessionSessionView, BlurredConfessionGuide } from '../../api/confession';
 import { formatAxiosError } from '../../lib/apiError';
+import ConfessionMaskedCall from '../ConfessionMaskedCall';
 import './Widget.css';
 
 type Step = 'intro' | 'scope' | 'guides' | 'book' | 'waiting_accept' | 'pay' | 'waiting' | 'chat' | 'guide';
@@ -243,7 +244,7 @@ export default function ConfessionBoothWidget() {
         <div style={{ fontSize: 48, marginBottom: 8 }} aria-hidden>⛪</div>
         <h2 style={{ margin: 0, fontSize: 20, color: '#fde68a' }}>Confession Booth</h2>
         <p style={{ fontSize: 13, color: '#a8a29e', marginTop: 8, lineHeight: 1.5 }}>
-          Like the old confessional — you cannot see each other. Speak freely to an anonymous guide who is bound by NDA never to reveal what they hear.
+          Like the old confessional — a screen between you. You never see each other, and on a voice call you never hear a real voice. Both sides are deepened through the lattice so you stay unknown.
         </p>
       </div>
 
@@ -269,6 +270,7 @@ export default function ConfessionBoothWidget() {
         <div>
           <ul style={{ fontSize: 13, color: '#d1d5db', lineHeight: 1.6, paddingLeft: 18 }}>
             <li>Completely anonymous — neither side knows who the other is</li>
+            <li>Voice calls go through a veil: your real voice never leaves this device; they only hear a deepened mask</li>
             <li>Guide signs a legal NDA — revealing anything can lead to lawsuit</li>
             <li>€5 or €10 after your guide accepts your appointment (guide keeps 80%)</li>
             <li><strong>Forbidden:</strong> confessing crimes or intent to harm — blocked &amp; reported</li>
@@ -461,6 +463,10 @@ export default function ConfessionBoothWidget() {
               End session
             </button>
           </div>
+
+          {session.status === 'active' && session.role && (
+            <ConfessionMaskedCall sessionId={session.id} role={session.role} />
+          )}
 
           <div className="confession-chat-log">
             {session.messages.map((m) => (

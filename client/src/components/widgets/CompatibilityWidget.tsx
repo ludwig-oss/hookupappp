@@ -1,4 +1,5 @@
 import { useState, useEffect, useContext } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { AuthContext } from '../../context/AuthContext';
 import {
   improvementAPI,
@@ -17,6 +18,7 @@ import CoachVoteWidget from './CoachVoteWidget';
 import GuidePrepayPanel from './GuidePrepayPanel';
 import { prepareAndUploadFile } from '../../lib/uploadMedia';
 import { formatAxiosError } from '../../lib/apiError';
+import { notifyDevice } from '../../lib/deviceNotify';
 import './Widget.css';
 
 const VIDEO_CALL_BASE = 'https://meet.jit.si';
@@ -31,11 +33,12 @@ function clipText(text: string, max: number): string {
 
 export default function CompatibilityWidget() {
   const { user } = useContext(AuthContext);
+  const navigate = useNavigate();
   const [view, setView] = useState<'main' | 'recommended' | 'search' | 'guides' | 'request' | 'send_proof' | 'booking' | 'expert_apply' | 'expert_dashboard'>('main');
   /** Wizard: want a guide → region → browse areas & pick an expert */
   const [guideSeekStep, setGuideSeekStep] = useState<GuideSeekStep>('choose');
   const [clientRegion, setClientRegion] = useState('');
-  const [expertTab, setExpertTab] = useState<'requests' | 'upcoming' | 'previous' | 'availability' | 'wallet'>('requests');
+  const [expertTab, setExpertTab] = useState<'requests' | 'upcoming' | 'previous' | 'availability' | 'wallet' | 'applications'>('requests');
   const [myApplication, setMyApplication] = useState<GuideApplication | null>(null);
   const [myGuide, setMyGuide] = useState<Guide | null>(null);
   const [guideRequestsIncoming, setGuideRequestsIncoming] = useState<GuideRequest[]>([]);
@@ -73,6 +76,7 @@ export default function CompatibilityWidget() {
   const [walletSummary, setWalletSummary] = useState<GuideWalletSummary | null>(null);
   const [withdrawAmount, setWithdrawAmount] = useState('');
   const [walletPaypal, setWalletPaypal] = useState('');
+  const [pendingGuideApps, setPendingGuideApps] = useState<GuideApplication[]>([]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -110,23 +114,40 @@ export default function CompatibilityWidget() {
     return () => window.removeEventListener('school:open-guides', handler);
   }, [user?.id]);
 
+  const refreshMyGuideStatus = () => {
+    if (!user?.id) return;
+    improvementAPI.getMyApplication(user.id).then(r => setMyApplication(r.application || null)).catch(() => setMyApplication(null));
+      improvementAPI.getMyGuideProfile(user.id).then(r => {
+        if (r.guide) setMyGuide(r.guide);
+        else setMyGuide(null);
+      }).catch(() => setMyGuide(null));
+  };
+
   useEffect(() => {
     if (user?.id) {
       loadRecommended();
       loadMyRequests();
       improvementAPI.getMyBookings(user.id).then(r => setMyBookings(r.bookings || [])).catch(() => {});
-      improvementAPI.getMyApplication(user.id).then(r => setMyApplication(r.application || null)).catch(() => setMyApplication(null));
-      improvementAPI.getMyGuideProfile(user.id).then(r => {
-        if (r.guide && r.user) setMyGuide(r.guide);
-        else setMyGuide(null);
-      }).catch(() => setMyGuide(null));
+      refreshMyGuideStatus();
     }
   }, [user?.id]);
+
+  useEffect(() => {
+    const onUpdate = () => {
+      refreshMyGuideStatus();
+      if (myGuide?.id) {
+        improvementAPI.listPendingGuideApplications().then(r => setPendingGuideApps(r.applications || [])).catch(() => setPendingGuideApps([]));
+      }
+    };
+    window.addEventListener('guide:application-updated', onUpdate);
+    return () => window.removeEventListener('guide:application-updated', onUpdate);
+  }, [user?.id, myGuide?.id]);
 
   useEffect(() => {
     if (myGuide?.id) {
       improvementAPI.getGuideRequests(myGuide.id).then(r => setGuideRequestsIncoming(r.requests || [])).catch(() => setGuideRequestsIncoming([]));
       improvementAPI.getGuideBookings(myGuide.id).then(r => setGuideBookings(r.bookings || [])).catch(() => setGuideBookings([]));
+      improvementAPI.listPendingGuideApplications().then(r => setPendingGuideApps(r.applications || [])).catch(() => setPendingGuideApps([]));
     }
   }, [myGuide?.id]);
 
@@ -405,7 +426,15 @@ export default function CompatibilityWidget() {
       setApplyQualifications('');
       setApplyIdentificationUrl('');
       setApplyProofPerCategory({});
-      alert(res.message || 'Application submitted. Expert guides in your region will vote yes or no.');
+      notifyDevice(
+        res.autoApproved ? 'You are a qualified guide' : 'Application received',
+        res.message
+      );
+      if (res.autoApproved && user?.id) {
+        const g = await improvementAPI.getMyGuideProfile(user.id);
+        if (g.guide) setMyGuide(g.guide);
+      }
+      alert(res.message);
     } catch (err: any) {
       setError(err.response?.data?.error || 'Failed to submit application');
     } finally {
@@ -432,6 +461,37 @@ export default function CompatibilityWidget() {
       improvementAPI.getGuideRequests(myGuide!.id).then(r => setGuideRequestsIncoming(r.requests || []));
     } catch (err: any) {
       setError(err.response?.data?.error || 'Failed to decline');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleApproveGuideApplicant = async (applicationId: string) => {
+    if (!window.confirm('Approve this person as a qualified guide? They will be notified and can start guiding others.')) return;
+    setLoading(true);
+    setError('');
+    try {
+      await improvementAPI.approveGuideApplication(applicationId);
+      const r = await improvementAPI.listPendingGuideApplications();
+      setPendingGuideApps(r.applications || []);
+      notifyDevice('Applicant approved', 'They were notified that they are qualified and can start guiding.');
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Could not approve');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRejectGuideApplicant = async (applicationId: string) => {
+    if (!window.confirm('Reject this application? They will be notified.')) return;
+    setLoading(true);
+    setError('');
+    try {
+      await improvementAPI.rejectGuideApplication(applicationId);
+      const r = await improvementAPI.listPendingGuideApplications();
+      setPendingGuideApps(r.applications || []);
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Could not reject');
     } finally {
       setLoading(false);
     }
@@ -816,7 +876,12 @@ export default function CompatibilityWidget() {
 
       {myApplication?.status === 'pending' && (
         <div style={{ marginBottom: '12px', padding: '12px', border: '2px solid rgba(251, 191, 36, 0.6)', borderRadius: '10px', background: 'rgba(251, 191, 36, 0.1)', color: '#fbbf24', fontSize: '13px' }}>
-          Your expert application is in peer review for 48 hours. Opposite-gender members vote if you qualify (~80% needed).
+          You will get an answer within 48 hours. Qualified guides are reviewing your profile and the proofs you submitted in Compatibility.
+        </div>
+      )}
+      {myApplication?.status === 'approved' && (
+        <div style={{ marginBottom: '12px', padding: '12px', border: '2px solid rgba(34, 197, 94, 0.6)', borderRadius: '10px', background: 'rgba(34, 197, 94, 0.1)', color: '#22c55e', fontSize: '13px' }}>
+          You are a qualified guide. You can start guiding others now.
         </div>
       )}
       {myApplication?.status === 'rejected' && (
@@ -825,7 +890,7 @@ export default function CompatibilityWidget() {
         </div>
       )}
 
-      {myGuide && (
+      {(myGuide || myApplication?.status === 'approved') && (
         <div style={{ marginBottom: '12px' }}>
           <button
             type="button"
@@ -846,7 +911,7 @@ export default function CompatibilityWidget() {
         </div>
       )}
 
-      {!myGuide && !myApplication && (
+      {!myGuide && (!myApplication || myApplication.status === 'rejected') && (
         <div style={{ marginBottom: '12px' }}>
           <button
             type="button"
@@ -861,9 +926,13 @@ export default function CompatibilityWidget() {
               cursor: 'pointer',
             }}
           >
-            Apply to be an expert
+            {myApplication?.status === 'rejected' ? 'Apply again with stronger proofs' : 'Apply to be an expert'}
           </button>
-          <p style={{ fontSize: '11px', color: '#9ca3af', marginTop: '6px' }}>Provide proof per area. Reviewed within 48 hours.</p>
+          <p style={{ fontSize: '11px', color: '#9ca3af', marginTop: '6px' }}>
+            {myApplication?.status === 'rejected'
+              ? 'Submit stronger proofs in Compatibility. First 10 qualified guides are approved immediately; after that you get an answer within 48 hours.'
+              : 'First 10 qualified guides are approved immediately. After that, existing guides review your proofs and you get an answer within 48 hours.'}
+          </p>
         </div>
       )}
 
@@ -1067,7 +1136,7 @@ export default function CompatibilityWidget() {
           <button type="button" onClick={() => setView('main')} style={{ marginBottom: '12px', background: 'transparent', border: '2px solid #00d4ff', color: '#00d4ff', padding: '8px 14px', borderRadius: '8px', fontFamily: 'Orbitron, monospace', cursor: 'pointer' }}>← Back</button>
           <h3 style={{ color: '#00d4ff', marginBottom: '8px', fontFamily: 'Orbitron, monospace' }}>Apply to be a guide</h3>
           <p style={{ fontSize: '12px', color: '#9ca3af', marginBottom: '16px' }}>
-            For each area: explain why you&apos;re good, then add proof (Instagram, photos, or video). Hired guides in your region vote yes/no — more yes than no and you qualify.
+            For each area: explain why you&apos;re good, then add proof (Instagram, photos, or video). If fewer than 10 qualified guides exist yet, you are approved automatically. Otherwise a qualified guide reviews your profile and proofs, and you get an answer within 48 hours.
           </p>
           <label style={{ display: 'block', marginBottom: '8px', color: '#00d4ff', fontSize: '12px' }}>Categories (select all that apply)</label>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '16px', maxHeight: '140px', overflowY: 'auto' }}>
@@ -1215,7 +1284,7 @@ export default function CompatibilityWidget() {
           <button type="button" onClick={() => setView('main')} style={{ marginBottom: '12px', background: 'transparent', border: '2px solid #00d4ff', color: '#00d4ff', padding: '8px 14px', borderRadius: '8px', fontFamily: 'Orbitron, monospace', cursor: 'pointer' }}>← Back to Compatibility</button>
           <h3 style={{ color: '#22c55e', marginBottom: '12px', fontFamily: 'Orbitron, monospace' }}>Expert dashboard</h3>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '16px' }}>
-            {(['requests', 'upcoming', 'previous', 'availability', 'wallet'] as const).map(tab => (
+            {(['requests', 'applications', 'upcoming', 'previous', 'availability', 'wallet'] as const).map(tab => (
               <button
                 key={tab}
                 type="button"
@@ -1223,6 +1292,9 @@ export default function CompatibilityWidget() {
                   setExpertTab(tab);
                   if (tab === 'wallet') {
                     walletAPI.getMyWallet().then(setWalletSummary).catch(() => {});
+                  }
+                  if (tab === 'applications') {
+                    improvementAPI.listPendingGuideApplications().then(r => setPendingGuideApps(r.applications || [])).catch(() => setPendingGuideApps([]));
                   }
                 }}
                 style={{
@@ -1237,6 +1309,7 @@ export default function CompatibilityWidget() {
                 }}
               >
                 {tab === 'requests' && `Requests (${guideRequestsIncoming.filter(r => r.status === 'pending').length})`}
+                {tab === 'applications' && `Guide applicants (${pendingGuideApps.length})`}
                 {tab === 'upcoming' && 'Upcoming'}
                 {tab === 'previous' && 'Previous clients'}
                 {tab === 'availability' && 'Set availability'}
@@ -1244,6 +1317,83 @@ export default function CompatibilityWidget() {
               </button>
             ))}
           </div>
+          {expertTab === 'applications' && (
+            <div style={{ maxHeight: '420px', overflowY: 'auto' }}>
+              {pendingGuideApps.length === 0 ? (
+                <p style={{ color: '#9ca3af', fontSize: '13px' }}>No pending guide applications.</p>
+              ) : (
+                pendingGuideApps.map((app) => {
+                  const answers = app.widgetAnswers?.length
+                    ? app.widgetAnswers
+                    : Object.entries(app.proofPerCategory || {}).map(([categoryId, p]) => ({
+                        categoryId,
+                        whyGood: p.whyGood || p.description || '',
+                        proofType: p.proofType || 'pictures',
+                        instagramHandle: p.instagramHandle,
+                        imageUrls: p.imageUrls,
+                        videoUrl: p.videoUrl,
+                        fileUrls: [...(p.imageUrls || []), ...(p.videoUrl ? [p.videoUrl] : [])],
+                      }));
+                  return (
+                    <div key={app.id} style={cardStyle()}>
+                      <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 10 }}>
+                        {app.applicant?.profilePicture ? (
+                          <img src={app.applicant.profilePicture} alt="" style={{ width: 48, height: 48, borderRadius: '50%', objectFit: 'cover' }} />
+                        ) : (
+                          <div style={{ width: 48, height: 48, borderRadius: '50%', background: 'rgba(0,212,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#00d4ff' }}>
+                            {(app.applicant?.name || '?')[0]}
+                          </div>
+                        )}
+                        <div>
+                          <div style={{ fontWeight: 'bold' }}>{app.applicant?.name || 'Applicant'}</div>
+                          <div style={{ fontSize: 12, color: '#9ca3af' }}>
+                            {app.applicant?.username ? `@${app.applicant.username}` : ''}
+                            {app.applicant?.age ? ` · ${app.applicant.age}` : ''}
+                            {app.applicant?.city || app.applicant?.country ? ` · ${[app.applicant.city, app.applicant.country].filter(Boolean).join(', ')}` : ''}
+                          </div>
+                          <div style={{ fontSize: 11, color: '#00d4ff', marginTop: 2 }}>Region: {app.region}</div>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => navigate(`/profile/${app.userId}`)}
+                        style={{ marginBottom: 10, padding: '6px 12px', background: 'transparent', border: '1px solid #00d4ff', color: '#00d4ff', borderRadius: 8, fontFamily: 'Orbitron, monospace', fontSize: 11, cursor: 'pointer' }}
+                      >
+                        View profile
+                      </button>
+                      {answers.map((a) => (
+                        <div key={a.categoryId} style={{ marginBottom: 10, padding: 8, background: 'rgba(0,0,0,0.25)', borderRadius: 8 }}>
+                          <div style={{ fontSize: 12, color: '#00d4ff', marginBottom: 4 }}>{categories.find((c) => c.id === a.categoryId)?.name || a.categoryId}</div>
+                          <p style={{ fontSize: 12, color: '#e5e7eb', margin: 0 }}>{a.whyGood}</p>
+                          {a.instagramHandle && <p style={{ fontSize: 11, color: '#9ca3af', margin: '4px 0 0' }}>Instagram: @{a.instagramHandle}</p>}
+                          {a.imageUrls && a.imageUrls.length > 0 && (
+                            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
+                              {a.imageUrls.map((url) => (
+                                <a key={url} href={url} target="_blank" rel="noreferrer">
+                                  <img src={url} alt="" style={{ width: 56, height: 56, objectFit: 'cover', borderRadius: 6 }} />
+                                </a>
+                              ))}
+                            </div>
+                          )}
+                          {a.videoUrl && (
+                            <video src={a.videoUrl} controls style={{ width: '100%', maxHeight: 160, marginTop: 6, borderRadius: 8 }} />
+                          )}
+                        </div>
+                      ))}
+                      <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                        <button type="button" onClick={() => handleApproveGuideApplicant(app.id)} disabled={loading} style={{ padding: '8px 14px', background: 'rgba(34, 197, 94, 0.3)', border: '2px solid #22c55e', color: '#22c55e', borderRadius: '8px', fontFamily: 'Orbitron, monospace', cursor: 'pointer' }}>
+                          Yes, they are approved
+                        </button>
+                        <button type="button" onClick={() => handleRejectGuideApplicant(app.id)} disabled={loading} style={{ padding: '8px 14px', background: 'transparent', border: '2px solid #ef4444', color: '#ef4444', borderRadius: '8px', fontFamily: 'Orbitron, monospace', cursor: 'pointer' }}>
+                          Decline
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          )}
           {expertTab === 'requests' && (
             <div style={{ maxHeight: '320px', overflowY: 'auto' }}>
               {guideRequestsIncoming.filter(r => r.status === 'pending').length === 0 ? (

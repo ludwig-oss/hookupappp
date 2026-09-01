@@ -131,4 +131,27 @@ CREATE POLICY profile_highlights_write ON profile_highlights FOR ALL USING (
   app_rls_bypass()
   OR user_id = app_current_user_id()
 );
+
+-- ========== guide_applications ==========
+ALTER TABLE guide_applications ENABLE ROW LEVEL SECURITY;
+ALTER TABLE guide_applications FORCE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS guide_applications_select ON guide_applications;
+CREATE POLICY guide_applications_select ON guide_applications FOR SELECT USING (
+  app_rls_bypass()
+  OR user_id = app_current_user_id()
+  OR app_current_user_id() IS NOT NULL
+);
+
+DROP POLICY IF EXISTS guide_applications_insert ON guide_applications;
+CREATE POLICY guide_applications_insert ON guide_applications FOR INSERT WITH CHECK (
+  app_rls_bypass()
+  OR user_id = app_current_user_id()
+);
+
+DROP POLICY IF EXISTS guide_applications_update ON guide_applications;
+CREATE POLICY guide_applications_update ON guide_applications FOR UPDATE USING (
+  app_rls_bypass()
+  OR app_current_user_id() IS NOT NULL
+);
 `

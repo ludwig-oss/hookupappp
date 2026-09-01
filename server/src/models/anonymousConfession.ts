@@ -49,6 +49,15 @@ export interface ConfessionSession {
   paidAt: string | null;
   startedAt: string | null;
   endedAt: string | null;
+  voiceCall?: ConfessionVoiceCall | null;
+}
+
+export interface ConfessionVoiceCall {
+  callerRole: 'seeker' | 'guide' | null;
+  offer: { type: 'offer' | 'answer'; sdp: string } | null;
+  answer: { type: 'offer' | 'answer'; sdp: string } | null;
+  ice: Array<{ id: string; fromRole: 'seeker' | 'guide'; candidate: string }>;
+  updatedAt: string | null;
 }
 
 export interface ConfessionGuidePrefs {
@@ -357,6 +366,100 @@ export async function getSessionById(sessionId: string): Promise<ConfessionSessi
   return sessions.find((x) => x.id === sessionId) || null;
 }
 
+function participantRole(session: ConfessionSession, userId: string): 'seeker' | 'guide' {
+  if (session.seekerUserId === userId) return 'seeker';
+  if (session.guideUserId === userId) return 'guide';
+  throw new Error('Not part of this session');
+}
+
+function emptyVoiceCall(): ConfessionVoiceCall {
+  return { callerRole: null, offer: null, answer: null, ice: [], updatedAt: null };
+}
+
+export function getVoiceCallForClient(session: ConfessionSession, userId: string) {
+  const role = participantRole(session, userId);
+  const call = session.voiceCall || emptyVoiceCall();
+  const incoming = Boolean(call.offer && call.callerRole && call.callerRole !== role && !call.answer);
+  return {
+    callerRole: call.callerRole,
+    offer: call.offer,
+    answer: call.answer,
+    ice: call.ice,
+    incoming,
+    active: Boolean(call.offer),
+  };
+}
+
+export async function setVoiceCallOffer(
+  sessionId: string,
+  userId: string,
+  offer: { type: 'offer'; sdp: string }
+): Promise<ConfessionSession> {
+  const sessions = await readSessions();
+  const s = sessions.find((x) => x.id === sessionId);
+  if (!s) throw new Error('Session not found');
+  if (s.status !== 'active') throw new Error('Session is not active');
+  const role = participantRole(s, userId);
+  s.voiceCall = {
+    callerRole: role,
+    offer,
+    answer: null,
+    ice: [],
+    updatedAt: new Date().toISOString(),
+  };
+  await writeSessions(sessions);
+  return s;
+}
+
+export async function setVoiceCallAnswer(
+  sessionId: string,
+  userId: string,
+  answer: { type: 'answer'; sdp: string }
+): Promise<ConfessionSession> {
+  const sessions = await readSessions();
+  const s = sessions.find((x) => x.id === sessionId);
+  if (!s) throw new Error('Session not found');
+  if (s.status !== 'active') throw new Error('Session is not active');
+  const role = participantRole(s, userId);
+  if (!s.voiceCall?.offer) throw new Error('No incoming call');
+  if (s.voiceCall.callerRole === role) throw new Error('Caller cannot answer their own call');
+  s.voiceCall.answer = answer;
+  s.voiceCall.updatedAt = new Date().toISOString();
+  await writeSessions(sessions);
+  return s;
+}
+
+export async function addVoiceCallIce(
+  sessionId: string,
+  userId: string,
+  candidate: string
+): Promise<ConfessionSession> {
+  const sessions = await readSessions();
+  const s = sessions.find((x) => x.id === sessionId);
+  if (!s) throw new Error('Session not found');
+  if (s.status !== 'active') throw new Error('Session is not active');
+  const role = participantRole(s, userId);
+  if (!s.voiceCall) s.voiceCall = emptyVoiceCall();
+  s.voiceCall.ice = [...(s.voiceCall.ice || []), {
+    id: Date.now().toString() + Math.random().toString(36).slice(2, 5),
+    fromRole: role,
+    candidate,
+  }].slice(-48);
+  s.voiceCall.updatedAt = new Date().toISOString();
+  await writeSessions(sessions);
+  return s;
+}
+
+export async function hangupVoiceCall(sessionId: string, userId: string): Promise<ConfessionSession> {
+  const sessions = await readSessions();
+  const s = sessions.find((x) => x.id === sessionId);
+  if (!s) throw new Error('Session not found');
+  participantRole(s, userId);
+  s.voiceCall = emptyVoiceCall();
+  await writeSessions(sessions);
+  return s;
+}
+
 export async function getSessionsForUser(userId: string): Promise<ConfessionSession[]> {
   const sessions = await readSessions();
   return sessions.filter((s) => s.seekerUserId === userId || s.guideUserId === userId);
@@ -420,6 +523,7 @@ export async function endConfessionSession(sessionId: string, userId: string): P
   if (s.seekerUserId !== userId && s.guideUserId !== userId) throw new Error('Not part of this session');
   s.status = 'ended';
   s.endedAt = new Date().toISOString();
+  s.voiceCall = emptyVoiceCall();
   await writeSessions(sessions);
   return s;
 }
@@ -464,5 +568,17 @@ export function sanitizeSessionForClient(session: ConfessionSession, viewerUserI
     createdAt: session.createdAt,
     startedAt: session.startedAt,
     endedAt: session.endedAt,
+    voiceCall: session.voiceCall
+      ? {
+          callerRole: session.voiceCall.callerRole,
+          incoming: Boolean(
+            session.voiceCall.offer &&
+              session.voiceCall.callerRole &&
+              session.voiceCall.callerRole !== role &&
+              !session.voiceCall.answer
+          ),
+          active: Boolean(session.voiceCall.offer),
+        }
+      : { callerRole: null, incoming: false, active: false },
   };
 }

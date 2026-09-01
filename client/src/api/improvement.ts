@@ -27,10 +27,30 @@ export interface GuideApplication {
     imageUrls?: string[];
     videoUrl?: string;
   }>;
+  widgetAnswers?: Array<{
+    categoryId: string;
+    whyGood: string;
+    proofType: 'instagram' | 'pictures' | 'video';
+    instagramHandle?: string;
+    imageUrls?: string[];
+    videoUrl?: string;
+    fileUrls?: string[];
+  }>;
   status: 'pending' | 'approved' | 'rejected';
+  autoApproved?: boolean;
+  decisionDueAt?: string | null;
   appliedAt: string;
   reviewedAt: string | null;
   reviewedBy: string | null;
+  applicant?: {
+    id: string;
+    name: string;
+    username: string;
+    profilePicture: string | null;
+    age?: number | null;
+    city?: string | null;
+    country?: string | null;
+  } | null;
 }
 
 export interface Guide {
@@ -128,13 +148,40 @@ export const improvementAPI = {
       videoUrl?: string;
     }>;
     userId: string;
-  }): Promise<{ message: string; application: GuideApplication }> => {
+  }): Promise<{
+    message: string;
+    application: GuideApplication;
+    autoApproved?: boolean;
+    reviewSlaHours?: number;
+    qualifiedAdminCount?: number;
+    seedLimit?: number;
+    decisionDueAt?: string;
+  }> => {
     const response = await axios.post(`${API_URL}/guides/apply`, data);
     return response.data;
   },
 
   getMyApplication: async (userId: string): Promise<{ application: GuideApplication | null }> => {
     const response = await axios.get(`${API_URL}/guides/my-application`, { params: { userId } });
+    return response.data;
+  },
+
+  listPendingGuideApplications: async (): Promise<{
+    applications: GuideApplication[];
+    reviewSlaHours?: number;
+    qualifiedAdminCount?: number;
+  }> => {
+    const response = await axios.get(`${API_URL}/guides/applications/pending-review`);
+    return response.data;
+  },
+
+  approveGuideApplication: async (applicationId: string, coachStarRating?: number): Promise<{ message: string }> => {
+    const response = await axios.post(`${API_URL}/guides/approve`, { applicationId, coachStarRating });
+    return response.data;
+  },
+
+  rejectGuideApplication: async (applicationId: string): Promise<{ message: string }> => {
+    const response = await axios.post(`${API_URL}/guides/reject`, { applicationId });
     return response.data;
   },
 

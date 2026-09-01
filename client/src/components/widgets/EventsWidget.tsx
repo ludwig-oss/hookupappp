@@ -1,6 +1,6 @@
 import { useState, useEffect, useContext } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { AuthContext } from '../../context/AuthContext';
-import { profileAPI } from '../../api/profile';
 import {
   eventsAPI,
   Event,
@@ -19,6 +19,7 @@ type View = 'list' | 'create' | 'detail' | 'my';
 
 export default function EventsWidget() {
   const { user } = useContext(AuthContext);
+  const navigate = useNavigate();
   const [view, setView] = useState<View>('list');
   const [events, setEvents] = useState<Event[]>([]);
   const [myEvents, setMyEvents] = useState<Event[]>([]);
@@ -32,9 +33,6 @@ export default function EventsWidget() {
   const [messages, setMessages] = useState<EventMessage[]>([]);
   const [messageDraft, setMessageDraft] = useState('');
   const [meetupDetailsDraft, setMeetupDetailsDraft] = useState('');
-  const [profileUserId, setProfileUserId] = useState<string | null>(null);
-  const [profileData, setProfileData] = useState<any>(null);
-  const [profileLoading, setProfileLoading] = useState(false);
 
   const userCity = (user as any)?.city || '';
   const userCountry = (user as any)?.country || '';
@@ -153,15 +151,13 @@ export default function EventsWidget() {
       .catch((err) => alert(err.response?.data?.error || 'Failed to save'));
   };
 
-  const loadProfile = (userId: string) => {
-    setProfileUserId(userId);
-    setProfileLoading(true);
-    setProfileData(null);
-    profileAPI
-      .getUserProfile(userId)
-      .then((d) => setProfileData(d))
-      .catch(() => setProfileData(null))
-      .finally(() => setProfileLoading(false));
+  const openUserProfile = (userId: string) => {
+    if (!userId) return;
+    if (userId === user?.id) {
+      navigate('/profile');
+      return;
+    }
+    navigate(`/profile/${userId}`);
   };
 
   const formatDate = (d: string) => new Date(d).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
@@ -343,7 +339,7 @@ export default function EventsWidget() {
               {requests.filter((r) => r.status === 'pending').length === 0 && <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)', marginBottom: 12 }}>No pending requests.</p>}
               {requests.filter((r) => r.status === 'pending').map((r) => (
                 <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                  <button type="button" className="profile-location-btn" style={{ padding: '6px 10px' }} onClick={() => loadProfile(r.userId)}>
+                  <button type="button" className="profile-location-btn" style={{ padding: '6px 10px' }} onClick={() => openUserProfile(r.userId)}>
                     {(r.user as any)?.goldStar && '⭐ '}{r.user?.name || 'User'}
                   </button>
                   <button type="button" className="profile-save-btn" style={{ padding: '6px 10px' }} onClick={() => respondRequest(r.id, true)}>Accept</button>
@@ -407,30 +403,6 @@ export default function EventsWidget() {
               </div>
             </>
           )}
-        </div>
-      )}
-
-      {profileUserId && (
-        <div className="chat-profile-overlay" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={() => { setProfileUserId(null); setProfileData(null); }}>
-          <div className="chat-profile-modal" style={{ maxWidth: 400 }} onClick={(e) => e.stopPropagation()}>
-            <div className="chat-profile-header">
-              <h3>Profile</h3>
-              <button type="button" className="chat-profile-close" onClick={() => { setProfileUserId(null); setProfileData(null); }}>×</button>
-            </div>
-            <div className="chat-profile-body">
-              {profileLoading && <div className="chat-loading">Loading...</div>}
-              {!profileLoading && profileData && (
-                <>
-                  <div className="chat-profile-avatar">
-                    {profileData.profilePicture ? <img src={profileData.profilePicture} alt="" /> : <span>{(profileData as any).name?.[0] || '?'}</span>}
-                  </div>
-                  <div className="chat-profile-name">{(profileData as any).name}</div>
-                  {(profileData as any).age && <div className="chat-profile-detail">Age: {(profileData as any).age}</div>}
-                  {(profileData as any).country && <div className="chat-profile-detail">{(profileData as any).country}{(profileData as any).city ? `, ${(profileData as any).city}` : ''}</div>}
-                </>
-              )}
-            </div>
-          </div>
         </div>
       )}
     </div>

@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { v4 as uuidv4 } from 'uuid';
-import { createUser, getUserByEmail, getUserByUsername, getUserByResetToken, updateUserPassword, updateUserResetToken, getUserByPhone, getUserById, updateUserProfile, getUserByEmailVerificationToken, updateEmailVerificationToken, verifyUserEmail, getUserByEmailVerificationCode, updateEmailVerificationCode, getUserByLoginCode, updateLoginCode, type User } from '../models/user.js';
+import { createUser, getUserByEmail, getUserByUsername, getUserByResetToken, updateUserPassword, updateUserResetToken, getUserByPhone, getUserById, updateUserProfile, getUserByEmailVerificationToken, updateEmailVerificationToken, verifyUserEmail, getUserByEmailVerificationCode, updateEmailVerificationCode, type User } from '../models/user.js';
 import { sendPasswordResetEmail, sendVerificationEmail } from '../utils/email.js';
 import { sendPasswordResetSMS, sendVerificationSMS } from '../utils/sms.js';
 import { sanitizeName, sanitizeUsername, sanitizeForStorage, LIMITS } from '../utils/sanitize.js';
@@ -472,84 +472,6 @@ export const changePassword = async (req: Request, res: Response) => {
     res.json({ message: 'Password changed successfully' });
   } catch (error) {
     console.error('Change password error:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-};
-
-/** Send a 6-digit login code to a registered phone number (sign-in without password). */
-export const sendLoginCode = async (req: Request, res: Response) => {
-  try {
-    const { phoneNumber } = req.body;
-    const normalized = String(phoneNumber || '').replace(/\D/g, '');
-    if (normalized.length < 10) {
-      return res.status(400).json({ error: 'Enter your full phone number with country code' });
-    }
-
-    const user = await getUserByPhone(normalized);
-    if (!user) {
-      return res.json({ message: 'If this number is registered, a login code was sent.' });
-    }
-
-    const code = Math.floor(100000 + Math.random() * 900000).toString();
-    const expiry = new Date(Date.now() + 600000); // 10 minutes
-    await updateLoginCode(user.id, code, expiry);
-
-    try {
-      await sendVerificationSMS(normalized, code, user.name);
-    } catch (e) {
-      console.error('Login code SMS failed:', e);
-    }
-
-    res.json({ message: 'If this number is registered, a login code was sent.' });
-  } catch (error) {
-    console.error('Send login code error:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-};
-
-/** Sign in with phone + verification code. */
-export const loginWithCode = async (req: Request, res: Response) => {
-  try {
-    const { phoneNumber, code } = req.body;
-    const normalized = String(phoneNumber || '').replace(/\D/g, '');
-    const loginCode = String(code || '').trim();
-    if (normalized.length < 10 || loginCode.length !== 6) {
-      return res.status(400).json({ error: 'Phone number and 6-digit code are required' });
-    }
-
-    const user = await getUserByLoginCode(loginCode);
-    if (!user) {
-      return res.status(401).json({ error: 'Invalid or expired code' });
-    }
-
-    const storedPhone = (user.phoneNumber || '').replace(/\D/g, '');
-    const tailMatch =
-      storedPhone === normalized ||
-      (normalized.length >= 10 && storedPhone.slice(-10) === normalized.slice(-10));
-    if (!tailMatch) {
-      return res.status(401).json({ error: 'Invalid or expired code' });
-    }
-
-    if (user.loginCodeExpiry) {
-      const exp = user.loginCodeExpiry instanceof Date ? user.loginCodeExpiry : new Date(user.loginCodeExpiry);
-      if (exp < new Date()) {
-        return res.status(401).json({ error: 'Code expired — request a new one' });
-      }
-    }
-
-    await updateLoginCode(user.id, null, null);
-
-    const token = jwt.sign({ userId: user.id, email: user.email }, getJwtSecret(), {
-      expiresIn: JWT_EXPIRES_IN,
-    });
-
-    res.json({
-      message: 'Login successful',
-      token,
-      user: toClientUser(user),
-    });
-  } catch (error) {
-    console.error('Login with code error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 };

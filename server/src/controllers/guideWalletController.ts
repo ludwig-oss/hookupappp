@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import {
   getWalletSummary,
-  requestWithdrawal,
+  withdrawAndReleaseHolds,
   setWalletPaypalEmail,
   setWalletBankLabel,
   GUIDE_EARNINGS_PERCENT,
@@ -61,15 +61,21 @@ export async function createWithdrawal(req: Request, res: Response) {
     const userId = (req as any).userId as string;
     const { amountEur, paypalEmail } = req.body as { amountEur?: number; paypalEmail?: string };
     if (!amountEur || amountEur <= 0) return res.status(400).json({ error: 'amountEur is required' });
-    const withdrawal = await requestWithdrawal(userId, amountEur, paypalEmail);
+    const result = await withdrawAndReleaseHolds(userId, amountEur, paypalEmail);
+    const captured = result.capturedAuthorizationIds.length;
     res.json({
-      message: 'Withdrawal requested. Payouts are processed like OnlyFans — typically within a few business days via PayPal.',
-      withdrawal,
+      message: captured
+        ? `Withdrawal complete. ${captured} held payment(s) captured; the app fee was collected.`
+        : 'Withdrawal requested. Available-balance payouts are sent to PayPal shortly.',
+      withdrawal: result.withdrawal,
+      capturedAuthorizationIds: result.capturedAuthorizationIds,
+      leftoverWithdrawal: result.leftoverWithdrawal,
     });
   } catch (e: any) {
     res.status(400).json({ error: e.message || 'Withdrawal failed' });
   }
 }
+
 
 /** Admin: list pending withdrawals */
 export async function listWithdrawalsAdmin(req: Request, res: Response) {

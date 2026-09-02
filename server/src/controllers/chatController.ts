@@ -8,6 +8,7 @@ import { sendPushToUser } from '../realtime/push.js';
 import { sanitizeMessageContent } from '../utils/sanitize.js';
 import { enforceReplyDeadline, getReplyStatusForConversation } from '../models/chatReplyDeadline.js';
 import { enforceMeetupWeek, getMeetupWeekStatus } from '../models/matchMeetupDeadline.js';
+import { getChatIntents, setChatIntent, isChatIntent } from '../models/chatIntents.js';
 
 function isBlocked(blocker: string[], blocked: string): boolean {
   return (blocker || []).includes(blocked);
@@ -151,6 +152,7 @@ export const getConversationsList = async (req: Request, res: Response) => {
 
     const raw = await getUserConversations(userId);
     const filtered = raw.filter((c) => !blockedSet.has(c.userId));
+    const intents = await getChatIntents(userId);
     const conversations = (
       await Promise.all(
         filtered.map(async (c) => {
@@ -165,6 +167,7 @@ export const getConversationsList = async (req: Request, res: Response) => {
             profilePicture: other?.profilePicture ?? null,
             replyDeadline: enforcement.status,
             meetupWeek: meetupEnforcement.status,
+            intent: intents[c.userId] || null,
           };
         })
       )
@@ -358,6 +361,32 @@ export const endFocus = async (req: Request, res: Response) => {
     res.json({ focus: null, message: 'Focus ended. You can chat with anyone now.' });
   } catch (error) {
     console.error('End focus error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+export const getChatIntentsHandler = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).userId as string;
+    const intents = await getChatIntents(userId);
+    res.json({ intents });
+  } catch (error) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+export const setChatIntentHandler = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).userId as string;
+    const otherUserId = String(req.params.otherUserId || '');
+    const intent = req.body?.intent;
+    if (!otherUserId) return res.status(400).json({ error: 'otherUserId required' });
+    if (intent !== null && !isChatIntent(intent)) {
+      return res.status(400).json({ error: 'intent must be serious, casual, or friends' });
+    }
+    const intents = await setChatIntent(userId, otherUserId, intent === null ? null : intent);
+    res.json({ intents, intent: intent || null });
+  } catch (error) {
     res.status(500).json({ error: 'Internal server error' });
   }
 };

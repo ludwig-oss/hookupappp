@@ -1,0 +1,74 @@
+.asp-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  background: rgba(0, 0, 0, 0.62);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.asp-card {
+  width: min(440px, 100%);
+  background: #111827;
+  border: 2px solid #f472b6;
+  border-radius: 16px;
+  padding: 20px 18px 16px;
+  box-shadow: 0 0 28px rgba(244, 114, 182, 0.35);
+  color: #f3f4f6;
+}
+
+.asp-card h3 {
+  margin: 0 0 8px;
+  color: #f9a8d4;
+  font-size: 18px;
+}
+
+.asp-card p {
+  margin: 0 0 12px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #d1d5db;
+}
+
+.asp-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px;
+  border-radius: 8px;
+  border: 2px solid rgba(244, 114, 182, 0.45);
+  background: #0f172a;
+  color: #fff;
+  font-size: 14px;
+  resize: vertical;
+}
+
+.asp-error {
+  color: #fbbf24;
+  font-size: 12px;
+  margin: 8px 0 0;
+}
+
+.asp-save {
+  width: 100%;
+  margin-top: 12px;
+  padding: 12px;
+  border: none;
+  border-radius: 10px;
+  background: #22c55e;
+  color: #052e16;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.asp-skip {
+  width: 100%;
+  margin-top: 8px;
+  padding: 8px;
+  border: none;
+  background: transparent;
+  color: #9ca3af;
+  cursor: pointer;
+  font-size: 12px;
+}

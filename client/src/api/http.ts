@@ -12,7 +12,7 @@ axios.interceptors.request.use((config) => {
   if (typeof localStorage === 'undefined') return config;
   const url = String(config.url || '');
   const skipAuth =
-    /\/api\/auth\/(login|login-pin|signup|signup-pin|forgot-pin|forgot-password|reset-pin|reset-password|send-login-code|login-with-code|report-stolen)/.test(
+    /\/api\/auth\/(login|login-pin|signup|signup-pin|forgot-pin|forgot-password|reset-pin|reset-password|report-stolen)/.test(
       url
     );
   if (skipAuth) return config;

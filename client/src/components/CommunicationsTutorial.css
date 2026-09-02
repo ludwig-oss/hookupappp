@@ -1,0 +1,86 @@
+.comms-tut-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  background: rgba(0, 0, 0, 0.72);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.comms-tut-card {
+  width: min(440px, 100%);
+  background: #0b1220;
+  border: 2px solid #f472b6;
+  border-radius: 16px;
+  padding: 22px 18px 16px;
+  box-shadow: 0 0 28px rgba(244, 114, 182, 0.35);
+  color: #f3f4f6;
+}
+
+.comms-tut-step {
+  margin: 0 0 6px;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #f9a8d4;
+}
+
+.comms-tut-card h3 {
+  margin: 0 0 10px;
+  font-size: 20px;
+  color: #fff;
+}
+
+.comms-tut-card p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.55;
+  color: #d1d5db;
+}
+
+.comms-tut-dots {
+  display: flex;
+  gap: 6px;
+  justify-content: center;
+  margin: 16px 0 12px;
+}
+
+.comms-tut-dots span {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #374151;
+}
+
+.comms-tut-dots span.on {
+  background: #f472b6;
+}
+
+.comms-tut-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.comms-tut-next {
+  margin-left: auto;
+  padding: 10px 16px;
+  border: none;
+  border-radius: 10px;
+  background: #f472b6;
+  color: #1f0320;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.comms-tut-ghost,
+.comms-tut-skip {
+  padding: 10px 12px;
+  border: none;
+  background: transparent;
+  color: #9ca3af;
+  cursor: pointer;
+  font-size: 13px;
+}

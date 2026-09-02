@@ -24,28 +24,18 @@ import {
   GUIDE_NDA_AGREEMENT,
 } from '../models/anonymousConfession.js';
 import { getGuideByUserId } from '../models/improvement.js';
+import { getOrCreateWallet, holdGuideSessionPayment, splitSessionPayment } from '../models/guideWallet.js';
+import { createAuthorizationHold, getHoldByRequestId } from '../models/paypalHolds.js';
+import {
+  buildAuthorizeOrderPayload,
+  findPayPalLink,
+  isPayPalConfigured,
+  parseAuthorizationFromOrder,
+  paypalRequest,
+} from '../lib/paypal.js';
 import { sendPushToUser } from '../realtime/push.js';
 import { notifyConfessionRequest, notifyConfessionMessage } from '../realtime/notifications.js';
 import { sanitizeMessageContent, LIMITS } from '../utils/sanitize.js';
-
-const PAYPAL_API_BASE = process.env.PAYPAL_SANDBOX === 'false' ? 'https://api-m.paypal.com' : 'https://api-m.sandbox.paypal.com';
-const PAYPAL_CLIENT_ID = process.env.PAYPAL_CLIENT_ID || '';
-const PAYPAL_SECRET = process.env.PAYPAL_SECRET || '';
-
-async function getPayPalAccessToken(): Promise<string> {
-  const auth = Buffer.from(`${PAYPAL_CLIENT_ID}:${PAYPAL_SECRET}`).toString('base64');
-  const res = await fetch(`${PAYPAL_API_BASE}/v1/oauth2/token`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
-      Authorization: `Basic ${auth}`,
-    },
-    body: 'grant_type=client_credentials',
-  });
-  if (!res.ok) throw new Error('PayPal auth failed');
-  const data = (await res.json()) as { access_token?: string };
-  return data.access_token || '';
-}
 
 export async function getConfessionInfoHandler(_req: Request, res: Response) {
   res.json({
@@ -190,7 +180,7 @@ export async function getSessionHandler(req: Request, res: Response) {
 
 export async function createPayPalOrderHandler(req: Request, res: Response) {
   try {
-    if (!PAYPAL_CLIENT_ID || !PAYPAL_SECRET) {
+    if (!isPayPalConfigured()) {
       return res.status(503).json({ error: 'PayPal is not configured. Set PAYPAL_CLIENT_ID and PAYPAL_SECRET.' });
     }
     const userId = (req as any).userId as string;
@@ -201,32 +191,31 @@ export async function createPayPalOrderHandler(req: Request, res: Response) {
       return res.status(400).json({ error: 'Your guide must accept the appointment before you can pay' });
     }
 
-    const accessToken = await getPayPalAccessToken();
-    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
-    const orderPayload = {
-      intent: 'CAPTURE',
-      purchase_units: [{
-        amount: { currency_code: 'EUR', value: String(session.amountEur) },
-        description: 'Anonymous confession session',
-        custom_id: session.id,
-      }],
-      application_context: {
-        return_url: `${frontendUrl}/home?confession=success&sessionId=${session.id}`,
-        cancel_url: `${frontendUrl}/home?confession=cancel`,
-        brand_name: 'ASWP Confession Booth',
-      },
-    };
+    const sellerWallet = session.guideUserId ? await getOrCreateWallet(session.guideUserId) : null;
+    const { platformFee } = splitSessionPayment(session.amountEur);
+    const frontendUrl = (process.env.FRONTEND_URL || 'http://localhost:5173').replace(/\/$/, '');
+    const orderPayload = buildAuthorizeOrderPayload({
+      amountEur: session.amountEur,
+      platformFeeEur: platformFee,
+      description: 'Anonymous confession session',
+      customId: session.id,
+      returnUrl: `${frontendUrl}/home?confession=success&sessionId=${session.id}`,
+      cancelUrl: `${frontendUrl}/home?confession=cancel`,
+      brandName: 'ASWP Confession Booth',
+      sellerMerchantId: sellerWallet?.paypalMerchantId || null,
+    });
 
-    const orderRes = await fetch(`${PAYPAL_API_BASE}/v2/checkout/orders`, {
+    const orderRes = await paypalRequest<{ id?: string; links?: Array<{ rel: string; href?: string }> }>({
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
-      body: JSON.stringify(orderPayload),
+      path: '/v2/checkout/orders',
+      body: orderPayload,
+      sellerMerchantId: sellerWallet?.paypalMerchantId || null,
+      requestId: `confession-order-${session.id}`,
     });
 
     if (!orderRes.ok) return res.status(502).json({ error: 'PayPal order failed' });
-    const order = (await orderRes.json()) as { id?: string; links?: Array<{ rel: string; href?: string }> };
-    const approveLink = order.links?.find((l) => l.rel === 'approve')?.href;
-    res.json({ orderId: order.id, sessionId: session.id, approvalUrl: approveLink });
+    const approveLink = findPayPalLink(orderRes.data.links, 'approve') || findPayPalLink(orderRes.data.links, 'payer-action');
+    res.json({ orderId: orderRes.data.id, sessionId: session.id, approvalUrl: approveLink, intent: 'AUTHORIZE' });
   } catch (e: any) {
     res.status(500).json({ error: e.message || 'Failed' });
   }
@@ -234,7 +223,7 @@ export async function createPayPalOrderHandler(req: Request, res: Response) {
 
 export async function capturePayPalOrderHandler(req: Request, res: Response) {
   try {
-    if (!PAYPAL_CLIENT_ID || !PAYPAL_SECRET) {
+    if (!isPayPalConfigured()) {
       return res.status(503).json({ error: 'PayPal is not configured' });
     }
     const userId = (req as any).userId as string;
@@ -247,12 +236,48 @@ export async function capturePayPalOrderHandler(req: Request, res: Response) {
       return res.json({ message: 'Already paid', session: sanitizeSessionForClient(existing, userId) });
     }
 
-    const accessToken = await getPayPalAccessToken();
-    const captureRes = await fetch(`${PAYPAL_API_BASE}/v2/checkout/orders/${orderId}/capture`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
-    });
-    if (!captureRes.ok) return res.status(402).json({ error: 'Payment capture failed' });
+    const alreadyHeld = await getHoldByRequestId(sessionId);
+    if (!alreadyHeld) {
+      const authRes = await paypalRequest<{
+        id?: string;
+        purchase_units?: Array<{
+          payments?: { authorizations?: Array<{ id?: string; expiration_time?: string; status?: string }> };
+        }>;
+      }>({
+        method: 'POST',
+        path: `/v2/checkout/orders/${encodeURIComponent(orderId)}/authorize`,
+        body: {},
+        requestId: `confession-auth-${orderId}`,
+      });
+      if (!authRes.ok) return res.status(402).json({ error: 'Payment authorization failed' });
+
+      const parsed = parseAuthorizationFromOrder({ id: orderId, ...authRes.data });
+      if (!parsed) return res.status(402).json({ error: 'PayPal did not return an authorization id' });
+
+      if (existing.guideUserId) {
+        const sellerWallet = await getOrCreateWallet(existing.guideUserId);
+        const { guideShare, platformFee } = splitSessionPayment(existing.amountEur);
+        await createAuthorizationHold({
+          userId: existing.guideUserId,
+          orderId,
+          authorizationId: parsed.authorizationId,
+          requestId: sessionId,
+          sessionId,
+          payerUserId: userId,
+          grossEur: existing.amountEur,
+          platformFeeEur: platformFee,
+          guideShareEur: guideShare,
+          currency: 'EUR',
+          merchantId: sellerWallet.paypalMerchantId,
+          expiresAt: parsed.expiresAt,
+        });
+        await holdGuideSessionPayment({
+          guideUserId: existing.guideUserId,
+          grossEur: existing.amountEur,
+          requestId: sessionId,
+        });
+      }
+    }
 
     let session = await markSessionPaid(sessionId, orderId);
     if (session.status === 'pending_guide_nda' && session.guideUserId) {

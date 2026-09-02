@@ -2588,9 +2588,11 @@ img.celeb-blur-img {
 .chat-header-right {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
   margin-left: auto;
   position: relative;
+  justify-content: flex-end;
 }
 
 .chat-header-name {
@@ -3468,6 +3470,79 @@ img.celeb-blur-img {
 }
 .chat-compare-check { flex-shrink: 0; accent-color: #00d4ff; }
 .chat-list-item-flex { flex: 1; }
+
+.chat-intent-lanes {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 4px 2px 12px;
+  margin-bottom: 4px;
+  scrollbar-width: thin;
+  scrollbar-color: #f472b6 transparent;
+}
+
+.chat-intent-lanes::-webkit-scrollbar {
+  height: 6px;
+}
+
+.chat-intent-lane {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 2px solid rgba(244, 114, 182, 0.4);
+  background: rgba(0, 0, 0, 0.35);
+  color: #f9a8d4;
+  font-size: 12px;
+  font-family: Orbitron, monospace;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.chat-intent-lane.on {
+  border-color: #f472b6;
+  background: rgba(244, 114, 182, 0.22);
+  color: #fff;
+}
+
+.chat-intent-count {
+  font-size: 10px;
+  opacity: 0.8;
+}
+
+.chat-intent-badge {
+  margin-left: 8px;
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  border: 1px solid rgba(244, 114, 182, 0.5);
+  color: #f9a8d4;
+  font-weight: 500;
+}
+
+.chat-intent-pills {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.chat-intent-pill {
+  padding: 4px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(244, 114, 182, 0.45);
+  background: transparent;
+  color: #f9a8d4;
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.chat-intent-pill.on {
+  background: rgba(244, 114, 182, 0.25);
+  border-color: #f472b6;
+  color: #fff;
+}
 
 .chat-compare-wrap { padding: 0; }
 .fifa-compare {

@@ -1,5 +1,5 @@
 import express from 'express';
-import { signup, login, forgotPassword, resetPassword, verifyEmail, resendVerificationEmail, changePassword, sendLoginCode, loginWithCode } from '../controllers/authController.js';
+import { signup, login, forgotPassword, resetPassword, verifyEmail, resendVerificationEmail, changePassword } from '../controllers/authController.js';
 import {
   oauthStatus,
   startGoogle,
@@ -55,8 +55,6 @@ router.post('/report-stolen', loginLimiter, reportStolenAccount);
 router.post('/reset-pin', loginLimiter, resetPin);
 router.post('/face/identify', loginLimiter, identifyFaceForLogin);
 router.post('/login', loginLimiter, login);
-router.post('/send-login-code', loginLimiter, sendLoginCode);
-router.post('/login-with-code', loginLimiter, loginWithCode);
 router.post('/forgot-password', forgotPassword);
 router.post('/reset-password', resetPassword);
 router.post('/verify-email', verifyEmail);

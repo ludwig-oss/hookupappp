@@ -3,6 +3,8 @@ import { AuthContext } from '../context/AuthContext';
 import { personalSafetyAPI, ShieldSettings } from '../api/personalSafety';
 import { useVolumeTripleSOS } from '../hooks/useVolumeTripleSOS';
 import { useScreenTapSOS } from '../hooks/useScreenTapSOS';
+import { speechRecognitionSupported } from '../hooks/useActivationWordListener';
+import { askWhatYouAreWearing } from './AppearanceSafetyPrompt';
 import './PersonalSafetyShield.css';
 
 export default function PersonalSafetyShield({ visible = false }: { visible?: boolean }) {
@@ -16,10 +18,6 @@ export default function PersonalSafetyShield({ visible = false }: { visible?: bo
   const [sending, setSending] = useState(false);
   const [showSetup, setShowSetup] = useState(false);
   const [activationSecret, setActivationSecret] = useState('');
-  const [cancelSecret, setCancelSecret] = useState('');
-  const [appearance, setAppearance] = useState('');
-  const [cancelInput, setCancelInput] = useState('');
-  const [phraseInput, setPhraseInput] = useState('');
 
   const load = useCallback(async () => {
     if (!user?.id) return;
@@ -29,7 +27,7 @@ export default function PersonalSafetyShield({ visible = false }: { visible?: bo
       setReady(data.ready.ready);
       setMissing(data.ready.missing);
       setActiveId(data.activeSignal?.id || null);
-      setAppearance(data.settings.appearanceDescription || '');
+      if (data.settings.activationSecret) setActivationSecret(data.settings.activationSecret);
 
       if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(
@@ -55,7 +53,14 @@ export default function PersonalSafetyShield({ visible = false }: { visible?: bo
   useEffect(() => {
     load();
     const t = setInterval(load, 60000);
-    return () => clearInterval(t);
+    const onChange = () => load();
+    window.addEventListener('safety:signal-changed', onChange);
+    window.addEventListener('safety:settings-changed', onChange);
+    return () => {
+      clearInterval(t);
+      window.removeEventListener('safety:signal-changed', onChange);
+      window.removeEventListener('safety:settings-changed', onChange);
+    };
   }, [load]);
 
   const getLocation = () =>
@@ -77,6 +82,7 @@ export default function PersonalSafetyShield({ visible = false }: { visible?: bo
         const res = await personalSafetyAPI.trigger(lat, lon, via, phrase);
         setActiveId(res.alert.id);
         setStatus(res.message);
+        window.dispatchEvent(new CustomEvent('safety:signal-changed'));
         window.location.href = `tel:${res.policeNumber}`;
       } catch (e: unknown) {
         setStatus((e as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Could not send safety signal.');
@@ -103,12 +109,14 @@ export default function PersonalSafetyShield({ visible = false }: { visible?: bo
   );
 
   const saveSetup = async () => {
+    if (activationSecret.trim().length < 3) {
+      setStatus('Pick a word only you would shout — at least 3 letters.');
+      return;
+    }
     setSending(true);
     try {
       await personalSafetyAPI.updateSettings({
-        activationSecret,
-        cancelSecret,
-        appearanceDescription: appearance,
+        activationSecret: activationSecret.trim(),
         enableHelpButton: true,
         enableScreenTaps: true,
         enableVolumeTaps: true,
@@ -117,35 +125,31 @@ export default function PersonalSafetyShield({ visible = false }: { visible?: bo
         autoArmWhenOutside: true,
       });
       setShowSetup(false);
-      setActivationSecret('');
-      setCancelSecret('');
+      window.dispatchEvent(new CustomEvent('safety:settings-changed'));
       await load();
-      setStatus('Safety shield configured. Arm it when you go out.');
+      setStatus(
+        speechRecognitionSupported()
+          ? 'Word saved. This device will listen — shout it to activate.'
+          : 'Word saved. Voice detection is not available in this browser; use the Help button if you need it.'
+      );
     } finally {
       setSending(false);
     }
   };
 
   const cancelFalseAlarm = async () => {
-    if (!cancelInput.trim()) return;
     setSending(true);
     try {
-      const res = await personalSafetyAPI.cancelFalseAlarm(cancelInput.trim());
+      const res = await personalSafetyAPI.cancelFalseAlarm();
       setActiveId(null);
-      setCancelInput('');
       setStatus(res.message);
+      window.dispatchEvent(new CustomEvent('safety:signal-changed'));
       await load();
     } catch (e: unknown) {
-      setStatus((e as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Wrong cancel phrase.');
+      setStatus((e as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Could not cancel.');
     } finally {
       setSending(false);
     }
-  };
-
-  const tryPhraseTrigger = async () => {
-    if (!phraseInput.trim()) return;
-    await triggerSignal('secret_word', phraseInput.trim());
-    setPhraseInput('');
   };
 
   if (!user?.id || !visible) return null;
@@ -153,122 +157,124 @@ export default function PersonalSafetyShield({ visible = false }: { visible?: bo
   return (
     <div className="personal-safety-shield pss-embed">
       {settings?.armed && !activeId && (
-        <span className="pss-status-chip">Shield armed · {settings.screenTapCount} taps · volume ×3 · secret word</span>
+        <span className="pss-status-chip">
+          Shield armed
+          {speechRecognitionSupported() && settings.hasActivationSecret ? ' · listening for your word' : ''}
+        </span>
       )}
-      {activeId && <span className="pss-status-chip">Safety signal active — server keeps alerting if phone dies</span>}
+      {activeId && <span className="pss-status-chip">Safety signal active — tap False alarm if you are safe</span>}
 
-        <div className="pss-panel" role="dialog">
-          <h3>Personal safety shield</h3>
-          <p className="pss-hint">
-            Not an amber alert — your <strong>safety signal</strong>. Share exact location with nearby users, your emergency contact, and police. Configure secret activate &amp; cancel phrases.
-          </p>
+      <div className="pss-panel" role="dialog">
+        <h3>Personal safety shield</h3>
+        <p className="pss-hint">
+          Not an amber alert — your <strong>safety signal</strong>. Share exact location with nearby users, your emergency contact, and police. Shout your secret word to activate. False alarm is a button that tells everyone who got the alert.
+        </p>
 
-          {!ready && !showSetup && (
-            <>
-              <p className="pss-setup-warn">Setup needed: {missing.join(', ')}</p>
-              <button type="button" className="pss-btn primary" onClick={() => setShowSetup(true)}>
-                Configure triggers
-              </button>
-            </>
-          )}
+        {!ready && !showSetup && (
+          <>
+            <p className="pss-setup-warn">Setup needed: {missing.join(', ')}</p>
+            <button type="button" className="pss-btn primary" onClick={() => setShowSetup(true)}>
+              Set your activation word
+            </button>
+          </>
+        )}
 
-          {showSetup && (
+        {showSetup && (
+          <div className="pss-section">
+            <div className="pss-section-title">Your activation word (only you know)</div>
+            <label className="pss-hint">Shout this word to turn the shield on. This device listens after you save.</label>
+            <input
+              className="pss-input"
+              value={activationSecret}
+              onChange={(e) => setActivationSecret(e.target.value)}
+              placeholder="e.g. red bicycle"
+            />
+            {!speechRecognitionSupported() && (
+              <p className="pss-setup-warn">Voice detection needs Chrome or Edge with a microphone.</p>
+            )}
+            <button type="button" className="pss-btn safe" disabled={sending} onClick={saveSetup}>
+              Save word &amp; start listening
+            </button>
+          </div>
+        )}
+
+        {ready && !activeId && (
+          <>
             <div className="pss-section">
-              <div className="pss-section-title">Your secrets (only you know)</div>
-              <label className="pss-hint">Activation — shout, type, or custom phrase</label>
-              <input className="pss-input" value={activationSecret} onChange={(e) => setActivationSecret(e.target.value)} placeholder="e.g. red bicycle" />
-              <label className="pss-hint">Cancel — false alarm (notifies everyone)</label>
-              <input className="pss-input" value={cancelSecret} onChange={(e) => setCancelSecret(e.target.value)} placeholder="e.g. all clear pineapple" />
-              <label className="pss-hint">What you&apos;re wearing / how you look</label>
-              <input className="pss-input" value={appearance} onChange={(e) => setAppearance(e.target.value)} placeholder="Red jacket, blue jeans, white sneakers" />
-              <button type="button" className="pss-btn safe" disabled={sending} onClick={saveSetup}>Save setup</button>
+              <div className="pss-section-title">Triggers</div>
+              <p className="pss-hint">
+                Shout your word · Help button · {settings?.screenTapCount} screen taps · volume down ×3
+              </p>
+              {ready && (
+                <button type="button" className="pss-btn ghost" onClick={() => setShowSetup(true)}>
+                  Change activation word
+                </button>
+              )}
+              {!settings?.armed ? (
+                <button
+                  type="button"
+                  className="pss-btn safe"
+                  disabled={sending}
+                  onClick={async () => {
+                    try {
+                      await askWhatYouAreWearing();
+                      const { lat, lon } = await getLocation();
+                      const res = await personalSafetyAPI.arm(lat, lon);
+                      setSettings(res.settings);
+                      setStatus(res.message);
+                      window.dispatchEvent(new CustomEvent('safety:settings-changed'));
+                    } catch (e: unknown) {
+                      setStatus((e as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Could not arm');
+                    }
+                  }}
+                >
+                  I&apos;m going out — arm shield
+                </button>
+              ) : (
+                <button type="button" className="pss-btn ghost" onClick={() => personalSafetyAPI.disarm().then(load)}>
+                  Disarm (home safe)
+                </button>
+              )}
             </div>
-          )}
 
-          {ready && !activeId && (
-            <>
-              <div className="pss-section">
-                <div className="pss-section-title">Triggers</div>
-                <p className="pss-hint">Help button · {settings?.screenTapCount} screen taps · volume down ×3 · secret word</p>
-                {!settings?.armed ? (
-                  <button
-                    type="button"
-                    className="pss-btn safe"
-                    disabled={sending}
-                    onClick={async () => {
-                      try {
-                        const { lat, lon } = await getLocation();
-                        const res = await personalSafetyAPI.arm(lat, lon);
-                        setSettings(res.settings);
-                        setStatus(res.message);
-                      } catch (e: unknown) {
-                        setStatus((e as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Could not arm');
-                      }
-                    }}
-                  >
-                    I&apos;m going out — arm shield
-                  </button>
-                ) : (
-                  <button type="button" className="pss-btn ghost" onClick={() => personalSafetyAPI.disarm().then(load)}>
-                    Disarm (home safe)
-                  </button>
-                )}
-              </div>
-
-              <div className="pss-section">
-                <div className="pss-section-title">Need help now</div>
-                <button type="button" className="pss-btn primary" disabled={sending || !canTrigger} onClick={() => triggerSignal('help_button')}>
-                  Help — send safety signal
-                </button>
-                <input className="pss-input" value={phraseInput} onChange={(e) => setPhraseInput(e.target.value)} placeholder="Or type your secret activation phrase" />
-                <button type="button" className="pss-btn" disabled={sending || !phraseInput.trim()} onClick={tryPhraseTrigger}>
-                  Activate with secret phrase
-                </button>
-              </div>
-            </>
-          )}
-
-          {activeId && (
             <div className="pss-section">
-              <div className="pss-section-title">False alarm?</div>
-              <p className="pss-hint">Enter your private cancel phrase — nearby users get &quot;false alarm — all clear&quot;.</p>
-              <input className="pss-input" type="password" value={cancelInput} onChange={(e) => setCancelInput(e.target.value)} placeholder="Cancel secret" />
-              <button type="button" className="pss-btn safe" disabled={sending} onClick={cancelFalseAlarm}>
-                Cancel — false alarm
-              </button>
-              <button
-                type="button"
-                className="pss-btn ghost"
-                disabled={sending}
-                onClick={async () => {
-                  await personalSafetyAPI.resolve(activeId);
-                  setActiveId(null);
-                  setStatus('Signal resolved — you are safe.');
-                  load();
-                }}
-              >
-                I&apos;m safe — end signal
+              <div className="pss-section-title">Need help now</div>
+              <button type="button" className="pss-btn primary" disabled={sending || !canTrigger} onClick={() => triggerSignal('help_button')}>
+                Help — send safety signal
               </button>
             </div>
-          )}
+          </>
+        )}
 
-          {nearby.length > 0 && (
-            <div className="pss-nearby">
-              <strong>Nearby safety signals</strong>
-              {nearby.map((s) => (
-                <div key={s.id} style={{ marginTop: 6 }}>
-                  {s.userName} — {s.appearanceDescription || 'No description'}
-                  <br />
-                  <a href={`https://www.google.com/maps?q=${s.lat},${s.lon}`} target="_blank" rel="noopener noreferrer">
-                    Open exact location
-                  </a>
-                </div>
-              ))}
-            </div>
-          )}
+        {activeId && (
+          <div className="pss-section">
+            <div className="pss-section-title">False alarm?</div>
+            <p className="pss-hint">
+              Tap the button if you are safe. Everyone who received your alert gets an all-clear.
+            </p>
+            <button type="button" className="pss-btn safe" disabled={sending} onClick={cancelFalseAlarm}>
+              False alarm — notify everyone
+            </button>
+          </div>
+        )}
 
-          {status && <p className="pss-hint" style={{ color: '#86efac', marginTop: 10 }}>{status}</p>}
-        </div>
+        {nearby.length > 0 && (
+          <div className="pss-nearby">
+            <strong>Nearby safety signals</strong>
+            {nearby.map((s) => (
+              <div key={s.id} style={{ marginTop: 6 }}>
+                {s.userName} — {s.appearanceDescription || 'No description'}
+                <br />
+                <a href={`https://www.google.com/maps?q=${s.lat},${s.lon}`} target="_blank" rel="noopener noreferrer">
+                  Open exact location
+                </a>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {status && <p className="pss-hint" style={{ color: '#86efac', marginTop: 10 }}>{status}</p>}
+      </div>
     </div>
   );
 }

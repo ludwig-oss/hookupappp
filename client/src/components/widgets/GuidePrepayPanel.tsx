@@ -123,7 +123,7 @@ export default function GuidePrepayPanel({ requestId, guideName, onPaid, onBack 
           Prepay session with {guideName} — €{SESSION_PRICE_EUR}
         </div>
         <p style={{ fontSize: 12, color: '#9ca3af', marginBottom: 8 }}>
-          Pay <strong>before</strong> your meeting starts. {splitInfo ? `${splitInfo.guidePercent}% goes to your guide (like OnlyFans); ${splitInfo.platformPercent}% platform fee.` : ''}
+          Pay <strong>before</strong> your meeting starts. {splitInfo ? `${splitInfo.guidePercent}% goes to your guide. The other ${splitInfo.platformPercent}% is the app fee.` : ''}
         </p>
         <ul style={{ fontSize: 11, color: '#fbbf24', margin: '0 0 12px', paddingLeft: 18 }}>
           <li>Video recording is <strong>forbidden</strong> during sessions.</li>

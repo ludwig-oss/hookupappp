@@ -32,6 +32,8 @@ import { userForStorage } from './lib/userStorage';
 import { applyAppTheme } from './lib/theme';
 import { clearAuth, getAuthToken, getAuthUserRaw, persistAuth, writeAuthUser } from './lib/authStorage';
 import './api/http';
+import AppearanceSafetyPrompt from './components/AppearanceSafetyPrompt';
+import SafetyVoiceWatcher from './components/SafetyVoiceWatcher';
 
 function isPlainObject(v: unknown): v is Record<string, any> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -277,6 +279,8 @@ function App() {
           <Route path="/admin/coaches" element={<RequireAuth><AdminCoachReview /></RequireAuth>} />
           <Route path="/" element={<Landing />} />
         </Routes>
+        <AppearanceSafetyPrompt />
+        <SafetyVoiceWatcher />
       </AuthContext.Provider>
     </LanguageProvider>
   );

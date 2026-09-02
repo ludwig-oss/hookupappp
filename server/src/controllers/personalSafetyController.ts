@@ -154,13 +154,11 @@ export const triggerSafetySignalHandler = async (req: Request, res: Response) =>
 export const cancelFalseAlarmHandler = async (req: Request, res: Response) => {
   try {
     const userId = (req as any).userId;
-    const { cancelPhrase } = req.body;
-    if (!cancelPhrase) return res.status(400).json({ error: 'cancelPhrase required' });
-    const result = await cancelSafetySignalFalseAlarm(userId, String(cancelPhrase));
+    const result = await cancelSafetySignalFalseAlarm(userId);
     res.json({
       alert: result.alert,
       notified: result.notified,
-      message: 'False alarm — nearby users notified that you are safe.',
+      message: `False alarm — ${result.notified} people who got the alert were told you are safe.`,
     });
   } catch (error: any) {
     res.status(400).json({ error: error.message });

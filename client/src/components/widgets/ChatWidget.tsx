@@ -1,7 +1,7 @@
 import { useState, useEffect, useContext, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AuthContext } from '../../context/AuthContext';
-import { chatAPI, Conversation, Message, ReplyDeadlineStatus, User } from '../../api/chat';
+import { chatAPI, Conversation, Message, ReplyDeadlineStatus, User, ChatIntent } from '../../api/chat';
 import { relationshipAPI, RelationshipState } from '../../api/relationship';
 import { profileAPI } from '../../api/profile';
 import { activityAPI } from '../../api/activity';
@@ -13,11 +13,13 @@ import { speedDateAPI, SpeedDate } from '../../api/speedDate';
 import { connectionJourneyAPI, ConnectionJourneyResponse } from '../../api/connectionJourney';
 import RelationshipCouplePanel from './RelationshipCouplePanel';
 import VoiceSafetyPanel from '../VoiceSafetyPanel';
+import { askWhatYouAreWearing } from '../AppearanceSafetyPrompt';
 import TranslateButton from '../TranslateButton';
 import GifEmojiPicker from '../GifEmojiPicker';
 import { messageTranslateText, renderMessageContent } from '../ChatGifBubble';
 import { parseChatGif, previewChatContent } from '../../lib/chatGif';
 import { voiceRecordingAPI } from '../../api/voiceRecording';
+import CommunicationsTutorial, { commsTutorialSeen } from '../CommunicationsTutorial';
 import '../../pages/Dashboard.css';
 
 const formatMessageTime = (createdAt: string | Date) => {
@@ -35,6 +37,19 @@ const formatMessageTime = (createdAt: string | Date) => {
 };
 
 const MEETUP_KEYWORDS = /\b(meet|meeting|date|meet up|meetup|see you|coffee|dinner|movie|tonight|tomorrow|get together|hang out|pick me up|drop by|meet me|meeting up|meetup|catch up|grab a drink|go out)\b/i;
+
+const CHAT_LANES: { id: 'all' | ChatIntent; label: string }[] = [
+  { id: 'all', label: 'All' },
+  { id: 'serious', label: 'Serious relationship' },
+  { id: 'casual', label: 'Casual' },
+  { id: 'friends', label: 'Friends' },
+];
+
+const INTENT_LABEL: Record<ChatIntent, string> = {
+  serious: 'Serious',
+  casual: 'Casual',
+  friends: 'Friends',
+};
 
 export interface EnrichedMeetupPlan extends MeetupPlan {
   emergencyContactName?: string;
@@ -58,6 +73,8 @@ const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId, onOpenGuides }: Ch
   const [messages, setMessages] = useState<Message[]>([]);
   const [availableUsers, setAvailableUsers] = useState<User[]>([]);
   const [view, setView] = useState<'list' | 'thread' | 'new' | 'search' | 'compare'>('list');
+  const [chatLane, setChatLane] = useState<'all' | ChatIntent>('all');
+  const [showCommsTutorial, setShowCommsTutorial] = useState(() => !commsTutorialSeen());
   const [inputText, setInputText] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -292,6 +309,15 @@ const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId, onOpenGuides }: Ch
       setError(e.response?.data?.error || 'Failed to load conversations');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const setConversationIntent = async (otherUserId: string, intent: ChatIntent) => {
+    try {
+      await chatAPI.setChatIntent(otherUserId, intent);
+      setConversations((prev) => prev.map((c) => (c.userId === otherUserId ? { ...c, intent } : c)));
+    } catch (e: any) {
+      setError(e.response?.data?.error || 'Could not save how you organize this chat');
     }
   };
 
@@ -979,6 +1005,7 @@ const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId, onOpenGuides }: Ch
     setMeetupSubmitting(true);
     setError('');
     try {
+      await askWhatYouAreWearing();
       let contactId: string | null = emergencyType === 'phone' ? emergencyContactId : null;
       if (emergencyType === 'phone' && !contactId) {
         const { contact } = await safetyAPI.addEmergencyContact({ name: emergencyName, phone: emergencyPhone });
@@ -1031,6 +1058,7 @@ const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId, onOpenGuides }: Ch
 
   return (
     <div className="widget communication-widget chat-widget">
+      {showCommsTutorial && <CommunicationsTutorial onDone={() => setShowCommsTutorial(false)} />}
       <div className="comm-header chat-header">
         <div className="comm-title">Communication</div>
         {view === 'thread' && selectedName && (
@@ -1043,6 +1071,18 @@ const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId, onOpenGuides }: Ch
             <button type="button" className="chat-header-name-link" onClick={handleOpenProfile} title="View profile">
               {selectedName}
             </button>
+            <div className="chat-intent-pills" title="How you organize this chat">
+              {(['serious', 'casual', 'friends'] as ChatIntent[]).map((intent) => (
+                <button
+                  key={intent}
+                  type="button"
+                  className={`chat-intent-pill ${conversations.find((c) => c.userId === selectedUserId)?.intent === intent ? 'on' : ''}`}
+                  onClick={() => selectedUserId && setConversationIntent(selectedUserId, intent)}
+                >
+                  {INTENT_LABEL[intent]}
+                </button>
+              ))}
+            </div>
             <button
               type="button"
               className="chat-menu-btn"
@@ -1310,6 +1350,27 @@ const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId, onOpenGuides }: Ch
               )}
             </div>
           )}
+          <div className="chat-intent-lanes" role="tablist" aria-label="Organize chats">
+            {CHAT_LANES.map((lane) => {
+              const count =
+                lane.id === 'all'
+                  ? conversations.length
+                  : conversations.filter((c) => c.intent === lane.id).length;
+              return (
+                <button
+                  key={lane.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={chatLane === lane.id}
+                  className={`chat-intent-lane ${chatLane === lane.id ? 'on' : ''}`}
+                  onClick={() => setChatLane(lane.id)}
+                >
+                  {lane.label}
+                  <span className="chat-intent-count">{count}</span>
+                </button>
+              );
+            })}
+          </div>
           <div className="chat-select-header">
             <span className="chat-select-title">Select 2 people to compare, then choose who to chat with</span>
             <div className="chat-list-actions">
@@ -1335,9 +1396,14 @@ const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId, onOpenGuides }: Ch
               <p>No conversations yet.</p>
               <p><strong>Click &quot;+ New chat&quot;</strong> above to see people. Select 2, then click <strong>Compare</strong> to see their attributes and choose who to chat with.</p>
             </div>
+          ) : conversations.filter((c) => chatLane === 'all' || c.intent === chatLane).length === 0 &&
+            !(chatLane === 'all' || chatLane === 'serious') ? (
+            <div className="chat-empty">
+              No chats in {INTENT_LABEL[chatLane]}. Open a conversation and tap Serious, Casual, or Friends under their name.
+            </div>
           ) : (
             <div className="chat-list">
-              {relationship?.status === 'active' && relationship.partnerUserId && (() => {
+              {relationship?.status === 'active' && relationship.partnerUserId && (chatLane === 'all' || chatLane === 'serious') && (() => {
                 const partnerConv = conversations.find((c) => c.userId === relationship.partnerUserId);
                 const name = partnerConv?.name ?? relationship.partnerName ?? 'Partner';
                 const avatar = partnerConv?.profilePicture ?? relationship.partnerProfilePicture ?? null;
@@ -1371,6 +1437,7 @@ const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId, onOpenGuides }: Ch
               })()}
               {conversations
                 .filter((c) => !(relationship?.status === 'active' && c.userId === relationship.partnerUserId))
+                .filter((c) => chatLane === 'all' || c.intent === chatLane)
                 .map((c) => {
                 const isBlurredFocus = focus && focus.daysLeft > 0 && c.userId !== focus.partnerUserId;
                 const isBlurredRelationship = relationship?.status === 'active' && c.userId !== relationship.partnerUserId;
@@ -1408,6 +1475,7 @@ const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId, onOpenGuides }: Ch
                     <div className="chat-list-body">
                       <span className="chat-list-name">
                         {c.name}
+                        {c.intent && <span className="chat-intent-badge">{INTENT_LABEL[c.intent]}</span>}
                         {c.replyDeadline?.active &&
                           c.replyDeadline.owesReplyUserId === user?.id &&
                           !c.replyDeadline.expired && (
@@ -1631,6 +1699,7 @@ const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId, onOpenGuides }: Ch
                       type="button"
                       className="chat-checkin-btn"
                       onClick={async () => {
+                        await askWhatYouAreWearing();
                         await safetyAPI.startDateTracking(plan.id);
                         const { plans } = await safetyAPI.getMeetupPlans();
                         setMeetupPlans(plans as EnrichedMeetupPlan[]);

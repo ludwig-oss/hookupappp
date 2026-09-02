@@ -2,6 +2,7 @@ import { readFile, writeFile, mkdir } from 'fs/promises';
 import { join } from 'path';
 import { getAllGuides, getGuideByUserId, getGuideById, matchesGeoFilter } from './improvement.js';
 import { creditGuideSessionPayment } from './guideWallet.js';
+import { getHoldByRequestId } from './paypalHolds.js';
 import { createReport } from './reports.js';
 import { checkConfessionContent, SEEKER_SAFETY_AGREEMENT, GUIDE_NDA_AGREEMENT } from '../utils/confessionSafety.js';
 
@@ -324,6 +325,8 @@ export async function markSessionPaid(sessionId: string, paypalOrderId?: string)
 
 export async function creditConfessionPayment(session: ConfessionSession): Promise<void> {
   if (!session.guideUserId) return;
+  const alreadyHeld = await getHoldByRequestId(session.id);
+  if (alreadyHeld) return;
   await creditGuideSessionPayment({
     guideUserId: session.guideUserId,
     grossEur: session.amountEur,

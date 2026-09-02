@@ -349,14 +349,25 @@ export interface GuideWalletSummary {
   wallet: {
     userId: string;
     availableBalanceEur: number;
+    heldBalanceEur: number;
     pendingBalanceEur: number;
     totalEarnedEur: number;
     totalWithdrawnEur: number;
     paypalEmail: string | null;
+    paypalMerchantId: string | null;
+    paypalOnboardingStatus: 'not_started' | 'pending' | 'active' | 'denied';
     bankAccountLabel?: string | null;
   };
   recentTransactions: Array<{ id: string; type: string; amountEur: number; note?: string; createdAt: string }>;
   pendingWithdrawals: Array<{ id: string; amountEur: number; status: string }>;
+  holds?: Array<{
+    authorizationId: string;
+    guideShareEur: number;
+    status: string;
+    expiresAt: string | null;
+    createdAt: string;
+  }>;
+  paypalConnected?: boolean;
   split: {
     guidePercent: number;
     platformPercent: number;
@@ -398,6 +409,14 @@ export const walletAPI = {
   },
   setPaypalEmail: async (paypalEmail: string) => {
     await axios.put(`${API_URL}/wallet/paypal`, { paypalEmail });
+  },
+  startPaypalOnboarding: async () => {
+    const res = await axios.post(`${API_URL}/wallet/paypal/onboard`);
+    return res.data as { actionUrl?: string; trackingId?: string; status?: string };
+  },
+  completePaypalOnboarding: async (params: { merchantIdInPayPal: string; permissionsGranted?: string }) => {
+    const res = await axios.post(`${API_URL}/wallet/paypal/onboard/complete`, params);
+    return res.data;
   },
   setBankLabel: async (bankAccountLabel: string) => {
     await axios.put(`${API_URL}/wallet/bank`, { bankAccountLabel });

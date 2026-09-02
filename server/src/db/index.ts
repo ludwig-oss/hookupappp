@@ -211,6 +211,73 @@ ALTER TABLE guide_applications ADD COLUMN IF NOT EXISTS widget_answers JSONB NOT
 ALTER TABLE guide_applications ADD COLUMN IF NOT EXISTS proof_per_category JSONB NOT NULL DEFAULT '{}';
 ALTER TABLE guide_applications ADD COLUMN IF NOT EXISTS auto_approved BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE guide_applications ADD COLUMN IF NOT EXISTS decision_due_at TIMESTAMPTZ;
+
+CREATE TABLE IF NOT EXISTS guide_wallets (
+  user_id TEXT PRIMARY KEY,
+  available_balance_eur NUMERIC(12,2) NOT NULL DEFAULT 0,
+  held_balance_eur NUMERIC(12,2) NOT NULL DEFAULT 0,
+  pending_balance_eur NUMERIC(12,2) NOT NULL DEFAULT 0,
+  total_earned_eur NUMERIC(12,2) NOT NULL DEFAULT 0,
+  total_withdrawn_eur NUMERIC(12,2) NOT NULL DEFAULT 0,
+  paypal_email TEXT,
+  paypal_merchant_id TEXT,
+  paypal_onboarding_status TEXT NOT NULL DEFAULT 'not_started',
+  paypal_tracking_id TEXT,
+  bank_account_label TEXT,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_guide_wallets_merchant ON guide_wallets(paypal_merchant_id);
+
+CREATE TABLE IF NOT EXISTS wallet_transactions (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  type TEXT NOT NULL,
+  amount_eur NUMERIC(12,2) NOT NULL,
+  net_to_guide_eur NUMERIC(12,2),
+  platform_fee_eur NUMERIC(12,2),
+  request_id TEXT,
+  booking_id TEXT,
+  note TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_wallet_tx_user ON wallet_transactions(user_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS wallet_withdrawals (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  amount_eur NUMERIC(12,2) NOT NULL,
+  method TEXT NOT NULL DEFAULT 'paypal',
+  paypal_email TEXT,
+  status TEXT NOT NULL DEFAULT 'pending',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  processed_at TIMESTAMPTZ,
+  admin_note TEXT,
+  captured_authorization_ids JSONB NOT NULL DEFAULT '[]'
+);
+CREATE INDEX IF NOT EXISTS idx_wallet_withdrawals_user ON wallet_withdrawals(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_wallet_withdrawals_status ON wallet_withdrawals(status);
+
+CREATE TABLE IF NOT EXISTS paypal_authorizations (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  order_id TEXT NOT NULL,
+  authorization_id TEXT NOT NULL UNIQUE,
+  request_id TEXT,
+  session_id TEXT,
+  payer_user_id TEXT,
+  gross_eur NUMERIC(12,2) NOT NULL,
+  platform_fee_eur NUMERIC(12,2) NOT NULL,
+  guide_share_eur NUMERIC(12,2) NOT NULL,
+  currency TEXT NOT NULL DEFAULT 'EUR',
+  merchant_id TEXT,
+  status TEXT NOT NULL DEFAULT 'authorized',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  expires_at TIMESTAMPTZ,
+  captured_at TIMESTAMPTZ,
+  capture_id TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_paypal_auth_user ON paypal_authorizations(user_id, status);
+CREATE INDEX IF NOT EXISTS idx_paypal_auth_request ON paypal_authorizations(request_id);
 `
 
 /** Run schema to create tables if they don't exist. Safe to call on startup. */

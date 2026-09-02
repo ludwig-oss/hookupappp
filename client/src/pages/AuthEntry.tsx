@@ -26,7 +26,7 @@ function normalizePhoneInput(value: string): string {
 }
 
 type AuthMode = 'signup' | 'login';
-type LoginMethod = 'pin' | 'password' | 'phone';
+type LoginMethod = 'pin' | 'password';
 
 type Props = { initialMode?: AuthMode };
 
@@ -52,15 +52,12 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
   const [phoneNumber, setPhoneNumber] = useState('');
   const [loginIdentifier, setLoginIdentifier] = useState('');
   const [loginSecret, setLoginSecret] = useState('');
-  const [loginCode, setLoginCode] = useState('');
-  const [codeSent, setCodeSent] = useState(false);
   const [age, setAge] = useState('');
   const [gender, setGender] = useState('');
   const [orientation, setOrientation] = useState<'straight' | 'gay' | 'lesbian' | 'bisexual' | 'pansexual'>('straight');
   const [lookingFor, setLookingFor] = useState<string[]>(['dating']);
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [error, setError] = useState('');
-  const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
 
   const { login } = useContext(AuthContext);
@@ -200,45 +197,6 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
     }
   };
 
-  const handleSendLoginCode = async () => {
-    const digits = phoneNumber.replace(/\D/g, '');
-    if (digits.length < 10) {
-      setError('Enter your full phone number with country code');
-      return;
-    }
-    setError('');
-    setLoading(true);
-    try {
-      const res = await authAPI.sendLoginCode(digits);
-      setMessage(res.message);
-      setCodeSent(true);
-    } catch (err: unknown) {
-      setError(formatAxiosError(err, 'Could not send code'));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handlePhoneCodeLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const digits = phoneNumber.replace(/\D/g, '');
-    if (digits.length < 10 || loginCode.length !== 6) {
-      setError('Enter phone and 6-digit code');
-      return;
-    }
-    setError('');
-    setLoading(true);
-    try {
-      const response = await authAPI.loginWithCode(digits, loginCode);
-      if (!response.token || !response.user) throw new Error('Invalid response');
-      finishAuth(response.user, response.token);
-    } catch (err: unknown) {
-      setError(formatAxiosError(err, 'Invalid code'));
-    } finally {
-      setLoading(false);
-    }
-  };
-
   return (
     <div className="auth-container">
       <div className="auth-card">
@@ -247,11 +205,10 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
         <p className="auth-subtitle">
           {mode === 'signup'
             ? 'Username is yours forever. PIN + password are both required. Hints help you remember — never write the real PIN or password.'
-            : 'Same username as sign-up. PIN tab = 6-digit PIN. Password tab = the password you set at sign-up.'}
+            : 'Same username as sign-up. Use your 6-digit PIN or the password you set at sign-up.'}
         </p>
 
         {error && <div className="error-message">{error}</div>}
-        {message && <div className="success-message">{message}</div>}
 
         <div className="auth-method-tabs">
           <button type="button" className={`auth-button auth-tab ${mode === 'signup' ? 'is-active' : ''}`} onClick={() => setMode('signup')}>Sign up</button>
@@ -358,10 +315,8 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
             <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
               <button type="button" className="auth-button" style={{ flex: 1, minWidth: 100, opacity: loginMethod === 'pin' ? 1 : 0.65 }} onClick={() => { setLoginMethod('pin'); setLoginSecret(''); }}>Username + PIN</button>
               <button type="button" className="auth-button" style={{ flex: 1, minWidth: 80, opacity: loginMethod === 'password' ? 1 : 0.65 }} onClick={() => { setLoginMethod('password'); setLoginSecret(''); }}>Password</button>
-              <button type="button" className="auth-button" style={{ flex: 1, minWidth: 80, opacity: loginMethod === 'phone' ? 1 : 0.65 }} onClick={() => setLoginMethod('phone')}>Phone</button>
             </div>
-            {loginMethod === 'pin' || loginMethod === 'password' ? (
-              <form onSubmit={handleLogin} className="auth-form" autoComplete="off">
+            <form onSubmit={handleLogin} className="auth-form" autoComplete="off">
                 <div className="form-group">
                   <label>Username</label>
                   <input
@@ -412,31 +367,6 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
                   </div>
                 )}
               </form>
-            ) : loginMethod === 'phone' ? (
-              <form onSubmit={handlePhoneCodeLogin} className="auth-form">
-                <div className="form-group">
-                  <label>Phone number</label>
-                  <input type="tel" value={phoneNumber} onChange={(e) => setPhoneNumber(normalizePhoneInput(e.target.value))} autoComplete="tel" required />
-                </div>
-                {!codeSent ? (
-                  <button type="button" className="auth-button" disabled={loading} onClick={handleSendLoginCode}>
-                    Send verification code
-                  </button>
-                ) : (
-                  <>
-                    <div className="form-group">
-                      <label>6-digit verification code</label>
-                      <input value={loginCode} onChange={(e) => setLoginCode(e.target.value.replace(/\D/g, '').slice(0, 6))} inputMode="numeric" maxLength={6} required />
-                    </div>
-                    <button type="submit" className="auth-button" disabled={loading}>{loading ? 'Verifying…' : 'Sign in with code'}</button>
-                    <label className="stay-logged-in">
-                      <input type="checkbox" checked={stayLoggedIn} onChange={(e) => setStayLoggedIn(e.target.checked)} />
-                      Stay logged in
-                    </label>
-                  </>
-                )}
-              </form>
-            ) : null}
             <div className="recovery-helper" style={{ marginTop: 16 }}>
               <p style={{ marginBottom: 8 }}>Can’t sign in? This helper asks recovery questions for <strong>your username only</strong>.</p>
               <Link to="/forgot-pin">Forgot PIN</Link>

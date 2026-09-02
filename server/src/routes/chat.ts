@@ -12,6 +12,8 @@ import {
   getFocus,
   startFocus,
   endFocus,
+  getChatIntentsHandler,
+  setChatIntentHandler,
 } from '../controllers/chatController.js';
 import { authenticateToken } from '../middleware/auth.js';
 
@@ -31,6 +33,8 @@ router.post('/unmatch', unmatchChatUser);
 router.get('/focus', getFocus);
 router.post('/focus', startFocus);
 router.delete('/focus', endFocus);
+router.get('/intents', getChatIntentsHandler);
+router.put('/intents/:otherUserId', setChatIntentHandler);
 
 export default router;
 

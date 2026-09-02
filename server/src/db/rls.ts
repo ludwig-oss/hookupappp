@@ -154,4 +154,41 @@ CREATE POLICY guide_applications_update ON guide_applications FOR UPDATE USING (
   app_rls_bypass()
   OR app_current_user_id() IS NOT NULL
 );
+
+-- ========== guide wallets / PayPal holds ==========
+ALTER TABLE guide_wallets ENABLE ROW LEVEL SECURITY;
+ALTER TABLE guide_wallets FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS guide_wallets_own ON guide_wallets;
+CREATE POLICY guide_wallets_own ON guide_wallets FOR ALL USING (
+  app_rls_bypass() OR user_id = app_current_user_id()
+) WITH CHECK (
+  app_rls_bypass() OR user_id = app_current_user_id()
+);
+
+ALTER TABLE wallet_transactions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE wallet_transactions FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS wallet_tx_own ON wallet_transactions;
+CREATE POLICY wallet_tx_own ON wallet_transactions FOR ALL USING (
+  app_rls_bypass() OR user_id = app_current_user_id() OR user_id = 'platform'
+) WITH CHECK (
+  app_rls_bypass() OR user_id = app_current_user_id() OR user_id = 'platform'
+);
+
+ALTER TABLE wallet_withdrawals ENABLE ROW LEVEL SECURITY;
+ALTER TABLE wallet_withdrawals FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS wallet_wd_own ON wallet_withdrawals;
+CREATE POLICY wallet_wd_own ON wallet_withdrawals FOR ALL USING (
+  app_rls_bypass() OR user_id = app_current_user_id()
+) WITH CHECK (
+  app_rls_bypass() OR user_id = app_current_user_id()
+);
+
+ALTER TABLE paypal_authorizations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE paypal_authorizations FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS paypal_auth_own ON paypal_authorizations;
+CREATE POLICY paypal_auth_own ON paypal_authorizations FOR ALL USING (
+  app_rls_bypass() OR user_id = app_current_user_id()
+) WITH CHECK (
+  app_rls_bypass() OR user_id = app_current_user_id()
+);
 `

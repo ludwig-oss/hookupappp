@@ -31,7 +31,7 @@ import {
   getUserImprovement,
 } from '../controllers/improvementController.js';
 import { createPaymentIntent, confirmPaymentWebhook, createGuideRequestStripePayment, confirmGuideRequestStripePayment } from '../controllers/paymentController.js';
-import { createPayPalOrder, capturePayPalOrder } from '../controllers/paypalController.js';
+import { createPayPalOrder, capturePayPalOrder, startPaypalOnboarding, completePaypalOnboarding } from '../controllers/paypalController.js';
 import {
   getPendingVotes,
   submitVote,
@@ -105,11 +105,13 @@ router.get('/coach-votes/my-status', getMyVoteStatus);
 router.post('/coach-votes/:campaignId/vote', submitVote);
 router.post('/coach-votes/:campaignId/swipe', submitPopupSwipe);
 
-// Guide wallet & OnlyFans-style payouts
+// Guide wallet & payouts
 router.get('/wallet', getMyWallet);
 router.put('/wallet/paypal', updateWalletPaypal);
 router.put('/wallet/bank', updateWalletBank);
 router.post('/wallet/withdraw', createWithdrawal);
+router.post('/wallet/paypal/onboard', startPaypalOnboarding);
+router.post('/wallet/paypal/onboard/complete', completePaypalOnboarding);
 router.get('/payments/split-info', getPaymentSplitInfo);
 
 // PayPal checkout (prepay before session)

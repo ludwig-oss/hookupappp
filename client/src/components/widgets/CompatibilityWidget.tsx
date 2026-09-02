@@ -96,6 +96,24 @@ export default function CompatibilityWidget() {
           });
       }
     }
+    if (params.get('paypal_connect') === 'return') {
+      const merchantIdInPayPal = params.get('merchantIdInPayPal') || params.get('merchantId') || '';
+      if (merchantIdInPayPal) {
+        walletAPI
+          .completePaypalOnboarding({
+            merchantIdInPayPal,
+            permissionsGranted: params.get('permissionsGranted') || 'true',
+          })
+          .then(() => {
+            alert('PayPal connected. Session earnings will be held until you withdraw.');
+            walletAPI.getMyWallet().then(setWalletSummary).catch(() => {});
+          })
+          .catch((err) => console.error('PayPal onboard:', err))
+          .finally(() => {
+            window.history.replaceState({}, '', window.location.pathname);
+          });
+      }
+    }
   }, []);
 
   useEffect(() => {
@@ -1442,17 +1460,44 @@ export default function CompatibilityWidget() {
           {expertTab === 'wallet' && (
             <div>
               <p style={{ fontSize: 12, color: '#9ca3af', marginBottom: 12 }}>
-                OnlyFans-style split: you keep {walletSummary?.split.guidePercent ?? 80}% per session. Withdraw to PayPal when ready (min €
+                You keep {walletSummary?.split.guidePercent ?? 80}% per session. The other {walletSummary?.split.platformPercent ?? 20}% is the app fee. Client payments are held until you tap Withdraw (min €
                 {walletSummary?.split.minWithdrawalEur ?? 20}).
               </p>
               {walletSummary ? (
                 <>
                   <div style={cardStyle()}>
-                    <div>Available: €{walletSummary.wallet.availableBalanceEur.toFixed(2)}</div>
+                    <div>Held (ready to withdraw): €{(walletSummary.wallet.heldBalanceEur ?? 0).toFixed(2)}</div>
+                    <div style={{ fontSize: 11, color: '#9ca3af' }}>Available (prizes): €{walletSummary.wallet.availableBalanceEur.toFixed(2)}</div>
                     <div style={{ fontSize: 11, color: '#9ca3af' }}>Pending withdrawal: €{walletSummary.wallet.pendingBalanceEur.toFixed(2)}</div>
                     <div style={{ fontSize: 11, color: '#9ca3af' }}>Total earned: €{walletSummary.wallet.totalEarnedEur.toFixed(2)}</div>
+                    <div style={{ fontSize: 11, color: walletSummary.paypalConnected ? '#22c55e' : '#fbbf24', marginTop: 6 }}>
+                      {walletSummary.paypalConnected
+                        ? `PayPal connected · Merchant ${walletSummary.wallet.paypalMerchantId}`
+                        : walletSummary.wallet.paypalOnboardingStatus === 'pending'
+                          ? 'PayPal connection pending — finish setup in PayPal'
+                          : 'PayPal not connected yet'}
+                    </div>
                   </div>
-                  <label style={{ display: 'block', marginTop: 12, marginBottom: 6, color: '#00d4ff', fontSize: 12 }}>PayPal email for payouts</label>
+                  <button
+                    type="button"
+                    disabled={loading}
+                    onClick={async () => {
+                      setLoading(true);
+                      try {
+                        const r = await walletAPI.startPaypalOnboarding();
+                        if (r.actionUrl) window.location.href = r.actionUrl;
+                        else setError('PayPal onboarding is not available. Check server PayPal partner settings.');
+                      } catch (err: unknown) {
+                        setError((err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Could not start PayPal connect');
+                      } finally {
+                        setLoading(false);
+                      }
+                    }}
+                    style={{ padding: '10px 18px', marginTop: 10, marginBottom: 12, background: 'rgba(0,112,186,0.35)', border: '2px solid #0070ba', color: '#fff', borderRadius: 8, cursor: 'pointer' }}
+                  >
+                    {walletSummary.paypalConnected ? 'Reconnect PayPal' : 'Connect PayPal'}
+                  </button>
+                  <label style={{ display: 'block', marginTop: 4, marginBottom: 6, color: '#00d4ff', fontSize: 12 }}>PayPal email (fallback payouts)</label>
                   <input
                     type="text"
                     value={walletPaypal || walletSummary.wallet.paypalEmail || ''}
@@ -1475,7 +1520,7 @@ export default function CompatibilityWidget() {
                     }}
                     style={{ padding: '8px 14px', marginBottom: 12, background: 'rgba(0,112,186,0.3)', border: '2px solid #0070ba', color: '#fff', borderRadius: 8, cursor: 'pointer' }}
                   >
-                    Save PayPal
+                    Save PayPal email
                   </button>
                   <label style={{ display: 'block', marginBottom: 6, color: '#00d4ff', fontSize: 12 }}>Withdraw amount (€)</label>
                   <input
@@ -1494,7 +1539,7 @@ export default function CompatibilityWidget() {
                       setLoading(true);
                       try {
                         await walletAPI.withdraw(amt, walletPaypal || walletSummary.wallet.paypalEmail || undefined);
-                        alert('Withdrawal requested — processed via PayPal like OnlyFans payouts.');
+                        alert('Withdrawal sent — held payments were captured and the app fee collected.');
                         setWithdrawAmount('');
                         walletAPI.getMyWallet().then(setWalletSummary);
                       } catch (err: unknown) {
@@ -1505,7 +1550,7 @@ export default function CompatibilityWidget() {
                     }}
                     style={{ padding: '10px 18px', background: 'rgba(34, 197, 94, 0.3)', border: '2px solid #22c55e', color: '#22c55e', borderRadius: 8, cursor: 'pointer' }}
                   >
-                    Request withdrawal
+                    Withdraw
                   </button>
                   <p style={{ fontSize: 11, color: '#fbbf24', marginTop: 12 }}>
                     Session rules: no video recording. Share tips, not every secret — keep your edge as a guide.

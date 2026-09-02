@@ -16,7 +16,6 @@ import CompatibilityQuiz from './CompatibilityQuiz';
 import BadgeGallery from './BadgeGallery';
 import ReportModal from './ReportModal';
 import { safetyAPI } from '../../api/safety';
-import { personalSafetyAPI } from '../../api/personalSafety';
 import { authAPI } from '../../api/auth';
 import { applyAppTheme, type AppTheme } from '../../lib/theme';
 import { applyStayLoggedIn, getStayLoggedIn } from '../../lib/authStorage';
@@ -26,7 +25,7 @@ import { LANGUAGES } from '../../constants/languages';
 import { setStoredLanguage } from '../../i18n/languageStorage';
 import './Widget.css';
 
-type TabType = 'profile' | 'preferences' | 'privacy' | 'notifications' | 'filters' | 'verification' | 'gamification' | 'premium' | 'social' | 'compatibility' | 'reports' | 'accessibility' | 'account' | 'profiles';
+type TabType = 'profile' | 'preferences' | 'privacy' | 'notifications' | 'filters' | 'verification' | 'gamification' | 'premium' | 'social' | 'compatibility' | 'reports' | 'accessibility' | 'account';
 
 const SettingsWidgetFull = () => {
   const { user, updateUser } = useContext(AuthContext);
@@ -133,6 +132,31 @@ const SettingsWidgetFull = () => {
       .catch(() => setWalletSummary(null))
       .finally(() => setWalletLoading(false));
   }, [activeTab]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('paypal_connect') !== 'return') return;
+    const merchantIdInPayPal = params.get('merchantIdInPayPal') || params.get('merchantId') || '';
+    if (!merchantIdInPayPal) return;
+    walletAPI
+      .completePaypalOnboarding({
+        merchantIdInPayPal,
+        permissionsGranted: params.get('permissionsGranted') || 'true',
+      })
+      .then(() => {
+        setWalletMessage('PayPal connected. Session earnings stay held until you withdraw.');
+        walletAPI.getMyWallet().then((s) => {
+          setWalletSummary(s);
+          setWalletPaypal(s.wallet.paypalEmail || '');
+        });
+      })
+      .catch((err: { response?: { data?: { error?: string } } }) => {
+        setWalletError(err.response?.data?.error || 'Could not finish PayPal connect');
+      })
+      .finally(() => {
+        window.history.replaceState({}, '', window.location.pathname);
+      });
+  }, []);
 
   const loadAllData = async () => {
     try {
@@ -340,7 +364,6 @@ const SettingsWidgetFull = () => {
     { id: 'compatibility', label: 'Compatibility', icon: '💕' },
     { id: 'reports', label: 'Reports & Blocking', icon: '🛡️' },
     { id: 'accessibility', label: 'Accessibility', icon: '♿' },
-    { id: 'profiles', label: 'Multiple Profiles', icon: '📋' },
     { id: 'account', label: 'Account', icon: '⚙️' },
   ];
 
@@ -1487,16 +1510,6 @@ const SettingsWidgetFull = () => {
         </div>
       )}
 
-      {/* MULTIPLE PROFILES TAB */}
-      {activeTab === 'profiles' && (
-        <div className="settings-section">
-          <h3 style={{ marginBottom: '20px', fontSize: '20px' }}>Multiple Dating Profiles</h3>
-          <p style={{ color: '#6b7280', marginBottom: '20px' }}>Create separate profiles for different dating goals</p>
-          <button className="select-user-btn" onClick={() => alert('Multiple profiles feature - coming soon!')}>Create New Profile</button>
-          <p style={{ marginTop: '20px', fontSize: '14px', color: '#6b7280' }}>Switch between casual dating, serious relationships, and friend-seeking profiles</p>
-        </div>
-      )}
-
       {/* ACCOUNT TAB */}
       {activeTab === 'account' && (
         <div className="settings-section">
@@ -1532,8 +1545,8 @@ const SettingsWidgetFull = () => {
           <div style={{ marginBottom: '30px', padding: '20px', background: 'linear-gradient(135deg, #fdf2f8, #f5f3ff)', borderRadius: '12px', border: '1px solid #fbcfe8' }}>
             <h4 style={{ marginBottom: '8px' }}>Account balance</h4>
             <p style={{ fontSize: 13, color: '#6b7280', marginBottom: 16 }}>
-              Earn from guide sessions (80% after platform fee), monthly dating advice prizes (€5), and more.
-              Withdraw to PayPal or bank details at month end — min €{walletSummary?.split.minWithdrawalEur ?? 20}.
+              Earn from guide sessions (80% after the app fee), monthly dating advice prizes (€5), and more.
+              Session payments stay held until you tap Withdraw — min €{walletSummary?.split.minWithdrawalEur ?? 20}.
             </p>
             {walletError && <div className="error-message" style={{ marginBottom: 12 }}>{walletError}</div>}
             {walletMessage && (
@@ -1547,8 +1560,12 @@ const SettingsWidgetFull = () => {
               <>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12, marginBottom: 16 }}>
                   <div style={{ padding: 12, background: '#fff', borderRadius: 8 }}>
+                    <div style={{ fontSize: 11, color: '#6b7280' }}>Held (withdraw to release)</div>
+                    <div style={{ fontSize: 22, fontWeight: 700 }}>€{(walletSummary.wallet.heldBalanceEur ?? 0).toFixed(2)}</div>
+                  </div>
+                  <div style={{ padding: 12, background: '#fff', borderRadius: 8 }}>
                     <div style={{ fontSize: 11, color: '#6b7280' }}>Available</div>
-                    <div style={{ fontSize: 22, fontWeight: 700 }}>€{walletSummary.wallet.availableBalanceEur.toFixed(2)}</div>
+                    <div style={{ fontSize: 18, fontWeight: 600 }}>€{walletSummary.wallet.availableBalanceEur.toFixed(2)}</div>
                   </div>
                   <div style={{ padding: 12, background: '#fff', borderRadius: 8 }}>
                     <div style={{ fontSize: 11, color: '#6b7280' }}>Pending withdrawal</div>
@@ -1560,8 +1577,34 @@ const SettingsWidgetFull = () => {
                   </div>
                 </div>
 
+                <p style={{ fontSize: 13, marginBottom: 10, color: walletSummary.paypalConnected ? '#065f46' : '#92400e' }}>
+                  {walletSummary.paypalConnected
+                    ? `PayPal connected · Merchant ${walletSummary.wallet.paypalMerchantId}`
+                    : walletSummary.wallet.paypalOnboardingStatus === 'pending'
+                      ? 'PayPal connection pending — finish setup in PayPal'
+                      : 'Connect PayPal so session payments can be held and released to you.'}
+                </p>
+                <button
+                  type="button"
+                  className="select-user-btn"
+                  style={{ marginBottom: 16, background: '#0070ba', color: '#fff', border: 'none' }}
+                  onClick={async () => {
+                    setWalletError('');
+                    setWalletMessage('');
+                    try {
+                      const r = await walletAPI.startPaypalOnboarding();
+                      if (r.actionUrl) window.location.href = r.actionUrl;
+                      else setWalletError('PayPal onboarding is not available. Check server PayPal partner settings.');
+                    } catch (err: any) {
+                      setWalletError(err.response?.data?.error || 'Could not start PayPal connect');
+                    }
+                  }}
+                >
+                  {walletSummary.paypalConnected ? 'Reconnect PayPal' : 'Connect PayPal'}
+                </button>
+
                 <div className="form-group" style={{ marginBottom: 12 }}>
-                  <label style={{ display: 'block', marginBottom: 6, fontWeight: 600, fontSize: 14 }}>PayPal email (withdrawals)</label>
+                  <label style={{ display: 'block', marginBottom: 6, fontWeight: 600, fontSize: 14 }}>PayPal email (fallback payouts)</label>
                   <input
                     type="email"
                     value={walletPaypal}
@@ -1643,7 +1686,7 @@ const SettingsWidgetFull = () => {
                     }
                     try {
                       await walletAPI.withdraw(amt, walletPaypal || walletSummary.wallet.paypalEmail || undefined);
-                      setWalletMessage('Withdrawal requested. Payouts processed within a few business days.');
+                      setWalletMessage('Withdrawal sent. Held payments were captured and the app fee collected.');
                       setWithdrawAmount('');
                       walletAPI.getMyWallet().then(setWalletSummary);
                     } catch (err: any) {
@@ -1651,7 +1694,7 @@ const SettingsWidgetFull = () => {
                     }
                   }}
                 >
-                  Request withdrawal
+                  Withdraw
                 </button>
 
                 {walletSummary.recentTransactions.length > 0 && (
@@ -1800,23 +1843,8 @@ const SettingsWidgetFull = () => {
           <div style={{ marginBottom: '30px' }}>
             <h4 style={{ marginBottom: '12px' }}>Personal safety shield</h4>
             <p style={{ fontSize: '13px', color: '#6b7280', marginBottom: '8px' }}>
-              Configure secret activate/cancel phrases, what you are wearing, and triggers (help button, screen taps, volume ×3, secret word). Use the shield button on the home screen when going out.
+              Set a secret word on the home Safety widget. This device listens — shout that word to activate. False alarm is a button that tells everyone who got the alert. When you plan a date, we&apos;ll ask what you&apos;re wearing.
             </p>
-            <input
-              type="text"
-              placeholder="What you usually wear (e.g. red jacket, white sneakers)"
-              maxLength={300}
-              style={{ width: '100%', padding: '10px', marginBottom: '8px' }}
-              onBlur={async (e) => {
-                const v = e.target.value.trim();
-                if (!v) return;
-                try {
-                  await personalSafetyAPI.updateSettings({ appearanceDescription: v });
-                } catch {
-                  /* ignore */
-                }
-              }}
-            />
           </div>
 
           <div style={{ marginBottom: '30px' }}>

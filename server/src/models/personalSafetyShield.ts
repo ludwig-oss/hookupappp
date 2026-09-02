@@ -17,8 +17,8 @@ export interface PersonalSafetyShieldSettings {
   autoArmWhenOutside: boolean;
   /** Shout or type to trigger (e.g. "pineapple"). */
   activationSecret: string;
-  /** Secret only you know to cancel — notifies false alarm. */
-  cancelSecret: string;
+  /** @deprecated Cancel is a button; kept for older saved settings. */
+  cancelSecret?: string;
   customActivationPhrase?: string;
   enableHelpButton: boolean;
   enableScreenTaps: boolean;
@@ -51,6 +51,8 @@ export interface SafetySignalAlert {
   resolvedAt?: string | null;
   falseAlarmAt?: string | null;
   falseAlarmNotifiedAt?: string | null;
+  /** Everyone who received the original alert — false-alarm button notifies this same list. */
+  notifiedUserIds?: string[];
 }
 
 const SETTINGS_PATH = join(process.cwd(), 'server', 'data', 'personal-safety-shield-settings.json');
@@ -161,9 +163,9 @@ function userCoords(u: { location?: { lat?: number; lon?: number } | null; lat?:
   return null;
 }
 
-async function notifyNearbyUsers(alert: SafetySignalAlert, isRepeat: boolean): Promise<number> {
+async function notifyNearbyUsers(alert: SafetySignalAlert, isRepeat: boolean): Promise<{ count: number; userIds: string[] }> {
   const users = await getAllUsers();
-  let count = 0;
+  const userIds: string[] = [];
   const appearance = alert.appearanceDescription ? ` Wearing: ${alert.appearanceDescription.slice(0, 80)}` : '';
 
   for (const u of users) {
@@ -172,7 +174,7 @@ async function notifyNearbyUsers(alert: SafetySignalAlert, isRepeat: boolean): P
     if (!coords) continue;
     if (haversineKm(alert.lat, alert.lon, coords.lat, coords.lon) > NEARBY_RADIUS_KM) continue;
 
-    count++;
+    userIds.push(u.id);
     sendPushToUser(u.id, {
       title: isRepeat ? '🆘 Safety signal still active' : '🆘 Someone nearby needs help',
       body: `${alert.userName} triggered a safety signal at ${alert.lat.toFixed(4)}, ${alert.lon.toFixed(4)}.${appearance} Open map if you can help.`,
@@ -188,7 +190,8 @@ async function notifyNearbyUsers(alert: SafetySignalAlert, isRepeat: boolean): P
 
   if (alert.userId) {
     const settings = await getShieldSettings(alert.userId);
-    if (settings.emergencyContactUserId) {
+    if (settings.emergencyContactUserId && !userIds.includes(settings.emergencyContactUserId)) {
+      userIds.push(settings.emergencyContactUserId);
       sendPushToUser(settings.emergencyContactUserId, {
         title: isRepeat ? '🆘 Safety signal — still active' : '🆘 Your contact needs help',
         body: `${alert.userName} activated their safety signal.${appearance}`,
@@ -197,7 +200,7 @@ async function notifyNearbyUsers(alert: SafetySignalAlert, isRepeat: boolean): P
     }
   }
 
-  return count;
+  return { count: userIds.length, userIds };
 }
 
 export async function triggerSafetySignal(params: {
@@ -245,37 +248,42 @@ export async function triggerSafetySignal(params: {
   signals.push(alert);
   await writeSignals(signals);
 
-  const nearbyNotified = await notifyNearbyUsers(alert, false);
-  return { alert, nearbyNotified, policeNumber: '911' };
+  const notified = await notifyNearbyUsers(alert, false);
+  alert.notifiedUserIds = notified.userIds;
+  alert.notifyCount = 1;
+  await writeSignals(signals);
+  return { alert, nearbyNotified: notified.count, policeNumber: '911' };
 }
 
 export async function cancelSafetySignalFalseAlarm(
-  userId: string,
-  cancelPhrase: string
+  userId: string
 ): Promise<{ alert: SafetySignalAlert; notified: number }> {
-  const settings = await getShieldSettings(userId);
-  const phrase = cancelPhrase.trim().toLowerCase();
-  const cancel = settings.cancelSecret.trim().toLowerCase();
-  if (!cancel || phrase !== cancel) {
-    throw new Error('Cancel phrase incorrect — safety signal stays active.');
-  }
-
   const signals = await readSignals();
   const alert = signals.find((s) => s.userId === userId && s.status === 'active');
   if (!alert) throw new Error('No active safety signal.');
 
   alert.status = 'false_alarm';
   alert.falseAlarmAt = new Date().toISOString();
-  await writeSignals(signals);
 
-  const users = await getAllUsers();
+  const recipients = new Set(alert.notifiedUserIds || []);
+  if (recipients.size === 0) {
+    const users = await getAllUsers();
+    for (const u of users) {
+      if (u.id === userId) continue;
+      const coords = userCoords(u);
+      if (!coords) continue;
+      if (haversineKm(alert.lat, alert.lon, coords.lat, coords.lon) > NEARBY_RADIUS_KM) continue;
+      recipients.add(u.id);
+    }
+    const settings = await getShieldSettings(userId);
+    if (settings.emergencyContactUserId) recipients.add(settings.emergencyContactUserId);
+  }
+
   let notified = 0;
-  for (const u of users) {
-    const coords = userCoords(u);
-    if (!coords) continue;
-    if (haversineKm(alert.lat, alert.lon, coords.lat, coords.lon) > NEARBY_RADIUS_KM) continue;
+  for (const id of recipients) {
+    if (id === userId) continue;
     notified++;
-    sendPushToUser(u.id, {
+    sendPushToUser(id, {
       title: '✓ False alarm — all clear',
       body: `${alert.userName} cancelled their safety signal. False alarm — no help needed.`,
       data: { type: 'safety_signal_false_alarm', alertId: alert.id },
@@ -315,7 +323,8 @@ export async function processPersistentSafetySignals(): Promise<number> {
     alert.notifyCount += 1;
     alert.lastNotifyAt = new Date().toISOString();
     alert.nextNotifyAt = new Date(now + NOTIFY_INTERVAL_MS).toISOString();
-    await notifyNearbyUsers(alert, true);
+    const again = await notifyNearbyUsers(alert, true);
+    alert.notifiedUserIds = Array.from(new Set([...(alert.notifiedUserIds || []), ...again.userIds]));
     processed++;
   }
 
@@ -351,8 +360,8 @@ export function sanitizeSettingsForClient(s: PersonalSafetyShieldSettings) {
     armed: s.armed,
     autoArmWhenOutside: s.autoArmWhenOutside,
     hasActivationSecret: !!s.activationSecret,
-    hasCancelSecret: !!s.cancelSecret,
-    customActivationPhrase: s.customActivationPhrase ? '••••••' : '',
+    /** Owner-only — needed so this device can listen for the shouted word. */
+    activationSecret: s.activationSecret || '',
     enableHelpButton: s.enableHelpButton,
     enableScreenTaps: s.enableScreenTaps,
     screenTapCount: s.screenTapCount,
@@ -369,8 +378,7 @@ export function sanitizeSettingsForClient(s: PersonalSafetyShieldSettings) {
 export async function validateShieldReady(userId: string): Promise<{ ready: boolean; missing: string[] }> {
   const s = await getShieldSettings(userId);
   const missing: string[] = [];
-  if (!s.activationSecret) missing.push('activation secret');
-  if (!s.cancelSecret) missing.push('cancel secret (false alarm)');
+  if (!s.activationSecret) missing.push('activation word (voice detector)');
   if (!s.enableHelpButton && !s.enableScreenTaps && !s.enableVolumeTaps && !s.enableSecretWord) {
     missing.push('at least one trigger method');
   }

@@ -41,7 +41,10 @@ export interface Conversation {
   unreadCount: number;
   replyDeadline?: ReplyDeadlineStatus;
   meetupWeek?: MeetupWeekStatus;
+  intent?: 'serious' | 'casual' | 'friends' | null;
 }
+
+export type ChatIntent = 'serious' | 'casual' | 'friends';
 
 export interface User {
   id: string;
@@ -77,6 +80,11 @@ export const chatAPI = {
   getConversations: async (userId: string): Promise<{ conversations: Conversation[] }> => {
     const response = await axios.get(`${API_URL}/conversations`, { params: { userId } });
     return response.data;
+  },
+
+  setChatIntent: async (otherUserId: string, intent: ChatIntent | null) => {
+    const response = await axios.put(`${API_URL}/intents/${otherUserId}`, { intent });
+    return response.data as { intents: Record<string, ChatIntent>; intent: ChatIntent | null };
   },
 
   getAvailableUsers: async (userId: string): Promise<{ users: User[] }> => {

@@ -7,8 +7,7 @@ export interface ShieldSettings {
   armed: boolean;
   autoArmWhenOutside: boolean;
   hasActivationSecret: boolean;
-  hasCancelSecret: boolean;
-  customActivationPhrase: string;
+  activationSecret?: string;
   enableHelpButton: boolean;
   enableScreenTaps: boolean;
   screenTapCount: number;
@@ -34,8 +33,6 @@ export const personalSafetyAPI = {
 
   updateSettings: async (patch: Partial<{
     activationSecret: string;
-    cancelSecret: string;
-    customActivationPhrase: string;
     appearanceDescription: string;
     autoArmWhenOutside: boolean;
     enableHelpButton: boolean;
@@ -69,8 +66,8 @@ export const personalSafetyAPI = {
     };
   },
 
-  cancelFalseAlarm: async (cancelPhrase: string) => {
-    const res = await axios.post(`${API_URL}/cancel-false-alarm`, { cancelPhrase });
+  cancelFalseAlarm: async () => {
+    const res = await axios.post(`${API_URL}/cancel-false-alarm`);
     return res.data as { message: string; notified: number };
   },
 

@@ -31,8 +31,16 @@ export interface EventRequest {
   id: string;
   eventId: string;
   userId: string;
-  status: 'pending' | 'accepted' | 'rejected';
+  status: 'pending' | 'accepted' | 'rejected' | 'cancelled';
   createdAt: string;
+  /** Optional question for the host (e.g. can I bring someone). */
+  question?: string;
+  /** Host reply to that question. */
+  organizerReply?: string;
+  organizerRepliedAt?: string;
+  /** Required when the guest cancels / cannot come. */
+  cancelReason?: string;
+  cancelledAt?: string;
 }
 
 export interface EventMessage {
@@ -157,16 +165,39 @@ export async function getAllEvents(): Promise<Event[]> {
   return readEvents();
 }
 
-export async function createEventRequest(eventId: string, userId: string): Promise<EventRequest> {
+export async function createEventRequest(
+  eventId: string,
+  userId: string,
+  question?: string
+): Promise<EventRequest> {
   const requests = await readRequests();
   const existing = requests.find((r) => r.eventId === eventId && r.userId === userId);
-  if (existing) return existing;
+  const q = (question || '').trim() || undefined;
+  if (existing) {
+    if (existing.status === 'pending' || existing.status === 'accepted') {
+      if (q && !existing.question) {
+        existing.question = q;
+        await writeRequests(requests);
+      }
+      return existing;
+    }
+    existing.status = 'pending';
+    existing.question = q;
+    existing.organizerReply = undefined;
+    existing.organizerRepliedAt = undefined;
+    existing.cancelReason = undefined;
+    existing.cancelledAt = undefined;
+    existing.createdAt = new Date().toISOString();
+    await writeRequests(requests);
+    return existing;
+  }
   const req: EventRequest = {
     id: Date.now().toString(),
     eventId,
     userId,
     status: 'pending',
     createdAt: new Date().toISOString(),
+    question: q,
   };
   requests.push(req);
   await writeRequests(requests);
@@ -206,6 +237,61 @@ export async function getAcceptedMemberIds(eventId: string): Promise<string[]> {
   return requests
     .filter((r) => r.eventId === eventId && r.status === 'accepted')
     .map((r) => r.userId);
+}
+
+/** Profile pictures only — no names — for the host and accepted guests. */
+export async function getAcceptedGuestPhotos(
+  eventId: string
+): Promise<{ profilePicture: string | null }[]> {
+  const ids = await getAcceptedMemberIds(eventId);
+  const photos: { profilePicture: string | null }[] = [];
+  for (const id of ids) {
+    const u = await getUserById(id);
+    photos.push({ profilePicture: u?.profilePicture ?? null });
+  }
+  return photos;
+}
+
+export async function replyToEventRequest(
+  requestId: string,
+  eventId: string,
+  creatorUserId: string,
+  reply: string
+): Promise<EventRequest | null> {
+  const event = await getEventById(eventId);
+  if (!event || event.creatorUserId !== creatorUserId) return null;
+  const text = reply.trim();
+  if (!text) return null;
+  const requests = await readRequests();
+  const idx = requests.findIndex((r) => r.id === requestId && r.eventId === eventId);
+  if (idx === -1) return null;
+  if (requests[idx].status === 'cancelled') return null;
+  requests[idx].organizerReply = text;
+  requests[idx].organizerRepliedAt = new Date().toISOString();
+  await writeRequests(requests);
+  return requests[idx];
+}
+
+export async function cancelEventRequest(
+  eventId: string,
+  userId: string,
+  reason: string
+): Promise<EventRequest | null> {
+  const text = reason.trim();
+  if (text.length < 4) return null;
+  const requests = await readRequests();
+  const idx = requests.findIndex(
+    (r) =>
+      r.eventId === eventId &&
+      r.userId === userId &&
+      (r.status === 'pending' || r.status === 'accepted')
+  );
+  if (idx === -1) return null;
+  requests[idx].status = 'cancelled';
+  requests[idx].cancelReason = text;
+  requests[idx].cancelledAt = new Date().toISOString();
+  await writeRequests(requests);
+  return requests[idx];
 }
 
 export async function canAccessEventChat(eventId: string, userId: string): Promise<boolean> {
@@ -258,14 +344,16 @@ export async function updateEventMeetupDetails(
 
 export async function getEventsForUser(userId: string): Promise<Event[]> {
   const requests = await readRequests();
-  const acceptedEventIds = new Set(
-    requests.filter((r) => r.userId === userId && r.status === 'accepted').map((r) => r.eventId)
+  const relatedEventIds = new Set(
+    requests
+      .filter((r) => r.userId === userId && r.status !== 'rejected')
+      .map((r) => r.eventId)
   );
   const events = await readEvents();
   const created = events.filter((e) => e.creatorUserId === userId);
-  const joined = events.filter((e) => acceptedEventIds.has(e.id));
+  const related = events.filter((e) => relatedEventIds.has(e.id));
   const all = [...created];
-  joined.forEach((e) => {
+  related.forEach((e) => {
     if (!all.find((x) => x.id === e.id)) all.push(e);
   });
   return all.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());

@@ -4,6 +4,7 @@ import { API_BASE } from './config';
 const API_URL = API_BASE + '/api/premium';
 
 export type PremiumPlanType = 'monthly' | 'yearly' | 'lifetime';
+export type PremiumTier = 'free' | 'plus' | 'gold' | 'platinum';
 
 export interface PremiumPlan {
   id: string;
@@ -13,6 +14,11 @@ export interface PremiumPlan {
   currency: string;
   features: string[];
   popular?: boolean;
+  tier?: PremiumTier;
+  headline?: string;
+  weeklyPrice?: number;
+  savePercent?: number;
+  theme?: 'plus' | 'gold' | 'platinum';
 }
 
 export interface PremiumSubscription {

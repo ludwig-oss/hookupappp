@@ -34,6 +34,8 @@ export interface DatingPost {
     userName: string;
     content: string;
     createdAt: string;
+    replyToId?: string | null;
+    replyToUserName?: string | null;
   }>;
   createdAt: string;
   user?: {
@@ -41,6 +43,22 @@ export interface DatingPost {
     name: string;
     username: string;
     profilePicture: string | null;
+  };
+  singleAgain?: {
+    postId: string;
+    city: string;
+    reason: string;
+    photoUrl: string | null;
+    interestClosesAt: string;
+    interestCount: number;
+    hasEntered: boolean;
+    drawn: boolean;
+    luckyCount: number;
+    isOwner: boolean;
+    iAmLucky: boolean;
+    healHold: boolean;
+    healNote: string | null;
+    hoursLeft: number;
   };
 }
 
@@ -95,19 +113,31 @@ export const postsAPI = {
   },
 
   likePost: async (postId: string): Promise<void> => {
-    await axios.post(`${API_URL}/${postId}/like`, {}, { headers: getAuthHeaders() });
+    await axios.post(`${WRITE_API_URL}/${postId}/like`, {}, { headers: getAuthHeaders() });
   },
 
-  commentOnPost: async (postId: string, content: string): Promise<void> => {
-    await axios.post(`${API_URL}/${postId}/comment`, { content }, { headers: getAuthHeaders() });
+  commentOnPost: async (
+    postId: string,
+    content: string,
+    replyTo?: { id: string; userName: string } | null
+  ): Promise<void> => {
+    await axios.post(
+      `${WRITE_API_URL}/${postId}/comment`,
+      {
+        content,
+        replyToId: replyTo?.id || undefined,
+        replyToUserName: replyTo?.userName || undefined,
+      },
+      { headers: getAuthHeaders() }
+    );
   },
 
   sharePost: async (postId: string): Promise<void> => {
-    await axios.post(`${API_URL}/${postId}/share`, {}, { headers: getAuthHeaders() });
+    await axios.post(`${WRITE_API_URL}/${postId}/share`, {}, { headers: getAuthHeaders() });
   },
 
   deletePost: async (postId: string): Promise<void> => {
-    await axios.delete(`${API_URL}/${postId}`, { headers: getAuthHeaders() });
+    await axios.delete(`${WRITE_API_URL}/${postId}`, { headers: getAuthHeaders() });
   },
 };
 

@@ -12,7 +12,7 @@ import {
   getPlaceUsers,
 } from '../controllers/discoverController.js';
 import { authenticateToken } from '../middleware/auth.js';
-import { requireEmailVerified } from '../middleware/requireEmailVerified.js';
+import { requirePhotoUnlocked } from '../middleware/requirePhotoUnlocked.js';
 
 const router = express.Router();
 
@@ -26,13 +26,10 @@ router.use(authenticateToken);
 router.post('/preference', setPreference);
 router.get('/preference', getMyPreference);
 
-// Email verification required for matching, interests, and place-based discovery
-router.use(requireEmailVerified);
-
 router.get('/matches', getMatches);
-router.post('/interest', showInterest);
+router.post('/interest', requirePhotoUnlocked, showInterest);
 router.get('/interests', getMyInterests);
-router.post('/interest/respond', respondInterest);
+router.post('/interest/respond', requirePhotoUnlocked, respondInterest);
 router.get('/places/:placeId/users', getPlaceUsers);
 
 export default router;

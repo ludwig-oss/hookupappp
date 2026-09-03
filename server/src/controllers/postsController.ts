@@ -11,6 +11,7 @@ import {
   deletePost,
 } from '../models/posts.js';
 import { getUserById } from '../models/user.js';
+import { sendPushToUser } from '../realtime/push.js';
 import { runWithSystem } from '../db/context.js';
 import { checkContent } from '../utils/moderation.js';
 import { sanitizeMessageContent, sanitizeForStorage, sanitizeTags, LIMITS } from '../utils/sanitize.js';
@@ -60,8 +61,8 @@ export const uploadPostFile = async (req: Request, res: Response) => {
     if (!Buffer.isBuffer(buf) || buf.length === 0) {
       return res.status(400).json({ error: 'File is required' });
     }
-    const mimeHeader = String(req.headers['x-upload-content-type'] || req.headers['content-type'] || 'application/octet-stream');
-    const mime = mimeHeader.split(';')[0].trim();
+    const mimeHeader = String(req.headers['x-upload-content-type'] || req.headers['content-type'] || '');
+    const mime = sniffUploadMime(buf, mimeHeader);
     if (!mime.startsWith('image/') && !mime.startsWith('video/')) {
       return res.status(400).json({ error: 'Please upload a photo or video' });
     }
@@ -76,6 +77,22 @@ export const uploadPostFile = async (req: Request, res: Response) => {
     res.status(500).json({ error: msg.includes('too large') ? msg : 'Could not upload media' });
   }
 };
+
+function sniffUploadMime(buf: Buffer, header: string): string {
+  const declared = header.split(';')[0].trim().toLowerCase();
+  if (declared.startsWith('image/') || declared.startsWith('video/')) return declared;
+  if (buf.length >= 12) {
+    const ftyp = buf.subarray(4, 8).toString('ascii');
+    if (ftyp === 'ftyp') return 'video/mp4';
+    if (buf[0] === 0x1a && buf[1] === 0x45 && buf[2] === 0xdf && buf[3] === 0xa3) return 'video/webm';
+    if (buf[0] === 0xff && buf[1] === 0xd8) return 'image/jpeg';
+    if (buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) return 'image/png';
+    if (buf.subarray(0, 4).toString('ascii') === 'RIFF' && buf.subarray(8, 12).toString('ascii') === 'WEBP') {
+      return 'image/webp';
+    }
+  }
+  return declared || 'application/octet-stream';
+}
 
 export const createDatingPost = async (req: Request, res: Response) => {
   try {
@@ -136,7 +153,10 @@ export const createDatingPost = async (req: Request, res: Response) => {
 export const getDatingPosts = async (req: Request, res: Response) => {
   try {
     const posts = await getAllPosts();
-    const enrichedPosts = await enrichPostsWithUser(posts);
+    const userId = (req as any).userId || null;
+    const { attachToPosts } = await import('../models/singleAgain.js');
+    const withSingle = await attachToPosts(posts, userId);
+    const enrichedPosts = await enrichPostsWithUser(withSingle);
     res.json({ posts: enrichedPosts });
   } catch (error) {
     console.error('Get posts error:', error);
@@ -150,7 +170,10 @@ export const getFeed = async (req: AuthRequest, res: Response) => {
     const mode = parseFeedMode(req.query.mode);
     const userId = req.userId || null;
     const posts = await getFeedPosts({ userId, mode });
-    const enrichedPosts = await enrichPostsWithUser(posts);
+    const { attachToPosts, drawAllDue } = await import('../models/singleAgain.js');
+    await drawAllDue();
+    const withSingle = await attachToPosts(posts, userId);
+    const enrichedPosts = await enrichPostsWithUser(withSingle);
     const trendingTags = posts.length ? (await import('../models/feedAlgorithm.js')).extractTrendingTags(
       await getAllPosts()
     ) : [];
@@ -186,7 +209,9 @@ export const getRecommendations = async (req: AuthRequest, res: Response) => {
     const profile = userId ? await getUserFeedProfile(userId) : null;
     const { posts: ranked, trendingTags } = rankFeedPosts(all, { userId, profile, mode: 'for_you' });
     const picks = getRecommendedPosts(ranked, 8);
-    const enriched = await enrichPostsWithUser(picks);
+    const { attachToPosts } = await import('../models/singleAgain.js');
+    const withSingle = await attachToPosts(picks, userId);
+    const enriched = await enrichPostsWithUser(withSingle);
     res.json({ recommendations: enriched, trendingTags });
   } catch (error) {
     console.error('Recommendations error:', error);
@@ -246,10 +271,24 @@ async function enrichPostsWithUser(posts: any[]) {
       }
     })
   );
-  return posts.map((post) => ({
-    ...post,
-    user: byId.get(post.userId) ?? null,
-  }));
+  return posts.map((post) => {
+    if ((post as any).singleAgain && !(post as any).singleAgain.isOwner) {
+      return {
+        ...post,
+        userId: '',
+        user: {
+          id: '',
+          name: `Someone in ${(post as any).singleAgain.city || 'their city'}`,
+          username: '',
+          profilePicture: null,
+        },
+      };
+    }
+    return {
+      ...post,
+      user: byId.get(post.userId) ?? (post as any).user ?? null,
+    };
+  });
 }
 
 export const likeDatingPost = async (req: Request, res: Response) => {
@@ -259,6 +298,14 @@ export const likeDatingPost = async (req: Request, res: Response) => {
     await likePost(postId);
     const post = await getPostById(postId);
     if (post && userId) await recordFeedLike(userId, post);
+    if (post && userId && post.userId && String(post.userId) !== String(userId)) {
+      const liker = await getUserById(userId);
+      sendPushToUser(post.userId, {
+        title: 'New like',
+        body: liker ? `${liker.name} liked your post` : 'Someone liked your post',
+        data: { type: 'new_like', postId, fromUserId: userId },
+      }, 'likes').catch(() => {});
+    }
     res.json({ message: 'Post liked' });
   } catch (error) {
     console.error('Like post error:', error);
@@ -282,18 +329,34 @@ export const commentOnPost = async (req: Request, res: Response) => {
     }
 
     const user = await getUserById(userId);
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' });
+    const userName = user?.name?.trim() || 'Someone';
+
+    const replyToId = typeof req.body.replyToId === 'string' ? req.body.replyToId.trim() : '';
+    const replyToUserNameRaw =
+      typeof req.body.replyToUserName === 'string' ? sanitizeForStorage(req.body.replyToUserName, 80) : '';
+    const existing = await getPostById(postId);
+    if (!existing) {
+      return res.status(404).json({ error: 'Post not found' });
     }
+    const parent = replyToId ? (existing.comments || []).find((c) => c.id === replyToId) : null;
 
     await addComment(postId, {
       userId,
-      userName: user.name,
+      userName,
       content,
+      replyToId: parent ? parent.id : null,
+      replyToUserName: parent ? parent.userName : replyToUserNameRaw || null,
     });
 
     const post = await getPostById(postId);
     if (post) await recordFeedComment(userId, post);
+    if (post && post.userId && String(post.userId) !== String(userId)) {
+      sendPushToUser(post.userId, {
+        title: 'New comment',
+        body: `${userName} commented on your post`,
+        data: { type: 'new_comment', postId, fromUserId: userId },
+      }, 'likes').catch(() => {});
+    }
 
     res.json({ message: 'Comment added' });
   } catch (error) {

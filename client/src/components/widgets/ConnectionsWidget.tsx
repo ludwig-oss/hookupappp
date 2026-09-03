@@ -182,7 +182,7 @@ const ConnectionsWidget = () => {
         if (newBuzzes.length > 0) {
           setComfortingMessage('Someone nearby showed interest — respond below.');
           setTimeout(() => setComfortingMessage(null), 6000);
-          notifyDevice('Hook Up', 'Someone nearby wants to connect!');
+          notifyDevice('Hook Up', 'Someone nearby wants to connect!', 'interest');
         }
       } else {
         buzzInitializedRef.current = true;
@@ -385,11 +385,11 @@ const ConnectionsWidget = () => {
       await refreshNearby();
       const chatId = (result as { chatUserId?: string }).chatUserId;
       if (chatId) {
-        notifyDevice('Hook Up', "It's a match — they're in Communications.");
+        notifyDevice('Hook Up', "It's a match — they're in Communications.", 'matches');
         openChatWithUser(chatId);
         setComfortingMessage("It's a match! They're in your Communications — start chatting.");
       } else {
-        notifyDevice('Hook Up', 'Interest sent. You will be notified when they answer.');
+        notifyDevice('Hook Up', 'Interest sent. You will be notified when they answer.', 'interest');
         setComfortingMessage("Interest sent! When they respond Yes or Talk later, they'll appear in Communications.");
       }
       setTimeout(() => setComfortingMessage(null), 4000);
@@ -413,7 +413,7 @@ const ConnectionsWidget = () => {
       }
       if (response === 'accepted' || response === 'talk_later') {
         const chatId = (result as any).chatUserId;
-        notifyDevice('Hook Up', "They're in Communications. You can talk now.");
+        notifyDevice('Hook Up', "They're in Communications. You can talk now.", 'matches');
         setComfortingMessage(response === 'talk_later'
           ? "They're in your Communications. Chat when you're both ready!"
           : "They're in your Communications. You can start chatting now!");
@@ -422,7 +422,7 @@ const ConnectionsWidget = () => {
           openChatWithUser(chatId);
         }
       } else {
-        notifyDevice('Hook Up', 'Declined. They were not added to chat.');
+        notifyDevice('Hook Up', 'Declined. They were not added to chat.', 'interest');
       }
       await loadBuzzes();
       await refreshNearby();

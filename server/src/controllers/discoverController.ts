@@ -13,7 +13,6 @@ import {
 import { notifyNewMatch, notifyNewInterest } from '../realtime/notifications.js';
 import { sendPushToUser } from '../realtime/push.js';
 import { getAllUsers, getUserById } from '../models/user.js';
-import { getUserSettings } from '../models/settings.js';
 import { maskUserForViewer } from '../lib/celebMask.js';
 import { sanitizeForStorage, sanitizeMessageContent, LIMITS } from '../utils/sanitize.js';
 import { ensureMatchConversation } from '../models/chat.js';
@@ -155,23 +154,18 @@ export async function showInterest(req: Request, res: Response) {
     notifyNewInterest(toUserId, { fromUserId: userId, interestId: interest.id });
 
     try {
-      const toSettings = await getUserSettings(toUserId);
       const fromUser = await getUserById(userId);
-      if (toSettings.notifications.push && toSettings.notifications.interestAlerts) {
-        const vibrateOn = toSettings.notifications.interestVibrate !== false;
-        await sendPushToUser(toUserId, {
-          title: 'Someone is interested in you',
-          body: fromUser
-            ? `${fromUser.name} sent you an interest — you have 24 hours to respond`
-            : 'Open the app to accept or decline (24 hours)',
-          data: {
-            type: 'new_interest',
-            interestId: interest.id,
-            fromUserId: userId,
-            vibrate: vibrateOn ? '1' : '0',
-          },
-        });
-      }
+      await sendPushToUser(toUserId, {
+        title: 'Someone is interested in you',
+        body: fromUser
+          ? `${fromUser.name} sent you an interest — you have 24 hours to respond`
+          : 'Open the app to accept or decline (24 hours)',
+        data: {
+          type: 'new_interest',
+          interestId: interest.id,
+          fromUserId: userId,
+        },
+      }, 'interest');
     } catch {
       /* push optional */
     }
@@ -232,8 +226,8 @@ export async function respondInterest(req: Request, res: Response) {
       sendPushToUser(interest.fromUserId, {
         title: 'New match!',
         body: accepter ? `${accepter.name} accepted your interest` : 'Someone accepted your interest',
-        data: { fromUserId: userId, interestId: interest.id },
-      }).catch(() => {});
+        data: { type: 'new_match', fromUserId: userId, interestId: interest.id },
+      }, 'matches').catch(() => {});
     }
 
     // If accepted, seed chat thread so both appear in Communications
@@ -241,6 +235,20 @@ export async function respondInterest(req: Request, res: Response) {
       await ensureMatchConversation(userId, interest.fromUserId);
       res.json({ interest, openChat: true, chatUserId: interest.fromUserId });
     } else {
+      if (response === 'rejected' || response === 'declined') {
+        const { maybeOfferPitchOnReject } = await import('../models/dateMatch.js');
+        const { notifyPitch } = await import('../realtime/notifications.js');
+        const pitch = await maybeOfferPitchOnReject(interest.fromUserId, userId, interest.id);
+        if (pitch) {
+          notifyPitch(interest.fromUserId, { pitchId: pitch.id, fromUserId: userId, incoming: false });
+          sendPushToUser(interest.fromUserId, {
+            title: 'They passed — pitch yourself',
+            body: 'Plus lets you send one pitch. They will read it and decide.',
+            data: { type: 'pitch_chance', pitchId: pitch.id },
+          }, 'interest').catch(() => {});
+          return res.json({ interest, pitchOffered: true, pitchId: pitch.id });
+        }
+      }
       res.json({ interest });
     }
   } catch (error: any) {

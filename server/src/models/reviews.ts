@@ -181,14 +181,19 @@ export async function getReviewsForUser(userId: string): Promise<Review[]> {
   return reviews.filter((r) => r.toUserId === userId).map(migrateReview);
 }
 
-export async function addReply(reviewId: string, toUserId: string, replyText: string): Promise<Review | null> {
+export async function addReply(
+  reviewId: string,
+  toUserId: string,
+  replyText: string
+): Promise<{ review: Review } | { error: 'not_found' | 'already_replied' }> {
   const reviews = await readReviews();
-  const r = reviews.find(rev => rev.id === reviewId && rev.toUserId === toUserId);
-  if (!r) return null;
+  const r = reviews.find((rev) => rev.id === reviewId && rev.toUserId === toUserId);
+  if (!r) return { error: 'not_found' };
+  if (r.replyText?.trim()) return { error: 'already_replied' };
   r.replyText = replyText.trim();
   r.repliedAt = new Date().toISOString();
   await writeReviews(reviews);
-  return migrateReview(r);
+  return { review: migrateReview(r) };
 }
 
 export async function getAggregateAttributes(userId: string): Promise<{

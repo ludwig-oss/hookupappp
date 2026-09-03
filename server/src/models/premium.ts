@@ -2,6 +2,13 @@ import { readFile, writeFile } from 'fs/promises';
 import { join } from 'path';
 
 export type PremiumPlanType = 'monthly' | 'yearly' | 'lifetime';
+export type PremiumTier = 'free' | 'plus' | 'gold' | 'platinum';
+export type PremiumFeature =
+  | 'unlimited_searches'
+  | 'pitch_on_reject'
+  | 'unlimited_countries'
+  | 'guide_lawyer'
+  | 'direct_pitch';
 
 export interface PremiumPlan {
   id: string;
@@ -11,6 +18,11 @@ export interface PremiumPlan {
   currency: string;
   features: string[];
   popular?: boolean;
+  tier?: PremiumTier;
+  headline?: string;
+  weeklyPrice?: number;
+  savePercent?: number;
+  theme?: 'plus' | 'gold' | 'platinum';
 }
 
 export interface PremiumSubscription {
@@ -41,52 +53,123 @@ export interface PaymentHistory {
 const PREMIUM_PATH = join(process.cwd(), 'server', 'data', 'premium.json');
 const PAYMENTS_PATH = join(process.cwd(), 'server', 'data', 'payments.json');
 
+const TIER_FEATURES: Record<Exclude<PremiumTier, 'free'>, PremiumFeature[]> = {
+  plus: ['unlimited_searches', 'pitch_on_reject', 'unlimited_countries'],
+  gold: ['unlimited_searches', 'pitch_on_reject', 'unlimited_countries', 'guide_lawyer'],
+  platinum: ['unlimited_searches', 'pitch_on_reject', 'unlimited_countries', 'guide_lawyer', 'direct_pitch'],
+};
+
 const defaultPlans: PremiumPlan[] = [
   {
-    id: 'premium_monthly',
-    name: 'Premium Monthly',
+    id: 'plus_monthly',
+    name: 'Plus',
     type: 'monthly',
-    price: 9.99,
-    currency: 'USD',
+    price: 68,
+    currency: 'EUR',
+    weeklyPrice: 15.69,
+    savePercent: 59,
+    theme: 'plus',
+    tier: 'plus',
+    headline: 'Unlimited date searches. Pitch after a no. Unlimited other-country interest.',
     features: [
-      'Unlimited likes',
-      'See who liked you',
-      'Advanced filters',
-      'Read receipts',
-      'Priority support',
-      'No ads',
+      'Unlimited Date Arena searches (free accounts get 3 per month)',
+      'Pitch yourself when someone declines your interest',
+      'Unlimited search in other countries and show interest',
     ],
+  },
+  {
+    id: 'gold_monthly',
+    name: 'Gold',
+    type: 'monthly',
+    price: 114,
+    currency: 'EUR',
+    weeklyPrice: 26.31,
+    savePercent: 58,
+    theme: 'gold',
+    tier: 'gold',
+    popular: true,
+    headline: 'A guide hand-picks a date and pitches for you like your lawyer.',
+    features: [
+      'Everything in Plus',
+      'Summon a guide to hand-pick a potential date',
+      'Private 3-person pitch room until they say yes or no',
+      'Your guide gets a cut at the end of each month',
+    ],
+  },
+  {
+    id: 'platinum_monthly',
+    name: 'Platinum',
+    type: 'monthly',
+    price: 189,
+    currency: 'EUR',
+    weeklyPrice: 43.62,
+    savePercent: 70,
+    theme: 'platinum',
+    tier: 'platinum',
+    headline: 'Pitch yourself directly — no interest tap required.',
+    features: [
+      'Everything in Gold',
+      'Direct pitch without showing interest first',
+      'They approve or reject your pitch',
+    ],
+  },
+  // Aliases so older subscriptions keep working
+  {
+    id: 'premium_monthly',
+    name: 'Plus',
+    type: 'monthly',
+    price: 68,
+    currency: 'EUR',
+    theme: 'plus',
+    tier: 'plus',
+    headline: 'Unlimited date searches. Pitch after a no. Unlimited other-country interest.',
+    features: ['Unlimited Date Arena searches', 'Pitch after a decline', 'Unlimited other-country interest'],
   },
   {
     id: 'premium_yearly',
-    name: 'Premium Yearly',
+    name: 'Gold',
     type: 'yearly',
-    price: 79.99,
-    currency: 'USD',
-    features: [
-      'Everything in Monthly',
-      'Save 33%',
-      'Exclusive badges',
-      'Profile boost',
-      'Super likes',
-    ],
+    price: 1140,
+    currency: 'EUR',
+    theme: 'gold',
+    tier: 'gold',
     popular: true,
+    features: ['Everything in Plus', 'Guide lawyer / hand-pick'],
   },
   {
     id: 'premium_lifetime',
-    name: 'Premium Lifetime',
+    name: 'Platinum',
     type: 'lifetime',
-    price: 199.99,
-    currency: 'USD',
-    features: [
-      'Everything in Yearly',
-      'Lifetime access',
-      'Exclusive lifetime badge',
-      'Early access to features',
-      'VIP support',
-    ],
+    price: 1890,
+    currency: 'EUR',
+    theme: 'platinum',
+    tier: 'platinum',
+    features: ['Everything in Gold', 'Direct pitch'],
   },
 ];
+
+const PUBLIC_PLAN_IDS = new Set(['plus_monthly', 'gold_monthly', 'platinum_monthly']);
+
+export function planTier(planId: string | null | undefined): PremiumTier {
+  if (!planId) return 'free';
+  const plan = defaultPlans.find((p) => p.id === planId);
+  return plan?.tier || 'free';
+}
+
+export function featuresForTier(tier: PremiumTier): PremiumFeature[] {
+  if (tier === 'free') return [];
+  return TIER_FEATURES[tier];
+}
+
+export async function getUserTier(userId: string): Promise<PremiumTier> {
+  const sub = await getUserSubscription(userId);
+  return planTier(sub?.planId);
+}
+
+export async function userHasFeature(userId: string, feature: PremiumFeature): Promise<boolean> {
+  const tier = await getUserTier(userId);
+  return featuresForTier(tier).includes(feature);
+}
 
 async function readSubscriptions(): Promise<PremiumSubscription[]> {
   try {
@@ -130,7 +213,7 @@ async function writePayments(payments: PaymentHistory[]): Promise<void> {
 }
 
 export async function getPremiumPlans(): Promise<PremiumPlan[]> {
-  return defaultPlans;
+  return defaultPlans.filter((p) => PUBLIC_PLAN_IDS.has(p.id));
 }
 
 export async function getPremiumPlan(planId: string): Promise<PremiumPlan | null> {

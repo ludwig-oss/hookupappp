@@ -35,7 +35,7 @@ export interface GuideWallet {
 export interface WalletTransaction {
   id: string;
   userId: string;
-  type: 'session_earning' | 'hold_earning' | 'platform_fee' | 'withdrawal' | 'withdrawal_refund' | 'advice_prize' | 'platform_fee_deduct';
+  type: 'session_earning' | 'hold_earning' | 'platform_fee' | 'withdrawal' | 'withdrawal_refund' | 'advice_prize' | 'platform_fee_deduct' | 'date_fine' | 'lawyer_cut';
   amountEur: number;
   netToGuideEur?: number;
   platformFeeEur?: number;
@@ -313,6 +313,41 @@ export async function holdGuideSessionPayment(params: {
   }).catch(() => {});
 
   return { guideShare, platformFee };
+}
+
+/** Credit any user (date cancellation fine, monthly lawyer cut). Withdrawable in Settings. */
+export async function creditUserBalance(params: {
+  userId: string;
+  amountEur: number;
+  type: 'date_fine' | 'lawyer_cut' | 'advice_prize';
+  note: string;
+}): Promise<void> {
+  const amount = Math.round(params.amountEur * 100) / 100;
+  if (amount <= 0) return;
+  const w = await getOrCreateWallet(params.userId);
+  w.availableBalanceEur = Math.round((w.availableBalanceEur + amount) * 100) / 100;
+  w.totalEarnedEur = Math.round((w.totalEarnedEur + amount) * 100) / 100;
+  await saveWallet(w);
+
+  const txs = await readTransactions();
+  txs.push({
+    id: Date.now().toString() + '-' + params.type,
+    userId: params.userId,
+    type: params.type,
+    amountEur: amount,
+    note: params.note,
+    createdAt: new Date().toISOString(),
+  });
+  await writeTransactions(txs);
+
+  const { sendPushToUser } = await import('../realtime/push.js');
+  const { notifyWalletUpdate } = await import('../realtime/notifications.js');
+  notifyWalletUpdate(params.userId, { amountEur: amount, reason: params.note });
+  sendPushToUser(params.userId, {
+    title: '€' + amount.toFixed(2) + ' added to your balance',
+    body: params.note + ' Withdraw in Settings → Account.',
+    data: { type: params.type, amountEur: String(amount) },
+  }).catch(() => {});
 }
 
 /** Monthly dating advice prize — €5 to balance. */

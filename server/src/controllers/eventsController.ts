@@ -8,6 +8,9 @@ import {
   getEventRequests,
   getEventRequest,
   respondToEventRequest,
+  replyToEventRequest,
+  cancelEventRequest,
+  getAcceptedGuestPhotos,
   canAccessEventChat,
   getEventMessages,
   addEventMessage,
@@ -137,10 +140,21 @@ export async function getEventByIdHandler(req: Request, res: Response) {
     const creator = await getUserById(event.creatorUserId);
     const creatorSafe = creator ? maskUserForViewer(creatorBase(creator), userId) : null;
     const ended = isEventEnded(event);
-    const myRequest = await getEventRequest(eventId, userId || '');
-    const canChat = event.creatorUserId === userId || (myRequest?.status === 'accepted');
+    const myRequest = userId ? await getEventRequest(eventId, userId) : null;
+    const canChat = event.creatorUserId === userId || myRequest?.status === 'accepted';
+    const isHost = event.creatorUserId === userId;
+    const acceptedGuests =
+      isHost || myRequest?.status === 'accepted' ? await getAcceptedGuestPhotos(eventId) : [];
     res.json({
-      event: { ...event, creator: creatorSafe, ended, myRequest, canChat, safetyNote: SAFETY_NOTE },
+      event: {
+        ...event,
+        creator: creatorSafe,
+        ended,
+        myRequest,
+        canChat,
+        acceptedGuests,
+        safetyNote: SAFETY_NOTE,
+      },
     });
   } catch (e: any) {
     console.error('Get event error:', e);
@@ -152,12 +166,14 @@ export async function requestToJoin(req: Request, res: Response) {
   try {
     const userId = (req as any).userId;
     if (!userId) return res.status(401).json({ error: 'Unauthorized' });
-    const { eventId } = req.body;
+    const { eventId, question } = req.body;
     if (!eventId) return res.status(400).json({ error: 'eventId is required' });
     const event = await getEventById(eventId);
     if (!event) return res.status(404).json({ error: 'Event not found' });
     if (event.creatorUserId === userId) return res.status(400).json({ error: 'You are the creator' });
-    const request = await createEventRequest(eventId, userId);
+    if (isEventEnded(event)) return res.status(400).json({ error: 'This event has ended' });
+    const q = question != null ? sanitizeForStorage(String(question), LIMITS.PROMPT) : undefined;
+    const request = await createEventRequest(eventId, userId, q);
     res.json({ request });
   } catch (e: any) {
     console.error('Request to join error:', e);
@@ -178,6 +194,12 @@ export async function getEventRequestsHandler(req: Request, res: Response) {
         const u = await getUserById(r.userId);
         const base = u ? creatorBase(u) : null;
         const safe = base ? maskUserForViewer(base, userId) : null;
+        if (r.status === 'accepted' || r.status === 'cancelled') {
+          return {
+            ...r,
+            user: { profilePicture: safe?.profilePicture ?? null },
+          };
+        }
         return { ...r, user: safe };
       })
     );
@@ -199,6 +221,42 @@ export async function respondToRequest(req: Request, res: Response) {
     res.json({ request: updated });
   } catch (e: any) {
     console.error('Respond to request error:', e);
+    res.status(500).json({ error: e.message || 'Internal server error' });
+  }
+}
+
+export async function replyToRequest(req: Request, res: Response) {
+  try {
+    const userId = (req as any).userId;
+    if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+    const { requestId, eventId, reply } = req.body;
+    if (!requestId || !eventId) return res.status(400).json({ error: 'requestId and eventId are required' });
+    const text = sanitizeForStorage(String(reply || ''), LIMITS.REPLY);
+    if (!text.trim()) return res.status(400).json({ error: 'Write a reply to their question' });
+    const updated = await replyToEventRequest(requestId, eventId, userId, text);
+    if (!updated) return res.status(404).json({ error: 'Request not found' });
+    res.json({ request: updated });
+  } catch (e: any) {
+    console.error('Reply to request error:', e);
+    res.status(500).json({ error: e.message || 'Internal server error' });
+  }
+}
+
+export async function cancelJoinRequest(req: Request, res: Response) {
+  try {
+    const userId = (req as any).userId;
+    if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+    const { eventId, reason } = req.body;
+    if (!eventId) return res.status(400).json({ error: 'eventId is required' });
+    const text = sanitizeForStorage(String(reason || ''), LIMITS.REASON);
+    if (text.trim().length < 4) {
+      return res.status(400).json({ error: 'Add a reason why you cannot come (at least a few words).' });
+    }
+    const updated = await cancelEventRequest(eventId, userId, text);
+    if (!updated) return res.status(404).json({ error: 'No active request to cancel' });
+    res.json({ request: updated });
+  } catch (e: any) {
+    console.error('Cancel join request error:', e);
     res.status(500).json({ error: e.message || 'Internal server error' });
   }
 }
@@ -278,7 +336,12 @@ export async function myEvents(req: Request, res: Response) {
         const creator = await getUserById(e.creatorUserId);
         const creatorSafe = creator ? maskUserForViewer(creatorBase(creator), userId) : null;
         const ended = isEventEnded(e);
-        return { ...e, creator: creatorSafe, ended, safetyNote: SAFETY_NOTE };
+        const myRequest = await getEventRequest(e.id, userId);
+        const acceptedGuests =
+          e.creatorUserId === userId || myRequest?.status === 'accepted'
+            ? await getAcceptedGuestPhotos(e.id)
+            : [];
+        return { ...e, creator: creatorSafe, ended, myRequest, acceptedGuests, safetyNote: SAFETY_NOTE };
       })
     );
     res.json({ events: withCreator });

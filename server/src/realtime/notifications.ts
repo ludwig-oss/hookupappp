@@ -153,6 +153,88 @@ export function notifyNewInterest(recipientUserId: string, payload: { fromUserId
   list.forEach((res) => sendEvent(res, 'new_interest', data));
 }
 
+/** True when the user currently has an SSE notification stream open (treated as online). */
+export function isSseConnected(userId: string): boolean {
+  return (connections.get(userId)?.length ?? 0) > 0;
+}
+
+/** Notify a user that chat patterns look detached — not a red flag, a watch-out. */
+export function notifyChatDisinterest(
+  recipientUserId: string,
+  payload: { otherUserId: string; score: number; statusLabel: string; report: unknown }
+): void {
+  const list = connections.get(recipientUserId);
+  if (!list?.length) return;
+  const data = { type: 'chat_disinterest', ...payload };
+  list.forEach((res) => sendEvent(res, 'chat_disinterest', data));
+}
+
+/** SOS to a guide: someone paid for live texting help. */
+export function notifyTextingHelpSos(
+  recipientUserId: string,
+  payload: { sessionId: string; fromUserId: string; fromName: string }
+): void {
+  const list = connections.get(recipientUserId);
+  if (!list?.length) return;
+  const data = { type: 'texting_help_sos', ...payload };
+  list.forEach((res) => sendEvent(res, 'texting_help_sos', data));
+}
+
+/** The user who paid: a guide answered the SOS first (highlight on the wheel). */
+export function notifyTextingHelpAnswered(
+  recipientUserId: string,
+  payload: { sessionId: string; guideUserId: string; guideName: string }
+): void {
+  const list = connections.get(recipientUserId);
+  if (!list?.length) return;
+  const data = { type: 'texting_help_answered', ...payload };
+  list.forEach((res) => sendEvent(res, 'texting_help_answered', data));
+}
+
+/** Chosen guide: user picked them for live screen-share help. */
+export function notifyTextingHelpChosen(
+  recipientUserId: string,
+  payload: { sessionId: string; liveRoomUrl: string }
+): void {
+  const list = connections.get(recipientUserId);
+  if (!list?.length) return;
+  const data = { type: 'texting_help_chosen', ...payload };
+  list.forEach((res) => sendEvent(res, 'texting_help_chosen', data));
+}
+
+/** Date Arena match found / accepted / idea spun. */
+export function notifyDateMatch(
+  recipientUserId: string,
+  payload: { matchId: string; fromUserId: string; status: string; ideaTitle?: string | null }
+): void {
+  const list = connections.get(recipientUserId);
+  if (!list?.length) return;
+  const data = { type: 'date_match', ...payload };
+  list.forEach((res) => sendEvent(res, 'date_match', data));
+}
+
+/** Pitch-yourself offer (Plus after reject, or Platinum direct). */
+export function notifyPitch(
+  recipientUserId: string,
+  payload: { pitchId: string; fromUserId: string; incoming: boolean; accepted?: boolean }
+): void {
+  const list = connections.get(recipientUserId);
+  if (!list?.length) return;
+  const data = { type: 'date_pitch', ...payload };
+  list.forEach((res) => sendEvent(res, 'date_pitch', data));
+}
+
+/** Guide lawyer 3-person room. */
+export function notifyLawyerRoom(
+  recipientUserId: string,
+  payload: { sessionId: string; role: string; accepted?: boolean }
+): void {
+  const list = connections.get(recipientUserId);
+  if (!list?.length) return;
+  const data = { type: 'date_lawyer', ...payload };
+  list.forEach((res) => sendEvent(res, 'date_lawyer', data));
+}
+
 /** Send a keep-alive comment so the connection is not dropped by proxies. */
 export function keepAlive(): void {
   connections.forEach((list) => {

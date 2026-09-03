@@ -1,7 +1,7 @@
 import express from 'express';
 import jwt from 'jsonwebtoken';
 import { subscribe } from '../realtime/notifications.js';
-import { addPushSubscription, isPushConfigured } from '../realtime/push.js';
+import { addPushSubscription, isPushConfigured, removePushSubscription } from '../realtime/push.js';
 import { authenticateToken } from '../middleware/auth.js';
 
 const router = express.Router();
@@ -81,6 +81,20 @@ router.post('/push-subscribe', authenticateToken, async (req, res) => {
     expirationTime: subscription.expirationTime ?? null,
   });
   res.json({ ok: true, message: 'Push subscription saved.' });
+});
+
+/**
+ * DELETE /api/notifications/push-subscribe
+ * Remove this device's Web Push subscription (when the user turns push off).
+ * Body: { endpoint: string }
+ */
+router.delete('/push-subscribe', authenticateToken, async (req, res) => {
+  const userId = (req as any).userId;
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  const endpoint = String(req.body?.endpoint || '').trim();
+  if (!endpoint) return res.status(400).json({ error: 'endpoint is required' });
+  await removePushSubscription(userId, endpoint);
+  res.json({ ok: true, message: 'Push subscription removed.' });
 });
 
 export default router;

@@ -37,7 +37,8 @@ export default function ConnectionsBuzzPopup({ onOpenConnections }: Props) {
         'Hook Up — nearby interest',
         fresh.length > 1
           ? `${fresh.length} people want to connect.`
-          : 'Someone wants to connect. Accept or decline.'
+          : 'Someone wants to connect. Accept or decline.',
+        'interest'
       );
     } catch {
       /* offline */

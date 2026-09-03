@@ -3,8 +3,13 @@ import { createMessage, getConversation, getUserConversations, markMessagesAsRea
 import { getAllUsers, getUserById, blockUser, muteUser, unmatchUser } from '../models/user.js';
 import { getActiveFocus, setFocus as setFocusRecord, clearFocus } from '../models/chatFocus.js';
 import { checkContent } from '../utils/moderation.js';
-import { notifyNewMessage } from '../realtime/notifications.js';
+import { notifyChatDisinterest, notifyNewMessage } from '../realtime/notifications.js';
 import { sendPushToUser } from '../realtime/push.js';
+import {
+  analyzeDisinterest,
+  markDisinterestWarned,
+  shouldSendDisinterestWarning,
+} from '../models/disinterest.js';
 import { sanitizeMessageContent } from '../utils/sanitize.js';
 import { enforceReplyDeadline, getReplyStatusForConversation } from '../models/chatReplyDeadline.js';
 import { enforceMeetupWeek, getMeetupWeekStatus } from '../models/matchMeetupDeadline.js';
@@ -12,6 +17,37 @@ import { getChatIntents, setChatIntent, isChatIntent } from '../models/chatInten
 
 function isBlocked(blocker: string[], blocked: string): boolean {
   return (blocker || []).includes(blocked);
+}
+
+async function maybeWarnDisinterest(userId: string, otherUserId: string): Promise<void> {
+  const messages = await getConversation(userId, otherUserId);
+  for (const viewerId of [userId, otherUserId]) {
+    const otherId = viewerId === userId ? otherUserId : userId;
+    const report = analyzeDisinterest(viewerId, otherId, messages);
+    const should = await shouldSendDisinterestWarning(viewerId, otherId, report.score);
+    if (!should) continue;
+    report.warningSent = true;
+    await markDisinterestWarned(viewerId, otherId, report.score);
+    notifyChatDisinterest(viewerId, {
+      otherUserId: otherId,
+      score: report.score,
+      statusLabel: report.statusLabel,
+      report,
+    });
+    sendPushToUser(
+      viewerId,
+      {
+        title: 'Hey, watch out',
+        body: 'This is not a red flag — just a heads-up. Take time, gather your own evidence, then decide.',
+        data: {
+          type: 'chat_disinterest',
+          otherUserId: otherId,
+          score: String(report.score),
+        },
+      },
+      'safety'
+    ).catch(() => {});
+  }
 }
 
 export const sendMessage = async (req: Request, res: Response) => {
@@ -37,9 +73,31 @@ export const sendMessage = async (req: Request, res: Response) => {
       return res.status(403).json({ error: 'You cannot message this user.' });
     }
 
+    {
+      const { getHoldBetween } = await import('../models/singleAgain.js');
+      const hold = await getHoldBetween(userId, toUserId);
+      if (hold.isRoulette && hold.held && hold.ownerUserId && hold.ownerUserId !== userId) {
+        return res.status(403).json({
+          error: hold.healNote
+            ? `They asked for time to heal. They said: “${hold.healNote}”`
+            : 'They asked for time to heal. You cannot chat until they tap I’m ready.',
+          rouletteHold: true,
+          healNote: hold.healNote,
+        });
+      }
+    }
+
     const moderation = checkContent(content);
     if (!moderation.allowed) {
       return res.status(400).json({ error: moderation.reason || 'Message not allowed.' });
+    }
+
+    const dateLock = await (await import('../models/dateMatch.js')).getDateChatLock(userId, toUserId);
+    if (dateLock.locked) {
+      return res.status(403).json({
+        error: dateLock.reason || 'Chat unlocks on the day of your date.',
+        dateLock,
+      });
     }
 
     const meetupWeekCheck = await enforceMeetupWeek(userId, toUserId);
@@ -81,8 +139,10 @@ export const sendMessage = async (req: Request, res: Response) => {
     sendPushToUser(toUserId, {
       title: `New message from ${fromUser.name}`,
       body: typeof content === 'string' ? content.slice(0, 100) : '',
-      data: { fromUserId: userId, conversationId: userId, messageId: message.id },
-    }).catch(() => {});
+      data: { type: 'new_message', fromUserId: userId, conversationId: userId, messageId: message.id },
+    }, 'messages').catch(() => {});
+
+    void maybeWarnDisinterest(userId, toUserId).catch((err) => console.error('Disinterest analysis:', err));
 
     const replyDeadline = await getReplyStatusForConversation(userId, toUserId);
     res.json({ message, replyDeadline });
@@ -129,10 +189,23 @@ export const getConversationMessages = async (req: Request, res: Response) => {
       });
     }
 
+    const dateLock = await (await import('../models/dateMatch.js')).getDateChatLock(userId, otherUserId);
     const messages = await getConversation(userId, otherUserId);
     const replyDeadline = enforcement.status;
     const meetupWeek = meetupEnforcement.status;
-    res.json({ messages, replyDeadline, meetupWeek });
+    const { getHoldBetween } = await import('../models/singleAgain.js');
+    const hold = await getHoldBetween(userId, otherUserId);
+    res.json({
+      messages,
+      replyDeadline,
+      meetupWeek,
+      dateLock,
+      rouletteChat: hold.isRoulette,
+      rouletteHold: hold.held,
+      rouletteHealNote: hold.healNote,
+      rouletteOwner: hold.isRoulette && hold.ownerUserId === userId,
+      roulettePostId: hold.record?.postId || null,
+    });
   } catch (error) {
     console.error('Get conversation error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -149,9 +222,10 @@ export const getConversationsList = async (req: Request, res: Response) => {
 
     const currentUser = await getUserById(userId);
     const blockedSet = new Set(currentUser?.blockedUsers || []);
+    const unmatchedSet = new Set(currentUser?.unmatchedUsers || []);
 
     const raw = await getUserConversations(userId);
-    const filtered = raw.filter((c) => !blockedSet.has(c.userId));
+    const filtered = raw.filter((c) => !blockedSet.has(c.userId) && !unmatchedSet.has(c.userId));
     const intents = await getChatIntents(userId);
     const conversations = (
       await Promise.all(
@@ -161,6 +235,9 @@ export const getConversationsList = async (req: Request, res: Response) => {
           const enforcement = await enforceReplyDeadline(userId, c.userId);
           if (enforcement.unmatched) return null;
           const other = await getUserById(c.userId);
+          const { getHoldBetween } = await import('../models/singleAgain.js');
+          const hold = await getHoldBetween(userId, c.userId);
+          const dateLock = await (await import('../models/dateMatch.js')).getDateChatLock(userId, c.userId);
           return {
             ...c,
             name: other?.name ?? 'Unknown',
@@ -168,6 +245,12 @@ export const getConversationsList = async (req: Request, res: Response) => {
             replyDeadline: enforcement.status,
             meetupWeek: meetupEnforcement.status,
             intent: intents[c.userId] || null,
+            dateLock,
+            rouletteChat: hold.isRoulette,
+            rouletteHold: hold.held,
+            rouletteHealNote: hold.healNote,
+            rouletteOwner: hold.isRoulette && hold.ownerUserId === userId,
+            roulettePostId: hold.record?.postId || null,
           };
         })
       )
@@ -291,6 +374,19 @@ export const unmatchChatUser = async (req: Request, res: Response) => {
 
     if (!unmatchedUserId) {
       return res.status(400).json({ error: 'User ID is required' });
+    }
+
+    try {
+      const { getActiveRelationship, getPartnerId, confirmEndRelationship } = await import('../models/relationship.js');
+      const rel = await getActiveRelationship(userId);
+      if (rel && rel.status === 'active' && getPartnerId(rel, userId) === unmatchedUserId) {
+        await confirmEndRelationship(userId, unmatchedUserId, {
+          reason: typeof req.body?.reason === 'string' ? req.body.reason : '',
+          reasonPrivate: Boolean(req.body?.reasonPrivate) || !String(req.body?.reason || '').trim(),
+        });
+      }
+    } catch (relErr) {
+      console.error('Unmatch relationship end:', relErr);
     }
 
     await unmatchUser(userId, unmatchedUserId);

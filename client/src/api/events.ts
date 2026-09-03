@@ -42,17 +42,23 @@ export interface Event {
   } | null;
   ended?: boolean;
   safetyNote?: string;
-  myRequest?: { id: string; status: string };
+  myRequest?: EventRequest | null;
   canChat?: boolean;
+  acceptedGuests?: { profilePicture: string | null }[];
 }
 
 export interface EventRequest {
   id: string;
   eventId: string;
   userId: string;
-  status: 'pending' | 'accepted' | 'rejected';
+  status: 'pending' | 'accepted' | 'rejected' | 'cancelled';
   createdAt: string;
-  user?: { id: string; name: string; blurred?: boolean; goldStar?: boolean } | null;
+  question?: string;
+  organizerReply?: string;
+  organizerRepliedAt?: string;
+  cancelReason?: string;
+  cancelledAt?: string;
+  user?: { id?: string; name?: string; profilePicture?: string | null; blurred?: boolean; goldStar?: boolean } | null;
 }
 
 export interface EventMessage {
@@ -114,8 +120,8 @@ export const eventsAPI = {
     return res.data;
   },
 
-  requestToJoin: async (eventId: string): Promise<{ request: EventRequest }> => {
-    const res = await axios.post(`${API_URL}/request`, { eventId }, { headers: getAuthHeaders() });
+  requestToJoin: async (eventId: string, question?: string): Promise<{ request: EventRequest }> => {
+    const res = await axios.post(`${API_URL}/request`, { eventId, question }, { headers: getAuthHeaders() });
     return res.data;
   },
 
@@ -126,6 +132,16 @@ export const eventsAPI = {
 
   respondToRequest: async (requestId: string, eventId: string, accept: boolean): Promise<{ request: EventRequest }> => {
     const res = await axios.post(`${API_URL}/request/respond`, { requestId, eventId, accept }, { headers: getAuthHeaders() });
+    return res.data;
+  },
+
+  replyToRequest: async (requestId: string, eventId: string, reply: string): Promise<{ request: EventRequest }> => {
+    const res = await axios.post(`${API_URL}/request/reply`, { requestId, eventId, reply }, { headers: getAuthHeaders() });
+    return res.data;
+  },
+
+  cancelRequest: async (eventId: string, reason: string): Promise<{ request: EventRequest }> => {
+    const res = await axios.post(`${API_URL}/request/cancel`, { eventId, reason }, { headers: getAuthHeaders() });
     return res.data;
   },
 

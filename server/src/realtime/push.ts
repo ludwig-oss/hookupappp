@@ -5,6 +5,15 @@
 
 import { readFile, writeFile, mkdir } from 'fs/promises';
 import { join } from 'path';
+import { getUserSettings } from '../models/settings.js';
+import { getUserById } from '../models/user.js';
+import { sendAppNotificationEmail } from '../utils/email.js';
+import {
+  inferNotifyCategory,
+  shouldSendEmail,
+  shouldSendPush,
+  type NotifyCategory,
+} from './notifyPrefs.js';
 
 export interface PushSubscriptionRecord {
   endpoint: string;
@@ -60,35 +69,71 @@ export async function removePushSubscription(userId: string, endpoint: string): 
 /** Send a push notification to all subscriptions of a user. Fire-and-forget. */
 export async function sendPushToUser(
   userId: string,
-  payload: { title: string; body?: string; data?: Record<string, string> }
+  payload: { title: string; body?: string; data?: Record<string, string> },
+  category?: NotifyCategory
 ): Promise<void> {
-  if (!isPushConfigured()) return;
-  const subs = await readSubscriptions();
-  const list = subs[userId];
-  if (!list?.length) return;
+  const cat = category || inferNotifyCategory(payload.data);
+  let settings;
+  try {
+    settings = await getUserSettings(userId);
+  } catch {
+    settings = null;
+  }
 
-  const webPush = await import('web-push');
-  const vapidPublic = process.env.VAPID_PUBLIC_KEY!;
-  const vapidPrivate = process.env.VAPID_PRIVATE_KEY!;
-  const mailto = process.env.VAPID_MAILTO || 'mailto:support@example.com';
-  webPush.default.setVapidDetails(mailto, vapidPublic, vapidPrivate);
+  if (settings && !shouldSendPush(settings, cat)) {
+    // still try email if push is off but email is on
+  } else if (isPushConfigured()) {
+    const subs = await readSubscriptions();
+    const list = subs[userId];
+    if (list?.length) {
+      const webPush = await import('web-push');
+      const vapidPublic = process.env.VAPID_PUBLIC_KEY!;
+      const vapidPrivate = process.env.VAPID_PRIVATE_KEY!;
+      const mailto = process.env.VAPID_MAILTO || 'mailto:support@example.com';
+      webPush.default.setVapidDetails(mailto, vapidPublic, vapidPrivate);
 
-  const payloadObj: Record<string, string> = {
-    title: payload.title,
-    ...(payload.body != null && payload.body !== '' ? { body: payload.body } : {}),
-    ...(payload.data || {}),
-  };
-  const payloadStr = JSON.stringify(payloadObj);
+      const vibrateOn =
+        cat === 'interest'
+          ? settings?.notifications.interestVibrate !== false
+          : settings?.notifications.sound !== false;
+      const silent = settings?.notifications.sound === false;
 
-  for (const sub of list) {
+      const payloadObj: Record<string, string> = {
+        title: payload.title,
+        ...(payload.body != null && payload.body !== '' ? { body: payload.body } : {}),
+        ...(payload.data || {}),
+        vibrate: vibrateOn ? '1' : '0',
+        silent: silent ? '1' : '0',
+        type: payload.data?.type || cat,
+      };
+      const payloadStr = JSON.stringify(payloadObj);
+
+      for (const sub of list) {
+        try {
+          await webPush.default.sendNotification(
+            { endpoint: sub.endpoint, keys: sub.keys },
+            payloadStr
+          );
+        } catch (err) {
+          console.warn('Push send failed for', userId, (err as Error).message);
+        }
+      }
+    }
+  }
+
+  if (settings && shouldSendEmail(settings, cat) && payload.title) {
     try {
-      await webPush.default.sendNotification(
-        { endpoint: sub.endpoint, keys: sub.keys },
-        payloadStr
-      );
-    } catch (err) {
-      // Subscription may be expired; could remove it (410 Gone)
-      console.warn('Push send failed for', userId, (err as Error).message);
+      const user = await getUserById(userId);
+      if (user?.email && !user.email.includes('@noreply.local')) {
+        await sendAppNotificationEmail(
+          user.email,
+          user.name || user.username || 'there',
+          payload.title,
+          payload.body || payload.title
+        );
+      }
+    } catch {
+      /* email optional */
     }
   }
 }

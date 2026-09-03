@@ -3,8 +3,10 @@ import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { AuthContext } from '../../context/AuthContext';
 import { postsAPI, DatingPost, FeedMode } from '../../api/posts';
+import { singleAgainAPI } from '../../api/singleAgain';
 import { formatAxiosError } from '../../lib/apiError';
 import { prepareAndUploadFile } from '../../lib/uploadMedia';
+import { MEDIA_FILE_ACCEPT, isProbablyImageFile, isProbablyVideoFile } from '../../lib/compressVideo';
 import './Widget.css';
 
 const BLOWING_UP_LIKES = 25;
@@ -264,6 +266,7 @@ export default function LoveFeedWidget({ onShareToFriends }: { onShareToFriends?
   const navigate = useNavigate();
   const [posts, setPosts] = useState<DatingPost[]>([]);
   const [recommendations, setRecommendations] = useState<DatingPost[]>([]);
+  const [interestBusy, setInterestBusy] = useState<string | null>(null);
   const [trendingTags, setTrendingTags] = useState<string[]>([]);
   const [feedMode, setFeedMode] = useState<FeedMode>('for_you');
   const [feedDescription, setFeedDescription] = useState('');
@@ -272,6 +275,7 @@ export default function LoveFeedWidget({ onShareToFriends }: { onShareToFriends?
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [expandedComments, setExpandedComments] = useState<string | null>(null);
   const [commentDraft, setCommentDraft] = useState<Record<string, string>>({});
+  const [replyTarget, setReplyTarget] = useState<Record<string, { id: string; userName: string } | null>>({});
   const [postType, setPostType] = useState<'warning' | 'positive'>('positive');
   const [contentType, setContentType] = useState<'text' | 'image' | 'video'>('text');
   const [postContent, setPostContent] = useState('');
@@ -320,9 +324,9 @@ export default function LoveFeedWidget({ onShareToFriends }: { onShareToFriends?
     loadFeed(feedMode);
   }, [feedMode]);
 
-  const loadFeed = async (mode: FeedMode = feedMode) => {
+  const loadFeed = async (mode: FeedMode = feedMode, quiet = false) => {
     setFeedError(null);
-    setLoading(true);
+    if (!quiet) setLoading(true);
     try {
       const [feedRes, recRes] = await Promise.all([
         postsAPI.getFeed(mode),
@@ -337,7 +341,7 @@ export default function LoveFeedWidget({ onShareToFriends }: { onShareToFriends?
       setPosts([]);
       setFeedError(formatAxiosError(err, 'Could not load the feed. Tap Retry — the API may be waking up.'));
     } finally {
-      setLoading(false);
+      if (!quiet) setLoading(false);
     }
   };
 
@@ -396,37 +400,64 @@ export default function LoveFeedWidget({ onShareToFriends }: { onShareToFriends?
     }
   };
 
+  const requireSignedIn = (action: string) => {
+    if (user?.id) return true;
+    alert(`Sign in to ${action}.`);
+    return false;
+  };
+
+  const handleInterest = async (post: DatingPost) => {
+    if (!requireSignedIn('show interest')) return;
+    if (!post.singleAgain || post.singleAgain.isOwner || post.singleAgain.drawn) return;
+    setInterestBusy(post.id);
+    try {
+      const r = await singleAgainAPI.showInterest(post.id);
+      setPosts((prev) => prev.map((p) => (p.id === post.id ? { ...p, singleAgain: r.singleAgain } : p)));
+      setRecommendations((prev) => prev.map((p) => (p.id === post.id ? { ...p, singleAgain: r.singleAgain } : p)));
+    } catch (err: unknown) {
+      alert(formatAxiosError(err, 'Could not send interest.'));
+    } finally {
+      setInterestBusy(null);
+    }
+  };
+
   const handleLike = async (postId: string) => {
+    if (!requireSignedIn('like posts')) return;
+    setPosts((prev) => prev.map((p) => (p.id === postId ? { ...p, likes: (p.likes || 0) + 1 } : p)));
+    setRecommendations((prev) => prev.map((p) => (p.id === postId ? { ...p, likes: (p.likes || 0) + 1 } : p)));
     try {
       await postsAPI.likePost(postId);
-      await loadFeed(feedMode);
-    } catch (err: any) {
-      console.error('Failed to like', err);
-      if (err?.response?.status === 401) alert('Please sign in to like posts.');
+    } catch (err: unknown) {
+      setPosts((prev) => prev.map((p) => (p.id === postId ? { ...p, likes: Math.max(0, (p.likes || 0) - 1) } : p)));
+      setRecommendations((prev) => prev.map((p) => (p.id === postId ? { ...p, likes: Math.max(0, (p.likes || 0) - 1) } : p)));
+      alert(formatAxiosError(err, 'Could not like this post.'));
     }
   };
 
   const handleComment = async (postId: string) => {
+    if (!requireSignedIn('comment')) return;
     const text = commentDraft[postId]?.trim();
     if (!text) return;
+    const reply = replyTarget[postId] || null;
     try {
-      await postsAPI.commentOnPost(postId, text);
+      await postsAPI.commentOnPost(postId, text, reply);
       setCommentDraft((prev) => ({ ...prev, [postId]: '' }));
-      await loadFeed(feedMode);
-    } catch (err: any) {
-      console.error('Failed to comment', err);
-      if (err?.response?.status === 401) alert('Please sign in to comment.');
+      setReplyTarget((prev) => ({ ...prev, [postId]: null }));
+      setExpandedComments(postId);
+      await loadFeed(feedMode, true);
+    } catch (err: unknown) {
+      alert(formatAxiosError(err, 'Could not post your comment.'));
     }
   };
 
   const handleShare = async (post: DatingPost) => {
+    if (!requireSignedIn('share posts')) return;
     try {
       await postsAPI.sharePost(post.id);
-      await loadFeed(feedMode);
+      await loadFeed(feedMode, true);
       onShareToFriends?.(post);
-    } catch (err: any) {
-      console.error('Failed to share', err);
-      if (err?.response?.status === 401) alert('Please sign in to share.');
+    } catch (err: unknown) {
+      alert(formatAxiosError(err, 'Could not share this post.'));
     }
   };
 
@@ -434,7 +465,7 @@ export default function LoveFeedWidget({ onShareToFriends }: { onShareToFriends?
     if (!window.confirm('Delete this post?')) return;
     try {
       await postsAPI.deletePost(postId);
-      await loadFeed(feedMode);
+      await loadFeed(feedMode, true);
     } catch (err: any) {
       console.error('Failed to delete post', err);
       const msg = err?.response?.data?.error || err?.message || 'Failed to delete post';
@@ -443,6 +474,7 @@ export default function LoveFeedWidget({ onShareToFriends }: { onShareToFriends?
   };
 
   const isPostAuthor = (post: DatingPost) => {
+    if (post.singleAgain?.isOwner) return true;
     if (!user?.id) return false;
     const uid = String(user.id).trim();
     const fromPost = post.userId != null && String(post.userId).length > 0 ? String(post.userId).trim() : '';
@@ -451,6 +483,7 @@ export default function LoveFeedWidget({ onShareToFriends }: { onShareToFriends?
   };
 
   const openAuthorProfile = (post: DatingPost) => {
+    if (post.singleAgain && !post.singleAgain.isOwner) return;
     const id = (post.userId && String(post.userId)) || (post.user?.id && String(post.user.id)) || '';
     if (!id) return;
     if (user?.id && id === String(user.id)) {
@@ -472,14 +505,10 @@ export default function LoveFeedWidget({ onShareToFriends }: { onShareToFriends?
   };
 
   const processFile = (file: File) => {
-    const isImage = file.type.startsWith('image/');
-    const isVideo = file.type.startsWith('video/');
+    const isImage = isProbablyImageFile(file);
+    const isVideo = isProbablyVideoFile(file);
     if (!isImage && !isVideo) {
       alert('Please choose a photo or video.');
-      return;
-    }
-    if (isVideo && file.size > 80 * 1024 * 1024) {
-      alert('Video is too large (max 80MB). Try a shorter clip.');
       return;
     }
     revokePreview();
@@ -501,20 +530,17 @@ export default function LoveFeedWidget({ onShareToFriends }: { onShareToFriends?
     .filter((p) => (p.likes || 0) > 0);
   const blowingUpPosts = posts.filter((p) => (p.likes || 0) >= BLOWING_UP_LIKES);
 
-  const renderPostCard = (post: DatingPost, opts?: { compact?: boolean }) => (
+  const renderPostCard = (post: DatingPost, opts?: { compact?: boolean }) => {
+    const saPhoto = post.singleAgain?.photoUrl || null;
+    const imageSrc =
+      post.contentType === 'image' && post.content
+        ? post.content
+        : saPhoto && (saPhoto.startsWith('data:') || saPhoto.startsWith('http') || saPhoto.startsWith('/'))
+          ? saPhoto
+          : null;
+    return (
     <article key={post.id} className="love-feed-card" data-post-id={post.id}>
-      {isPostAuthor(post) && (
-        <div className="love-feed-card-own-toolbar">
-          <button
-            type="button"
-            className="love-feed-delete-post-btn"
-            onClick={() => handleDelete(post.id)}
-          >
-            Delete post
-          </button>
-        </div>
-      )}
-      <div className="love-feed-card-media">
+      <div className={`love-feed-card-media${post.singleAgain ? ' single-again-media' : ''}`}>
         {post.contentType === 'video' && post.content.startsWith('data:video') ? (
           <VideoPostPlayer
             dataUrl={post.content}
@@ -531,19 +557,26 @@ export default function LoveFeedWidget({ onShareToFriends }: { onShareToFriends?
           >
             <video src={post.content} controls playsInline preload="auto" style={{ maxWidth: '100%', maxHeight: 320, display: 'block', background: '#000' }} onClick={(e) => e.stopPropagation()} />
           </div>
-        ) : post.contentType === 'image' && (post.content.startsWith('data:') || post.content) ? (
+        ) : imageSrc ? (
           <div
             className="love-feed-card-media-tappable"
-            onClick={() => setFullScreenMedia({ type: 'image', src: post.content, postId: post.id })}
+            onClick={() => setFullScreenMedia({ type: 'image', src: imageSrc, postId: post.id })}
             role="button"
             tabIndex={0}
-            onKeyDown={(e) => e.key === 'Enter' && setFullScreenMedia({ type: 'image', src: post.content, postId: post.id })}
+            onKeyDown={(e) => e.key === 'Enter' && setFullScreenMedia({ type: 'image', src: imageSrc, postId: post.id })}
             title="Tap to open full screen"
           >
-            <img src={post.content} alt="" />
+            <img src={imageSrc} alt="" />
           </div>
         ) : (
           <div className="love-feed-card-media-text">{post.content.slice(0, 200)}{post.content.length > 200 ? '…' : ''}</div>
+        )}
+        {post.singleAgain && (
+          <div className="single-again-overlay" aria-hidden>
+            <span className="single-again-kicker">HERE WE GO</span>
+            <span className="single-again-title">SINGLE AGAIN</span>
+            <span className="single-again-city">{post.singleAgain.city}</span>
+          </div>
         )}
       </div>
       <div className="love-feed-card-meta">
@@ -555,7 +588,7 @@ export default function LoveFeedWidget({ onShareToFriends }: { onShareToFriends?
           )}
           <div className="love-feed-card-author-info">
             <button type="button" className="love-feed-author-name" onClick={() => openAuthorProfile(post)}>
-              {post.user?.name || 'Anonymous'}
+              {post.singleAgain ? `Someone in ${post.singleAgain.city}` : post.user?.name || 'Anonymous'}
               <span className="love-feed-verified" aria-hidden>✓</span>
             </button>
             <span className="love-feed-card-date">{formatDate(post.createdAt)}</span>
@@ -574,12 +607,20 @@ export default function LoveFeedWidget({ onShareToFriends }: { onShareToFriends?
           </div>
         )}
         <p className="love-feed-card-headline">
-          {post.title ? `"${post.title}"` : post.contentType === 'text' ? `"${post.content.slice(0, 120)}${post.content.length > 120 ? '…' : ''}"` : post.contentType === 'video' ? 'Shared a video' : 'Shared a post'}
+          {post.singleAgain
+            ? post.singleAgain.reason
+            : post.title
+              ? `"${post.title}"`
+              : post.contentType === 'text'
+                ? `"${post.content.slice(0, 120)}${post.content.length > 120 ? '…' : ''}"`
+                : post.contentType === 'video'
+                  ? 'Shared a video'
+                  : 'Shared a post'}
         </p>
       </div>
       <div className="love-feed-card-actions">
         <div className="love-feed-actions-primary">
-          <button type="button" className="love-feed-action" onClick={() => user && handleLike(post.id)} title="Like" disabled={!user}>
+          <button type="button" className="love-feed-action" onClick={() => handleLike(post.id)} title="Like">
             <span className="love-feed-icon">♥</span>
             <span>{formatCount(post.likes || 0)}</span>
           </button>
@@ -592,12 +633,39 @@ export default function LoveFeedWidget({ onShareToFriends }: { onShareToFriends?
             <span className="love-feed-icon">💬</span>
             <span>{formatCount(post.comments?.length || 0)}</span>
           </button>
-        </div>
-        <div className="love-feed-actions-secondary">
-          <button type="button" className="love-feed-action love-feed-share" onClick={() => user && handleShare(post)} title="Share in app" disabled={!user}>
+          <button type="button" className="love-feed-action love-feed-share" onClick={() => handleShare(post)} title="Share in app">
             <span className="love-feed-icon">↗</span>
             <span>Share</span>
           </button>
+          {post.singleAgain && !post.singleAgain.isOwner && (
+            <button
+              type="button"
+              className="love-feed-action"
+              disabled={post.singleAgain.drawn || post.singleAgain.hasEntered || interestBusy === post.id}
+              onClick={() => void handleInterest(post)}
+              title="Show interest — 7 lucky people get a chat after 24 hours"
+            >
+              <span className="love-feed-icon">🎰</span>
+              <span>
+                {post.singleAgain.drawn
+                  ? 'Roulette done'
+                  : post.singleAgain.hasEntered
+                    ? 'Interest in'
+                    : interestBusy === post.id
+                      ? '…'
+                      : `Interest (${post.singleAgain.hoursLeft}h)`}
+              </span>
+            </button>
+          )}
+          {post.singleAgain?.isOwner && (
+            <span style={{ fontSize: 11, color: '#fecaca', alignSelf: 'center' }}>
+              {post.singleAgain.drawn
+                ? `${post.singleAgain.luckyCount} lucky people were added to your chats`
+                : `City-only post. Interest open ${post.singleAgain.hoursLeft}h, then 7 lucky chats.`}
+            </span>
+          )}
+        </div>
+        <div className="love-feed-actions-secondary">
           {isPostAuthor(post) && (
             <button type="button" className="love-feed-action love-feed-delete" onClick={() => handleDelete(post.id)} title="Delete your post">
               <span className="love-feed-icon">🗑</span>
@@ -615,27 +683,60 @@ export default function LoveFeedWidget({ onShareToFriends }: { onShareToFriends?
       </div>
       {expandedComments === post.id && (
         <div className="love-feed-comments">
+          {(post.comments || []).length === 0 && (
+            <p className="love-feed-comments-empty">No comments yet — be the first.</p>
+          )}
           {(post.comments || []).map((c) => (
-            <div key={c.id} className="love-feed-comment">
-              <strong>{c.userName}</strong>: {c.content}
+            <div key={c.id} className={`love-feed-comment${c.replyToId ? ' is-reply' : ''}`}>
+              <p>
+                <strong>{c.userName}</strong>
+                {c.replyToUserName ? <span className="love-feed-reply-to"> → {c.replyToUserName}</span> : null}
+                {': '}
+                {c.content}
+              </p>
+              <button
+                type="button"
+                className="love-feed-comment-reply-btn"
+                onClick={() => setReplyTarget((prev) => ({ ...prev, [post.id]: { id: c.id, userName: c.userName } }))}
+              >
+                Reply
+              </button>
             </div>
           ))}
-          {user && (
-            <div className="love-feed-comment-form">
-              <input
-                type="text"
-                placeholder="Add a comment..."
-                value={commentDraft[post.id] || ''}
-                onChange={(e) => setCommentDraft((prev) => ({ ...prev, [post.id]: e.target.value }))}
-                onKeyDown={(e) => e.key === 'Enter' && handleComment(post.id)}
-              />
-              <button type="button" onClick={() => handleComment(post.id)}>Reply</button>
-            </div>
-          )}
+          <div className="love-feed-comment-form">
+            {replyTarget[post.id] && (
+              <p className="love-feed-replying">
+                Replying to {replyTarget[post.id]!.userName}
+                <button
+                  type="button"
+                  onClick={() => setReplyTarget((prev) => ({ ...prev, [post.id]: null }))}
+                >
+                  Cancel
+                </button>
+              </p>
+            )}
+            <input
+              type="text"
+              placeholder={
+                replyTarget[post.id]
+                  ? `Reply to ${replyTarget[post.id]!.userName}…`
+                  : isPostAuthor(post)
+                    ? 'Reply to comments on your post…'
+                    : 'Add a comment…'
+              }
+              value={commentDraft[post.id] || ''}
+              onChange={(e) => setCommentDraft((prev) => ({ ...prev, [post.id]: e.target.value }))}
+              onKeyDown={(e) => e.key === 'Enter' && handleComment(post.id)}
+            />
+            <button type="button" onClick={() => handleComment(post.id)}>
+              {replyTarget[post.id] || isPostAuthor(post) ? 'Reply' : 'Comment'}
+            </button>
+          </div>
         </div>
       )}
     </article>
   );
+  };
 
   return (
     <div className="love-feed-widget">
@@ -783,7 +884,7 @@ export default function LoveFeedWidget({ onShareToFriends }: { onShareToFriends?
               </label>
               <div className="love-feed-media-actions">
                 <span style={{ display: 'block', marginBottom: 8, fontSize: 13 }}>Add image or video</span>
-                <input ref={fileInputRef} type="file" accept="image/*,video/*" style={{ display: 'none' }} onChange={handleMediaSelect} />
+                <input ref={fileInputRef} type="file" accept={MEDIA_FILE_ACCEPT} style={{ display: 'none' }} onChange={handleMediaSelect} />
                 <input ref={captureImageRef} type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={handleMediaSelect} />
                 <input ref={captureVideoRef} type="file" accept="video/*" capture="user" style={{ display: 'none' }} onChange={handleMediaSelect} />
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>

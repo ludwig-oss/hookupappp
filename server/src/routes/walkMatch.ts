@@ -12,6 +12,7 @@ import {
   patchWalkSettings,
 } from '../controllers/walkMatchController.js';
 import { authenticateToken } from '../middleware/auth.js';
+import { requirePhotoUnlocked } from '../middleware/requirePhotoUnlocked.js';
 
 const router = express.Router();
 
@@ -19,8 +20,8 @@ router.use(authenticateToken);
 
 router.get('/suggestions', getSuggestions);
 router.post('/location', updateWalkLocation);
-router.post('/interest', postInterest);
-router.post('/interest/respond', postRespondInterest);
+router.post('/interest', requirePhotoUnlocked, postInterest);
+router.post('/interest/respond', requirePhotoUnlocked, postRespondInterest);
 router.get('/incoming', getIncoming);
 router.post('/life-quiz', postLifeQuiz);
 router.post('/profile-click', postProfileClick);

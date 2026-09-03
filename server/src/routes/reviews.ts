@@ -25,5 +25,11 @@ router.get('/between/:otherUserId', getMyReviewForUser);
 router.post('/:reviewId/reply', replyToReview);
 router.post('/:reviewId/court-evidence', submitCourtEvidenceHandler);
 router.get('/attributes/keys', getAttributeKeys);
+router.delete('/:reviewId', (_req, res) => {
+  res.status(403).json({ error: 'Reviews cannot be deleted. The profile owner may reply once.' });
+});
+router.delete('/:reviewId/reply', (_req, res) => {
+  res.status(403).json({ error: 'Replies cannot be edited or deleted.' });
+});
 
 export default router;

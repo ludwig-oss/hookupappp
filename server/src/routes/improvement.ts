@@ -46,6 +46,13 @@ import {
   createWithdrawal,
   getPaymentSplitInfo,
 } from '../controllers/guideWalletController.js';
+import {
+  getMyGuideProgram,
+  postProblemAreas,
+  postCoupleProblemAreas,
+  getPendingGuideEvals,
+  postClientEval,
+} from '../controllers/guideProgramController.js';
 import { authenticateToken } from '../middleware/auth.js';
 
 const router = express.Router();
@@ -55,6 +62,12 @@ router.get('/categories', getCategories);
 
 // All other routes require authentication
 router.use(authenticateToken);
+
+router.get('/guide-program', getMyGuideProgram);
+router.post('/guide-program/areas', postProblemAreas);
+router.post('/guide-program/couple-areas', postCoupleProblemAreas);
+router.get('/guide-program/pending-evals', getPendingGuideEvals);
+router.post('/guide-program/evaluate', postClientEval);
 
 // Guide Applications
 router.post('/guides/apply', applyAsGuide);

@@ -14,7 +14,8 @@ export type HelpNavTarget =
   | 'highlights'
   | 'lovefeed'
   | 'chat'
-  | 'events';
+  | 'events'
+  | 'datematch';
 
 export interface HelpNavLink {
   target: HelpNavTarget;
@@ -33,13 +34,14 @@ export const HELP_NAV_LINKS: HelpNavLink[] = [
   { target: 'compatibility', label: 'Compatibility', icon: '⚡', hint: 'Guides & sessions' },
   { target: 'connections', label: 'Connections', icon: '▣', hint: 'Nearby & venues' },
   { target: 'events', label: 'Events', icon: '📅', hint: 'Create or join meetups' },
+  { target: 'datematch', label: 'Date Arena', icon: '⚔', hint: 'Match, accept, fun date roll' },
 ];
 
 export const HELP_FAQ: HelpFaqItem[] = [
   {
     category: 'Getting around',
     q: 'How does the whole app work?',
-    a: 'Home is your control center. Tap a card to open it: Profile (your page), Activity Stream (discover by region), Compatibility (guides), Connections (nearby), Highlights (wheel games), Love Life Feed (posts), Communication (chat), Events (meetups), and Help (here). Bottom buttons: PROFILE, HOME, LOGOUT. Set country and city in Profile first. School may pop up with a daily lesson. Dating tips appear occasionally based on your gender. Women see an SOS button on home when not inside another widget.',
+    a: 'Home is your control center. Tap a card to open it: Profile (your page), Activity Stream (discover by region), Date Arena (set up a date), Compatibility (guides), Connections (nearby), Highlights (wheel games), Love Life Feed (posts), Communication (chat), Events (meetups), and Help (here). Bottom buttons: PROFILE, HOME, LOGOUT. Set country and city in Profile first. School may pop up with a daily lesson. Dating tips appear occasionally based on your gender. Women see an SOS button on home when not inside another widget.',
     keywords: ['overview', 'app work', 'home', 'start'],
   },
   {
@@ -69,7 +71,7 @@ export const HELP_FAQ: HelpFaqItem[] = [
   {
     category: 'Profile & account',
     q: 'What are reviews on my profile?',
-    a: 'After a match ends, you may rate the experience (1–5 stars + comment) before unmatching. Reviews stay on the other person\'s profile—they cannot delete them but can reply once. Your profile shows reviews about you plus an overall star average (like an app store rating). Serious claims show as unproven until court evidence is submitted.',
+    a: 'You can leave a review from someone\'s profile (1–5 stars + comment), or from chat via Unmatch / End chat & Rate. Reviews stay on the other person\'s profile—they cannot delete them but can reply once. Your profile shows reviews about you plus an overall star average (like an app store rating). Serious claims show as unproven until court evidence is submitted.',
     keywords: ['review', 'rating', 'stars', 'unmatch review'],
   },
   {
@@ -77,6 +79,18 @@ export const HELP_FAQ: HelpFaqItem[] = [
     q: 'How do health results work on Profile?',
     a: 'In Profile you can add health test results and respond to view requests. In chat, tap a match\'s profile to request viewing their shared results (they must approve). Use this before meeting in person if you both agree.',
     keywords: ['health', 'std', 'test results'],
+  },
+  {
+    category: 'Meeting people',
+    q: 'What is Date Arena?',
+    a: 'Date Arena (⚔) finds you a date. Pick what you are looking for (serious, casual, and 10+ other intents), then search. You get 3 free searches a month; Plus unlocks unlimited. Matches pair similar interest levels. Both must Accept and pick when you are free. Then tap ? to roll a hobby, good deed, or cheap eat/drink neither of you has done. Chat stays locked until the date day. Cancelling without sick/emergency proof is a €10 fine paid to the other person. After the date, both of you choose whether to keep talking.',
+    keywords: ['date arena', 'match', 'fun date', 'question mark', 'fine', 'accept'],
+  },
+  {
+    category: 'Meeting people',
+    q: 'How do Plus, Gold, and Platinum work?',
+    a: 'Settings → Premium. Plus (€68/month): unlimited Date Arena searches, pitch yourself if someone declines your interest, unlimited other-country interest. Gold: a guide hand-picks someone and pitches you in a 3-person room like a lawyer; they get a monthly cut. Platinum: pitch someone directly without showing interest first. Guides are summoned from Date Arena if you paid Gold.',
+    keywords: ['premium', 'plus', 'gold', 'platinum', 'pitch', 'guide lawyer'],
   },
   {
     category: 'Meeting people',
@@ -106,13 +120,13 @@ export const HELP_FAQ: HelpFaqItem[] = [
     category: 'Communication',
     q: 'How do I chat with someone?',
     a: 'Communication (◉) lists conversations. Tap one to open. Send text, images, or voice. Tap their name/avatar for profile, meetup tools, and health options. Menu (⋮): rate, speed date, mute, unmatch, block.',
-    keywords: ['chat', 'message', 'communication'],
+    keywords: ['chat', 'message', 'communication', 'talk', 'inbox', 'dm'],
   },
   {
     category: 'Communication',
     q: 'What is the 24-hour reply rule?',
     a: 'After you match or show mutual interest, whoever received the last message has 24 hours to reply. If they do not, the match may end automatically. Watch for a Reply badge with time left in your chat list.',
-    keywords: ['24 hour', 'reply', 'deadline', 'respond'],
+    keywords: ['24 hour', '24h', 'reply', 'deadline', 'respond', 'did not reply'],
   },
   {
     category: 'Communication',
@@ -129,7 +143,7 @@ export const HELP_FAQ: HelpFaqItem[] = [
   {
     category: 'Safety & meetups',
     q: 'How do in-person meetups work in chat?',
-    a: 'Plan via meetup tools: agree on a public venue from suggested spots (parks, coffee to-go, plazas—not private homes). You have about 7 days to meet after matching or the match may end. Repeatedly stalling meetups can lead to suspension over time (this app is for serious users). Before meeting: boundaries checklist, ID consent, expected return time, and optional safety video check-in. Each person pays their own way.',
+    a: 'Plan via meetup tools: agree on a public venue from suggested spots (parks, coffee to-go, plazas—not private homes). You have about 7 days to meet after matching or the match may end. Repeatedly stalling meetups can lead to suspension over time (this app is for serious users). Before meeting: boundaries checklist, hold your ID to the camera to scan it (saved only until you confirm you arrived home safe, then deleted), expected return time, and optional safety video check-in. Each person pays their own way.',
     keywords: ['meetup', 'venue', '7 day', 'meet in person'],
   },
   {
@@ -165,20 +179,26 @@ export const HELP_FAQ: HelpFaqItem[] = [
   {
     category: 'Tips & learning',
     q: 'What is School / daily lessons?',
-    a: 'You may see a School notification for a daily class or quiz on relationships and self-improvement. For men, daily self-improvement is required: warnings start after 3 skips in a row, and after 5 skips in a row visibility is reduced automatically (you can mark work busy or emergency, and completing a class clears the penalty). School can link you to Compatibility guides for deeper reading.',
+    a: 'You may see a School notification for a daily class on relationships and self-improvement. For men, daily self-improvement is required: warnings start after 3 skips in a row, and after 5 skips in a row visibility is reduced automatically (you can mark work busy or emergency, and completing a class clears the penalty). There is no skip quiz — every user must pick 1 to 5 problem areas and choose a guide before using the rest of the app. After 2 months the guide grades whether you progressed.',
     keywords: ['school', 'daily', 'lesson', 'quiz', 'class'],
   },
   {
     category: 'Social & games',
     q: 'How does the Love Life Feed work?',
-    a: 'Love Life Feed (♥) shows community posts on dating and relationships. Like, comment, share to Communication, or create your own with + Post.',
+    a: 'Love Life Feed (♥) shows community posts on dating and relationships. Like, comment, share to Communication, or create your own with + Post. When someone leaves a relationship, the app automatically posts HERE WE GO — SINGLE AGAIN in their city (no name), with a photo from their profile and why they are single (or “Reasons are private”). For 24 hours you can show interest; then a russian roulette picks 7 lucky people who are added to their chats to help them move on.',
     keywords: ['love feed', 'post', 'community'],
   },
   {
     category: 'Social & games',
     q: 'What is Compatibility (⚡)?',
-    a: 'Browse guides by category, book improvement sessions, and track requests. School may send you here for guide topics.',
-    keywords: ['compatibility', 'guides', 'sessions'],
+    a: 'Browse guides by category, send a request, and track sessions. A guide is required: choose 1 to 5 problem areas, then pick a guide. Couples also get relationship-problem guides. If you are good at helping couples, apply as a guide in those areas. After they accept, they grade you in 2 months.',
+    keywords: ['compatibility', 'guides', 'sessions', 'skip quiz', 'grade'],
+  },
+  {
+    category: 'Social & games',
+    q: 'Do I have to get a guide?',
+    a: 'Yes. You choose 1 to 5 areas where you have the most problems, then send a request to a guide. Couples in a relationship also get a couple guide for relationship problems. If you are good at helping couples, apply as a guide in Compatibility. There is no skip quiz. After they accept, they work with you for 2 months, then grade you.',
+    keywords: ['guide required', 'problem areas', 'skip quiz', 'grade', '2 months', 'mandatory guide'],
   },
   {
     category: 'Social & games',
@@ -240,36 +260,202 @@ export const HELP_FAQ: HelpFaqItem[] = [
     a: 'Profile → HIGHLIGHTS: + on a highlight to add items, or Add Highlight for new. Delete with × on Profile cards.',
     keywords: ['highlight', 'story'],
   },
+  {
+    category: 'Social & games',
+    q: 'How do I like, comment or share a post?',
+    a: 'Open Love Life Feed (♥). On any post tap the heart to like, 💬 or Comments to write or reply, and Share to send it in Communication. The person who posted it can reply to comments too. Only the owner can delete their post.',
+    keywords: ['like', 'comment', 'share', 'reply to comment', 'love life', 'feed post'],
+  },
+  {
+    category: 'Social & games',
+    q: 'How do I delete my post?',
+    a: 'Only you can delete a post you created. Open Love Life Feed (or your Profile → Posts), find your post, tap Delete. Other people will not see a delete button on your post.',
+    keywords: ['delete post', 'remove post', 'trash'],
+  },
+  {
+    category: 'Profile & account',
+    q: 'How does photo verification work?',
+    a: 'To prove you are real, the app asks for a live selfie compared to your visible profile photo (not email or phone). After about a month you must verify again. If you skip reminders you can be locked until you scan. Open Profile if you see a verification prompt.',
+    keywords: ['photo verification', 'selfie scan', 'catfish', 'locked', 'verify photo'],
+  },
+  {
+    category: 'Safety & meetups',
+    q: 'How does the ID camera scan work?',
+    a: 'When you mention going on a date in Communication, a meetup plan opens. Hold your ID to the camera (front then back). It is saved only until you tap that you arrived home safe — then it is deleted. Location tracking is only during the date.',
+    keywords: ['id scan', 'id camera', 'hold id', 'arrived home', 'date safety'],
+  },
+  {
+    category: 'Profile & account',
+    q: 'How do I turn notifications on or off?',
+    a: 'Open Settings → notifications. You can control push, email, messages, matches, likes, sound, vibrate, and quiet hours. Use Register / allow notifications on your device if push is off.',
+    keywords: ['notification', 'push', 'alert', 'quiet hours', 'sound'],
+  },
 ];
 
-export function getAnswerForQuestion(input: string): string {
-  const lower = input.toLowerCase().trim();
-  if (!lower) {
-    return 'Type a question above, or tap a topic below.';
-  }
+const STOP_WORDS = new Set([
+  'the', 'a', 'an', 'i', 'im', "i'm", 'is', 'it', 'to', 'how', 'do', 'does', 'can', 'could', 'would',
+  'what', 'where', 'why', 'when', 'which', 'my', 'me', 'you', 'your', 'of', 'in', 'on', 'for', 'and',
+  'or', 'with', 'this', 'that', 'app', 'please', 'help', 'need', 'want', 'about', 'tell', 'show',
+  'get', 'got', 'just', 'someone', 'something', 'there', 'here', 'also',
+]);
 
-  for (const faq of HELP_FAQ) {
-    if (faq.q.toLowerCase().includes(lower) || lower.includes(faq.q.toLowerCase().slice(0, 24))) {
-      return faq.a;
+export const HELP_SHORTCUTS: { phrase: string; target: HelpNavTarget }[] = [
+  { phrase: 'Activity Stream', target: 'activity' },
+  { phrase: 'Love Life Feed', target: 'lovefeed' },
+  { phrase: 'Communication', target: 'chat' },
+  { phrase: 'Compatibility', target: 'compatibility' },
+  { phrase: 'Connections', target: 'connections' },
+  { phrase: 'Highlights', target: 'highlights' },
+  { phrase: 'Settings', target: 'settings' },
+  { phrase: 'Profile', target: 'profile' },
+  { phrase: 'Events', target: 'events' },
+];
+
+export interface HelpMatch {
+  userQuestion: string;
+  matchedQuestion: string | null;
+  answer: string;
+  targets: HelpNavTarget[];
+  related: HelpFaqItem[];
+  confidence: 'high' | 'medium' | 'low';
+}
+
+function tokenize(s: string): string[] {
+  return s
+    .toLowerCase()
+    .replace(/[^a-z0-9#\s]/g, ' ')
+    .split(/\s+/)
+    .filter((t) => t.length > 1 && !STOP_WORDS.has(t));
+}
+
+export function targetsFromText(text: string): HelpNavTarget[] {
+  const found: HelpNavTarget[] = [];
+  for (const s of HELP_SHORTCUTS) {
+    if (new RegExp(`\\b${s.phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(text) && !found.includes(s.target)) {
+      found.push(s.target);
     }
-    if (faq.keywords?.some((k) => lower.includes(k))) return faq.a;
   }
+  return found;
+}
 
-  const rules: [RegExp, string][] = [
-    [/navigate|where is|find .* (page|section)|go to/i, HELP_FAQ[0].a],
-    [/unmatch|review|rating|star|court|innocent/i, HELP_FAQ.find((f) => f.q.includes('unmatch'))!.a],
-    [/24|reply.*hour|deadline/i, HELP_FAQ.find((f) => f.q.includes('24-hour'))!.a],
-    [/meetup|venue|7 day|safety video|boundaries/i, HELP_FAQ.find((f) => f.q.includes('in-person meetups'))!.a],
-    [/sos|911|volume/i, HELP_FAQ.find((f) => f.q.includes('SOS'))!.a],
-    [/dating tip|hint popup/i, HELP_FAQ.find((f) => f.q.includes('dating tip'))!.a],
-    [/school|daily lesson/i, HELP_FAQ.find((f) => f.q.includes('School'))!.a],
-    [/walk|walking partner/i, HELP_FAQ.find((f) => f.q.includes('walking'))!.a],
+function detectSection(input: string): HelpNavTarget | null {
+  const u = input.toLowerCase();
+  const wantsPlace = /\b(where|open|go to|take me|show me|find|how do i (get|go|open)|section|page|screen|tab)\b/.test(u);
+  const map: [HelpNavTarget, RegExp][] = [
+    ['activity', /\b(activity stream|activity|discover|see active|region)\b/],
+    ['datematch', /\b(date arena|date match|fun date|question mark|arena)\b/],
+    ['chat', /\b(communication|chat|message|inbox|dm|unmatch|24\s*h)\b/],
+    ['settings', /\b(settings|privacy|notification|language|theme|password|gear)\b/],
+    ['profile', /\b(profile|my photo|my page|edit profile|bio)\b/],
+    ['lovefeed', /\b(love life|love feed|feed|post|like a post|comment)\b/],
+    ['connections', /\b(connections|nearby|buzz|venue)\b/],
+    ['highlights', /\b(highlights|spin wheel|wheel game|blind date)\b/],
+    ['compatibility', /\b(compatibility|guides?|sessions?|coach)\b/],
+    ['events', /\b(events?|join (an )?event)\b/],
   ];
-  for (const [re, ans] of rules) {
-    if (re.test(lower)) return ans;
+  for (const [target, re] of map) {
+    if (re.test(u) && (wantsPlace || re.test(u))) {
+      if (wantsPlace || map.filter(([, r]) => r.test(u)).length === 1) return target;
+    }
+  }
+  if (wantsPlace) {
+    for (const [target, re] of map) {
+      if (re.test(u)) return target;
+    }
+  }
+  return null;
+}
+
+function scoreFaq(userQ: string, faq: HelpFaqItem): number {
+  const u = userQ.toLowerCase().trim();
+  const ut = tokenize(userQ);
+  if (!ut.length && !u) return 0;
+  let score = 0;
+  const qLow = faq.q.toLowerCase();
+  if (qLow === u) return 1000;
+  if (qLow.includes(u) && u.length >= 8) score += 40;
+  for (const k of faq.keywords || []) {
+    const kl = k.toLowerCase();
+    if (u.includes(kl)) score += 14 + Math.min(kl.length, 12);
+  }
+  const hay = tokenize(`${faq.q} ${(faq.keywords || []).join(' ')} ${faq.a.slice(0, 180)}`);
+  const haySet = new Set(hay);
+  for (const t of ut) {
+    if (haySet.has(t)) score += 8;
+    else {
+      for (const h of haySet) {
+        if (h.length >= 4 && t.length >= 4 && (h.startsWith(t) || t.startsWith(h))) {
+          score += 3;
+          break;
+        }
+      }
+    }
+  }
+  return score;
+}
+
+export function getHelpMatch(input: string): HelpMatch {
+  const userQuestion = input.trim();
+  if (!userQuestion) {
+    return {
+      userQuestion: '',
+      matchedQuestion: null,
+      answer: 'Type what you need help with — for example “how do I unmatch”, “24 hour reply”, or “where is Settings”. Highlighted words are shortcuts you can tap.',
+      targets: ['settings', 'chat', 'activity'],
+      related: HELP_FAQ.slice(0, 3),
+      confidence: 'low',
+    };
   }
 
-  return 'Try tapping "How does the whole app work?" or use Go where you need above. You can also ask about: chat, 24-hour reply, meetups, reviews, dating tips, SOS, Activity Stream, or Settings.';
+  const section = detectSection(userQuestion);
+  const ranked = HELP_FAQ
+    .map((faq) => ({ faq, score: scoreFaq(userQuestion, faq) }))
+    .sort((a, b) => b.score - a.score);
+  const best = ranked[0];
+  const related = ranked.slice(1, 4).filter((r) => r.score >= 10).map((r) => r.faq);
+
+  if (best && best.score >= 18) {
+    const targets = Array.from(new Set([
+      ...targetsFromText(best.faq.a + ' ' + best.faq.q),
+      ...(section ? [section] : []),
+    ]));
+    return {
+      userQuestion,
+      matchedQuestion: best.faq.q,
+      answer: best.faq.a,
+      targets: targets.length ? targets : section ? [section] : ['chat'],
+      related,
+      confidence: best.score >= 28 ? 'high' : 'medium',
+    };
+  }
+
+  if (section) {
+    const link = HELP_NAV_LINKS.find((l) => l.target === section);
+    const name = link?.label || section;
+    return {
+      userQuestion,
+      matchedQuestion: `Open ${name}`,
+      answer: `Tap the highlighted shortcut to open ${name}. ${link ? `(${link.hint})` : ''} You can also use Go where you need at the top of Help.`,
+      targets: [section],
+      related: ranked.filter((r) => r.score > 0).slice(0, 3).map((r) => r.faq),
+      confidence: 'medium',
+    };
+  }
+
+  return {
+    userQuestion,
+    matchedQuestion: null,
+    answer:
+      'I am not sure yet. Tap a highlighted shortcut below to jump there, or try asking with a place name — Communication, Activity Stream, Settings, Profile, Love Life Feed, Events.',
+    targets: ['chat', 'activity', 'settings', 'profile'],
+    related: ranked.filter((r) => r.score > 0).slice(0, 3).map((r) => r.faq),
+    confidence: 'low',
+  };
+}
+
+/** @deprecated use getHelpMatch */
+export function getAnswerForQuestion(input: string): string {
+  return getHelpMatch(input).answer;
 }
 
 export const HELP_CATEGORIES = [...new Set(HELP_FAQ.map((f) => f.category))];

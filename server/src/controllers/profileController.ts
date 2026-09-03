@@ -22,6 +22,15 @@ import { v4 as uuidv4 } from 'uuid';
 import { uploadImage, uploadMedia, isRemoteMediaUrl } from '../utils/storage.js';
 import { inferMediaTypeFromUrl } from '../utils/mediaType.js';
 import {
+  isValidDescriptor,
+  saveFaceProfile,
+  verifyFaceForUser,
+  getFaceProfileByUserId,
+  euclideanDistance,
+  FACE_MATCH_THRESHOLD,
+} from '../models/faceAuth.js';
+import { photoLockStatusForUser, getPhotoLockStatus } from '../models/photoVerification.js';
+import {
   sanitizeName,
   sanitizeUsername,
   sanitizeBio,
@@ -110,7 +119,7 @@ export const uploadProfilePicture = async (req: Request, res: Response) => {
   }
 };
 
-/** Submit selfie verification (look left / center / right) to prove profile photo is really you. Sets photoVerifiedAt. */
+/** Submit a live face scan that must match the visible profile photo. */
 export const submitPhotoVerification = async (req: Request, res: Response) => {
   try {
     const userId = (req as any).userId || req.body.userId;
@@ -118,7 +127,7 @@ export const submitPhotoVerification = async (req: Request, res: Response) => {
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    const { selfieImages } = req.body; // Array of base64: [lookLeft, lookCenter, lookRight] or single selfie
+    const { selfieImages, faceDescriptor, profileFaceDescriptor } = req.body;
     const images = Array.isArray(selfieImages) ? selfieImages : (req.body.selfie ? [req.body.selfie] : []);
     if (!images.length || !images.every((img: any) => typeof img === 'string' && img.length > 0)) {
       return res.status(400).json({ error: 'At least one selfie image is required' });
@@ -129,9 +138,36 @@ export const submitPhotoVerification = async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'User not found' });
     }
     if (!user.profilePicture) {
-      return res.status(400).json({ error: 'Upload a profile picture first, then verify with a selfie' });
+      return res.status(400).json({ error: 'Upload a visible profile picture first, then take a live selfie so we can confirm it is you.' });
     }
 
+    if (!isValidDescriptor(faceDescriptor)) {
+      return res.status(400).json({
+        error: 'Live face scan is required. Allow camera access and keep your face in frame with both eyes open.',
+      });
+    }
+    if (!isValidDescriptor(profileFaceDescriptor)) {
+      return res.status(400).json({
+        error: 'Could not read a face from your visible profile photo. Upload a clear photo of your face, then try again.',
+      });
+    }
+    if (euclideanDistance(faceDescriptor, profileFaceDescriptor) > FACE_MATCH_THRESHOLD) {
+      return res.status(400).json({
+        error: 'Your live selfie does not match your visible profile photo. Use your own photo — this is required to prevent catfishing.',
+      });
+    }
+
+    const existingFace = await getFaceProfileByUserId(userId);
+    if (existingFace) {
+      const samePerson = await verifyFaceForUser(userId, faceDescriptor);
+      if (!samePerson) {
+        return res.status(400).json({
+          error: 'That live selfie does not match the face on file. Use your own face in good lighting.',
+        });
+      }
+    }
+
+    await saveFaceProfile(userId, faceDescriptor);
     const userUpdated = await updateUserProfile(userId, {
       photoVerifiedAt: new Date().toISOString(),
     });
@@ -139,9 +175,25 @@ export const submitPhotoVerification = async (req: Request, res: Response) => {
     res.json({
       message: 'Photo verified. Your profile will show a green verified badge.',
       photoVerifiedAt: userUpdated?.photoVerifiedAt || null,
+      photoLock: photoLockStatusForUser({ ...user, photoVerifiedAt: userUpdated?.photoVerifiedAt || new Date().toISOString() }),
     });
   } catch (error) {
     console.error('Photo verification error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+export const getPhotoLock = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as AuthRequest).userId as string;
+    const authEmail = (req as AuthRequest).userEmail;
+    if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+    const user = await resolveOwnUser(userId, authEmail);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    const status = await getPhotoLockStatus(user.id);
+    res.json(status || photoLockStatusForUser(user));
+  } catch (error) {
+    console.error('Photo lock status error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 };
@@ -168,15 +220,18 @@ export const getUserProfile = async (req: Request, res: Response) => {
     await runWithSystem(() => pruneExpiredStories(ownerId));
     const fresh = await runWithSystem(() => getUserById(ownerId));
     if (fresh) user = fresh;
-    const viewingOwnProfile = isOwnProfileRequest || authUserId === user.id;
+    const viewingOwnProfile = isOwnProfileRequest || String(authUserId) === String(user.id);
     const now = Date.now();
-    const ownerCloseFriends = user.closeFriendIds || [];
+    const viewerId = String(authUserId);
+    const ownerCloseFriends = (user.closeFriendIds || []).map(String);
+    const ownerBlocked = (user.blockedUsers || []).map(String);
     const visibleStories = (user.stories || []).filter((s) => {
       const exp = new Date(s.expiresAt).getTime();
       if (Number.isFinite(exp) && exp <= now) return false;
       if (viewingOwnProfile) return true;
-      if (s.audience === 'all') return true;
-      return ownerCloseFriends.includes(authUserId);
+      if (ownerBlocked.includes(viewerId)) return false;
+      if (s.audience !== 'closeFriends') return true;
+      return ownerCloseFriends.includes(viewerId);
     });
 
     // Don't send password and sensitive data
@@ -196,7 +251,9 @@ export const getUserProfile = async (req: Request, res: Response) => {
       mutedUsers: userProfile.mutedUsers || [],
       unmatchedUsers: userProfile.unmatchedUsers || [],
       profiles: userProfile.profiles || [],
-      photoVerifiedAt: userProfile.photoVerifiedAt || null,
+      photoVerifiedAt: userProfile.photoVerifiedAt ?? null,
+      createdAt: viewingOwnProfile ? photoLockStatusForUser(user).createdAt : undefined,
+      photoLock: viewingOwnProfile ? photoLockStatusForUser(user) : undefined,
     };
     if (!viewingOwnProfile) {
       delete profile.closeFriendIds;
@@ -275,7 +332,7 @@ export const addUserStory = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Add story error:', error);
     const msg = error instanceof Error ? error.message : 'Internal server error';
-    res.status(500).json({ error: msg.includes('too large') ? msg : 'Story upload failed — try a smaller photo or shorter video.' });
+    res.status(500).json({ error: msg.includes('too large') ? msg : 'Story upload failed. Please try again.' });
   }
 };
 
@@ -554,7 +611,9 @@ export const updateUserProfileInfo = async (req: Request, res: Response) => {
     if (body.celebChatDisappearSeconds !== undefined) updates.celebChatDisappearSeconds = body.celebChatDisappearSeconds;
     if (body.celebMessagesOnlyWhenOpened !== undefined) updates.celebMessagesOnlyWhenOpened = !!body.celebMessagesOnlyWhenOpened;
     if (Array.isArray(body.closeFriendIds)) {
-      updates.closeFriendIds = body.closeFriendIds.filter((id: unknown) => typeof id === 'string');
+      updates.closeFriendIds = [...new Set(
+        body.closeFriendIds.map((id: unknown) => String(id).trim()).filter(Boolean)
+      )];
     }
 
     const user = await runWithSystem(() => updateUserProfile(existing.id, updates));

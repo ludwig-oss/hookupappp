@@ -14,6 +14,7 @@ export const DEFAULT_IMPROVEMENT_CATEGORIES: Array<{
   { id: 'texting', name: 'Texting & DMs', description: 'Master texting, when to reply, and keeping the spark over messages', icon: '📱' },
   { id: 'bedroom', name: 'Bedroom & Intimacy', description: 'Improve intimacy, connection, and address bedroom concerns', icon: '💕' },
   { id: 'keeping-partner', name: 'Keeping a Girlfriend or Boyfriend', description: 'Build a lasting relationship and avoid common breakup pitfalls', icon: '💑' },
+  { id: 'couples-relationship', name: 'Couples in a Relationship', description: 'For people already together — get a guide for relationship problems, and apply here if you are good at helping couples', icon: '💞' },
   { id: 'relationship-problems', name: 'Relationship Problems', description: 'Work through trust, jealousy, distance, or recurring arguments', icon: '🔄' },
   { id: 'conflict-couples', name: 'Fighting & Conflict in Relationships', description: 'Handle disagreements without damaging the relationship', icon: '🤝' },
   { id: 'trust', name: 'Trust & Honesty', description: 'Build trust, be transparent, and repair it when it\'s broken', icon: '🔐' },
@@ -40,4 +41,19 @@ export const DEFAULT_IMPROVEMENT_CATEGORIES: Array<{
   { id: 'dating-apps', name: 'Dating Apps & Profiles', description: 'Create a great profile and chat effectively on apps', icon: '📲' },
   { id: 'red-flags', name: 'Spotting Red Flags', description: 'Recognize unhealthy patterns and when to walk away', icon: '🚩' },
   { id: 'self-worth', name: 'Self-Worth in Dating', description: 'Value yourself and avoid settling or people-pleasing', icon: '💎' },
+];
+
+export const COUPLE_GUIDE_CATEGORY_IDS: string[] = [
+  'couples-relationship',
+  'relationship-problems',
+  'keeping-partner',
+  'conflict-couples',
+  'communication',
+  'trust',
+  'jealousy',
+  'keeping-spark',
+  'apologies',
+  'emotional-intimacy',
+  'quality-time',
+  'support-partner',
 ];

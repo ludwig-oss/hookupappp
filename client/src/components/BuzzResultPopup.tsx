@@ -57,7 +57,8 @@ export default function BuzzResultPopup() {
           'Hook Up',
           next.status === 'rejected'
             ? 'They declined. They were not added to chat.'
-            : 'They accepted — you can talk in Communications.'
+            : 'They accepted — you can talk in Communications.',
+          next.status === 'rejected' ? 'interest' : 'matches'
         );
       }
     } catch {

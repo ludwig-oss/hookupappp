@@ -62,7 +62,7 @@ export async function startDateTracking(planId: string, userId: string): Promise
   const plan = plans.find((p) => p.id === planId && p.userId === userId);
   if (!plan) return null;
   if (plan.idVerificationStatus !== 'verified') {
-    throw new Error('ID must be verified before your date. Upload ID and wait for scan approval.');
+    throw new Error('ID must be verified before your date. Hold your ID to the camera in the meetup plan so it can be scanned.');
   }
   if (!plan.trackingConsent) {
     throw new Error('You must consent to safety tracking during the date.');
@@ -189,13 +189,26 @@ export async function submitOkForRestOfDate(
 }
 
 export async function endDateSession(planId: string, userId: string): Promise<MeetupPlan | null> {
+  const plans = await readMeetupPlansFromDisk();
+  const plan = plans.find((p) => p.id === planId && p.userId === userId);
+  if (!plan) return null;
+  const { deleteSensitive, vaultRef } = await import('../utils/sensitiveVault.js');
+  await deleteSensitive(plan.idFrontVaultRef);
+  await deleteSensitive(plan.idBackVaultRef);
+  await deleteSensitive(vaultRef(planId, 'id_front'));
+  await deleteSensitive(vaultRef(planId, 'id_back'));
   await updateMeetupPlanFields(planId, {
     dateSessionStatus: 'completed',
     trackingEndedAt: new Date().toISOString(),
     nextSafetyCheckInAt: null,
+    idFrontImage: null,
+    idBackImage: null,
+    idFrontVaultRef: null,
+    idBackVaultRef: null,
+    idPurgedAt: new Date().toISOString(),
   } as Partial<MeetupPlan>);
-  const plans = await readMeetupPlansFromDisk();
-  return plans.find((p) => p.id === planId && p.userId === userId) || null;
+  const next = (await readMeetupPlansFromDisk()).find((p) => p.id === planId && p.userId === userId);
+  return next || null;
 }
 
 /** Emergency contact views trail only if danger/missing reported */

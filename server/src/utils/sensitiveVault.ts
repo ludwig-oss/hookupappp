@@ -4,7 +4,7 @@
  */
 
 import { createCipheriv, createDecipheriv, randomBytes, scryptSync, createHash } from 'crypto';
-import { readFile, writeFile, mkdir } from 'fs/promises';
+import { readFile, writeFile, mkdir, unlink } from 'fs/promises';
 import { join } from 'path';
 
 const VAULT_DIR = join(process.cwd(), 'server', 'data', 'vault');
@@ -101,4 +101,15 @@ export async function readSensitiveAsDataUrl(
   const buf = await readSensitive(ref);
   if (!buf) return null;
   return `data:${mime};base64,${buf.toString('base64')}`;
+}
+
+/** Permanently remove a vault file (e.g. ID after they confirm they arrived home safe). */
+export async function deleteSensitive(ref: string | null | undefined): Promise<void> {
+  if (!ref) return;
+  try {
+    const path = await vaultPath(ref);
+    await unlink(path);
+  } catch {
+    /* already gone */
+  }
 }

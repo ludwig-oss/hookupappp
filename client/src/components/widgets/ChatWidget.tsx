@@ -7,8 +7,11 @@ import { profileAPI } from '../../api/profile';
 import { activityAPI } from '../../api/activity';
 import { safetyAPI, MeetupPlan, EmergencyContact, MeetupWeekStatus } from '../../api/safety';
 import DateVenuePicker from '../DateVenuePicker';
+import IdCameraScan from '../IdCameraScan';
 import { reviewsAPI, ReviewAttributes, REVIEW_ATTRIBUTE_LABELS } from '../../api/reviews';
 import ExperienceReviewModal from '../ExperienceReviewModal';
+import BreakupReasonModal from '../BreakupReasonModal';
+import { singleAgainAPI } from '../../api/singleAgain';
 import { speedDateAPI, SpeedDate } from '../../api/speedDate';
 import { connectionJourneyAPI, ConnectionJourneyResponse } from '../../api/connectionJourney';
 import RelationshipCouplePanel from './RelationshipCouplePanel';
@@ -20,6 +23,9 @@ import { messageTranslateText, renderMessageContent } from '../ChatGifBubble';
 import { parseChatGif, previewChatContent } from '../../lib/chatGif';
 import { voiceRecordingAPI } from '../../api/voiceRecording';
 import CommunicationsTutorial, { commsTutorialSeen } from '../CommunicationsTutorial';
+import DisinterestAnalyzer from '../DisinterestAnalyzer';
+import TextingHelpWheel from '../TextingHelpWheel';
+import { disinterestAPI, type DisinterestReport } from '../../api/disinterest';
 import '../../pages/Dashboard.css';
 
 const formatMessageTime = (createdAt: string | Date) => {
@@ -61,9 +67,21 @@ interface ChatWidgetProps {
   initialOtherUserId?: string | null;
   onOpenedWithUserId?: () => void;
   onOpenGuides?: () => void;
+  openDisinterestForUserId?: string | null;
+  onDisinterestOpened?: () => void;
+  resumeTextingHelpSessionId?: string | null;
+  onTextingHelpResumed?: () => void;
 }
 
-const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId, onOpenGuides }: ChatWidgetProps) => {
+const ChatWidget = ({
+  initialOtherUserId,
+  onOpenedWithUserId,
+  onOpenGuides,
+  openDisinterestForUserId,
+  onDisinterestOpened,
+  resumeTextingHelpSessionId,
+  onTextingHelpResumed,
+}: ChatWidgetProps) => {
   const { user } = useContext(AuthContext);
   const navigate = useNavigate();
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -80,6 +98,7 @@ const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId, onOpenGuides }: Ch
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [replyDeadline, setReplyDeadline] = useState<ReplyDeadlineStatus | null>(null);
+  const [deadlineNow, setDeadlineNow] = useState(() => Date.now());
   const [menuOpen, setMenuOpen] = useState(false);
   const threadEndRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -107,7 +126,12 @@ const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId, onOpenGuides }: Ch
   const [savedContacts, setSavedContacts] = useState<EmergencyContact[]>([]);
   const [meetupSubmitting, setMeetupSubmitting] = useState(false);
   const [meetupWeek, setMeetupWeek] = useState<MeetupWeekStatus | null>(null);
+  const [dateLock, setDateLock] = useState<Conversation['dateLock'] | null>(null);
   const [idVerificationConsent, setIdVerificationConsent] = useState(false);
+  const [disinterestOpen, setDisinterestOpen] = useState(false);
+  const [disinterestReport, setDisinterestReport] = useState<DisinterestReport | null>(null);
+  const [textingHelpOpen, setTextingHelpOpen] = useState(false);
+  const [helpSessionId, setHelpSessionId] = useState<string | null>(null);
   const [trackingConsent, setTrackingConsent] = useState(false);
   const [idFrontImage, setIdFrontImage] = useState<string | null>(null);
   const [idBackImage, setIdBackImage] = useState<string | null>(null);
@@ -144,6 +168,13 @@ const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId, onOpenGuides }: Ch
   const [relationshipLoading, setRelationshipLoading] = useState(false);
   const [showDatingPrompt, setShowDatingPrompt] = useState(false);
   const [showEndPrompt, setShowEndPrompt] = useState(false);
+  const [breakupModal, setBreakupModal] = useState<null | { kind: 'end' | 'unmatch' }>(null);
+  const [rouletteHold, setRouletteHold] = useState(false);
+  const [rouletteChat, setRouletteChat] = useState(false);
+  const [rouletteHealNote, setRouletteHealNote] = useState<string | null>(null);
+  const [rouletteOwner, setRouletteOwner] = useState(false);
+  const [roulettePostId, setRoulettePostId] = useState<string | null>(null);
+  const [healDraft, setHealDraft] = useState('');
   const [relationshipTip, setRelationshipTip] = useState<string | null>(null);
   const [relationshipTopic, setRelationshipTopic] = useState<string | null>(null);
   const [relationshipDateIdea, setRelationshipDateIdea] = useState<string | null>(null);
@@ -354,6 +385,49 @@ const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId, onOpenGuides }: Ch
     return () => { cancelled = true; };
   }, [initialOtherUserId]);
 
+  useEffect(() => {
+    if (!selectedUserId || !user?.id) {
+      setDisinterestReport(null);
+      return;
+    }
+    let cancelled = false;
+    disinterestAPI
+      .getReport(selectedUserId)
+      .then((report) => {
+        if (!cancelled) setDisinterestReport(report);
+      })
+      .catch(() => {
+        if (!cancelled) setDisinterestReport(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedUserId, user?.id, messages.length]);
+
+  useEffect(() => {
+    if (!openDisinterestForUserId || !selectedUserId) return;
+    if (openDisinterestForUserId !== selectedUserId) return;
+    if (!disinterestReport) return;
+    setDisinterestOpen(true);
+    onDisinterestOpened?.();
+  }, [openDisinterestForUserId, selectedUserId, disinterestReport, onDisinterestOpened]);
+
+  useEffect(() => {
+    if (!resumeTextingHelpSessionId) return;
+    setHelpSessionId(resumeTextingHelpSessionId);
+    setTextingHelpOpen(true);
+    onTextingHelpResumed?.();
+  }, [resumeTextingHelpSessionId, onTextingHelpResumed]);
+
+  useEffect(() => {
+    const onShow = (e: Event) => {
+      const other = (e as CustomEvent<{ otherUserId?: string }>).detail?.otherUserId;
+      if (other && other === selectedUserId) setDisinterestOpen(true);
+    };
+    window.addEventListener('chat:show-disinterest', onShow);
+    return () => window.removeEventListener('chat:show-disinterest', onShow);
+  }, [selectedUserId]);
+
   const handleNDASign = async () => {
     if (!ndaModal || !ndaSignature.trim()) return;
     setNdaSigning(true);
@@ -378,6 +452,11 @@ const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId, onOpenGuides }: Ch
     setView('thread');
     setLoading(true);
     setError('');
+    setRouletteHold(false);
+    setRouletteChat(false);
+    setRouletteOwner(false);
+    setRoulettePostId(null);
+    setRouletteHealNote(null);
     try {
       const data = await chatAPI.getConversation(otherUserId, user.id);
       if (data.unmatched) {
@@ -386,6 +465,12 @@ const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId, onOpenGuides }: Ch
       }
       setReplyDeadline(data.replyDeadline ?? null);
       setMeetupWeek(data.meetupWeek ?? null);
+      setDateLock(data.dateLock ?? null);
+      setRouletteHold(Boolean(data.rouletteHold));
+      setRouletteChat(Boolean(data.rouletteChat || data.rouletteOwner || data.rouletteHold));
+      setRouletteHealNote(data.rouletteHealNote || null);
+      setRouletteOwner(Boolean(data.rouletteOwner));
+      setRoulettePostId(data.roulettePostId || null);
       setMessages(data.messages);
       await chatAPI.markAsRead(otherUserId, user.id);
       await loadConversations();
@@ -512,14 +597,53 @@ const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId, onOpenGuides }: Ch
     return () => clearInterval(id);
   }, [view, selectedUserId, user?.id]);
 
+  const iOweReply = Boolean(
+    replyDeadline?.active &&
+    replyDeadline.owesReplyUserId &&
+    String(replyDeadline.owesReplyUserId) === String(user?.id)
+  );
+  const deadlineMs = replyDeadline?.deadlineAt ? new Date(replyDeadline.deadlineAt).getTime() : 0;
+  const remainingMs = deadlineMs ? deadlineMs - deadlineNow : null;
+  const replyWindowExpired =
+    iOweReply && (Boolean(replyDeadline?.expired) || (remainingMs != null && remainingMs <= 0));
+
+  useEffect(() => {
+    if (!iOweReply || !replyDeadline?.deadlineAt) return;
+    setDeadlineNow(Date.now());
+    const id = setInterval(() => setDeadlineNow(Date.now()), 15_000);
+    return () => clearInterval(id);
+  }, [iOweReply, replyDeadline?.deadlineAt]);
+
+  useEffect(() => {
+    if (!replyWindowExpired || view !== 'thread' || !selectedUserId || !user?.id) return;
+    chatAPI
+      .getConversation(selectedUserId, user.id)
+      .then((data) => {
+        if (data.unmatched) handleReplyDeadlineUnmatched(data.unmatchedReason);
+      })
+      .catch(() => {});
+  }, [replyWindowExpired, view, selectedUserId, user?.id]);
+
+  useEffect(() => {
+    if (view !== 'list' || !user?.id) return;
+    const id = setInterval(() => {
+      chatAPI
+        .getConversations(user.id)
+        .then(({ conversations: list }) => setConversations(list))
+        .catch(() => {});
+    }, 45_000);
+    return () => clearInterval(id);
+  }, [view, user?.id]);
+
   const handleSend = async () => {
     const text = inputText.trim();
-    if (!text || !selectedUserId || !user?.id) return;
+    if (!text || !selectedUserId || !user?.id || replyWindowExpired || dateLock?.locked) return;
     setInputText('');
     await sendContent(text);
   };
 
   const startAudioRecording = async () => {
+    if (replyWindowExpired) return;
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const recorder = new MediaRecorder(stream);
@@ -549,6 +673,7 @@ const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId, onOpenGuides }: Ch
   };
 
   const startVideoRecording = async () => {
+    if (replyWindowExpired) return;
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
       const recorder = new MediaRecorder(stream);
@@ -682,6 +807,7 @@ const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId, onOpenGuides }: Ch
     try {
       const r = await relationshipAPI.confirmDating(selectedUserId);
       setRelationship(r.relationship);
+      window.dispatchEvent(new Event('guide-program:updated'));
     } catch (e: any) {
       setError(e.response?.data?.error || 'Failed to confirm');
     } finally {
@@ -692,11 +818,28 @@ const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId, onOpenGuides }: Ch
   const handleConfirmEnd = async (yes: boolean) => {
     setShowEndPrompt(false);
     if (!yes || !selectedUserId || !user?.id) return;
+    setBreakupModal({ kind: 'end' });
+  };
+
+  const submitBreakup = async (payload: { reason: string; reasonPrivate: boolean }) => {
+    if (!selectedUserId || !user?.id) return;
     setRelationshipLoading(true);
     try {
-      await relationshipAPI.confirmEnd(selectedUserId);
+      if (breakupModal?.kind === 'unmatch') {
+        await chatAPI.unmatchUser(selectedUserId, payload);
+        setBreakupModal(null);
+        setMenuOpen(false);
+        setSelectedUserId(null);
+        setView('list');
+        await loadConversations();
+        const r = await relationshipAPI.getMyRelationship();
+        setRelationship(r.relationship);
+        return;
+      }
+      await relationshipAPI.confirmEnd(selectedUserId, payload);
       const r = await relationshipAPI.getMyRelationship();
       setRelationship(r.relationship);
+      setBreakupModal(null);
     } catch (e: any) {
       setError(e.response?.data?.error || 'Failed to confirm end');
     } finally {
@@ -930,6 +1073,10 @@ const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId, onOpenGuides }: Ch
   const handleUnmatch = () => {
     if (!selectedUserId) return;
     setMenuOpen(false);
+    if (relationship?.status === 'active' && selectedUserId === relationship.partnerUserId) {
+      setBreakupModal({ kind: 'unmatch' });
+      return;
+    }
     setReviewModalSource('unmatch');
     setPendingUnmatchAfterReview(true);
     setShowReviewModal(true);
@@ -991,7 +1138,7 @@ const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId, onOpenGuides }: Ch
       return;
     }
     if (!idFrontImage || !idBackImage) {
-      setError('Upload ID front and back before meeting.');
+      setError('Hold your ID to the camera and scan front and back before meeting.');
       return;
     }
     if (!trackingConsent) {
@@ -1033,6 +1180,10 @@ const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId, onOpenGuides }: Ch
       setEmergencyContactId(null);
       setEmergencyName('');
       setEmergencyPhone('');
+      setIdFrontImage(null);
+      setIdBackImage(null);
+      setIdVerificationConsent(false);
+      setTrackingConsent(false);
     } catch (e: any) {
       setError(e.response?.data?.error || 'Failed to save plan');
     } finally {
@@ -1083,6 +1234,16 @@ const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId, onOpenGuides }: Ch
                 </button>
               ))}
             </div>
+            {disinterestReport && disinterestReport.score >= disinterestReport.threshold && (
+              <button
+                type="button"
+                className="chat-menu-btn"
+                title="Hey, watch out — open analyzer"
+                onClick={() => setDisinterestOpen(true)}
+              >
+                🛡
+              </button>
+            )}
             <button
               type="button"
               className="chat-menu-btn"
@@ -1110,7 +1271,7 @@ const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId, onOpenGuides }: Ch
                     >
                       {showVoiceGuardPanel ? 'Disable gathering voice guard' : 'Enable gathering voice guard'}
                     </button>
-                    <button type="button" onClick={() => { setMenuOpen(false); if (window.confirm('Confirm you\'re no longer dating? Your partner will need to confirm too.')) handleConfirmEnd(true); }}>We&apos;re no longer dating</button>
+                    <button type="button" onClick={() => { setMenuOpen(false); setShowEndPrompt(true); }}>We&apos;re no longer dating</button>
                   </>
                 )}
                 <button type="button" onClick={handleEndChatAndRate}>End chat &amp; Rate</button>
@@ -1156,6 +1317,15 @@ const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId, onOpenGuides }: Ch
             </div>
           </div>
         </div>
+      )}
+
+      {breakupModal && (
+        <BreakupReasonModal
+          title={breakupModal.kind === 'unmatch' ? 'Unmatch — why are you leaving?' : 'Why are you breaking up?'}
+          loading={relationshipLoading}
+          onCancel={() => setBreakupModal(null)}
+          onSubmit={submitBreakup}
+        />
       )}
 
       {showEndPrompt && selectedUserId && (
@@ -1317,6 +1487,20 @@ const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId, onOpenGuides }: Ch
                 Call {checkInPlan.emergencyContactName || 'contact'}
               </a>
             )}
+            <button
+              type="button"
+              className="chat-checkin-btn"
+              onClick={async () => {
+                try {
+                  await safetyAPI.endDateSession(checkInPlan.id);
+                  setCheckInPlan(null);
+                } catch {
+                  setError('Could not confirm you arrived home. Try again.');
+                }
+              }}
+            >
+              I arrived home safe — delete my ID scan
+            </button>
             <button type="button" className="chat-checkin-dismiss" onClick={() => setCheckInPlan(null)}>
               Dismiss
             </button>
@@ -1440,7 +1624,12 @@ const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId, onOpenGuides }: Ch
                 .filter((c) => chatLane === 'all' || c.intent === chatLane)
                 .map((c) => {
                 const isBlurredFocus = focus && focus.daysLeft > 0 && c.userId !== focus.partnerUserId;
-                const isBlurredRelationship = relationship?.status === 'active' && c.userId !== relationship.partnerUserId;
+                const isBlurredRelationship =
+                  relationship?.status === 'active' &&
+                  !relationship.userConfirmedEnd &&
+                  c.userId !== relationship.partnerUserId &&
+                  !c.rouletteChat &&
+                  !c.rouletteOwner;
                 const isBlurred = isBlurredFocus || isBlurredRelationship;
                 return (
                 <div
@@ -1475,6 +1664,9 @@ const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId, onOpenGuides }: Ch
                     <div className="chat-list-body">
                       <span className="chat-list-name">
                         {c.name}
+                        {(c.rouletteChat || c.rouletteOwner) && (
+                          <span className="chat-intent-badge">🎰 Roulette</span>
+                        )}
                         {c.intent && <span className="chat-intent-badge">{INTENT_LABEL[c.intent]}</span>}
                         {c.replyDeadline?.active &&
                           c.replyDeadline.owesReplyUserId === user?.id &&
@@ -1666,6 +1858,66 @@ const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId, onOpenGuides }: Ch
 
       {view === 'thread' && (
         <>
+          {(rouletteChat || rouletteHold || rouletteOwner) && (
+            <div
+              className="chat-focus-banner"
+              style={{ background: 'rgba(220,38,38,0.16)', border: '1px solid rgba(248,113,113,0.45)', marginBottom: 8, padding: '10px 12px', borderRadius: 8 }}
+            >
+              <strong>🎰 Russian roulette — moving on</strong>
+              <p style={{ fontSize: 12, margin: '6px 0' }}>
+                {rouletteOwner
+                  ? 'These chats are lucky people from your Single Again post, here to help you move on.'
+                  : rouletteHealNote
+                    ? `They asked for time to heal. They said: “${rouletteHealNote}”`
+                    : 'You were one of 7 lucky people sent to help them move on.'}
+              </p>
+              {rouletteOwner && roulettePostId && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {!rouletteHold ? (
+                    <>
+                      <input
+                        value={healDraft}
+                        onChange={(e) => setHealDraft(e.target.value)}
+                        placeholder="I need time to heal. I might text around…"
+                        style={{ padding: 8, borderRadius: 8, border: '1px solid rgba(255,255,255,0.25)', background: 'rgba(0,0,0,0.3)', color: '#fff' }}
+                      />
+                      <button
+                        type="button"
+                        className="chat-back-btn"
+                        onClick={async () => {
+                          await singleAgainAPI.setHealHold(roulettePostId, healDraft);
+                          setRouletteHold(true);
+                          setRouletteHealNote(healDraft || 'I need some time to heal.');
+                        }}
+                      >
+                        I need time to heal — put them on hold
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      type="button"
+                      className="chat-compare-fifa-btn"
+                      onClick={async () => {
+                        await singleAgainAPI.setReady(roulettePostId);
+                        setRouletteHold(false);
+                        setRouletteHealNote(null);
+                      }}
+                    >
+                      I&apos;m ready — they can chat
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+          {dateLock?.locked && (
+            <div
+              className="chat-reply-deadline-banner"
+              style={{ borderColor: 'rgba(250,204,21,0.5)', background: 'rgba(250,204,21,0.12)' }}
+            >
+              <span>{dateLock.reason || 'Chat unlocks on the day of your Date Arena date.'}</span>
+            </div>
+          )}
           {meetupWeek?.active && !meetupWeek.metInPerson && (
             <div
               className={`chat-reply-deadline-banner ${meetupWeek.expired ? 'chat-reply-deadline-banner-expired' : ''}`}
@@ -1674,11 +1926,13 @@ const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId, onOpenGuides }: Ch
               <span>{meetupWeek.ruleText}</span>
             </div>
           )}
-          {replyDeadline && (
-            <div
-              className={`chat-reply-deadline-banner ${replyDeadline.owesReplyUserId === user?.id ? 'chat-reply-deadline-banner-urgent' : ''} ${replyDeadline.expired ? 'chat-reply-deadline-banner-expired' : ''}`}
-            >
-              <span>{replyDeadline.ruleText}</span>
+          {iOweReply && !replyWindowExpired && (
+            <div className="chat-reply-deadline-banner chat-reply-deadline-banner-urgent">
+              <span>
+                {remainingMs != null && remainingMs > 0
+                  ? `You must reply within ${Math.floor(remainingMs / 3_600_000)}h ${Math.floor((remainingMs % 3_600_000) / 60_000)}m or you'll be unmatched.`
+                  : (replyDeadline?.ruleText || 'You must reply within 24 hours or you\'ll be unmatched.')}
+              </span>
             </div>
           )}
           {(() => {
@@ -1922,6 +2176,7 @@ const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId, onOpenGuides }: Ch
               type="button"
               className={`chat-toolbar-btn ${recordingAudio ? 'recording' : ''}`}
               onClick={recordingAudio ? stopAudioRecording : startAudioRecording}
+              disabled={replyWindowExpired}
               title={recordingAudio ? 'Stop recording' : 'Voice message'}
             >
               {recordingAudio ? '⏹ Stop' : '🎤'}
@@ -1930,6 +2185,7 @@ const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId, onOpenGuides }: Ch
               type="button"
               className={`chat-toolbar-btn ${recordingVideo ? 'recording' : ''}`}
               onClick={recordingVideo ? stopVideoRecording : startVideoRecording}
+              disabled={replyWindowExpired}
               title={recordingVideo ? 'Stop recording' : 'Record short clip (GIF-like)'}
             >
               {recordingVideo ? '⏹ Stop' : '📹'}
@@ -1938,12 +2194,30 @@ const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId, onOpenGuides }: Ch
               📞
             </button>
           </div>
+          <button
+            type="button"
+            className="chat-texting-help-fab"
+            title="Having trouble texting? Get a live guide"
+            onClick={() => {
+              setHelpSessionId(null);
+              setTextingHelpOpen(true);
+            }}
+          >
+            SOS
+          </button>
           <div className="chat-input-wrap">
             <input
               type="text"
               className="chat-input"
-              placeholder="Type a message..."
+              placeholder={
+                dateLock?.locked
+                  ? 'Chat unlocks on the day of the date'
+                  : rouletteHold && !rouletteOwner
+                    ? 'On hold until they are ready to chat'
+                    : 'Type a message...'
+              }
               value={inputText}
+              disabled={Boolean(dateLock?.locked) || (rouletteHold && !rouletteOwner)}
               onChange={(e) => setInputText(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSend()}
             />
@@ -1953,7 +2227,9 @@ const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId, onOpenGuides }: Ch
               onClick={handleSend}
               disabled={
                 !inputText.trim() ||
-                (!!replyDeadline?.expired && replyDeadline.owesReplyUserId === user?.id)
+                replyWindowExpired ||
+                Boolean(dateLock?.locked) ||
+                (rouletteHold && !rouletteOwner)
               }
             >
               Send
@@ -2009,59 +2285,59 @@ const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId, onOpenGuides }: Ch
 
       {showBoundariesModal && selectedUserId && (
         <div className="chat-meetup-overlay" onClick={() => setShowBoundariesModal(false)}>
-          <div className="chat-meetup-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 480, maxHeight: '90vh', overflowY: 'auto' }}>
-            <div style={{ background: 'linear-gradient(90deg, #f59e0b 0%, #d97706 100%)', color: '#fff', padding: '12px 16px', margin: '-24px -24px 20px -24px', borderRadius: '12px 12px 0 0', fontWeight: 'bold', fontSize: 18 }}>
-              Boundaries
-            </div>
-            <h3 style={{ marginTop: 0, marginBottom: 16 }}>Safety &amp; Consent Checklist</h3>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 20 }}>
-              <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
-                <input type="checkbox" checked={boundariesChecklist.over18} onChange={(e) => setBoundariesChecklist((c) => ({ ...c, over18: e.target.checked }))} style={{ width: 20, height: 20, marginTop: 2 }} />
-                <span>I am over 18 years old and legally able to consent</span>
-              </label>
-              <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
-                <input type="checkbox" checked={boundariesChecklist.withdraw} onChange={(e) => setBoundariesChecklist((c) => ({ ...c, withdraw: e.target.checked }))} style={{ width: 20, height: 20, marginTop: 2 }} />
-                <span>I understand that consent can be withdrawn at any time</span>
-              </label>
-              <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
-                <input type="checkbox" checked={boundariesChecklist.publicPlace} onChange={(e) => setBoundariesChecklist((c) => ({ ...c, publicPlace: e.target.checked }))} style={{ width: 20, height: 20, marginTop: 2 }} />
-                <span>I agree to meet in a public place for the first meeting</span>
-              </label>
-              <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
-                <input type="checkbox" checked={boundariesChecklist.respect} onChange={(e) => setBoundariesChecklist((c) => ({ ...c, respect: e.target.checked }))} style={{ width: 20, height: 20, marginTop: 2 }} />
-                <span>I will respect the other person&apos;s boundaries and decisions</span>
-              </label>
-            </div>
-            <h4 style={{ marginBottom: 10 }}>Consent verification</h4>
-            <p style={{ marginBottom: 12, fontSize: 14 }}>Do you explicitly consent to potentially intimate or sexual activity during or after the meetup?</p>
-            <div style={{ display: 'flex', gap: 12, marginBottom: 20 }}>
-              <button type="button" className="chat-send-btn" style={{ flex: 1, background: boundariesConsent === true ? 'rgba(34,197,94,0.4)' : 'rgba(34,197,94,0.2)', border: '2px solid #22c55e' }} onClick={handleBoundariesYesConsent}>
-                Yes, I consent
-              </button>
-              <button type="button" className="chat-back-btn" style={{ flex: 1, background: boundariesConsent === false ? 'rgba(239,68,68,0.3)' : 'rgba(239,68,68,0.15)', border: '2px solid #ef4444', color: '#fca5a5' }} onClick={handleBoundariesNoConsent} disabled={boundariesSending || !allBoundariesChecked}>
-                {boundariesSending ? 'Sending…' : "No, I don't consent"}
-              </button>
-            </div>
-            <div style={{ background: 'rgba(254,226,226,0.2)', border: '1px solid rgba(239,68,68,0.4)', borderRadius: 8, padding: 12, marginBottom: 16, fontSize: 13 }}>
-              <strong>Remember:</strong>
-              <ul style={{ margin: '8px 0 0', paddingLeft: 20 }}>
-                <li>Consent must be freely given by both parties</li>
-                <li>Consent can be withdrawn at any time</li>
-                <li>Being under the influence affects ability to consent</li>
-                <li>Respect each other&apos;s boundaries and decisions</li>
-              </ul>
-            </div>
-            <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>📞 Emergency contacts</span>
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>🛡️ Add them in the next step</span>
-            </div>
-            <div className="chat-meetup-actions">
-              <button type="button" className="chat-send-btn" onClick={handleBoundariesContinue} disabled={!allBoundariesChecked || boundariesConsent === null}>
-                Continue to plan meetup
-              </button>
-              <button type="button" className="chat-back-btn" onClick={() => { setShowBoundariesModal(false); setBoundariesDismissedForChat(selectedUserId); }}>
-                Skip
-              </button>
+          <div className="chat-meetup-modal chat-boundaries-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="chat-boundaries-banner">Boundaries</div>
+            <div className="chat-boundaries-body">
+              <h3>Safety &amp; Consent Checklist</h3>
+              <div className="chat-boundaries-check">
+                <label>
+                  <input type="checkbox" checked={boundariesChecklist.over18} onChange={(e) => setBoundariesChecklist((c) => ({ ...c, over18: e.target.checked }))} />
+                  <span>I am over 18 years old and legally able to consent</span>
+                </label>
+                <label>
+                  <input type="checkbox" checked={boundariesChecklist.withdraw} onChange={(e) => setBoundariesChecklist((c) => ({ ...c, withdraw: e.target.checked }))} />
+                  <span>I understand that consent can be withdrawn at any time</span>
+                </label>
+                <label>
+                  <input type="checkbox" checked={boundariesChecklist.publicPlace} onChange={(e) => setBoundariesChecklist((c) => ({ ...c, publicPlace: e.target.checked }))} />
+                  <span>I agree to meet in a public place for the first meeting</span>
+                </label>
+                <label>
+                  <input type="checkbox" checked={boundariesChecklist.respect} onChange={(e) => setBoundariesChecklist((c) => ({ ...c, respect: e.target.checked }))} />
+                  <span>I will respect the other person&apos;s boundaries and decisions</span>
+                </label>
+              </div>
+              <h4>Consent verification</h4>
+              <p className="chat-boundaries-q">Do you explicitly consent to potentially intimate or sexual activity during or after the meetup?</p>
+              <div className="chat-boundaries-yesno">
+                <button type="button" className="chat-send-btn" style={{ flex: 1, background: boundariesConsent === true ? 'rgba(34,197,94,0.4)' : 'rgba(34,197,94,0.2)', border: '2px solid #22c55e' }} onClick={handleBoundariesYesConsent}>
+                  Yes, I consent
+                </button>
+                <button type="button" className="chat-back-btn" style={{ flex: 1, background: boundariesConsent === false ? 'rgba(239,68,68,0.3)' : 'rgba(239,68,68,0.15)', border: '2px solid #ef4444', color: '#fecaca' }} onClick={handleBoundariesNoConsent} disabled={boundariesSending || !allBoundariesChecked}>
+                  {boundariesSending ? 'Sending…' : "No, I don't consent"}
+                </button>
+              </div>
+              <div className="chat-boundaries-remember">
+                <strong>Remember:</strong>
+                <ul>
+                  <li>Consent must be freely given by both parties</li>
+                  <li>Consent can be withdrawn at any time</li>
+                  <li>Being under the influence affects ability to consent</li>
+                  <li>Respect each other&apos;s boundaries and decisions</li>
+                </ul>
+              </div>
+              <div className="chat-boundaries-foot">
+                <span>📞 Emergency contacts</span>
+                <span>🛡️ Add them in the next step</span>
+              </div>
+              <div className="chat-meetup-actions">
+                <button type="button" className="chat-send-btn" onClick={handleBoundariesContinue} disabled={!allBoundariesChecked || boundariesConsent === null}>
+                  Continue to plan meetup
+                </button>
+                <button type="button" className="chat-back-btn" onClick={() => { setShowBoundariesModal(false); setBoundariesDismissedForChat(selectedUserId); }}>
+                  Skip
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -2129,12 +2405,13 @@ const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId, onOpenGuides }: Ch
 
       {showMeetupPopup && selectedUserId && (
         <div className="chat-meetup-overlay" onClick={() => setShowMeetupPopup(false)}>
-          <div className="chat-meetup-modal" onClick={(e) => e.stopPropagation()}>
+          <div className="chat-meetup-modal chat-meetup-plan-modal" onClick={(e) => e.stopPropagation()}>
             <div className="chat-meetup-header">
               <h3>Planning a meet-up? Add safety details</h3>
               <button type="button" className="chat-profile-close" onClick={() => { setShowMeetupPopup(false); setMeetupDismissedForChat(selectedUserId); }}>×</button>
             </div>
             <div className="chat-meetup-form">
+              {error && <p className="id-camera-error">{error}</p>}
               <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.85)', marginBottom: 12, padding: 8, background: 'rgba(168,85,247,0.15)', borderRadius: 8 }}>
                 <strong>7-day rule (serious users only):</strong> Meet in person within a week of matching or this match ends. Repeatedly stalling meetups can lead to suspension over time. Pick a public talk-friendly spot below — parks, coffee to-go, plazas only (no sit-down restaurants, cinemas, or movies). Each pays your own.
               </p>
@@ -2148,11 +2425,11 @@ const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId, onOpenGuides }: Ch
                   }}
                 />
               )}
-              <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.85)', marginBottom: 12, padding: 8, background: 'rgba(0,212,255,0.1)', borderRadius: 8 }}>
+              <p className="chat-meetup-health-note">
                 💡 Before you meet, check your date&apos;s health results (tap their name in the chat header → Request to see health results).
               </p>
-              <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.9)', marginBottom: 12, padding: 10, background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.4)', borderRadius: 8 }}>
-                <strong>Safety:</strong> ID is scanned to confirm you are legal and real for your region. After verification you can meet. Location is tracked only during the date (red-dot trail if something goes wrong). Check-ins every 2 hours.
+              <div className="chat-meetup-safety-box">
+                <strong>Safety:</strong> Hold your ID on camera so it can be scanned. We save it only until you confirm you arrived home safe — then it is deleted. Location is tracked only during the date (red-dot trail if something goes wrong). Check-ins every 2 hours.
               </div>
               <label className="chat-meetup-checkbox">
                 <input
@@ -2160,7 +2437,7 @@ const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId, onOpenGuides }: Ch
                   checked={idVerificationConsent}
                   onChange={(e) => setIdVerificationConsent(e.target.checked)}
                 />
-                I consent: my ID will be scanned for safety before the meetup (legal/real verification for my region).
+                I consent: I will hold my ID to the camera to be scanned. It is saved only until I confirm I arrived home safe, then it is deleted.
               </label>
               <label className="chat-meetup-checkbox">
                 <input
@@ -2170,33 +2447,12 @@ const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId, onOpenGuides }: Ch
                 />
                 I consent: my location is tracked only during the date until it ends — for safety if something goes wrong. Emergency contact can view trail only if I alert danger.
               </label>
-              <label>ID front (photo)</label>
-              <input
-                type="file"
-                accept="image/*"
-                capture="environment"
-                className="chat-meetup-input"
-                onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  if (!f) return;
-                  const r = new FileReader();
-                  r.onload = () => setIdFrontImage(String(r.result));
-                  r.readAsDataURL(f);
-                }}
-              />
-              <label>ID back (photo)</label>
-              <input
-                type="file"
-                accept="image/*"
-                capture="environment"
-                className="chat-meetup-input"
-                onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  if (!f) return;
-                  const r = new FileReader();
-                  r.onload = () => setIdBackImage(String(r.result));
-                  r.readAsDataURL(f);
-                }}
+              <label>ID scan (hold to camera)</label>
+              <IdCameraScan
+                front={idFrontImage}
+                back={idBackImage}
+                onFront={setIdFrontImage}
+                onBack={setIdBackImage}
               />
               <label>Meet-up time</label>
               <input type="datetime-local" value={meetAt} onChange={(e) => setMeetAt(e.target.value)} className="chat-meetup-input" />
@@ -2254,6 +2510,21 @@ const ChatWidget = ({ initialOtherUserId, onOpenedWithUserId, onOpenGuides }: Ch
             </div>
           </div>
         </div>
+      )}
+      {disinterestOpen && disinterestReport && selectedUserId && (
+        <DisinterestAnalyzer
+          report={disinterestReport}
+          partnerName={selectedName || 'this person'}
+          onClose={() => setDisinterestOpen(false)}
+        />
+      )}
+      {textingHelpOpen && selectedUserId && (
+        <TextingHelpWheel
+          otherUserId={selectedUserId}
+          partnerName={selectedName || 'them'}
+          resumeSessionId={helpSessionId}
+          onClose={() => setTextingHelpOpen(false)}
+        />
       )}
     </div>
   );

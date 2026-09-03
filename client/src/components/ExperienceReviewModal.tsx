@@ -7,6 +7,8 @@ interface ExperienceReviewModalProps {
   partnerUserId: string;
   partnerName: string;
   source: 'unmatch' | 'manual';
+  initialOverallStars?: number;
+  initialReviewText?: string;
   onClose: () => void;
   onComplete: () => void;
 }
@@ -16,6 +18,8 @@ const ExperienceReviewModal = ({
   partnerUserId,
   partnerName,
   source,
+  initialOverallStars,
+  initialReviewText,
   onClose,
   onComplete,
 }: ExperienceReviewModalProps) => {
@@ -34,8 +38,9 @@ const ExperienceReviewModal = ({
 
   useEffect(() => {
     if (!open) return;
-    setOverallStars(3);
-    setReviewText('');
+    const stars = Number(initialOverallStars);
+    setOverallStars(Number.isFinite(stars) && stars >= 1 && stars <= 5 ? stars : 3);
+    setReviewText(initialReviewText ?? '');
     setDisclaimerAccepted(false);
     setError('');
     setSeriousPreview(false);
@@ -45,7 +50,7 @@ const ExperienceReviewModal = ({
     setCourtNote('');
     setCourtConfirm(false);
     reviewsAPI.getPolicy().then((r) => setDisclaimerText(r.disclaimer)).catch(() => {});
-  }, [open, partnerUserId]);
+  }, [open, partnerUserId, initialOverallStars, initialReviewText]);
 
   useEffect(() => {
     if (!reviewText.trim()) {

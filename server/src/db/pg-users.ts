@@ -59,9 +59,10 @@ function rowToUser(row: { id: string; email: string; password: string; name: str
         createdAt: s.createdAt ? new Date(s.createdAt as string) : new Date(),
         expiresAt: s.expiresAt ? new Date(s.expiresAt as string) : new Date(),
         mediaType: s.mediaType || inferMediaTypeFromUrl(s.mediaUrl),
+        audience: s.audience === 'closeFriends' ? 'closeFriends' : 'all',
       };
     }),
-    closeFriendIds: Array.isArray(data.closeFriendIds) ? data.closeFriendIds : [],
+    closeFriendIds: Array.isArray(data.closeFriendIds) ? data.closeFriendIds.map(String) : [],
     disappearingPhotos: ((data.disappearingPhotos as unknown[]) || []).map((p: any) => ({
       ...p,
       createdAt: p.createdAt ? new Date(p.createdAt) : new Date(),
@@ -101,6 +102,7 @@ function rowToUser(row: { id: string; email: string; password: string; name: str
     celebChatDisappearSeconds: (data.celebChatDisappearSeconds as number) ?? undefined,
     celebMessagesOnlyWhenOpened: (data.celebMessagesOnlyWhenOpened as boolean) ?? undefined,
     photoVerifiedAt: (data.photoVerifiedAt as string) ?? null,
+    createdAt: (data.createdAt as string) ?? (Number.isFinite(Number(row.id)) && Number(row.id) > 1e12 ? new Date(Number(row.id)).toISOString() : new Date().toISOString()),
     financialTier: (data.financialTier as User['financialTier']) ?? undefined,
     lifeQuizCompleted: (data.lifeQuizCompleted as boolean) ?? undefined,
     lifeQuizGoals: (data.lifeQuizGoals as string) ?? undefined,
@@ -133,6 +135,13 @@ function rowToUser(row: { id: string; email: string; password: string; name: str
     schoolSkipExceptionLastDate: (data.schoolSkipExceptionLastDate as string) ?? null,
     visibilityReducedUntil: (data.visibilityReducedUntil as string) ?? null,
     visibilityReducedReason: (data.visibilityReducedReason as string) ?? null,
+    guideProgramAreasChosenAt: (data.guideProgramAreasChosenAt as string) ?? null,
+    guideProgramStartedAt: (data.guideProgramStartedAt as string) ?? null,
+    guideProgramEvalDueAt: (data.guideProgramEvalDueAt as string) ?? null,
+    guideProgramEvaluatedAt: (data.guideProgramEvaluatedAt as string) ?? null,
+    guideProgramGrade: (data.guideProgramGrade as string) ?? null,
+    guideProgramProgressed: typeof data.guideProgramProgressed === 'boolean' ? data.guideProgramProgressed : null,
+    guideProgramGuideId: (data.guideProgramGuideId as string) ?? null,
   } as User;
 }
 
@@ -145,7 +154,7 @@ function userToData(u: Partial<User>): Record<string, unknown> {
     'bio', 'age', 'gender', 'height', 'interests', 'education', 'occupation', 'relationshipStatus', 'country', 'city',
     'passwordHint1', 'passwordHint2', 'passwordHint3', 'backupPasswordHint1', 'backupPasswordHint2', 'backupPasswordHint3', 'backupPasswordHash', 'pinAuth', 'publicFigureLevel', 'publicFigureProof', 'publicFigureIdImage',
     'publicFigureUniqueImage', 'publicFigureVerified', 'publicFigureVerifiedAt', 'revealToUserIds', 'celebChatDisappearMode',
-    'celebChatDisappearSeconds', 'celebMessagesOnlyWhenOpened', 'photoVerifiedAt',
+    'celebChatDisappearSeconds', 'celebMessagesOnlyWhenOpened', 'photoVerifiedAt', 'createdAt',
     'financialTier', 'lifeQuizCompleted', 'lifeQuizGoals', 'isFamousOrInfluencer',
     'profileClickCount', 'profileImpressionCount', 'styleScore', 'outdoorWalkEnabled',
     'homeLocation', 'nearbyDiscoverable', 'connectionsVisible',
@@ -154,6 +163,8 @@ function userToData(u: Partial<User>): Record<string, unknown> {
     'meetupNoShowStrikes', 'meetupNoShowLastAt',
     'schoolSkipStreak', 'schoolSkipLastDate', 'schoolSkipTotal', 'schoolSkipExceptionLastDate',
     'visibilityReducedUntil', 'visibilityReducedReason',
+    'guideProgramAreasChosenAt', 'guideProgramStartedAt', 'guideProgramEvalDueAt', 'guideProgramEvaluatedAt',
+    'guideProgramGrade', 'guideProgramProgressed', 'guideProgramGuideId',
     'googleId', 'facebookId',
     'qualifiedCoach', 'coachStarRating', 'loginCode', 'loginCodeExpiry'] as const;
   for (const k of keys) {
@@ -207,6 +218,7 @@ export async function createUser(
     profiles: [],
     stories: [],
     closeFriendIds: [],
+    createdAt: new Date().toISOString(),
     emailVerified: false,
     emailVerificationToken: null,
     emailVerificationTokenExpiry: null,

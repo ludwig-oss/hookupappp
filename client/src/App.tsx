@@ -33,6 +33,8 @@ import { applyAppTheme } from './lib/theme';
 import { clearAuth, getAuthToken, getAuthUserRaw, persistAuth, writeAuthUser } from './lib/authStorage';
 import './api/http';
 import AppearanceSafetyPrompt from './components/AppearanceSafetyPrompt';
+import PhotoVerificationGate from './components/PhotoVerificationGate';
+import GuideProgramGate from './components/GuideProgramGate';
 import SafetyVoiceWatcher from './components/SafetyVoiceWatcher';
 
 function isPlainObject(v: unknown): v is Record<string, any> {
@@ -183,6 +185,11 @@ function App() {
         if (typeof lang === 'string' && lang.trim()) {
           setStoredLanguage(lang.trim());
         }
+        if (settingsRes?.settings?.notifications?.push) {
+          import('./lib/pushNotifications')
+            .then(({ subscribeUserToWebPush }) => subscribeUserToWebPush())
+            .catch(() => {});
+        }
       })
       .catch((err: any) => {
         if (gen !== refreshGen.current) return;
@@ -280,6 +287,8 @@ function App() {
           <Route path="/" element={<Landing />} />
         </Routes>
         <AppearanceSafetyPrompt />
+        <PhotoVerificationGate />
+        <GuideProgramGate />
         <SafetyVoiceWatcher />
       </AuthContext.Provider>
     </LanguageProvider>

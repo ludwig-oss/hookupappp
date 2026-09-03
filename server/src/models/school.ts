@@ -329,8 +329,7 @@ export async function completeToday(userId: string) {
   return { topic, nextTopic: getTopicByIndex(state.currentTopicIndex) };
 }
 
-export async function submitSkipQuiz(userId: string, topicId: string, answers: Record<string, number>) {
-  const state = await getState(userId);
+export async function submitSkipQuiz(_userId: string, topicId: string, answers: Record<string, number>) {
   const curriculum = getCurriculumForUser();
   const topic = curriculum.find((t) => t.id === topicId);
   if (!topic) throw new Error('Topic not found');
@@ -339,37 +338,12 @@ export async function submitSkipQuiz(userId: string, topicId: string, answers: R
   for (const q of topic.quiz) {
     if (answers[q.id] === q.correctIndex) correct += 1;
   }
-  const pass = correct >= Math.ceil(topic.quiz.length * 0.67);
-
-  if (!pass) {
-    return {
-      pass: false,
-      score: correct,
-      total: topic.quiz.length,
-      message: 'You need more practice in this area — work with a guide today, then try again tomorrow.',
-      topic,
-    };
-  }
-
-  if (!state.completedTopicIds.includes(topic.id)) {
-    state.completedTopicIds.push(topic.id);
-  }
-  const today = todayKey();
-  state.completedByDate[today] = topic.id;
-
-  const idx = curriculum.findIndex((t) => t.id === topicId);
-  if (idx >= 0 && idx >= state.currentTopicIndex) {
-    state.currentTopicIndex = Math.min(idx + 1, curriculum.length - 1);
-  }
-  await saveState(state);
-  await recordMaleCompletion(userId);
 
   return {
-    pass: true,
+    pass: false,
     score: correct,
     total: topic.quiz.length,
-    message: 'Nice — you passed! Moving to the next class.',
-    nextTopic: getTopicByIndex(state.currentTopicIndex),
+    message: 'Skipping a class is no longer available. Every user works with a guide — you cannot quiz past this.',
     topic,
   };
 }

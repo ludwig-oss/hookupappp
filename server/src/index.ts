@@ -56,6 +56,8 @@ import datingAdviceRoutes from './routes/datingAdvice.js';
 import adminRoutes from './routes/admin.js';
 import translateRoutes from './routes/translate.js';
 import anonymousConfessionRoutes from './routes/anonymousConfession.js';
+import textingHelpRoutes from './routes/textingHelp.js';
+import dateMatchRoutes from './routes/dateMatch.js';
 import { runSchema } from './db/index.js';
 import { runWithSystem } from './db/context.js';
 import { apiLimiter } from './middleware/rateLimit.js';
@@ -160,6 +162,8 @@ app.use('/api/school', schoolRoutes);
 app.use('/api/advice', datingAdviceRoutes);
 app.use('/api/translate', translateRoutes);
 app.use('/api/confession', anonymousConfessionRoutes);
+app.use('/api/texting-help', textingHelpRoutes);
+app.use('/api/date-match', dateMatchRoutes);
 app.use('/api/admin', adminRoutes);
 
 app.get('/api/health', (req, res) => {
@@ -246,6 +250,14 @@ async function start() {
     }
     if (process.env.DATABASE_URL) console.log('✓ PostgreSQL (DATABASE_URL) – users, posts, chat use DB');
     console.log('  Check config: http://localhost:' + PORT + '/api/email-status');
+    void import('./models/dateMatch.js').then(({ settleGuideLawyerCuts, closeExpiredLawyerRooms }) => {
+      const settle = () => {
+        closeExpiredLawyerRooms().catch(() => {});
+        settleGuideLawyerCuts().catch((err) => console.error('Lawyer cut settle:', err));
+      };
+      settle();
+      setInterval(settle, 6 * 60 * 60 * 1000);
+    }).catch(() => {});
   });
 }
 start().catch((err) => {

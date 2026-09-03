@@ -1,5 +1,6 @@
 import { useState, useEffect, useContext, useRef } from 'react';
 import { createPortal } from 'react-dom';
+import { useLocation } from 'react-router-dom';
 import { AuthContext } from '../../context/AuthContext';
 import { profileAPI } from '../../api/profile';
 import { prepareAndUploadFile } from '../../lib/uploadMedia';
@@ -11,6 +12,7 @@ import { gamificationAPI } from '../../api/gamification';
 import { reportsAPI } from '../../api/reports';
 import { verificationAPI, Verification } from '../../api/verification';
 import { premiumAPI, PremiumPlan, PremiumSubscription } from '../../api/premium';
+import PremiumTiersPanel from '../PremiumTiersPanel';
 import { compatibilityAPI, CompatibilityResult } from '../../api/compatibility';
 import CompatibilityQuiz from './CompatibilityQuiz';
 import BadgeGallery from './BadgeGallery';
@@ -21,6 +23,8 @@ import { applyAppTheme, type AppTheme } from '../../lib/theme';
 import { applyStayLoggedIn, getStayLoggedIn } from '../../lib/authStorage';
 import { normalizeUsernameInput, USERNAME_HINT } from '../../lib/username';
 import { walletAPI, GuideWalletSummary } from '../../api/improvement';
+import { relationshipAPI } from '../../api/relationship';
+import BreakupReasonModal from '../BreakupReasonModal';
 import { LANGUAGES } from '../../constants/languages';
 import { setStoredLanguage } from '../../i18n/languageStorage';
 import './Widget.css';
@@ -29,7 +33,9 @@ type TabType = 'profile' | 'preferences' | 'privacy' | 'notifications' | 'filter
 
 const SettingsWidgetFull = () => {
   const { user, updateUser } = useContext(AuthContext);
-  const [activeTab, setActiveTab] = useState<TabType>('profile');
+  const location = useLocation();
+  const requestedTab = (location.state as { openTab?: TabType } | null)?.openTab;
+  const [activeTab, setActiveTab] = useState<TabType>(requestedTab && ['premium','profile','preferences','privacy','notifications','filters','verification','gamification','social','compatibility','reports','accessibility','account'].includes(requestedTab) ? requestedTab : 'profile');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -55,6 +61,7 @@ const SettingsWidgetFull = () => {
   const [education, setEducation] = useState('');
   const [occupation, setOccupation] = useState('');
   const [relationshipStatus, setRelationshipStatus] = useState('');
+  const [breakupOpen, setBreakupOpen] = useState(false);
   const [profilePicture, setProfilePicture] = useState<string | null>(null);
   const [photos, setPhotos] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -255,13 +262,21 @@ const SettingsWidgetFull = () => {
     }
   };
 
-  const handleSaveProfile = async () => {
+  const handleSaveProfile = async (opts?: { skipRelCheck?: boolean }) => {
     if (!user) return;
     setLoading(true);
     setError('');
     setSuccess('');
 
     try {
+      if (!opts?.skipRelCheck && relationshipStatus === 'single') {
+        const rel = await relationshipAPI.getMyRelationship();
+        if (rel.relationship?.status === 'active') {
+          setBreakupOpen(true);
+          setLoading(false);
+          return;
+        }
+      }
       const cleanPhoneNumber = userPhoneNumber.replace(/\D/g, '') || null;
       await profileAPI.updateProfile({
         name,
@@ -319,13 +334,21 @@ const SettingsWidgetFull = () => {
     try {
       await settingsAPI.updateSettings({ [section]: data });
       await loadSettings();
-      if (section === 'notifications' && data.push === true) {
-        const { subscribeUserToWebPush } = await import('../../lib/pushNotifications');
-        const ok = await subscribeUserToWebPush();
-        if (!ok) {
-          setSuccess('Settings saved. If you want phone notifications, allow notifications when the browser asks.');
+      if (section === 'notifications') {
+        if (data.push === true) {
+          const { subscribeUserToWebPush } = await import('../../lib/pushNotifications');
+          const ok = await subscribeUserToWebPush();
+          if (!ok) {
+            setSuccess('Settings saved. If you want phone notifications, allow notifications when the browser asks.');
+          } else {
+            setSuccess('Settings saved — this device is subscribed for push.');
+          }
+        } else if (data.push === false) {
+          const { unsubscribeUserFromWebPush } = await import('../../lib/pushNotifications');
+          await unsubscribeUserFromWebPush();
+          setSuccess('Settings saved. Push alerts are off on this device.');
         } else {
-          setSuccess('Settings saved — this device is subscribed for push.');
+          setSuccess('Settings saved successfully!');
         }
       } else {
         setSuccess('Settings saved successfully!');
@@ -521,6 +544,20 @@ const SettingsWidgetFull = () => {
               <option value="widowed">Widowed</option>
               <option value="separated">Separated</option>
             </select>
+            {breakupOpen && (
+              <BreakupReasonModal
+                title="Change to single — why?"
+                onCancel={() => setBreakupOpen(false)}
+                onSubmit={async (payload) => {
+                  const rel = await relationshipAPI.getMyRelationship();
+                  if (rel.relationship?.partnerUserId) {
+                    await relationshipAPI.confirmEnd(rel.relationship.partnerUserId, payload);
+                  }
+                  setBreakupOpen(false);
+                  await handleSaveProfile({ skipRelCheck: true });
+                }}
+              />
+            )}
           </div>
 
           <div className="form-group" style={{ marginBottom: '20px' }}>
@@ -766,18 +803,7 @@ const SettingsWidgetFull = () => {
               type="button"
               className="back-btn"
               style={{ marginTop: '10px', marginLeft: '28px' }}
-              onClick={async () => {
-                setLoading(true);
-                setError('');
-                try {
-                  const { subscribeUserToWebPush } = await import('../../lib/pushNotifications');
-                  const ok = await subscribeUserToWebPush();
-                  setSuccess(ok ? 'This device can receive phone-style notifications.' : 'Could not enable push — allow notifications in the browser and ensure the server has VAPID keys set.');
-                  setTimeout(() => setSuccess(''), 5000);
-                } finally {
-                  setLoading(false);
-                }
-              }}
+              onClick={() => handleSaveSettings('notifications', { ...settings.notifications, push: true })}
             >
               Register this phone / browser for alerts
             </button>
@@ -929,44 +955,81 @@ const SettingsWidgetFull = () => {
       {/* VERIFICATION TAB */}
       {activeTab === 'verification' && (
         <div className="settings-section">
-          <h3 style={{ marginBottom: '20px', fontSize: '20px' }}>Account Verification</h3>
+          <h3 style={{ marginBottom: '12px', fontSize: '20px' }}>Account Verification</h3>
+          <p style={{ marginBottom: '20px', fontSize: '13px', color: '#6b7280', lineHeight: 1.5 }}>
+            The only check required to prevent catfishing is a live selfie that matches the profile photo other people see. Email and phone are optional (for login recovery) and are not required to use the app.
+          </p>
+
+          <div style={{ marginBottom: '30px', padding: '20px', background: '#fdf2f8', border: '2px solid #f9a8d4', borderRadius: '12px' }}>
+            <h4 style={{ marginBottom: '8px' }}>Photo match (required)</h4>
+            <p style={{ fontSize: '13px', color: '#6b7280', marginBottom: '12px', lineHeight: 1.45 }}>
+              After one month, if you have not taken a live selfie that matches your visible profile photo, you cannot chat, match, or post until you do. We will remind you. This is for safety and catfishing prevention.
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+              <span>Live selfie vs profile photo</span>
+              {user?.photoVerifiedAt ? (
+                <span style={{ color: '#10b981', fontWeight: 'bold' }}>✅ Verified</span>
+              ) : (
+                <span style={{ color: '#ef4444' }}>❌ Not verified</span>
+              )}
+            </div>
+            {!user?.photoVerifiedAt && (
+              <button
+                type="button"
+                className="select-user-btn"
+                onClick={() => {
+                  if (!user?.profilePicture) {
+                    setError('Upload a profile photo of your face first (Profile tab), then come back here.');
+                    return;
+                  }
+                  setShowPhotoVerification(true);
+                }}
+              >
+                Take live selfie &amp; match
+              </button>
+            )}
+          </div>
+
           {!verification ? (
             <div style={{ padding: '20px', textAlign: 'center', color: '#6b7280' }}>
-              <p>Loading verification status...</p>
+              <p>Loading optional contact status...</p>
               <button type="button" className="back-btn" onClick={() => loadVerification()}>Retry</button>
             </div>
           ) : (
         <>
 
           <div style={{ marginBottom: '30px', padding: '20px', background: '#f9fafb', borderRadius: '12px' }}>
-            <h4 style={{ marginBottom: '15px' }}>Verification Status</h4>
+            <h4 style={{ marginBottom: '8px' }}>Optional contact (not required)</h4>
+            <p style={{ fontSize: '12px', color: '#6b7280', marginBottom: '15px' }}>
+              Email and phone are only for recovering your account. You do not need them to stay on the app or to prove you are not a catfish.
+            </p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span>Email: {user?.email}</span>
                 {verification.email.verified ? (
-                  <span style={{ color: '#10b981', fontWeight: 'bold' }}>✅ Verified</span>
+                  <span style={{ color: '#10b981', fontWeight: 'bold' }}>✅ Added</span>
                 ) : (
-                  <span style={{ color: '#ef4444' }}>❌ Not Verified</span>
+                  <span style={{ color: '#6b7280' }}>Optional</span>
                 )}
               </div>
               {verification.phone.phoneNumber && (
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span>Phone: {verification.phone.phoneNumber}</span>
                   {verification.phone.verified ? (
-                    <span style={{ color: '#10b981', fontWeight: 'bold' }}>✅ Verified</span>
+                    <span style={{ color: '#10b981', fontWeight: 'bold' }}>✅ Added</span>
                   ) : (
-                    <span style={{ color: '#ef4444' }}>❌ Not Verified</span>
+                    <span style={{ color: '#6b7280' }}>Optional</span>
                   )}
                 </div>
               )}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span>ID Verification</span>
+                <span>ID Verification (guide badge only)</span>
                 {verification.id.verified ? (
                   <span style={{ color: '#10b981', fontWeight: 'bold' }}>✅ Verified</span>
                 ) : verification.id.status === 'pending' ? (
                   <span style={{ color: '#f59e0b' }}>⏳ Pending Review</span>
                 ) : (
-                  <span style={{ color: '#ef4444' }}>❌ Not Verified</span>
+                  <span style={{ color: '#6b7280' }}>Optional</span>
                 )}
               </div>
             </div>
@@ -974,7 +1037,7 @@ const SettingsWidgetFull = () => {
 
           {!verification.email.verified && (
             <div className="form-group" style={{ marginBottom: '20px' }}>
-              <h4 style={{ marginBottom: '10px' }}>Verify Email</h4>
+              <h4 style={{ marginBottom: '10px' }}>Add email (optional recovery)</h4>
               <button onClick={async () => {
                 try {
                   const res = await verificationAPI.sendEmailVerification();
@@ -998,7 +1061,7 @@ const SettingsWidgetFull = () => {
           )}
 
           <div className="form-group" style={{ marginBottom: '20px' }}>
-            <h4 style={{ marginBottom: '10px' }}>Verify Phone</h4>
+            <h4 style={{ marginBottom: '10px' }}>Add phone (optional recovery)</h4>
             <input type="tel" value={phoneNumber} onChange={(e) => setPhoneNumber(e.target.value)} placeholder="Phone number" style={{ width: '100%', padding: '12px', border: '2px solid #e5e7eb', borderRadius: '8px', marginBottom: '10px' }} />
             <button onClick={async () => {
               try {
@@ -1114,62 +1177,10 @@ const SettingsWidgetFull = () => {
       {/* PREMIUM TAB */}
       {activeTab === 'premium' && (
         <div className="settings-section">
-          <h3 style={{ marginBottom: '20px', fontSize: '20px' }}>Premium Subscription</h3>
-
-          {premiumStatus ? (
-            <div style={{ marginBottom: '30px', padding: '20px', background: '#f0fdf4', borderRadius: '12px', border: '2px solid #10b981' }}>
-              <h4 style={{ marginBottom: '10px', color: '#10b981' }}>✅ Active Premium</h4>
-              <p style={{ margin: '4px 0' }}>Plan: {premiumStatus.planId}</p>
-              <p style={{ margin: '4px 0' }}>Status: {premiumStatus.status}</p>
-              {premiumStatus.endDate && <p style={{ margin: '4px 0' }}>Renews: {new Date(premiumStatus.endDate).toLocaleDateString()}</p>}
-              <button onClick={async () => {
-                if (window.confirm('Cancel subscription?')) {
-                  try {
-                    await premiumAPI.cancel();
-                    setSuccess('Subscription cancelled');
-                    await loadPremiumData();
-                    setTimeout(() => setSuccess(''), 3000);
-                  } catch (err) {
-                    setError('Failed to cancel');
-                  }
-                }
-              }} className="back-btn" style={{ marginTop: '10px' }}>Cancel Subscription</button>
-            </div>
-          ) : (
-            <div style={{ marginBottom: '30px' }}>
-              <h4 style={{ marginBottom: '15px' }}>Choose a Plan</h4>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px' }}>
-                {premiumPlans.map(plan => (
-                  <div key={plan.id} style={{ padding: '20px', border: plan.popular ? '2px solid #ff6b9d' : '1px solid #e5e7eb', borderRadius: '12px', background: plan.popular ? '#fef2f2' : 'white', position: 'relative' }}>
-                    {plan.popular && <div style={{ position: 'absolute', top: '-10px', right: '10px', background: '#ff6b9d', color: 'white', padding: '4px 8px', borderRadius: '12px', fontSize: '12px' }}>POPULAR</div>}
-                    <h4 style={{ marginBottom: '10px' }}>{plan.name}</h4>
-                    <div style={{ fontSize: '24px', fontWeight: 'bold', marginBottom: '10px' }}>${plan.price}</div>
-                    <ul style={{ listStyle: 'none', padding: 0, marginBottom: '15px' }}>
-                      {plan.features.map((f, idx) => (
-                        <li key={idx} style={{ marginBottom: '5px', fontSize: '14px' }}>✓ {f}</li>
-                      ))}
-                    </ul>
-                    <button onClick={async () => {
-                      const paymentMethod = prompt('Enter payment method ID (Stripe):');
-                      if (paymentMethod) {
-                        try {
-                          await premiumAPI.subscribe(plan.id, paymentMethod);
-                          setSuccess('Subscribed successfully!');
-                          await loadPremiumData();
-                          setTimeout(() => setSuccess(''), 3000);
-                        } catch (err) {
-                          setError('Subscription failed');
-                        }
-                      }
-                    }} className={plan.popular ? 'select-user-btn' : 'back-btn'} style={{ width: '100%' }}>Subscribe</button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
+          <PremiumTiersPanel plans={premiumPlans} status={premiumStatus} onChanged={loadPremiumData} />
 
           {paymentHistory.length > 0 && (
-            <div>
+            <div style={{ marginTop: 24 }}>
               <h4 style={{ marginBottom: '15px' }}>Payment History</h4>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 {paymentHistory.map(payment => (
@@ -1179,7 +1190,7 @@ const SettingsWidgetFull = () => {
                       <div style={{ fontSize: '12px', color: '#6b7280' }}>{new Date(payment.paymentDate).toLocaleDateString()}</div>
                     </div>
                     <div style={{ textAlign: 'right' }}>
-                      <div style={{ fontWeight: 'bold' }}>${payment.amount}</div>
+                      <div style={{ fontWeight: 'bold' }}>€{payment.amount}</div>
                       <div style={{ fontSize: '12px', color: payment.status === 'completed' ? '#10b981' : '#ef4444' }}>{payment.status}</div>
                     </div>
                   </div>
@@ -1864,6 +1875,7 @@ const SettingsWidgetFull = () => {
 
       {showPhotoVerification && user?.id && createPortal(
         <PhotoVerificationModal
+          profilePictureUrl={user.profilePicture}
           onClose={() => setShowPhotoVerification(false)}
           onVerified={async () => {
             const p = await profileAPI.getCurrentUser();
@@ -1872,8 +1884,8 @@ const SettingsWidgetFull = () => {
             setSuccess('Photo verified! Your profile shows the green badge.');
             setTimeout(() => setSuccess(''), 3000);
           }}
-          onSubmit={async (selfieImages) => {
-            await profileAPI.submitPhotoVerification(user.id, selfieImages);
+          onSubmit={async (selfieImages, extras) => {
+            await profileAPI.submitPhotoVerification(user.id, selfieImages, extras);
           }}
         />,
         document.body

@@ -94,9 +94,16 @@ export const replyToReview = async (req: Request, res: Response) => {
     if (!moderation.allowed) {
       return res.status(400).json({ error: moderation.reason || 'Reply not allowed.' });
     }
-    const review = await addReply(reviewId, userId, replyText);
-    if (!review) return res.status(404).json({ error: 'Review not found' });
-    res.json({ review });
+    const result = await addReply(reviewId, userId, replyText);
+    if ('error' in result) {
+      if (result.error === 'already_replied') {
+        return res.status(409).json({
+          error: 'You already replied to this review. Replies cannot be edited or deleted.',
+        });
+      }
+      return res.status(404).json({ error: 'Review not found' });
+    }
+    res.json({ review: result.review });
   } catch (e: any) {
     console.error('Reply to review error:', e);
     res.status(500).json({ error: 'Internal server error' });

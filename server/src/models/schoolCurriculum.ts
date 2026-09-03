@@ -31,11 +31,11 @@ function quizForTopic(topicName: string, focus: string): SchoolQuizQuestion[] {
     ], 1),
     q('2', `If you already feel strong in ${focus}, what should you still do?`, [
       'Never learn anything new',
-      'Take the skip quiz honestly or work with a guide',
+      'Keep working with a guide and practice anyway',
       'Skip all future classes forever',
     ], 1),
     q('3', 'How do you unlock the next class?', [
-      'Complete today’s lesson or pass the skip quiz',
+      'Complete today’s lesson and keep working with your guide',
       'Close the app without doing anything',
       'Only pay money with no effort',
     ], 0),

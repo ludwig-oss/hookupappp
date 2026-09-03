@@ -72,6 +72,20 @@ export default function DateSafetyMonitor() {
     };
   }, [activePlanId]);
 
+  const confirmArrivedHomeSafe = async () => {
+    if (!activePlanId) return;
+    setLoading(true);
+    try {
+      await safetyAPI.endDateSession(activePlanId);
+      setActivePlanId(null);
+      setDueCheckIn(null);
+    } catch {
+      alert('Could not confirm you arrived home. Try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const respondCheckIn = async (isSafe: boolean, datePartnerOk?: boolean) => {
     if (!dueCheckIn) return;
     setLoading(true);
@@ -129,6 +143,14 @@ export default function DateSafetyMonitor() {
       {activePlanId && (
         <div className="date-safety-voice-wrap">
           <VoiceSafetyPanel mode="date" planId={activePlanId} />
+          <button
+            type="button"
+            className="date-safety-home-safe"
+            disabled={loading}
+            onClick={confirmArrivedHomeSafe}
+          >
+            I arrived home safe — delete my ID scan
+          </button>
         </div>
       )}
       {dueCheckIn && (

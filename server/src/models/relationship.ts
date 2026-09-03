@@ -14,6 +14,10 @@ export interface Relationship {
   user2ConfirmedDating?: boolean;
   user1ConfirmedEnd?: boolean;
   user2ConfirmedEnd?: boolean;
+  user1EndReason?: string;
+  user2EndReason?: string;
+  user1EndReasonPrivate?: boolean;
+  user2EndReasonPrivate?: boolean;
   lastCheckInAt?: string;
   blindDateHistory?: string[];
   lastBlindDateAt?: string;
@@ -113,20 +117,39 @@ export async function confirmDating(userId: string, partnerUserId: string): Prom
 }
 
 /** Confirm "we're no longer dating" from one side. When both confirmed, status becomes ended. */
-export async function confirmEndRelationship(userId: string, partnerUserId: string): Promise<Relationship> {
+export async function confirmEndRelationship(
+  userId: string,
+  partnerUserId: string,
+  opts?: { reason?: string; reasonPrivate?: boolean }
+): Promise<Relationship> {
   const [u1, u2] = normalizePair(userId, partnerUserId);
   const rows = await readRelationships();
   const rel = rows.find(r => r.userId1 === u1 && r.userId2 === u2 && r.status === 'active');
   if (!rel) throw new Error('No active relationship found');
   const now = new Date().toISOString();
-  if (u1 === userId) rel.user1ConfirmedEnd = true;
-  else rel.user2ConfirmedEnd = true;
+  if (u1 === userId) {
+    rel.user1ConfirmedEnd = true;
+    rel.user1EndReason = opts?.reasonPrivate ? '' : String(opts?.reason || '');
+    rel.user1EndReasonPrivate = Boolean(opts?.reasonPrivate);
+  } else {
+    rel.user2ConfirmedEnd = true;
+    rel.user2EndReason = opts?.reasonPrivate ? '' : String(opts?.reason || '');
+    rel.user2EndReasonPrivate = Boolean(opts?.reasonPrivate);
+  }
   if (rel.user1ConfirmedEnd && rel.user2ConfirmedEnd) {
     rel.status = 'ended';
     rel.endedAt = now;
     await applySingleProfileStatus(rel);
   }
   await writeRelationships(rows);
+  try {
+    const { createSingleAgainAnnouncement } = await import('./singleAgain.js');
+    const privateReason = u1 === userId ? Boolean(rel.user1EndReasonPrivate) : Boolean(rel.user2EndReasonPrivate);
+    const text = u1 === userId ? rel.user1EndReason : rel.user2EndReason;
+    await createSingleAgainAnnouncement(userId, { reason: text, reasonPrivate: privateReason || !String(text || '').trim() });
+  } catch (err) {
+    console.error('Single again post error:', err);
+  }
   return rel;
 }
 

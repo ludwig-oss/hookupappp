@@ -92,11 +92,14 @@ export const confirmDatingHandler = async (req: Request, res: Response) => {
 export const confirmEndHandler = async (req: Request, res: Response) => {
   try {
     const userId = (req as any).userId;
-    const { partnerUserId } = req.body;
+    const { partnerUserId, reason, reasonPrivate } = req.body;
     if (!userId || !partnerUserId) {
       return res.status(400).json({ error: 'partnerUserId is required' });
     }
-    const rel = await confirmEndRelationship(userId, partnerUserId);
+    const rel = await confirmEndRelationship(userId, partnerUserId, {
+      reason: typeof reason === 'string' ? reason : '',
+      reasonPrivate: Boolean(reasonPrivate) || !String(reason || '').trim(),
+    });
     res.json({
       relationship: {
         id: rel.id,
@@ -276,7 +279,7 @@ export const getCoupleHub = async (req: Request, res: Response) => {
       surprises,
       suggestGuide: health.suggestGuide,
       guideMessage:
-        'Couples grow when they keep learning. Book a relationship guide under Compatibility → Expert — communication, conflict, intimacy & more.',
+        'Couples get a guide too. Book one under Compatibility for Couples in a Relationship, conflict, communication, and more — or apply as a guide if you are good at helping couples.',
       games: CHAT_CHALLENGES.filter((g) =>
         ['xo', 'would-you-rather', 'this-or-that', 'compatibility-quiz', 'two-truths-lie', 'emoji-story'].includes(g.type)
       ),

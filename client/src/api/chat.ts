@@ -42,6 +42,19 @@ export interface Conversation {
   replyDeadline?: ReplyDeadlineStatus;
   meetupWeek?: MeetupWeekStatus;
   intent?: 'serious' | 'casual' | 'friends' | null;
+  rouletteChat?: boolean;
+  rouletteHold?: boolean;
+  rouletteHealNote?: string | null;
+  rouletteOwner?: boolean;
+  roulettePostId?: string | null;
+  dateLock?: {
+    locked: boolean;
+    unlockAt: string | null;
+    matchId: string | null;
+    reason: string;
+    scheduledAt: string | null;
+    ideaTitle: string | null;
+  };
 }
 
 export type ChatIntent = 'serious' | 'casual' | 'friends';
@@ -72,6 +85,12 @@ export const chatAPI = {
     meetupWeek?: MeetupWeekStatus;
     unmatched?: boolean;
     unmatchedReason?: string;
+    rouletteChat?: boolean;
+    rouletteHold?: boolean;
+    rouletteHealNote?: string | null;
+    rouletteOwner?: boolean;
+    roulettePostId?: string | null;
+    dateLock?: Conversation['dateLock'];
   }> => {
     const response = await axios.get(`${API_URL}/conversation/${otherUserId}`, { params: { userId } });
     return response.data;
@@ -109,8 +128,15 @@ export const chatAPI = {
     await axios.post(`${API_URL}/mute`, { mutedUserId });
   },
 
-  unmatchUser: async (unmatchedUserId: string): Promise<void> => {
-    await axios.post(`${API_URL}/unmatch`, { unmatchedUserId });
+  unmatchUser: async (
+    unmatchedUserId: string,
+    opts?: { reason?: string; reasonPrivate?: boolean }
+  ): Promise<void> => {
+    await axios.post(`${API_URL}/unmatch`, {
+      unmatchedUserId,
+      reason: opts?.reason || '',
+      reasonPrivate: Boolean(opts?.reasonPrivate),
+    });
   },
 
   getFocus: async (): Promise<{ focus: { partnerUserId: string; partnerName: string | null; startedAt: string; endsAt: string; daysLeft: number } | null }> => {

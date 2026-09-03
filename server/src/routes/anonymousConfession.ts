@@ -1,6 +1,6 @@
 import express from 'express';
 import { authenticateToken } from '../middleware/auth.js';
-import { requireEmailVerified } from '../middleware/requireEmailVerified.js';
+import { requirePhotoUnlocked } from '../middleware/requirePhotoUnlocked.js';
 import {
   getConfessionInfoHandler,
   listConfessionGuidesHandler,
@@ -25,14 +25,13 @@ import {
 const router = express.Router();
 
 router.use(authenticateToken);
-router.use(requireEmailVerified);
 
 router.get('/guides', listConfessionGuidesHandler);
 router.get('/info', getConfessionInfoHandler);
 router.get('/guide/prefs', getGuideConfessionPrefsHandler);
 router.put('/guide/prefs', updateGuideConfessionPrefsHandler);
 router.get('/sessions', listSessionsHandler);
-router.post('/sessions', createSessionHandler);
+router.post('/sessions', requirePhotoUnlocked, createSessionHandler);
 router.get('/sessions/:sessionId', getSessionHandler);
 router.post('/sessions/:sessionId/paypal/create-order', createPayPalOrderHandler);
 router.post('/sessions/:sessionId/paypal/capture', capturePayPalOrderHandler);

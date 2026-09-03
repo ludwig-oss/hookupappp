@@ -129,11 +129,11 @@ export const createMeetupPlanHandler = async (req: Request, res: Response) => {
     if (!idVerificationConsent) {
       return res.status(400).json({
         error:
-          'You must consent to ID verification for safety. Your ID is stored securely and used only if your match does not check in with video evidence.',
+          'You must consent to ID camera scan for safety. Your ID is saved only until you confirm you arrived home safe, then it is deleted.',
       });
     }
     if (!idFrontImage || !idBackImage) {
-      return res.status(400).json({ error: 'ID front and back images are required before meeting.' });
+      return res.status(400).json({ error: 'Hold your ID to the camera and scan front and back before meeting.' });
     }
     if (!req.body.trackingConsent) {
       return res.status(400).json({

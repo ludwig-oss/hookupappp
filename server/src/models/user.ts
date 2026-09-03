@@ -137,6 +137,8 @@ export interface User {
   celebMessagesOnlyWhenOpened?: boolean;
   /** Anti-catfish: user verified their profile photo with a selfie (look left/center/right scan). Shown as green badge. */
   photoVerifiedAt?: string | null;
+  /** When the account was created — photo verification becomes mandatory after 30 days. */
+  createdAt?: string | Date | null;
   /** OAuth provider ids (Google / Facebook). */
   googleId?: string | null;
   facebookId?: string | null;
@@ -188,6 +190,15 @@ export interface User {
   /** Discovery penalty if user ignores required improvement (ISO date). */
   visibilityReducedUntil?: string | null;
   visibilityReducedReason?: string | null;
+
+  /** Mandatory guide program: 1–5 problem areas, then a guide for 2 months. */
+  guideProgramAreasChosenAt?: string | null;
+  guideProgramStartedAt?: string | null;
+  guideProgramEvalDueAt?: string | null;
+  guideProgramEvaluatedAt?: string | null;
+  guideProgramGrade?: string | null;
+  guideProgramProgressed?: boolean | null;
+  guideProgramGuideId?: string | null;
 }
 
 const DB_PATH = join(__dirname, '..', 'data', 'users.json');
@@ -236,8 +247,12 @@ async function readUsers(): Promise<User[]> {
         createdAt: s.createdAt ? new Date(s.createdAt) : new Date(),
         expiresAt: s.expiresAt ? new Date(s.expiresAt) : new Date(),
         mediaType: s.mediaType || inferMediaTypeFromUrl(s.mediaUrl),
+        audience: s.audience === 'closeFriends' ? 'closeFriends' : 'all',
       })),
-      closeFriendIds: user.closeFriendIds || [],
+      closeFriendIds: (user.closeFriendIds || []).map(String),
+      createdAt: user.createdAt
+        ? new Date(user.createdAt)
+        : (Number.isFinite(Number(user.id)) && Number(user.id) > 1e12 ? new Date(Number(user.id)) : new Date()),
       disappearingPhotos: (user.disappearingPhotos || []).map((photo: DisappearingPhoto) => ({
         ...photo,
         createdAt: photo.createdAt ? new Date(photo.createdAt) : new Date(),
@@ -271,6 +286,13 @@ async function readUsers(): Promise<User[]> {
       schoolSkipExceptionLastDate: (user as any).schoolSkipExceptionLastDate ?? null,
       visibilityReducedUntil: (user as any).visibilityReducedUntil ?? null,
       visibilityReducedReason: (user as any).visibilityReducedReason ?? null,
+      guideProgramAreasChosenAt: (user as any).guideProgramAreasChosenAt ?? null,
+      guideProgramStartedAt: (user as any).guideProgramStartedAt ?? null,
+      guideProgramEvalDueAt: (user as any).guideProgramEvalDueAt ?? null,
+      guideProgramEvaluatedAt: (user as any).guideProgramEvaluatedAt ?? null,
+      guideProgramGrade: (user as any).guideProgramGrade ?? null,
+      guideProgramProgressed: (user as any).guideProgramProgressed ?? null,
+      guideProgramGuideId: (user as any).guideProgramGuideId ?? null,
     }));
   } catch (error) {
     return [];
@@ -309,6 +331,7 @@ export async function createUser(userData: Omit<User, 'id' | 'resetToken' | 'res
     profiles: [],
     stories: [],
     closeFriendIds: [],
+    createdAt: new Date().toISOString(),
     emailVerified: true,
     emailVerificationToken: null,
     emailVerificationTokenExpiry: null,
@@ -330,6 +353,13 @@ export async function createUser(userData: Omit<User, 'id' | 'resetToken' | 'res
     schoolSkipExceptionLastDate: null,
     visibilityReducedUntil: null,
     visibilityReducedReason: null,
+    guideProgramAreasChosenAt: null,
+    guideProgramStartedAt: null,
+    guideProgramEvalDueAt: null,
+    guideProgramEvaluatedAt: null,
+    guideProgramGrade: null,
+    guideProgramProgressed: null,
+    guideProgramGuideId: null,
   };
   users.push(user);
   await writeUsers(users);
@@ -374,15 +404,29 @@ export async function getUserByPhone(phoneNumber: string): Promise<User | null> 
 }
 
 export async function getUserById(userId: string): Promise<User | null> {
-  if (usePostgres()) return pgUsers.getUserById(userId);
+  if (usePostgres()) {
+    try {
+      const u = await pgUsers.getUserById(userId);
+      if (u) return u;
+    } catch {
+      /* DB down or RLS miss — try JSON */
+    }
+  }
   const users = await readUsers();
-  return users.find(u => u.id === userId) || null;
+  return users.find(u => String(u.id) === String(userId)) || null;
 }
 
 export async function updateUserProfile(userId: string, updates: Partial<User>): Promise<User | null> {
-  if (usePostgres()) return pgUsers.updateUserProfile(userId, updates);
+  if (usePostgres()) {
+    try {
+      const u = await pgUsers.updateUserProfile(userId, updates);
+      if (u) return u;
+    } catch {
+      /* DB down or user only on disk — try JSON */
+    }
+  }
   const users = await readUsers();
-  const userIndex = users.findIndex(u => u.id === userId);
+  const userIndex = users.findIndex(u => String(u.id) === String(userId));
   if (userIndex !== -1) {
     const next = { ...users[userIndex], ...updates };
     if (updates.country !== undefined) next.country = updates.country;

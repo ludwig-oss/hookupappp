@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { API_BASE, MEDIA_API_BASE } from '../api/config';
 import { compressImageFile } from './compressImage';
+import { compressVideoFile, isProbablyImageFile, isProbablyVideoFile } from './compressVideo';
 
 function authHeaders(): Record<string, string> {
   const token = typeof localStorage !== 'undefined' ? localStorage.getItem('token') : null;
@@ -25,7 +26,7 @@ function uploadFileEndpoint(): string {
 export async function uploadMediaFile(file: Blob, folder = 'posts', _filename = 'media'): Promise<string> {
   const mime = file.type || 'application/octet-stream';
   const controller = new AbortController();
-  const timer = window.setTimeout(() => controller.abort(), 180_000);
+  const timer = window.setTimeout(() => controller.abort(), 300_000);
   try {
     const res = await fetch(uploadFileEndpoint(), {
       method: 'POST',
@@ -48,10 +49,10 @@ export async function uploadMediaFile(file: Blob, folder = 'posts', _filename = 
     return url;
   } catch (err) {
     if (err instanceof DOMException && err.name === 'AbortError') {
-      throw new Error('Upload timed out. Try a smaller photo or a shorter video.');
+      throw new Error('Upload timed out. Check your connection and try again.');
     }
     if (err instanceof TypeError) {
-      throw new Error("Can't reach the server. Check your connection, or try a smaller photo.");
+      throw new Error("Can't reach the server. Check your connection and try again.");
     }
     throw err;
   } finally {
@@ -59,10 +60,10 @@ export async function uploadMediaFile(file: Blob, folder = 'posts', _filename = 
   }
 }
 
-/** Compress photos, then upload the file. Videos go straight as multipart. */
+/** Compress photos and large phone videos, then upload the file. */
 export async function prepareAndUploadFile(file: File, folder: string): Promise<string> {
-  const isImage = file.type.startsWith('image/');
-  const isVideo = file.type.startsWith('video/');
+  const isImage = isProbablyImageFile(file);
+  const isVideo = isProbablyVideoFile(file);
   if (!isImage && !isVideo) {
     throw new Error('Please choose a photo or video.');
   }
@@ -74,10 +75,15 @@ export async function prepareAndUploadFile(file: File, folder: string): Promise<
     const name = (file.name || 'photo').replace(/\.[^.]+$/, '') + '.jpg';
     return uploadMediaFile(blob, folder, name);
   }
-  if (file.size > 80 * 1024 * 1024) {
-    throw new Error('Video is too large (max 80MB). Try a shorter clip.');
-  }
-  return uploadMediaFile(file, folder, file.name || 'video.mp4');
+  const compressed = await compressVideoFile(file, {
+    maxDurationSec: folder === 'stories' ? 120 : 180,
+  });
+  const mime = compressed.type || file.type || 'video/mp4';
+  const ext = mime.includes('webm') ? '.webm' : '.mp4';
+  const named = compressed instanceof File
+    ? compressed
+    : new File([compressed], (file.name || 'video').replace(/\.[^.]+$/, '') + ext, { type: mime });
+  return uploadMediaFile(named, folder, named.name);
 }
 
 /** Upload base64 media directly to Render when set (bypasses Vercel ~4.5MB proxy limit). */

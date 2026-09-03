@@ -15,14 +15,15 @@ import {
   forwardGeocode,
 } from '../controllers/connectionsController.js';
 import { authenticateToken } from '../middleware/auth.js';
+import { requirePhotoUnlocked } from '../middleware/requirePhotoUnlocked.js';
 
 const router = express.Router();
 
 router.use(authenticateToken);
 
-router.post('/buzz', sendBuzz);
+router.post('/buzz', requirePhotoUnlocked, sendBuzz);
 router.get('/buzzes', getMyBuzzes);
-router.post('/buzz/respond', respondBuzz);
+router.post('/buzz/respond', requirePhotoUnlocked, respondBuzz);
 router.post('/location', updateLocation);
 router.get('/location', getMyLocation);
 router.get('/geocode', forwardGeocode);

@@ -18,5 +18,8 @@ export function userForStorage(user: Record<string, unknown>): Record<string, un
     age: user.age,
     country: user.country,
     city: user.city,
+    photoVerifiedAt: user.photoVerifiedAt ?? null,
+    createdAt: user.createdAt ?? null,
+    photoLock: user.photoLock && typeof user.photoLock === 'object' ? user.photoLock : undefined,
   };
 }

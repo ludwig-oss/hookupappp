@@ -27,8 +27,15 @@ export const relationshipAPI = {
     return response.data;
   },
 
-  confirmEnd: async (partnerUserId: string): Promise<{ relationship: { id: string; status: string; endedAt?: string } }> => {
-    const response = await axios.post(`${API_URL}/confirm-end`, { partnerUserId });
+  confirmEnd: async (
+    partnerUserId: string,
+    opts?: { reason?: string; reasonPrivate?: boolean }
+  ): Promise<{ relationship: { id: string; status: string; endedAt?: string } }> => {
+    const response = await axios.post(`${API_URL}/confirm-end`, {
+      partnerUserId,
+      reason: opts?.reason || '',
+      reasonPrivate: Boolean(opts?.reasonPrivate),
+    });
     return response.data;
   },
 

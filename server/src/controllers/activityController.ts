@@ -17,7 +17,6 @@ import { getNDAByInterest, hasSignedNDA, signNDA } from '../models/nda.js';
 import { preCommFieldsWithDefaults, sanitizeForStorage, LIMITS } from '../utils/sanitize.js';
 import { notifyNewInterest, notifyNewMatch } from '../realtime/notifications.js';
 import { sendPushToUser } from '../realtime/push.js';
-import { getUserSettings } from '../models/settings.js';
 
 export async function getRegionUsers(req: Request, res: Response) {
   try {
@@ -25,6 +24,14 @@ export async function getRegionUsers(req: Request, res: Response) {
     if (!userId) return res.status(401).json({ error: 'Unauthorized' });
     const country = (req.query.country as string)?.trim();
     const city = (req.query.city as string)?.trim();
+    if (country) {
+      try {
+        const { assertCountrySearchAllowed } = await import('../models/dateMatch.js');
+        await assertCountrySearchAllowed(userId, country);
+      } catch (err: any) {
+        return res.status(403).json({ error: err.message || 'Upgrade to search other countries', code: err.code || 'PLUS_REQUIRED' });
+      }
+    }
     const users = country
       ? await getActiveUsersByRegion(country, city || undefined)
       : await getAllUsers();
@@ -87,21 +94,18 @@ export async function sendInterestHandler(req: Request, res: Response) {
 
     notifyNewInterest(toUserId, { fromUserId, interestId: interest.id });
     try {
-      const toSettings = await getUserSettings(toUserId);
       const fromUser = await getUserById(fromUserId);
-      if (toSettings.notifications.push && toSettings.notifications.interestAlerts) {
-        await sendPushToUser(toUserId, {
-          title: 'Someone liked you on the wheel',
-          body: fromUser
-            ? `${fromUser.name} sent interest — open Activity to respond (24 hours)`
-            : 'Open the app to accept or decline (24 hours)',
-          data: {
-            type: 'new_interest',
-            interestId: interest.id,
-            fromUserId,
-          },
-        });
-      }
+      await sendPushToUser(toUserId, {
+        title: 'Someone liked you on the wheel',
+        body: fromUser
+          ? `${fromUser.name} sent interest — open Activity to respond (24 hours)`
+          : 'Open the app to accept or decline (24 hours)',
+        data: {
+          type: 'new_interest',
+          interestId: interest.id,
+          fromUserId,
+        },
+      }, 'interest');
     } catch {
       /* push optional */
     }
@@ -143,6 +147,21 @@ export async function rejectInterestHandler(req: Request, res: Response) {
     const { interestId } = req.body;
     if (!interestId) return res.status(400).json({ error: 'interestId is required' });
     await rejectInterest(interestId, toUserId);
+    const interest = await getInterestById(interestId);
+    if (interest) {
+      const { maybeOfferPitchOnReject } = await import('../models/dateMatch.js');
+      const { notifyPitch } = await import('../realtime/notifications.js');
+      const pitch = await maybeOfferPitchOnReject(interest.fromUserId, toUserId, interest.id);
+      if (pitch) {
+        notifyPitch(interest.fromUserId, { pitchId: pitch.id, fromUserId: toUserId, incoming: false });
+        sendPushToUser(interest.fromUserId, {
+          title: 'They passed — pitch yourself',
+          body: 'Plus lets you send one pitch. They will read it and decide.',
+          data: { type: 'pitch_chance', pitchId: pitch.id },
+        }, 'interest').catch(() => {});
+        return res.json({ message: 'Interest declined', pitchOffered: true, pitchId: pitch.id });
+      }
+    }
     res.json({ message: 'Interest declined' });
   } catch (e: any) {
     console.error('Reject interest error:', e);

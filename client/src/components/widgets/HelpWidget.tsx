@@ -3,7 +3,11 @@ import {
   HELP_FAQ,
   HELP_CATEGORIES,
   HELP_NAV_LINKS,
-  getAnswerForQuestion,
+  HELP_SHORTCUTS,
+  getHelpMatch,
+  targetsFromText,
+  type HelpFaqItem,
+  type HelpMatch,
   type HelpNavTarget,
 } from '../../data/helpFaq';
 import './HelpWidget.css';
@@ -23,14 +27,57 @@ export interface HelpWidgetProps {
   onNavigate?: (target: HelpNavTarget) => void;
 }
 
+function HelpAnswerRich({
+  text,
+  onNavigate,
+}: {
+  text: string;
+  onNavigate: (target: HelpNavTarget) => void;
+}) {
+  const pattern = HELP_SHORTCUTS
+    .slice()
+    .sort((a, b) => b.phrase.length - a.phrase.length)
+    .map((s) => s.phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+    .join('|');
+  const re = new RegExp(`(${pattern})`, 'gi');
+  const parts = text.split(re);
+  return (
+    <p className="help-answer-text">
+      {parts.map((part, i) => {
+        const hit = HELP_SHORTCUTS.find((s) => s.phrase.toLowerCase() === part.toLowerCase());
+        if (!hit) return <span key={i}>{part}</span>;
+        return (
+          <button
+            key={`${part}-${i}`}
+            type="button"
+            className="help-shortcut"
+            onClick={() => onNavigate(hit.target)}
+          >
+            {part}
+          </button>
+        );
+      })}
+    </p>
+  );
+}
+
+function matchFromFaq(item: HelpFaqItem, asked?: string): HelpMatch {
+  return {
+    userQuestion: asked || item.q,
+    matchedQuestion: item.q,
+    answer: item.a,
+    targets: targetsFromText(`${item.q} ${item.a}`),
+    related: [],
+    confidence: 'high',
+  };
+}
+
 export default function HelpWidget({ onOpenChat, onOpenLoveFeed, onNavigate }: HelpWidgetProps) {
   const [bannerDismissed, setBannerDismissed] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [history, setHistory] = useState<HelpEntry[]>([]);
-  const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null);
-  const [selectedQuestion, setSelectedQuestion] = useState<string | null>(null);
   const [inputValue, setInputValue] = useState('');
-  const [reply, setReply] = useState<string | null>(null);
+  const [match, setMatch] = useState<HelpMatch | null>(null);
   const [activeCategory, setActiveCategory] = useState<string | 'all'>('all');
   const listRef = useRef<HTMLDivElement>(null);
 
@@ -64,24 +111,16 @@ export default function HelpWidget({ onOpenChat, onOpenLoveFeed, onNavigate }: H
     }
   };
 
-  const showAnswer = (q: string, a: string) => {
-    setSelectedQuestion(q);
-    setSelectedAnswer(a);
-    setReply(null);
-    saveToHistory(q, a);
-    listRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  const applyMatch = (next: HelpMatch) => {
+    setMatch(next);
+    saveToHistory(next.userQuestion || next.matchedQuestion || 'Help', next.answer);
   };
 
   const handleSubmit = () => {
     const q = inputValue.trim();
     if (!q) return;
-    const a = getAnswerForQuestion(q);
-    setReply(a);
-    setSelectedAnswer(null);
-    setSelectedQuestion(q);
+    applyMatch(getHelpMatch(q));
     setInputValue('');
-    saveToHistory(q, a);
-    listRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   };
 
   const handleNav = (target: HelpNavTarget) => {
@@ -90,6 +129,8 @@ export default function HelpWidget({ onOpenChat, onOpenLoveFeed, onNavigate }: H
     else onNavigate?.(target);
   };
 
+  const navLabel = (target: HelpNavTarget) => HELP_NAV_LINKS.find((l) => l.target === target);
+
   return (
     <div className="help-widget">
       <div className="help-header">
@@ -97,70 +138,70 @@ export default function HelpWidget({ onOpenChat, onOpenLoveFeed, onNavigate }: H
           <div className="help-avatar">💬</div>
           <div>
             <h1 className="help-title">Help</h1>
-            <p className="help-subtitle">Guide &amp; navigation</p>
+            <p className="help-subtitle">Ask anything — highlighted words take you there</p>
           </div>
         </div>
       </div>
 
-      {!bannerDismissed && (
-        <div className="help-banner">
-          <span className="help-banner-icon">🧭</span>
-          <span className="help-banner-text">
-            New here? Use <strong>Go where you need</strong> below to jump to any section, or tap a question for full answers on chat rules, meetups, reviews, and safety.
-          </span>
-          <button type="button" className="help-banner-dismiss" onClick={() => setBannerDismissed(true)} aria-label="Dismiss">
-            ×
-          </button>
-        </div>
-      )}
-
-      <section className="help-nav-section">
-        <h2 className="help-section-title">Go where you need</h2>
-        <p className="help-section-hint">Tap a card to open that part of the app.</p>
-        <div className="help-nav-grid">
-          {HELP_NAV_LINKS.map((link) => (
-            <button
-              key={link.target}
-              type="button"
-              className="help-nav-card"
-              onClick={() => handleNav(link.target)}
-            >
-              <span className="help-nav-icon">{link.icon}</span>
-              <span className="help-nav-label">{link.label}</span>
-              <span className="help-nav-hint">{link.hint}</span>
+      <div className="help-scroll" ref={listRef}>
+        {!bannerDismissed && (
+          <div className="help-banner">
+            <span className="help-banner-icon">🧭</span>
+            <span className="help-banner-text">
+              Type a question at the bottom. Words like <strong>Communication</strong> and <strong>Settings</strong> light up — tap them to jump there.
+            </span>
+            <button type="button" className="help-banner-dismiss" onClick={() => setBannerDismissed(true)} aria-label="Dismiss">
+              ×
             </button>
-          ))}
-        </div>
-      </section>
+          </div>
+        )}
 
-      <button type="button" className="help-link" onClick={() => setShowHistory(!showHistory)}>
-        {showHistory ? 'Hide' : 'View'} past help questions
-      </button>
+        <section className="help-nav-section">
+          <h2 className="help-section-title">Go where you need</h2>
+          <p className="help-section-hint">Tap a card to open that part of the app.</p>
+          <div className="help-nav-grid">
+            {HELP_NAV_LINKS.map((link) => (
+              <button
+                key={link.target}
+                type="button"
+                className="help-nav-card"
+                onClick={() => handleNav(link.target)}
+              >
+                <span className="help-nav-icon">{link.icon}</span>
+                <span className="help-nav-label">{link.label}</span>
+                <span className="help-nav-hint">{link.hint}</span>
+              </button>
+            ))}
+          </div>
+        </section>
 
-      {showHistory && (
-        <div className="help-history">
-          {history.length === 0 ? (
-            <p className="help-history-empty">No past questions yet.</p>
-          ) : (
-            history.map((e) => (
-              <div key={e.id} className="help-history-item">
-                <strong>Q:</strong> {e.question}
-                <p>
-                  <strong>A:</strong> {e.answer}
-                </p>
-              </div>
-            ))
-          )}
-        </div>
-      )}
+        <button type="button" className="help-link" onClick={() => setShowHistory(!showHistory)}>
+          {showHistory ? 'Hide' : 'View'} past help questions
+        </button>
 
-      <div className="help-main" ref={listRef}>
+        {showHistory && (
+          <div className="help-history">
+            {history.length === 0 ? (
+              <p className="help-history-empty">No past questions yet.</p>
+            ) : (
+              history.map((e) => (
+                <div key={e.id} className="help-history-item">
+                  <strong>Q:</strong> {e.question}
+                  <p>
+                    <strong>A:</strong> {e.answer}
+                  </p>
+                </div>
+              ))
+            )}
+          </div>
+        )}
+
         <div className="help-main-card">
           <div className="help-main-heading">
             <span className="help-main-icon">?</span>
             <h2>Questions &amp; answers</h2>
           </div>
-          <p className="help-main-hint">Filter by topic or tap any question.</p>
+          <p className="help-main-hint">Filter by topic or tap any question. Or type your own below.</p>
 
           <div className="help-category-tabs">
             <button
@@ -184,50 +225,55 @@ export default function HelpWidget({ onOpenChat, onOpenLoveFeed, onNavigate }: H
 
           <div className="help-faq-buttons">
             {filteredFaq.map((item, i) => (
-              <button key={`${item.category}-${i}`} type="button" className="help-faq-btn" onClick={() => showAnswer(item.q, item.a)}>
+              <button key={`${item.category}-${i}`} type="button" className="help-faq-btn" onClick={() => applyMatch(matchFromFaq(item))}>
                 <span className="help-faq-cat">{item.category}</span>
                 {item.q}
               </button>
             ))}
           </div>
         </div>
+      </div>
 
-        {(selectedAnswer || reply) && (
+      <div className="help-ask-dock">
+        {match && (
           <div className="help-answer-box">
-            <h3>{selectedQuestion ? 'Answer' : 'Answer'}</h3>
-            {selectedQuestion && <p className="help-answer-q">{selectedQuestion}</p>}
-            <p>{selectedAnswer || reply || ''}</p>
+            <h3>{match.confidence === 'low' ? 'Let me guide you' : 'Answer'}</h3>
+            {match.userQuestion && <p className="help-answer-q">You asked: {match.userQuestion}</p>}
+            {match.matchedQuestion && match.matchedQuestion !== match.userQuestion && (
+              <p className="help-answer-matched">Matched: {match.matchedQuestion}</p>
+            )}
+            <HelpAnswerRich text={match.answer} onNavigate={handleNav} />
+            {match.targets.length > 0 && (
+              <div className="help-shortcut-row">
+                {match.targets.map((t) => {
+                  const link = navLabel(t);
+                  return (
+                    <button key={t} type="button" className="help-shortcut-chip" onClick={() => handleNav(t)}>
+                      <span>{link?.icon}</span>
+                      {link?.label || t}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+            {match.related.length > 0 && (
+              <div className="help-related">
+                <p>Related</p>
+                {match.related.map((faq) => (
+                  <button key={faq.q} type="button" className="help-related-btn" onClick={() => applyMatch(matchFromFaq(faq, match.userQuestion))}>
+                    {faq.q}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         )}
-
-        <div className="help-actions">
-          <button type="button" className="help-action-btn help-action-primary" onClick={() => onOpenChat?.()}>
-            <span className="help-action-icon">◉</span>
-            Open Communication
-          </button>
-          <button type="button" className="help-action-btn" onClick={() => onNavigate?.('profile')}>
-            <span className="help-action-icon">👤</span>
-            Open Profile
-          </button>
-          <button type="button" className="help-action-btn" onClick={() => onNavigate?.('settings')}>
-            <span className="help-action-icon">⚙️</span>
-            Open Settings
-          </button>
-          <button
-            type="button"
-            className="help-action-btn"
-            onClick={() => showAnswer(HELP_FAQ.find((f) => f.q.includes('report'))!.q, HELP_FAQ.find((f) => f.q.includes('report'))!.a)}
-          >
-            <span className="help-action-icon">🛡️</span>
-            Safety &amp; reporting
-          </button>
-        </div>
 
         <div className="help-input-row">
           <input
             type="text"
             className="help-input"
-            placeholder="Ask anything (e.g. unmatch review, 24h reply, SOS)…"
+            placeholder="Ask anything (e.g. unmatch, 24h reply, where is Settings)…"
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}

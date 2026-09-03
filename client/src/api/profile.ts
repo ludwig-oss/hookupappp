@@ -11,6 +11,16 @@ function getAuthHeaders(): Record<string, string> {
   return {};
 }
 
+export interface PhotoLockStatus {
+  photoVerifiedAt: string | null;
+  createdAt: string;
+  deadlineAt: string;
+  locked: boolean;
+  daysUntilDeadline: number;
+  hasProfilePicture: boolean;
+  message: string;
+}
+
 export interface ProfileData {
   id: string;
   email: string;
@@ -21,6 +31,8 @@ export interface ProfileData {
   gender?: string;
   /** ISO date when user completed selfie verification (anti-catfish). Shown as green badge. */
   photoVerifiedAt?: string | null;
+  createdAt?: string | null;
+  photoLock?: PhotoLockStatus | null;
   /** When viewing another user's profile: true if they are in an active relationship. */
   inRelationship?: boolean;
   highlights: Array<{
@@ -99,9 +111,22 @@ export const profileAPI = {
     return response.data;
   },
 
-  /** Submit selfie verification (look left / center / right) to get the green "verified" badge. */
-  submitPhotoVerification: async (userId: string, selfieImages: string[]): Promise<{ photoVerifiedAt: string }> => {
-    const response = await axios.post(`${API_URL}/verify-photo`, { userId, selfieImages }, { headers: getAuthHeaders() });
+  /** Submit a live selfie that must match the visible profile photo. */
+  submitPhotoVerification: async (
+    userId: string,
+    selfieImages: string[],
+    extras?: { faceDescriptor: number[]; profileFaceDescriptor: number[] }
+  ): Promise<{ photoVerifiedAt: string; photoLock?: PhotoLockStatus }> => {
+    const response = await axios.post(
+      `${API_URL}/verify-photo`,
+      { userId, selfieImages, ...(extras || {}) },
+      { headers: getAuthHeaders() }
+    );
+    return response.data;
+  },
+
+  getPhotoLock: async (): Promise<PhotoLockStatus> => {
+    const response = await axios.get(`${API_URL}/photo-lock`, { headers: getAuthHeaders() });
     return response.data;
   },
 

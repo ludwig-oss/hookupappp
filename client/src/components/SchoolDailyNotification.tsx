@@ -2,7 +2,6 @@ import { useCallback, useContext, useEffect, useState } from 'react';
 import { AuthContext } from '../context/AuthContext';
 import { schoolAPI, TodayLesson } from '../api/school';
 import SchoolScheduleModal from './SchoolScheduleModal';
-import SchoolQuizModal from './SchoolQuizModal';
 import './SchoolNotification.css';
 
 type Props = {
@@ -14,7 +13,6 @@ export default function SchoolDailyNotification({ onOpenGuides }: Props) {
   const setupStorageKey = user?.id ? `school-setup-${user.id}` : null;
   const [lesson, setLesson] = useState<TodayLesson | null>(null);
   const [visible, setVisible] = useState(false);
-  const [showQuiz, setShowQuiz] = useState(false);
   const [showSetup, setShowSetup] = useState(false);
   const [setupSavedLocally, setSetupSavedLocally] = useState(
     () => setupStorageKey != null && localStorage.getItem(setupStorageKey) === '1',
@@ -105,25 +103,6 @@ export default function SchoolDailyNotification({ onOpenGuides }: Props) {
 
   const topic = lesson.currentTopic;
 
-  if (showQuiz) {
-    return (
-      <SchoolQuizModal
-        topic={topic}
-        onClose={() => setShowQuiz(false)}
-        onResult={(passed) => {
-          setShowQuiz(false);
-          if (passed) {
-            setToast('You passed — next class unlocked!');
-            setVisible(false);
-            refresh();
-          } else {
-            setToast('Keep practicing with a guide today.');
-          }
-        }}
-      />
-    );
-  }
-
   return (
     <div className="school-overlay" role="dialog" aria-modal="true">
       <div className="school-card">
@@ -176,9 +155,6 @@ export default function SchoolDailyNotification({ onOpenGuides }: Props) {
               </button>
               <button type="button" className="school-btn-secondary" onClick={complete} disabled={loading}>
                 {loading ? '…' : 'I did today’s lesson ✓'}
-              </button>
-              <button type="button" className="school-btn-secondary" onClick={() => setShowQuiz(true)}>
-                I&apos;m already good — take skip quiz
               </button>
             </>
           )}

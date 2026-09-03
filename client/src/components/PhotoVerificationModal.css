@@ -5,7 +5,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 10001;
+  z-index: 10060;
   padding: 16px;
   box-sizing: border-box;
 }
@@ -50,6 +50,29 @@
   font-size: 0.9rem;
   line-height: 1.45;
   color: rgba(255, 255, 255, 0.85);
+}
+
+.photo-verification-profile-preview {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+  padding: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 10px;
+}
+
+.photo-verification-profile-preview img {
+  width: 64px;
+  height: 64px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 2px solid rgba(16, 185, 129, 0.6);
+}
+
+.photo-verification-profile-preview span {
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.75);
 }
 
 .photo-verification-error {

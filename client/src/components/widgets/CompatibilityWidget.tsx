@@ -17,8 +17,9 @@ import {
 import CoachVoteWidget from './CoachVoteWidget';
 import GuidePrepayPanel from './GuidePrepayPanel';
 import { prepareAndUploadFile } from '../../lib/uploadMedia';
-import { formatAxiosError } from '../../lib/apiError';
+import { COUPLE_GUIDE_CATEGORY_IDS } from '../../constants/improvementCategories';
 import { notifyDevice } from '../../lib/deviceNotify';
+import { guideProgramAPI, type GuideProgramGrade, type PendingClientEval } from '../../api/guideProgram';
 import './Widget.css';
 
 const VIDEO_CALL_BASE = 'https://meet.jit.si';
@@ -74,6 +75,8 @@ export default function CompatibilityWidget() {
   const [availStart, setAvailStart] = useState('');
   const [availEnd, setAvailEnd] = useState('');
   const [walletSummary, setWalletSummary] = useState<GuideWalletSummary | null>(null);
+  const [pendingClientEvals, setPendingClientEvals] = useState<PendingClientEval[]>([]);
+  const [evalDraft, setEvalDraft] = useState<Record<string, { progressed: boolean | null; grade: GuideProgramGrade | '' }>>({});
   const [withdrawAmount, setWithdrawAmount] = useState('');
   const [walletPaypal, setWalletPaypal] = useState('');
   const [pendingGuideApps, setPendingGuideApps] = useState<GuideApplication[]>([]);
@@ -166,6 +169,7 @@ export default function CompatibilityWidget() {
       improvementAPI.getGuideRequests(myGuide.id).then(r => setGuideRequestsIncoming(r.requests || [])).catch(() => setGuideRequestsIncoming([]));
       improvementAPI.getGuideBookings(myGuide.id).then(r => setGuideBookings(r.bookings || [])).catch(() => setGuideBookings([]));
       improvementAPI.listPendingGuideApplications().then(r => setPendingGuideApps(r.applications || [])).catch(() => setPendingGuideApps([]));
+      guideProgramAPI.getPendingEvals().then(r => setPendingClientEvals(r.pending || [])).catch(() => setPendingClientEvals([]));
     }
   }, [myGuide?.id]);
 
@@ -291,6 +295,7 @@ export default function CompatibilityWidget() {
       setRequestMessage('');
       setView('guides');
       loadMyRequests();
+      window.dispatchEvent(new Event('guide-program:updated'));
       alert('Request sent! The expert will respond soon.');
     } catch (err: any) {
       setError(err.response?.data?.error || 'Failed to send request');
@@ -446,7 +451,8 @@ export default function CompatibilityWidget() {
       setApplyProofPerCategory({});
       notifyDevice(
         res.autoApproved ? 'You are a qualified guide' : 'Application received',
-        res.message
+        res.message,
+        'safety'
       );
       if (res.autoApproved && user?.id) {
         const g = await improvementAPI.getMyGuideProfile(user.id);
@@ -492,7 +498,7 @@ export default function CompatibilityWidget() {
       await improvementAPI.approveGuideApplication(applicationId);
       const r = await improvementAPI.listPendingGuideApplications();
       setPendingGuideApps(r.applications || []);
-      notifyDevice('Applicant approved', 'They were notified that they are qualified and can start guiding.');
+      notifyDevice('Applicant approved', 'They were notified that they are qualified and can start guiding.', 'safety');
     } catch (err: any) {
       setError(err.response?.data?.error || 'Could not approve');
     } finally {
@@ -971,6 +977,19 @@ export default function CompatibilityWidget() {
       {view === 'main' && (guideSeekStep === 'ready' || guideSeekStep === 'skipped') && (
         <>
           <CoachVoteWidget />
+          <div style={{ marginBottom: 16, padding: 12, border: '2px solid rgba(244,114,182,0.45)', borderRadius: 10, background: 'rgba(244,114,182,0.08)' }}>
+            <div style={{ color: '#f9a8d4', fontFamily: 'Orbitron, monospace', fontSize: 12, marginBottom: 8 }}>Couples in a relationship</div>
+            <p style={{ fontSize: 12, color: '#e5e7eb', margin: '0 0 10px' }}>
+              Couples get a guide for relationship problems too. Browse couple guides, or apply if you are good at helping others stay together.
+            </p>
+            <button
+              type="button"
+              onClick={() => void loadGuidesForCategory('couples-relationship')}
+              style={{ padding: '8px 14px', background: 'rgba(244,114,182,0.2)', border: '2px solid #f472b6', color: '#f9a8d4', borderRadius: 8, cursor: 'pointer' }}
+            >
+              Find a couple guide
+            </button>
+          </div>
           <div style={{ marginBottom: '16px' }}>
             <label style={{ display: 'block', marginBottom: '8px', color: '#00d4ff', fontSize: '12px', fontFamily: 'Orbitron, monospace' }}>Search by problem</label>
             <div style={{ display: 'flex', gap: '8px' }}>
@@ -1154,11 +1173,27 @@ export default function CompatibilityWidget() {
           <button type="button" onClick={() => setView('main')} style={{ marginBottom: '12px', background: 'transparent', border: '2px solid #00d4ff', color: '#00d4ff', padding: '8px 14px', borderRadius: '8px', fontFamily: 'Orbitron, monospace', cursor: 'pointer' }}>← Back</button>
           <h3 style={{ color: '#00d4ff', marginBottom: '8px', fontFamily: 'Orbitron, monospace' }}>Apply to be a guide</h3>
           <p style={{ fontSize: '12px', color: '#9ca3af', marginBottom: '16px' }}>
-            For each area: explain why you&apos;re good, then add proof (Instagram, photos, or video). If fewer than 10 qualified guides exist yet, you are approved automatically. Otherwise a qualified guide reviews your profile and proofs, and you get an answer within 48 hours.
+            For each area: explain why you&apos;re good, then add proof. Couples can apply for relationship-problem areas if they are good at helping others stay together.
           </p>
-          <label style={{ display: 'block', marginBottom: '8px', color: '#00d4ff', fontSize: '12px' }}>Categories (select all that apply)</label>
+          <label style={{ display: 'block', marginBottom: '8px', color: '#f472b6', fontSize: '12px' }}>Couples &amp; relationship (add if you are good at this and can help others)</label>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '12px', maxHeight: '120px', overflowY: 'auto' }}>
+            {categories.filter(cat => COUPLE_GUIDE_CATEGORY_IDS.includes(cat.id)).map(cat => (
+              <label key={cat.id} style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '12px' }}>
+                <input
+                  type="checkbox"
+                  checked={applyCategories.includes(cat.id)}
+                  onChange={e => {
+                    if (e.target.checked) setApplyCategories(prev => [...prev, cat.id]);
+                    else setApplyCategories(prev => prev.filter(id => id !== cat.id));
+                  }}
+                />
+                {cat.icon} {cat.name}
+              </label>
+            ))}
+          </div>
+          <label style={{ display: 'block', marginBottom: '8px', color: '#00d4ff', fontSize: '12px' }}>Other categories</label>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '16px', maxHeight: '140px', overflowY: 'auto' }}>
-            {categories.map(cat => (
+            {categories.filter(cat => !COUPLE_GUIDE_CATEGORY_IDS.includes(cat.id)).map(cat => (
               <label key={cat.id} style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '12px' }}>
                 <input
                   type="checkbox"
@@ -1301,6 +1336,68 @@ export default function CompatibilityWidget() {
         <div>
           <button type="button" onClick={() => setView('main')} style={{ marginBottom: '12px', background: 'transparent', border: '2px solid #00d4ff', color: '#00d4ff', padding: '8px 14px', borderRadius: '8px', fontFamily: 'Orbitron, monospace', cursor: 'pointer' }}>← Back to Compatibility</button>
           <h3 style={{ color: '#22c55e', marginBottom: '12px', fontFamily: 'Orbitron, monospace' }}>Expert dashboard</h3>
+          {pendingClientEvals.length > 0 && (
+            <div style={{ marginBottom: 16, padding: 12, border: '2px solid #a78bfa', borderRadius: 10, background: 'rgba(99,102,241,0.12)' }}>
+              <p style={{ color: '#c4b5fd', margin: '0 0 10px', fontSize: 13 }}>
+                2-month programs ended. Grade whether each client progressed so they can continue.
+              </p>
+              {pendingClientEvals.map((ev) => {
+                const draft = evalDraft[ev.userId] || { progressed: null, grade: '' as const };
+                return (
+                  <div key={ev.userId} style={{ marginBottom: 12 }}>
+                    <div style={{ color: '#fff', fontWeight: 700, marginBottom: 6 }}>{ev.userName}</div>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 6 }}>
+                      <button
+                        type="button"
+                        onClick={() => setEvalDraft((d) => ({ ...d, [ev.userId]: { ...draft, progressed: true } }))}
+                        style={{ padding: '6px 10px', borderRadius: 8, cursor: 'pointer', border: draft.progressed === true ? '2px solid #22c55e' : '1px solid #64748b', background: 'transparent', color: '#bbf7d0' }}
+                      >
+                        Progressed
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setEvalDraft((d) => ({ ...d, [ev.userId]: { ...draft, progressed: false } }))}
+                        style={{ padding: '6px 10px', borderRadius: 8, cursor: 'pointer', border: draft.progressed === false ? '2px solid #ef4444' : '1px solid #64748b', background: 'transparent', color: '#fecaca' }}
+                      >
+                        Not yet
+                      </button>
+                      {(['A', 'B', 'C', 'D', 'F'] as GuideProgramGrade[]).map((g) => (
+                        <button
+                          key={g}
+                          type="button"
+                          onClick={() => setEvalDraft((d) => ({ ...d, [ev.userId]: { ...draft, grade: g } }))}
+                          style={{ padding: '6px 10px', borderRadius: 8, cursor: 'pointer', border: draft.grade === g ? '2px solid #a78bfa' : '1px solid #64748b', background: 'transparent', color: '#fff' }}
+                        >
+                          {g}
+                        </button>
+                      ))}
+                    </div>
+                    <button
+                      type="button"
+                      disabled={loading || draft.progressed === null || !draft.grade}
+                      onClick={async () => {
+                        if (draft.progressed === null || !draft.grade) return;
+                        setLoading(true);
+                        try {
+                          await guideProgramAPI.evaluateClient(ev.userId, draft.progressed, draft.grade);
+                          const next = await guideProgramAPI.getPendingEvals();
+                          setPendingClientEvals(next.pending || []);
+                          window.dispatchEvent(new Event('guide-program:updated'));
+                        } catch (err: any) {
+                          setError(err.response?.data?.error || 'Could not save grade');
+                        } finally {
+                          setLoading(false);
+                        }
+                      }}
+                      style={{ padding: '8px 14px', background: 'rgba(167,139,250,0.3)', border: '2px solid #a78bfa', color: '#ddd6fe', borderRadius: 8, cursor: 'pointer' }}
+                    >
+                      Submit grade
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '16px' }}>
             {(['requests', 'applications', 'upcoming', 'previous', 'availability', 'wallet'] as const).map(tab => (
               <button

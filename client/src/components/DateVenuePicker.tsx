@@ -87,7 +87,11 @@ const DateVenuePicker = ({ otherUserId, userId, onAgreed }: DateVenuePickerProps
       <button type="button" className="chat-back-btn" onClick={() => load(true)} disabled={loading}>
         Shuffle 50 new places
       </button>
-      <div className="date-venue-list">
+      <p className="date-venue-scroll-hint">Scroll the list to see more spots</p>
+      <div
+        className="date-venue-list"
+        onWheel={(e) => e.stopPropagation()}
+      >
         {venues.map((v) => (
           <button
             key={v.id}
@@ -97,8 +101,8 @@ const DateVenuePicker = ({ otherUserId, userId, onAgreed }: DateVenuePickerProps
             disabled={voting}
           >
             <span className="date-venue-type">{v.type}</span>
-            <strong>{v.name}</strong>
-            <span>{v.description}</span>
+            <strong className="date-venue-name">{v.name}</strong>
+            <span className="date-venue-desc">{v.description}</span>
             <span className="date-venue-cost">{v.estimatedCost} · {v.splitBillNote}</span>
           </button>
         ))}

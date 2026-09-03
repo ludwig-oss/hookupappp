@@ -60,3 +60,23 @@ export async function subscribeUserToWebPush(): Promise<boolean> {
     return false;
   }
 }
+
+/** Unsubscribe this device when the user turns push notifications off. */
+export async function unsubscribeUserFromWebPush(): Promise<void> {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+  try {
+    const reg = await navigator.serviceWorker.getRegistration('/');
+    const sub = await (reg || (await registerServiceWorker()))?.pushManager.getSubscription();
+    if (!sub) return;
+    try {
+      await axios.delete(`${API_BASE}/api/notifications/push-subscribe`, {
+        data: { endpoint: sub.endpoint },
+      });
+    } catch {
+      /* still drop the browser subscription */
+    }
+    await sub.unsubscribe();
+  } catch {
+    /* ignore */
+  }
+}

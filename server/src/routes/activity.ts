@@ -12,14 +12,15 @@ import {
   signNDAHandler,
 } from '../controllers/activityController.js';
 import { authenticateToken } from '../middleware/auth.js';
+import { requirePhotoUnlocked } from '../middleware/requirePhotoUnlocked.js';
 
 const router = express.Router();
 router.use(authenticateToken);
 
 router.get('/region', getRegionUsers);
-router.post('/interest', sendInterestHandler);
-router.post('/interest/accept', acceptInterestHandler);
-router.post('/interest/reject', rejectInterestHandler);
+router.post('/interest', requirePhotoUnlocked, sendInterestHandler);
+router.post('/interest/accept', requirePhotoUnlocked, acceptInterestHandler);
+router.post('/interest/reject', requirePhotoUnlocked, rejectInterestHandler);
 router.get('/interests', getMyInterests);
 router.post('/pre-comm', savePreCommHandler);
 router.get('/pre-comm/:interestId', getPreCommForInterest);

@@ -19,6 +19,8 @@ export interface DatingPost {
     userName: string;
     content: string;
     createdAt: Date | string;
+    replyToId?: string | null;
+    replyToUserName?: string | null;
   }>;
   createdAt: Date | string;
   user?: {

@@ -229,6 +229,26 @@ If you didn't create an account, please ignore this email.
   }
 }
 
+export async function sendAppNotificationEmail(
+  to: string,
+  name: string,
+  subject: string,
+  body: string
+): Promise<void> {
+  try {
+    const emailTransporter = await initializeTransporter();
+    await emailTransporter.sendMail({
+      from: process.env.SMTP_FROM?.trim() || smtpUser() || 'noreply@localhost',
+      to,
+      subject,
+      text: `Hi ${name},\n\n${body}\n`,
+      html: `<p>Hi ${name},</p><p>${body.replace(/</g, '&lt;')}</p>`,
+    });
+  } catch (error) {
+    console.warn('Notification email failed:', (error as Error).message);
+  }
+}
+
 
 
 

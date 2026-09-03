@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { API_BASE } from './config';
+import { cacheNotifyPrefs } from '../lib/notifyPrefsCache';
 
 const API_URL = API_BASE + '/api/settings';
 
@@ -141,7 +142,9 @@ function wrapSettings(data: { settings?: Partial<UserSettings> } | Partial<UserS
   settings: UserSettings;
 } {
   const settings = data && typeof data === 'object' && 'settings' in data ? data.settings : data;
-  return { settings: mergeUserSettings(settings as Partial<UserSettings> | undefined) };
+  const merged = mergeUserSettings(settings as Partial<UserSettings> | undefined);
+  cacheNotifyPrefs(merged);
+  return { settings: merged };
 }
 
 export const settingsAPI = {

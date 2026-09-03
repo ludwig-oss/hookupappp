@@ -37,8 +37,8 @@ export default function SchoolQuizModal({ topic, onClose, onResult }: Props) {
   return (
     <div className="school-overlay" role="dialog" aria-modal="true">
       <div className="school-card school-quiz-card">
-        <p className="school-badge">Skip quiz — {topic.title}</p>
-        <p className="school-sub">Think you&apos;re already good? Pass to skip to the next class.</p>
+        <p className="school-badge">Practice quiz — {topic.title}</p>
+        <p className="school-sub">Answer to check your understanding — this does not skip a class or replace a guide.</p>
         {error && <div className="school-error">{error}</div>}
         {resultMsg && <div className="school-success">{resultMsg}</div>}
         {topic.quiz.map((q) => (

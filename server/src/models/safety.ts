@@ -54,6 +54,8 @@ export interface MeetupPlan {
   idVerificationStatus?: 'none' | 'pending_review' | 'verified' | 'rejected';
   idVerifiedAt?: string | null;
   idVerificationCountry?: string | null;
+  /** When ID images were deleted after they confirmed they arrived home safe. */
+  idPurgedAt?: string | null;
   /** Live date safety session */
   dateSessionStatus?: 'scheduled' | 'active' | 'completed' | 'missing';
   trackingStartedAt?: string | null;

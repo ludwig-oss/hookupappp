@@ -48,6 +48,7 @@ import {
   widgetAnswersFromProof,
 } from '../models/improvement.js';
 import { getUserById } from '../models/user.js';
+import { startProgramOnGuideAccept } from '../models/guideProgram.js';
 import {
   notifyGuideApplicationReceived,
   notifyGuideApplicationDecision,
@@ -773,7 +774,10 @@ export const acceptRequest = async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Request ID is required' });
     }
 
-    await acceptGuideRequest(requestId);
+    const request = await acceptGuideRequest(requestId);
+    if (request) {
+      await startProgramOnGuideAccept(request.userId, request.guideId);
+    }
     res.json({ message: 'Request accepted' });
   } catch (error) {
     console.error('Accept request error:', error);

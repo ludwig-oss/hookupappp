@@ -7,6 +7,7 @@ import PhotoVerificationModal from '../components/PhotoVerificationModal';
 import { activityAPI } from '../api/activity';
 import { improvementAPI } from '../api/improvement';
 import { reviewsAPI, Review, OverallStarRating, REVIEW_ATTRIBUTE_LABELS } from '../api/reviews';
+import ExperienceReviewModal from '../components/ExperienceReviewModal';
 import HealthProofSection from '../components/HealthProofSection';
 import { healthAPI, HealthTest } from '../api/health';
 import { postsAPI, DatingPost } from '../api/posts';
@@ -16,6 +17,7 @@ import { useTranslation } from '../context/LanguageContext';
 import { chatAPI } from '../api/chat';
 import { isVideoMediaUrl } from '../lib/media';
 import { prepareAndUploadFile } from '../lib/uploadMedia';
+import { MEDIA_FILE_ACCEPT, isProbablyImageFile, isProbablyVideoFile } from '../lib/compressVideo';
 import { formatAxiosError } from '../lib/apiError';
 import { connectionsAPI } from '../api/connections';
 import { requestGpsFromUserTap, markLocationGranted } from '../lib/locationSession';
@@ -75,12 +77,15 @@ const Profile = () => {
   const [showStoryAudiencePicker, setShowStoryAudiencePicker] = useState(false);
   const [storyAudienceBusy, setStoryAudienceBusy] = useState<'all' | 'closeFriends' | null>(null);
   const [viewingStories, setViewingStories] = useState<{ items: any[]; index: number } | null>(null);
-  const [closeFriendCandidates, setCloseFriendCandidates] = useState<Array<{ id: string; name: string }>>([]);
+  const [closeFriendCandidates, setCloseFriendCandidates] = useState<Array<{ id: string; name: string; username?: string }>>([]);
   const [highlightPickForStory, setHighlightPickForStory] = useState<string>('__new__');
   const [reviews, setReviews] = useState<Review[]>([]);
   const [overallRating, setOverallRating] = useState<OverallStarRating | null>(null);
+  const [myReview, setMyReview] = useState<Review | null>(null);
+  const [showReviewModal, setShowReviewModal] = useState(false);
   const [replyDraft, setReplyDraft] = useState<Record<string, string>>({});
   const [replyingId, setReplyingId] = useState<string | null>(null);
+  const [replyError, setReplyError] = useState<Record<string, string>>({});
   const [courtDraft, setCourtDraft] = useState<Record<string, { summary: string; note: string; confirm: boolean }>>({});
   const [courtSubmittingId, setCourtSubmittingId] = useState<string | null>(null);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
@@ -103,6 +108,7 @@ const Profile = () => {
   const [profilePosts, setProfilePosts] = useState<DatingPost[]>([]);
   const [expandedPostComments, setExpandedPostComments] = useState<string | null>(null);
   const [postCommentDraft, setPostCommentDraft] = useState<Record<string, string>>({});
+  const [postReplyTarget, setPostReplyTarget] = useState<Record<string, { id: string; userName: string } | null>>({});
   const [healthViewStatus, setHealthViewStatus] = useState<{
     request: { status: string } | null;
     canView: boolean;
@@ -136,6 +142,8 @@ const Profile = () => {
       setProfile(null);
       setReviews([]);
       setOverallRating(null);
+      setMyReview(null);
+      setShowReviewModal(false);
       setProfilePosts([]);
       setLoading(true);
       loadProfileFromServer();
@@ -240,14 +248,18 @@ const Profile = () => {
           setCelebConnections([]);
         }
       }
-      const [improvement, revData, postsResult] = await Promise.all([
+      const [improvement, revData, postsResult, mine] = await Promise.all([
         improvementAPI.getUserImprovement(String(targetId)).catch(() => ({ improvementPercentage: 0 })),
         reviewsAPI.getReviews(String(targetId)).catch(() => ({ reviews: [] as Review[], overall: null })),
         postsAPI.getPostsByUser(String(targetId)).catch(() => ({ posts: [] as DatingPost[] })),
+        own
+          ? Promise.resolve({ review: null as Review | null })
+          : reviewsAPI.getMyReviewFor(String(targetId)).catch(() => ({ review: null as Review | null })),
       ]);
       setMatchScore(improvement.improvementPercentage ?? 0);
       setReviews(revData.reviews);
       setOverallRating(revData.overall ?? null);
+      setMyReview(mine.review);
       setProfilePosts(postsResult.posts);
       if (!own) {
         setHealthViewLoading(true);
@@ -421,7 +433,7 @@ const Profile = () => {
     const file = e.target.files?.[0];
     e.target.value = '';
     if (!file) return;
-    if (!file.type.startsWith('image/') && !file.type.startsWith('video/')) {
+    if (!isProbablyImageFile(file) && !isProbablyVideoFile(file)) {
       setError('Please choose a photo or video.');
       return;
     }
@@ -445,7 +457,7 @@ const Profile = () => {
       setPendingStoryFile(null);
       await loadProfile();
     } catch (err: unknown) {
-      setError(formatAxiosError(err, 'Story upload failed. Try a smaller photo or a shorter video.'));
+      setError(formatAxiosError(err, 'Story upload failed. Check your connection and try again.'));
     } finally {
       uploadingMediaRef.current = false;
       setStoryAudienceBusy(null);
@@ -476,10 +488,9 @@ const Profile = () => {
   const handleLikeProfilePost = async (postId: string) => {
     try {
       await postsAPI.likePost(postId);
-      const { posts } = await postsAPI.getPostsByUser(viewingUserId || '');
-      setProfilePosts(posts);
-    } catch {
-      /* ignore */
+      setProfilePosts((prev) => prev.map((p) => (p.id === postId ? { ...p, likes: (p.likes || 0) + 1 } : p)));
+    } catch (err: unknown) {
+      setError(formatAxiosError(err, 'Could not like this post.'));
     }
   };
 
@@ -487,12 +498,32 @@ const Profile = () => {
     const text = postCommentDraft[postId]?.trim();
     if (!text) return;
     try {
-      await postsAPI.commentOnPost(postId, text);
+      await postsAPI.commentOnPost(postId, text, postReplyTarget[postId] || null);
       setPostCommentDraft((prev) => ({ ...prev, [postId]: '' }));
-      const { posts } = await postsAPI.getPostsByUser(viewingUserId || '');
+      setPostReplyTarget((prev) => ({ ...prev, [postId]: null }));
+      const { posts } = await postsAPI.getPostsByUser(viewingUserId || user?.id || '');
       setProfilePosts(posts);
-    } catch {
-      setError('Could not comment');
+    } catch (err: unknown) {
+      setError(formatAxiosError(err, 'Could not comment.'));
+    }
+  };
+
+  const handleShareProfilePost = async (postId: string) => {
+    try {
+      await postsAPI.sharePost(postId);
+      navigate('/home', { state: { openWidget: 'chat' } });
+    } catch (err: unknown) {
+      setError(formatAxiosError(err, 'Could not share this post.'));
+    }
+  };
+
+  const handleDeleteProfilePost = async (postId: string) => {
+    if (!window.confirm('Delete this post?')) return;
+    try {
+      await postsAPI.deletePost(postId);
+      setProfilePosts((prev) => prev.filter((p) => p.id !== postId));
+    } catch (err: unknown) {
+      setError(formatAxiosError(err, 'You can only delete your own posts.'));
     }
   };
 
@@ -523,7 +554,7 @@ const Profile = () => {
       const mediaUrl = await prepareAndUploadFile(file, 'profile');
       await profileAPI.uploadProfilePicture(mediaUrl, user.id);
       await loadProfile();
-      if (!file.type.startsWith('video/')) {
+      if (!isProbablyVideoFile(file)) {
         setShowPhotoVerification(true);
       }
     } catch (err: unknown) {
@@ -539,7 +570,7 @@ const Profile = () => {
     const highlightId = selectedHighlightId;
     e.target.value = '';
     if (!file || !user?.id) return;
-    if (!file.type.startsWith('image/') && !file.type.startsWith('video/')) {
+    if (!isProbablyImageFile(file) && !isProbablyVideoFile(file)) {
       setError('Please choose a photo or video.');
       return;
     }
@@ -622,7 +653,7 @@ const Profile = () => {
   const storiesSorted = [...(profile.stories || [])].sort(
     (a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
   );
-  const closeFriendIds = (profile as any).closeFriendIds || [];
+  const closeFriendIds = ((profile as any).closeFriendIds || []).map(String);
 
   return (
     <div className="dashboard-container">
@@ -700,7 +731,7 @@ const Profile = () => {
                       }}>Remove</button>
                     )}
                   </div>
-                  <input ref={fileInputRef} type="file" accept="image/*,video/*" style={{ display: 'none' }} onChange={handleProfilePictureChange} />
+                  <input ref={fileInputRef} type="file" accept={MEDIA_FILE_ACCEPT} style={{ display: 'none' }} onChange={handleProfilePictureChange} />
                 </>
               )}
             </div>
@@ -803,7 +834,7 @@ const Profile = () => {
                 )}
               </div>
               {isOwnProfile && <p className="stories-expires-note">{t('storyExpiresNote')}</p>}
-              {isOwnProfile && <input ref={storyInputRef} type="file" accept="image/*,video/*" style={{ display: 'none' }} onChange={handleStoryFileChange} />}
+              {isOwnProfile && <input ref={storyInputRef} type="file" accept={MEDIA_FILE_ACCEPT} style={{ display: 'none' }} onChange={handleStoryFileChange} />}
               <div className="stories-rings-scroll">
                 {isOwnProfile && (
                 <button type="button" className="story-ring story-ring-add" onClick={handleAddStoryClick} disabled={uploading || !!storyAudienceBusy}>
@@ -838,19 +869,20 @@ const Profile = () => {
               {isOwnProfile && (
               <details className="close-friends-details">
                 <summary className="close-friends-summary">{t('manageCloseFriends')}</summary>
-                <p className="close-friends-hint">{t('storyAudienceCloseFriends')} — {t('closeFriends').toLowerCase()}.</p>
+                <p className="close-friends-hint">{t('closeFriendsHint')}</p>
                 <div className="close-friends-checklist">
                   {closeFriendCandidates.map((c) => {
-                    const checked = closeFriendIds.includes(c.id);
+                    const checked = closeFriendIds.includes(String(c.id));
                     return (
                       <label key={c.id} className="close-friends-row">
                         <input
                           type="checkbox"
                           checked={checked}
                           onChange={async (e) => {
+                            const id = String(c.id);
                             const next = e.target.checked
-                              ? [...closeFriendIds, c.id]
-                              : closeFriendIds.filter((id: string) => id !== c.id);
+                              ? [...closeFriendIds.filter((x: string) => x !== id), id]
+                              : closeFriendIds.filter((x: string) => x !== id);
                             try {
                               await profileAPI.updateProfile({ closeFriendIds: next });
                               await loadProfile();
@@ -859,12 +891,12 @@ const Profile = () => {
                             }
                           }}
                         />
-                        <span>{c.name}</span>
+                        <span>{c.name}{c.username ? ` @${c.username}` : ''}</span>
                       </label>
                     );
                   })}
                   {closeFriendCandidates.length === 0 && (
-                    <p className="close-friends-empty">Chat with people first — they will appear here.</p>
+                    <p className="close-friends-empty">People you can add will appear here.</p>
                   )}
                 </div>
               </details>
@@ -878,7 +910,7 @@ const Profile = () => {
                   <button type="button" className="add-highlight-btn" onClick={() => handleHighlightClick()} disabled={uploading || !!storyAudienceBusy}>+</button>
                 )}
               </div>
-              {isOwnProfile && <input ref={highlightInputRef} type="file" accept="image/*,video/*" style={{ display: 'none' }} onChange={handleHighlightChange} />}
+              {isOwnProfile && <input ref={highlightInputRef} type="file" accept={MEDIA_FILE_ACCEPT} style={{ display: 'none' }} onChange={handleHighlightChange} />}
               <div className="highlights-scrollable">
                 {highlights.map((highlight: any) => {
                   const items = highlight.items || (highlight.imageUrl ? [{ id: highlight.id + '_item', imageUrl: highlight.imageUrl }] : []);
@@ -954,12 +986,12 @@ const Profile = () => {
                   </label>
 
                   <div style={{ marginBottom: 12 }}>
-                    <div className="highlights-title" style={{ fontSize: 13, marginBottom: 6 }}>1. Selfie verification (look all sides)</div>
+                    <div className="highlights-title" style={{ fontSize: 13, marginBottom: 6 }}>1. Selfie verification (match your profile photo)</div>
                     {(profile as any).photoVerifiedAt ? (
-                      <p style={{ fontSize: 12, color: '#00d4ff' }}>✓ Selfie verification done</p>
+                      <p style={{ fontSize: 12, color: '#00d4ff' }}>✓ Selfie matches your visible profile photo</p>
                     ) : (
                       <>
-                        <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.8)', marginBottom: 8 }}>Complete selfie verification first: take photos looking left, center, and right.</p>
+                        <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.8)', marginBottom: 8 }}>Take a live selfie. We compare it to the profile photo others see so people know it is you.</p>
                         <button type="button" className="profile-location-btn" onClick={() => setShowPhotoVerification(true)}>Open selfie verification</button>
                       </>
                     )}
@@ -1221,19 +1253,47 @@ const Profile = () => {
                           <span className="love-feed-icon">💬</span>
                           <span>{post.comments?.length || 0}</span>
                         </button>
+                        <button type="button" className="love-feed-action" onClick={() => handleShareProfilePost(post.id)}>
+                          <span className="love-feed-icon">↗</span>
+                          <span>Share</span>
+                        </button>
                       </div>
+                      {isOwnProfile && (
+                        <button type="button" className="love-feed-action love-feed-delete" onClick={() => handleDeleteProfilePost(post.id)}>
+                          <span className="love-feed-icon">🗑</span>
+                          <span>Delete</span>
+                        </button>
+                      )}
                     </div>
                     {expandedPostComments === post.id && (
                       <div className="love-feed-comments">
                         {(post.comments || []).map((c) => (
-                          <div key={c.id} className="love-feed-comment">
-                            <strong>{c.userName}</strong>: {c.content}
+                          <div key={c.id} className={`love-feed-comment${c.replyToId ? ' is-reply' : ''}`}>
+                            <p>
+                              <strong>{c.userName}</strong>
+                              {c.replyToUserName ? <span className="love-feed-reply-to"> → {c.replyToUserName}</span> : null}
+                              {': '}
+                              {c.content}
+                            </p>
+                            <button
+                              type="button"
+                              className="love-feed-comment-reply-btn"
+                              onClick={() => setPostReplyTarget((prev) => ({ ...prev, [post.id]: { id: c.id, userName: c.userName } }))}
+                            >
+                              Reply
+                            </button>
                           </div>
                         ))}
                         <div className="love-feed-comment-form">
+                          {postReplyTarget[post.id] && (
+                            <p className="love-feed-replying">
+                              Replying to {postReplyTarget[post.id]!.userName}
+                              <button type="button" onClick={() => setPostReplyTarget((prev) => ({ ...prev, [post.id]: null }))}>Cancel</button>
+                            </p>
+                          )}
                           <input
                             type="text"
-                            placeholder="Write a comment..."
+                            placeholder={isOwnProfile ? 'Reply to comments on your post…' : 'Write a comment...'}
                             value={postCommentDraft[post.id] ?? ''}
                             onChange={(e) => setPostCommentDraft((prev) => ({ ...prev, [post.id]: e.target.value }))}
                             onKeyDown={(e) => { if (e.key === 'Enter') handleCommentProfilePost(post.id); }}
@@ -1252,9 +1312,18 @@ const Profile = () => {
             <div className="highlights-title">{t('reviews').toUpperCase()}</div>
             <p className="profile-reviews-note">
               {isOwnProfile
-                ? 'Reviews cannot be deleted. You can reply once. False or malicious claims may lead to ban or suspension.'
-                : 'Reviews other people left for them. You can like and comment on their posts above.'}
+                ? 'Reviews cannot be deleted — not by you, and not by anyone else. You can reply once to each review. False or malicious claims may lead to ban or suspension.'
+                : 'Share your experience with them. Reviews stay on their profile forever — they cannot delete them, but they can reply once.'}
             </p>
+            {!isOwnProfile && viewingUserId && (
+              <button
+                type="button"
+                className="profile-save-btn profile-leave-review-btn"
+                onClick={() => setShowReviewModal(true)}
+              >
+                {myReview ? t('updateReview') : t('leaveReview')}
+              </button>
+            )}
             {overallRating && overallRating.totalReviews > 0 && (
               <div className="profile-overall-rating">
                 <span className="profile-overall-stars" aria-label={`${overallRating.averageStars} out of 5`}>
@@ -1306,35 +1375,68 @@ const Profile = () => {
                         </span>
                       </div>
                     )}
-                    {r.replyText && <p className="profile-review-reply"><em>{isOwnProfile ? 'Your reply:' : 'Reply:'}</em> {r.replyText}</p>}
+                    {r.replyText && (
+                      <p className="profile-review-reply">
+                        <em>{isOwnProfile ? 'Your reply:' : 'Reply:'}</em> {r.replyText}
+                      </p>
+                    )}
                     {!r.replyText && isOwnProfile && user?.id && (
                       <div className="profile-review-reply-form">
-                        <input
-                          type="text"
-                          placeholder="Reply to this review..."
+                        <textarea
+                          rows={2}
+                          placeholder="Reply to this review (once, cannot be deleted)…"
                           value={replyDraft[r.id] ?? ''}
-                          onChange={(e) => setReplyDraft((prev) => ({ ...prev, [r.id]: e.target.value }))}
+                          onChange={(e) => {
+                            setReplyDraft((prev) => ({ ...prev, [r.id]: e.target.value }));
+                            if (replyError[r.id]) {
+                              setReplyError((prev) => {
+                                const n = { ...prev };
+                                delete n[r.id];
+                                return n;
+                              });
+                            }
+                          }}
                           className="profile-input"
+                          maxLength={1000}
                         />
                         <button
                           type="button"
                           className="avatar-btn"
                           disabled={replyingId === r.id || !(replyDraft[r.id]?.trim())}
                           onClick={async () => {
-                            if (!replyDraft[r.id]?.trim()) return;
+                            const text = replyDraft[r.id]?.trim();
+                            if (!text) return;
                             setReplyingId(r.id);
                             try {
-                              await reviewsAPI.replyToReview(r.id, replyDraft[r.id].trim());
-                              const text = replyDraft[r.id].trim();
-                              setReplyDraft((prev) => { const n = { ...prev }; delete n[r.id]; return n; });
-                              setReviews((prev) => prev.map((rev) => rev.id === r.id ? { ...rev, replyText: text, repliedAt: new Date().toISOString() } : rev));
+                              const { review } = await reviewsAPI.replyToReview(r.id, text);
+                              setReplyDraft((prev) => {
+                                const n = { ...prev };
+                                delete n[r.id];
+                                return n;
+                              });
+                              setReplyError((prev) => {
+                                const n = { ...prev };
+                                delete n[r.id];
+                                return n;
+                              });
+                              setReviews((prev) =>
+                                prev.map((rev) => (rev.id === r.id ? { ...rev, ...review } : rev))
+                              );
+                            } catch (e: any) {
+                              setReplyError((prev) => ({
+                                ...prev,
+                                [r.id]: e.response?.data?.error || 'Could not post reply.',
+                              }));
                             } finally {
                               setReplyingId(null);
                             }
                           }}
                         >
-                          {replyingId === r.id ? 'Sending…' : 'Reply'}
+                          {replyingId === r.id ? 'Sending…' : t('reply')}
                         </button>
+                        {replyError[r.id] && (
+                          <p className="profile-review-reply-error">{replyError[r.id]}</p>
+                        )}
                       </div>
                     )}
                     {user?.id === r.fromUserId && r.claimStatus === 'pending_innocent' && (
@@ -1443,12 +1545,17 @@ const Profile = () => {
             <h3 className="story-audience-title">{t('addStory')}</h3>
             <p className="story-audience-question">Who can see this story?</p>
             {error && <p className="profile-save-error" style={{ color: '#ff6b6b', fontSize: 13, margin: '0 0 10px' }}>{error}</p>}
+            {closeFriendIds.length === 0 && (
+              <p className="close-friends-hint" style={{ margin: '0 0 10px' }}>
+                Close friends only is empty right now — add people under STORIES first, or only you will see this story.
+              </p>
+            )}
             <div className="story-audience-actions">
               <button type="button" className="story-audience-btn story-audience-everyone" disabled={!!storyAudienceBusy} onClick={() => submitStoryWithAudience('all')}>
-                {storyAudienceBusy === 'all' ? 'Uploading…' : t('storyAudienceEveryone')}
+                {storyAudienceBusy === 'all' ? 'Posting…' : t('storyAudienceEveryone')}
               </button>
               <button type="button" className="story-audience-btn story-audience-close" disabled={!!storyAudienceBusy} onClick={() => submitStoryWithAudience('closeFriends')}>
-                {storyAudienceBusy === 'closeFriends' ? 'Uploading…' : t('storyAudienceCloseFriends')}
+                {storyAudienceBusy === 'closeFriends' ? 'Posting…' : t('storyAudienceCloseFriends')}
               </button>
               <button type="button" className="story-audience-cancel" disabled={!!storyAudienceBusy} onClick={() => { setShowStoryAudiencePicker(false); setPendingStoryFile(null); }}>
                 {t('cancel')}
@@ -1536,6 +1643,7 @@ const Profile = () => {
 
       {showPhotoVerification && user?.id && createPortal(
         <PhotoVerificationModal
+          profilePictureUrl={user.profilePicture}
           onClose={() => setShowPhotoVerification(false)}
           onVerified={async () => {
             await loadProfile();
@@ -1543,8 +1651,35 @@ const Profile = () => {
             updateUser(p);
             setShowPhotoVerification(false);
           }}
-          onSubmit={async (selfieImages) => {
-            await profileAPI.submitPhotoVerification(user.id, selfieImages);
+          onSubmit={async (selfieImages, extras) => {
+            await profileAPI.submitPhotoVerification(user.id, selfieImages, extras);
+          }}
+        />,
+        document.body
+      )}
+
+      {showReviewModal && viewingUserId && !isOwnProfile && createPortal(
+        <ExperienceReviewModal
+          open={showReviewModal}
+          partnerUserId={String(viewingUserId)}
+          partnerName={profile.name || profile.username || 'this person'}
+          source="manual"
+          initialOverallStars={myReview?.overallStars}
+          initialReviewText={myReview?.reviewText}
+          onClose={() => setShowReviewModal(false)}
+          onComplete={async () => {
+            setShowReviewModal(false);
+            try {
+              const [revData, mine] = await Promise.all([
+                reviewsAPI.getReviews(String(viewingUserId)).catch(() => ({ reviews: [] as Review[], overall: null })),
+                reviewsAPI.getMyReviewFor(String(viewingUserId)).catch(() => ({ review: null as Review | null })),
+              ]);
+              setReviews(revData.reviews);
+              setOverallRating(revData.overall ?? null);
+              setMyReview(mine.review);
+            } catch {
+              /* keep current list if refresh fails */
+            }
           }}
         />,
         document.body

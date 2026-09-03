@@ -16,6 +16,8 @@ import WheelOutcomeFlow from '../components/widgets/WheelOutcomeFlow.tsx';
 import LoveFeedWidget from '../components/widgets/LoveFeedWidget';
 import EventsWidget from '../components/widgets/EventsWidget';
 import HelpWidget from '../components/widgets/HelpWidget';
+import DateMatchWidget from '../components/widgets/DateMatchWidget';
+import InterestPitchPopup from '../components/InterestPitchPopup';
 import DatingAdviceWidget from '../components/widgets/DatingAdviceWidget';
 import ConfessionBoothWidget from '../components/widgets/ConfessionBoothWidget';
 import type { HelpNavTarget } from '../data/helpFaq';
@@ -26,6 +28,10 @@ import NearbyMatchPopup from '../components/NearbyMatchPopup';
 import { useDashboardLocation } from '../hooks/useDashboardLocation';
 import { askNotifyPermission } from '../lib/deviceNotify';
 import { useGuideApplicationNotifications } from '../hooks/useGuideApplicationNotifications';
+import { textingHelpAPI } from '../api/textingHelp';
+import TextingHelpSosPopup from '../components/TextingHelpSosPopup';
+import type { DisinterestReport } from '../api/disinterest';
+import '../components/DisinterestAnalyzer.css';
 import CoachVoteSwipePopup from '../components/CoachVoteSwipePopup';
 import DateSafetyMonitor from '../components/DateSafetyMonitor';
 import SchoolDailyNotification from '../components/SchoolDailyNotification';
@@ -57,16 +63,23 @@ const Dashboard = () => {
   const [uploading, setUploading] = useState(false);
   const [selectedHighlightId, setSelectedHighlightId] = useState<string | null>(null);
   const [viewingHighlight, setViewingHighlight] = useState<any | null>(null);
-  type WidgetId = 'activity' | 'compatibility' | 'connections' | 'highlights' | 'lovefeed' | 'advice' | 'confession' | 'chat' | 'events' | 'help' | 'safety' | null;
+  type WidgetId = 'activity' | 'compatibility' | 'connections' | 'highlights' | 'lovefeed' | 'advice' | 'confession' | 'chat' | 'events' | 'help' | 'safety' | 'datematch' | null;
   const [openWidget, setOpenWidget] = useState<WidgetId>(null);
   const [returnToWidget, setReturnToWidget] = useState<'help' | null>(null);
 
+  const [mustPickGuide, setMustPickGuide] = useState(false);
+
   const openWidgetFromHome = (id: Exclude<WidgetId, null>) => {
+    if (mustPickGuide && id !== 'compatibility') return;
     setReturnToWidget(null);
     setOpenWidget(id);
   };
 
   const handleBackFromWidget = () => {
+    if (mustPickGuide) {
+      setOpenWidget('compatibility');
+      return;
+    }
     if (returnToWidget) {
       setOpenWidget(returnToWidget);
       setReturnToWidget(null);
@@ -76,6 +89,10 @@ const Dashboard = () => {
   };
 
   const navigateFromHelp = (target: HelpNavTarget) => {
+    if (mustPickGuide) {
+      setOpenWidget('compatibility');
+      return;
+    }
     if (target === 'profile') {
       navigate('/profile', { state: { fromHelp: true } });
       return;
@@ -88,6 +105,9 @@ const Dashboard = () => {
     setOpenWidget(target);
   };
   const [openChatWithUserId, setOpenChatWithUserId] = useState<string | null>(null);
+  const [openDisinterestUserId, setOpenDisinterestUserId] = useState<string | null>(null);
+  const [resumeTextingHelpId, setResumeTextingHelpId] = useState<string | null>(null);
+  const [watchOutToast, setWatchOutToast] = useState<{ otherUserId: string; score: number; report?: DisinterestReport | null } | null>(null);
   const [loveFeedBlowingUpCount, setLoveFeedBlowingUpCount] = useState(0);
   const [wheelOutcomeSegment, setWheelOutcomeSegment] = useState<number | null>(null);
   const [showPhotoVerification, setShowPhotoVerification] = useState(false);
@@ -301,6 +321,7 @@ const Dashboard = () => {
 
   useEffect(() => {
     const onOpen = (e: Event) => {
+      if (mustPickGuide) return;
       const detail = (e as CustomEvent).detail as { userId?: string } | undefined;
       const uid = detail?.userId;
       if (!uid) return;
@@ -309,6 +330,60 @@ const Dashboard = () => {
     };
     window.addEventListener('chat:open', onOpen);
     return () => window.removeEventListener('chat:open', onOpen);
+  }, [mustPickGuide]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('open') === 'chat') {
+      const other = params.get('other');
+      if (other) setOpenChatWithUserId(other);
+      if (params.get('disinterest') === '1' && other) setOpenDisinterestUserId(other);
+      setOpenWidget('chat');
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+    if (params.get('textingHelp') !== 'success') return;
+    const sessionId = params.get('sessionId');
+    const orderId = params.get('token') || '';
+    if (!sessionId) return;
+    textingHelpAPI
+      .capturePayPal(sessionId, orderId)
+      .then(({ session }) => {
+        setResumeTextingHelpId(session.id);
+        setOpenChatWithUserId(session.otherUserId);
+        setOpenWidget('chat');
+      })
+      .catch((err) => console.error('Texting help PayPal capture:', err))
+      .finally(() => {
+        window.history.replaceState({}, '', window.location.pathname);
+      });
+  }, []);
+
+  useEffect(() => {
+    const onWarn = (e: Event) => {
+      const d = (e as CustomEvent).detail as { otherUserId?: string; score?: number; report?: DisinterestReport | null };
+      if (!d?.otherUserId) return;
+      setWatchOutToast({ otherUserId: d.otherUserId, score: d.score || 0, report: d.report });
+    };
+    window.addEventListener('chat:disinterest-warning', onWarn);
+    return () => window.removeEventListener('chat:disinterest-warning', onWarn);
+  }, []);
+
+  useEffect(() => {
+    const onLock = (e: Event) => {
+      const categoryId = (e as CustomEvent<{ categoryId?: string }>).detail?.categoryId;
+      setMustPickGuide(true);
+      setOpenWidget('compatibility');
+      window.setTimeout(() => {
+        window.dispatchEvent(new CustomEvent('school:open-guides', { detail: { categoryId } }));
+      }, 400);
+    };
+    const onUnlock = () => setMustPickGuide(false);
+    window.addEventListener('guide-program:lock-guides', onLock);
+    window.addEventListener('guide-program:updated', onUnlock);
+    return () => {
+      window.removeEventListener('guide-program:lock-guides', onLock);
+      window.removeEventListener('guide-program:updated', onUnlock);
+    };
   }, []);
 
   return (
@@ -330,7 +405,13 @@ const Dashboard = () => {
       <ConnectionsBuzzPopup onOpenConnections={() => setOpenWidget('connections')} />
       <BuzzResultPopup />
       <NearbyMatchPopup onOpenConnections={() => setOpenWidget('connections')} />
-      <CoachVoteSwipePopup />
+      <TextingHelpSosPopup />
+      <InterestPitchPopup
+        onOpenChat={(userId) => {
+          setOpenChatWithUserId(userId);
+          setOpenWidget('chat');
+        }}
+      />
       <DateSafetyMonitor />
       <MensDatingTipPopup />
       <WomensDatingTipPopup />
@@ -391,6 +472,10 @@ const Dashboard = () => {
           <div className="widget-card" onClick={() => openWidgetFromHome('confession')} role="button" tabIndex={0} onKeyDown={(e) => e.key === 'Enter' && openWidgetFromHome('confession')}>
             <div className="widget-card-icon">⛪</div>
             <div className="widget-card-title">Confession Booth</div>
+          </div>
+          <div className={`widget-card ${inRelationship ? 'widget-card-blurred' : ''}`} onClick={() => !inRelationship && openWidgetFromHome('datematch')} role="button" tabIndex={inRelationship ? -1 : 0} onKeyDown={(e) => !inRelationship && e.key === 'Enter' && openWidgetFromHome('datematch')} title={inRelationship ? 'In a relationship – focus on your partner' : undefined}>
+            <div className="widget-card-icon">⚔</div>
+            <div className="widget-card-title">{t('dateArena')}</div>
           </div>
           <div className="widget-card" onClick={() => openWidgetFromHome('chat')} role="button" tabIndex={0} onKeyDown={(e) => e.key === 'Enter' && openWidgetFromHome('chat')}>
             <div className="widget-card-icon">◉</div>
@@ -465,11 +550,22 @@ const Dashboard = () => {
                 onNavigate={navigateFromHelp}
               />
             )}
+            {openWidget === 'datematch' && (
+              <DateMatchWidget
+                onOpenChat={(userId) => { setOpenChatWithUserId(userId); setOpenWidget('chat'); }}
+                onOpenGuides={() => setOpenWidget('compatibility')}
+                onOpenPremium={() => navigate('/settings', { state: { openTab: 'premium' } })}
+              />
+            )}
             {openWidget === 'chat' && (
               <ChatWidget
                 initialOtherUserId={openChatWithUserId}
                 onOpenedWithUserId={() => setOpenChatWithUserId(null)}
                 onOpenGuides={() => setOpenWidget('compatibility')}
+                openDisinterestForUserId={openDisinterestUserId}
+                onDisinterestOpened={() => setOpenDisinterestUserId(null)}
+                resumeTextingHelpSessionId={resumeTextingHelpId}
+                onTextingHelpResumed={() => setResumeTextingHelpId(null)}
               />
             )}
           </div>
@@ -478,7 +574,13 @@ const Dashboard = () => {
 
       {/* Console Controls */}
       <div className="console-controls">
-        <button className="console-btn" onClick={() => navigate('/profile')}>
+        <button
+          className="console-btn"
+          onClick={() => {
+            if (mustPickGuide) return;
+            navigate('/profile');
+          }}
+        >
           {t('profile').toUpperCase()}
         </button>
         <button className="console-btn" onClick={() => navigate('/home')}>
@@ -495,16 +597,38 @@ const Dashboard = () => {
         <Link to="/privacy">Privacy</Link>
       </div>
 
+      {watchOutToast && (
+        <button
+          type="button"
+          className="di-toast"
+          onClick={() => {
+            setOpenChatWithUserId(watchOutToast.otherUserId);
+            setOpenDisinterestUserId(watchOutToast.otherUserId);
+            setOpenWidget('chat');
+            window.dispatchEvent(
+              new CustomEvent('chat:show-disinterest', { detail: { otherUserId: watchOutToast.otherUserId } })
+            );
+            setWatchOutToast(null);
+          }}
+        >
+          <strong>Hey, watch out</strong>
+          <p>
+            This is not a red flag. Slow down, gather your own evidence, then decide. Tap to open the analyzer.
+          </p>
+        </button>
+      )}
+
       {showPhotoVerification && user?.id && createPortal(
         <PhotoVerificationModal
+          profilePictureUrl={user.profilePicture}
           onClose={() => setShowPhotoVerification(false)}
           onVerified={async () => {
             const p = await profileAPI.getCurrentUser();
             updateUser(p);
             setShowPhotoVerification(false);
           }}
-          onSubmit={async (selfieImages) => {
-            await profileAPI.submitPhotoVerification(user.id, selfieImages);
+          onSubmit={async (selfieImages, extras) => {
+            await profileAPI.submitPhotoVerification(user.id, selfieImages, extras);
           }}
         />,
         document.body

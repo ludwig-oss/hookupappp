@@ -30,6 +30,12 @@ axios.interceptors.request.use((config) => {
 axios.interceptors.response.use(
   (res) => res,
   async (err) => {
+    const code = err?.response?.data?.code;
+    if (code === 'PHOTO_VERIFICATION_REQUIRED' && typeof window !== 'undefined') {
+      window.dispatchEvent(
+        new CustomEvent('photo-lock:required', { detail: err.response?.data?.photoLock || null })
+      );
+    }
     const cfg = err?.config;
     const status = err?.response?.status;
     if (

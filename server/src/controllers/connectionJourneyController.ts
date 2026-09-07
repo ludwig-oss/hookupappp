@@ -185,7 +185,7 @@ async function serializeResponse(
   const host = buildHost(
     phase,
     hostMode,
-    nextStep,
+    nextStep ?? undefined,
     currentDay,
     partnerName,
     saidHiUserIds.includes(partnerUserId),

@@ -16,6 +16,7 @@ import { getCountryFlagCode } from '../constants/countryFlags';
 import { useTranslation } from '../context/LanguageContext';
 import { chatAPI } from '../api/chat';
 import { isVideoMediaUrl } from '../lib/media';
+import { getAuthToken } from '../lib/authStorage';
 import { prepareAndUploadFile } from '../lib/uploadMedia';
 import { MEDIA_FILE_ACCEPT, isProbablyImageFile, isProbablyVideoFile } from '../lib/compressVideo';
 import { formatAxiosError } from '../lib/apiError';
@@ -59,6 +60,8 @@ const Profile = () => {
   const fromHelp = !!(location.state as { fromHelp?: boolean } | null)?.fromHelp;
   const fromChat = !!(location.state as { fromChat?: boolean } | null)?.fromChat;
   const returnChatUserId = (location.state as { chatUserId?: string } | null)?.chatUserId;
+  const previewName = (location.state as { previewName?: string } | null)?.previewName;
+  const previewAvatar = (location.state as { previewAvatar?: string | null } | null)?.previewAvatar;
   const pathUserId = location.pathname.match(/^\/profile\/([^/]+)$/)?.[1];
   const routeUserId = paramUserId || pathUserId;
   const viewingUserId = routeUserId && routeUserId !== 'me' ? routeUserId : user?.id;
@@ -275,12 +278,28 @@ const Profile = () => {
     } catch (err: any) {
       console.warn('Profile sync failed (showing saved session):', err?.response?.status || err?.message);
       if (!own) {
+        if (previewName) {
+          setProfile({
+            id: String(targetId),
+            email: '',
+            name: previewName,
+            username: '',
+            profilePicture: previewAvatar ?? null,
+            profileSetupComplete: true,
+            highlights: [],
+            disappearingPhotos: [],
+          });
+          setSyncWarning('Could not refresh this profile from the server. Showing what we have from chat — tap Retry to sync.');
+          setError('');
+          setLoading(false);
+          return;
+        }
         setProfile(null);
         setError('Could not load this profile.');
         setLoading(false);
         return;
       }
-      if (!localStorage.getItem('token')) {
+      if (!getAuthToken()) {
         setProfile(null);
         setError('Session expired. Please sign in again.');
         setLoading(false);
@@ -345,7 +364,7 @@ const Profile = () => {
 
   const flushSave = async () => {
     const uid = userIdRef.current;
-    if (!uid || !localStorage.getItem('token')) return;
+    if (!uid || !getAuthToken()) return;
     if (saveTimeoutRef.current) {
       clearTimeout(saveTimeoutRef.current);
       saveTimeoutRef.current = null;
@@ -416,7 +435,7 @@ const Profile = () => {
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
       if (uploadingMediaRef.current) return;
       if (!isOwnProfileRef.current) return;
-      if (!localStorage.getItem('token') || !userIdRef.current) return;
+      if (!getAuthToken() || !userIdRef.current) return;
       flushSave();
     };
   }, []);
@@ -634,16 +653,36 @@ const Profile = () => {
   }
 
   if (!profile) {
+    const signedIn = !!user;
     return (
       <div className="dashboard-container">
         <div className="stars-background" aria-hidden>
           <div className="love-bg-hearts" />
         </div>
         <div style={{ position: 'relative', zIndex: 1, textAlign: 'center', padding: '60px 24px', color: '#ffb3c6' }}>
-          <p style={{ marginBottom: 24 }}>{error || 'You need to sign in to view your profile.'}</p>
-          <Link to="/login" className="profile-save-btn" style={{ display: 'inline-block', textDecoration: 'none' }}>
-            Sign in
-          </Link>
+          <p style={{ marginBottom: 24 }}>
+            {error || (signedIn ? 'Could not load this profile.' : 'You need to sign in to view your profile.')}
+          </p>
+          {signedIn ? (
+            <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
+              <button type="button" className="profile-save-btn" onClick={() => { setLoading(true); setError(''); loadProfileFromServer(); }}>
+                Retry
+              </button>
+              {fromChat ? (
+                <button type="button" className="profile-save-btn" onClick={openTheirChat}>
+                  Back to chat
+                </button>
+              ) : (
+                <Link to="/home" className="profile-save-btn" style={{ display: 'inline-block', textDecoration: 'none' }}>
+                  Back to home
+                </Link>
+              )}
+            </div>
+          ) : (
+            <Link to="/login" className="profile-save-btn" style={{ display: 'inline-block', textDecoration: 'none' }}>
+              Sign in
+            </Link>
+          )}
         </div>
       </div>
     );

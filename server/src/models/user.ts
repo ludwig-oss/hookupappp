@@ -199,14 +199,28 @@ export interface User {
   guideProgramGrade?: string | null;
   guideProgramProgressed?: boolean | null;
   guideProgramGuideId?: string | null;
+  /** Built-in AI character guide (not a human applicant). */
+  aiGuideId?: string | null;
+  /** Date Arena intents picked at signup (serious_relationship, casual_dating, …). */
+  dateLookingFor?: string[] | null;
 }
 
 const DB_PATH = join(__dirname, '..', 'data', 'users.json');
 
+function parseUsersJson(data: string): User[] {
+  try {
+    return JSON.parse(data);
+  } catch {
+    const end = data.indexOf('\n]');
+    if (end === -1) throw new Error('users.json is not valid JSON');
+    return JSON.parse(data.slice(0, end + 2));
+  }
+}
+
 async function readUsers(): Promise<User[]> {
   try {
     const data = await readFile(DB_PATH, 'utf-8');
-    const users = JSON.parse(data);
+    const users = parseUsersJson(data);
     // Convert dates back to Date objects
     return users.map((user: User) => ({
       ...user,
@@ -293,6 +307,8 @@ async function readUsers(): Promise<User[]> {
       guideProgramGrade: (user as any).guideProgramGrade ?? null,
       guideProgramProgressed: (user as any).guideProgramProgressed ?? null,
       guideProgramGuideId: (user as any).guideProgramGuideId ?? null,
+      aiGuideId: (user as any).aiGuideId ?? null,
+      dateLookingFor: Array.isArray((user as any).dateLookingFor) ? (user as any).dateLookingFor : [],
     }));
   } catch (error) {
     return [];
@@ -303,7 +319,7 @@ async function writeUsers(users: User[]): Promise<void> {
   const dir = join(__dirname, '..', 'data');
   const { mkdir } = await import('fs/promises');
   await mkdir(dir, { recursive: true });
-  await writeFile(DB_PATH, JSON.stringify(users, null, 2), 'utf-8');
+  await writeFile(DB_PATH, `${JSON.stringify(users, null, 2)}\n`, 'utf-8');
 }
 
 export async function createUser(userData: Omit<User, 'id' | 'resetToken' | 'resetTokenExpiry' | 'profilePicture' | 'highlights' | 'disappearingPhotos' | 'profileSetupComplete' | 'improvementCategories' | 'blockedUsers' | 'mutedUsers' | 'unmatchedUsers' | 'profiles' | 'activeProfileId' | 'emailVerified' | 'emailVerificationToken' | 'emailVerificationTokenExpiry' | 'emailVerificationCode' | 'emailVerificationCodeExpiry' | 'phoneNumber'> & { improvementCategories?: string[]; passwordHint1?: string; passwordHint2?: string; passwordHint3?: string }): Promise<User> {
@@ -360,6 +376,8 @@ export async function createUser(userData: Omit<User, 'id' | 'resetToken' | 'res
     guideProgramGrade: null,
     guideProgramProgressed: null,
     guideProgramGuideId: null,
+    aiGuideId: null,
+    dateLookingFor: [],
   };
   users.push(user);
   await writeUsers(users);

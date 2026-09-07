@@ -6,7 +6,7 @@ const RETRY_METHODS = new Set(['get', 'post', 'put', 'patch', 'delete']);
 
 axios.defaults.timeout = 45000;
 
-/** Attach JWT from localStorage on every request (survives signup finally-block bugs). */
+/** Attach JWT from localStorage or sessionStorage on every request. */
 axios.interceptors.request.use((config) => {
   if (config.timeout == null) config.timeout = 45000;
   if (typeof localStorage === 'undefined') return config;

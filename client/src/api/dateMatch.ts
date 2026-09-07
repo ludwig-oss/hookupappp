@@ -119,6 +119,7 @@ export interface DateMatchCatalog {
   dateCount: number;
   freeSearchesPerMonth: number;
   cancellationFineEur: number;
+  savedLookingFor?: string[];
   quota: {
     used: number;
     limit: number | null;
@@ -141,6 +142,10 @@ export const dateMatchAPI = {
   catalog: async (): Promise<DateMatchCatalog> => {
     const { data } = await axios.get(`${API_URL}/catalog`);
     return data;
+  },
+  saveLookingFor: async (lookingFor: string[]) => {
+    const { data } = await axios.post(`${API_URL}/looking-for`, { lookingFor });
+    return data as { lookingFor: string[] };
   },
   search: async (lookingFor: string[]) => {
     const { data } = await axios.post(`${API_URL}/search`, { lookingFor });

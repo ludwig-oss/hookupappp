@@ -79,7 +79,7 @@ export const authAPI = {
     return response.data;
   },
 
-  loginWithPin: async (username: string, pin: string, stayLoggedIn = true): Promise<AuthResponse> => {
+  loginWithPin: async (username: string, pin: string, stayLoggedIn = false): Promise<AuthResponse> => {
     const response = await authPost<AuthResponse>('/login-pin', { username, pin, stayLoggedIn });
     return response.data;
   },

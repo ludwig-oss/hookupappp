@@ -3,6 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import axios from 'axios';
 import { AuthContext } from '../context/AuthContext';
 import { profileAPI } from '../api/profile';
+import { getStayLoggedIn } from '../lib/authStorage';
 import './Auth.css';
 
 /** Lands here after Google/Facebook OAuth: /auth/callback?token=... */
@@ -21,11 +22,10 @@ const AuthCallback = () => {
     let cancelled = false;
     (async () => {
       try {
-        localStorage.setItem('token', token);
         axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
         const full = await profileAPI.getCurrentUser();
         if (cancelled) return;
-        login(full as any, token);
+        login(full as any, token, { stayLoggedIn: getStayLoggedIn() });
         navigate(full.profileSetupComplete ? '/home' : '/profile-setup', { replace: true });
       } catch (e: any) {
         if (cancelled) return;

@@ -1,7 +1,8 @@
 import { mkdir, readFile, writeFile } from 'fs/promises';
 import { join } from 'path';
-import { DATE_IDEAS, LOOKING_FOR_OPTIONS, getIdeaById, type DateIdea } from '../data/dateMatchCatalog.js';
-import { getAllUsers, getUserById, unmatchUser } from './user.js';
+import { DATE_IDEAS, LOOKING_FOR_OPTIONS, getIdeaById, validLookingFor, toDiscoverLookingFor, fromDiscoverLookingFor, type DateIdea } from '../data/dateMatchCatalog.js';
+import { getAllUsers, getUserById, updateUserProfile, unmatchUser } from './user.js';
+import { getUserPreference, setUserPreference } from './discover.js';
 import { isSseConnected } from '../realtime/notifications.js';
 import { userHasFeature } from './premium.js';
 import { ensureMatchConversation } from './chat.js';
@@ -218,6 +219,36 @@ export function catalog() {
   };
 }
 
+export async function getSavedLookingFor(userId: string): Promise<string[]> {
+  const user = await getUserById(userId);
+  const stored = validLookingFor(user?.dateLookingFor);
+  if (stored.length) return stored;
+  try {
+    const pref = await getUserPreference(userId);
+    return fromDiscoverLookingFor(pref?.lookingFor);
+  } catch {
+    return [];
+  }
+}
+
+export async function saveDateLookingFor(userId: string, lookingFor: string[]): Promise<string[]> {
+  const valid = validLookingFor(lookingFor);
+  if (!valid.length) throw new Error('Pick what you are looking for');
+  const existing = await getUserById(userId);
+  if (!existing) throw new Error('User not found');
+  await updateUserProfile(userId, { dateLookingFor: valid });
+  try {
+    const pref = await getUserPreference(userId);
+    await setUserPreference(userId, {
+      lookingFor: toDiscoverLookingFor(valid),
+      orientation: pref?.orientation,
+    });
+  } catch {
+    /* discover prefs are optional */
+  }
+  return valid;
+}
+
 export async function computeInterestLevel(userId: string): Promise<number> {
   let score = 40;
   try {
@@ -315,8 +346,10 @@ export async function startSearch(
   me: PublicUserCard | null;
   needUpgrade?: boolean;
 }> {
-  const valid = lookingFor.filter((id) => LOOKING_FOR_OPTIONS.some((o) => o.id === id));
+  let valid = validLookingFor(lookingFor);
+  if (!valid.length) valid = await getSavedLookingFor(userId);
   if (valid.length === 0) throw new Error('Pick what you are looking for');
+  await saveDateLookingFor(userId, valid);
 
   const quota = await getSearchQuota(userId);
   if (!quota.unlimited && (quota.remaining ?? 0) <= 0) {

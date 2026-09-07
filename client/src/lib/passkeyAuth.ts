@@ -1,11 +1,12 @@
 import axios from 'axios';
 import { startRegistration, startAuthentication } from '@simplewebauthn/browser';
 import { API_BASE } from '../api/config';
+import { getAuthToken } from './authStorage';
 
 const API_URL = API_BASE + '/api/auth';
 
 function authHeaders(token?: string) {
-  const t = token || localStorage.getItem('token');
+  const t = token || getAuthToken();
   return t ? { Authorization: `Bearer ${t}` } : {};
 }
 

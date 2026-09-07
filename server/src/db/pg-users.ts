@@ -142,6 +142,8 @@ function rowToUser(row: { id: string; email: string; password: string; name: str
     guideProgramGrade: (data.guideProgramGrade as string) ?? null,
     guideProgramProgressed: typeof data.guideProgramProgressed === 'boolean' ? data.guideProgramProgressed : null,
     guideProgramGuideId: (data.guideProgramGuideId as string) ?? null,
+    aiGuideId: (data.aiGuideId as string) ?? null,
+    dateLookingFor: Array.isArray(data.dateLookingFor) ? (data.dateLookingFor as string[]) : [],
   } as User;
 }
 
@@ -164,7 +166,7 @@ function userToData(u: Partial<User>): Record<string, unknown> {
     'schoolSkipStreak', 'schoolSkipLastDate', 'schoolSkipTotal', 'schoolSkipExceptionLastDate',
     'visibilityReducedUntil', 'visibilityReducedReason',
     'guideProgramAreasChosenAt', 'guideProgramStartedAt', 'guideProgramEvalDueAt', 'guideProgramEvaluatedAt',
-    'guideProgramGrade', 'guideProgramProgressed', 'guideProgramGuideId',
+    'guideProgramGrade', 'guideProgramProgressed', 'guideProgramGuideId', 'aiGuideId', 'dateLookingFor',
     'googleId', 'facebookId',
     'qualifiedCoach', 'coachStarRating', 'loginCode', 'loginCodeExpiry'] as const;
   for (const k of keys) {

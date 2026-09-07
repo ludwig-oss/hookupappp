@@ -1,0 +1,64 @@
+.guide-help-gate {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  background: rgba(0, 0, 0, 0.72);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.guide-help-card {
+  max-width: 440px;
+  width: 100%;
+  background: #1a120c;
+  border: 1px solid rgba(245, 158, 11, 0.4);
+  border-radius: 16px;
+  padding: 20px;
+  color: #f5efe6;
+}
+
+.guide-help-kicker {
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-size: 11px;
+  color: #f59e0b;
+  margin: 0 0 8px;
+}
+
+.guide-help-card h3 {
+  margin: 0 0 10px;
+  color: #fff;
+}
+
+.guide-help-error {
+  color: #fca5a5;
+}
+
+.guide-help-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.guide-help-actions button {
+  border: none;
+  border-radius: 999px;
+  padding: 10px 14px;
+  font-weight: 700;
+  cursor: pointer;
+  background: rgba(245, 158, 11, 0.18);
+  color: #fbbf24;
+}
+
+.guide-help-primary {
+  background: linear-gradient(135deg, #f59e0b, #ea580c) !important;
+  color: #111 !important;
+}
+
+.guide-help-ghost {
+  background: transparent !important;
+  color: #c4b5a0 !important;
+}

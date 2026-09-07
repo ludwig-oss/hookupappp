@@ -10,6 +10,7 @@ import { improvementAPI } from '../api/improvement';
 import ConnectionsWidget from '../components/widgets/ConnectionsWidget';
 import ChatWidget from '../components/widgets/ChatWidget';
 import CompatibilityWidget from '../components/widgets/CompatibilityWidget';
+import { AiGuideFab } from '../components/AiGuideStudio';
 import ActivityStreamWidget from '../components/widgets/ActivityStreamWidget';
 import HighlightSpinWheel from '../components/widgets/HighlightSpinWheel';
 import WheelOutcomeFlow from '../components/widgets/WheelOutcomeFlow.tsx';
@@ -29,6 +30,7 @@ import { useDashboardLocation } from '../hooks/useDashboardLocation';
 import { askNotifyPermission } from '../lib/deviceNotify';
 import { useGuideApplicationNotifications } from '../hooks/useGuideApplicationNotifications';
 import { textingHelpAPI } from '../api/textingHelp';
+import { guideHelpAPI } from '../api/guideHelp';
 import TextingHelpSosPopup from '../components/TextingHelpSosPopup';
 import type { DisinterestReport } from '../api/disinterest';
 import '../components/DisinterestAnalyzer.css';
@@ -334,6 +336,32 @@ const Dashboard = () => {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
+    if (params.get('aiHelp') !== 'success') return;
+    const stripeSession = params.get('session_id');
+    const paypalOrder = params.get('token') || '';
+    const finish = () => {
+      window.history.replaceState({}, '', window.location.pathname);
+      window.dispatchEvent(new CustomEvent('ai-guide:open', { detail: {} }));
+    };
+    if (stripeSession) {
+      guideHelpAPI
+        .stripeConfirm(stripeSession)
+        .catch((err) => console.error('AI help Stripe confirm:', err))
+        .finally(finish);
+      return;
+    }
+    if (paypalOrder) {
+      guideHelpAPI
+        .paypalCapture(paypalOrder)
+        .catch((err) => console.error('AI help PayPal capture:', err))
+        .finally(finish);
+      return;
+    }
+    finish();
+  }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
     if (params.get('open') === 'chat') {
       const other = params.get('other');
       if (other) setOpenChatWithUserId(other);
@@ -596,6 +624,8 @@ const Dashboard = () => {
         <span className="dashboard-legal-sep">·</span>
         <Link to="/privacy">Privacy</Link>
       </div>
+
+      <AiGuideFab />
 
       {watchOutToast && (
         <button

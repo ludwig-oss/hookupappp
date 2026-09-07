@@ -7,6 +7,8 @@ import { walkMatchAPI } from '../api/walkMatch';
 import { formatAxiosError } from '../lib/apiError';
 import { normalizePinDigits } from '../lib/pin';
 import { normalizeUsernameInput, USERNAME_HINT, USERNAME_MAX, USERNAME_MIN } from '../lib/username';
+import LookingForChips from '../components/LookingForChips';
+import { dateMatchAPI } from '../api/dateMatch';
 import PasswordInput from '../components/PasswordInput';
 import './Auth.css';
 import './Legal.css';
@@ -17,12 +19,6 @@ function coerceUserId(u: unknown): string | null {
   if (typeof u === 'string' && u.length > 0) return u;
   if (typeof u === 'number' && Number.isFinite(u)) return String(Math.trunc(u));
   return null;
-}
-
-function normalizePhoneInput(value: string): string {
-  const cleaned = value.replace(/[^\d+]/g, '');
-  if (cleaned.startsWith('+')) return '+' + cleaned.slice(1).replace(/\D/g, '').slice(0, 15);
-  return cleaned.replace(/\D/g, '').slice(0, 15);
 }
 
 type AuthMode = 'signup' | 'login';
@@ -39,23 +35,21 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
 
   const [name, setName] = useState('');
   const [username, setUsername] = useState('');
-  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [passwordHint1, setPasswordHint1] = useState('');
   const [passwordHint2, setPasswordHint2] = useState('');
   const [passwordHint3, setPasswordHint3] = useState('');
-  const [stayLoggedIn, setStayLoggedIn] = useState(true);
+  const [stayLoggedIn, setStayLoggedIn] = useState(false);
   const [failedTries, setFailedTries] = useState(0);
   const [pwHint1, setPwHint1] = useState('');
   const [pwHint2, setPwHint2] = useState('');
   const [pwHint3, setPwHint3] = useState('');
-  const [phoneNumber, setPhoneNumber] = useState('');
   const [loginIdentifier, setLoginIdentifier] = useState('');
   const [loginSecret, setLoginSecret] = useState('');
   const [age, setAge] = useState('');
   const [gender, setGender] = useState('');
   const [orientation, setOrientation] = useState<'straight' | 'gay' | 'lesbian' | 'bisexual' | 'pansexual'>('straight');
-  const [lookingFor, setLookingFor] = useState<string[]>(['dating']);
+  const [lookingFor, setLookingFor] = useState<string[]>([]);
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -127,6 +121,10 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
       setError('Agree to Terms and Privacy to continue');
       return;
     }
+    if (lookingFor.length === 0) {
+      setError('Pick at least one option for what you are looking for');
+      return;
+    }
     setError('');
     setLoading(true);
     try {
@@ -137,8 +135,6 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
         pinHint1: passwordHint1.trim(),
         pinHint2: passwordHint2.trim(),
         pinHint3: passwordHint3.trim(),
-        email: email.trim() || undefined,
-        phoneNumber: phoneNumber.replace(/\D/g, '') || undefined,
         improvementCategories: [DEFAULT_SIGNUP_CATEGORY],
         password: password.trim(),
         passwordHint1: pwHint1.trim(),
@@ -147,14 +143,14 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
       });
       const id = coerceUserId(response.user?.id);
       if (!response.token || !id) throw new Error('Invalid server response');
-      login({ ...response.user, id }, response.token, { stayLoggedIn: true });
+      login({ ...response.user, id, dateLookingFor: lookingFor }, response.token, { stayLoggedIn });
       const ageNum = parseInt(age, 10);
       if (!Number.isNaN(ageNum) && gender) {
         walkMatchAPI.updateSettings({ age: ageNum, gender }).catch(() => {});
       }
+      dateMatchAPI.saveLookingFor(lookingFor).catch(() => {});
       discoverAPI.setPreference({
         orientation,
-        lookingFor: lookingFor as ('dating' | 'casual' | 'friends' | 'serious')[],
         userId: id,
       }).catch(() => {});
       navigate('/profile-setup', { replace: true });
@@ -279,14 +275,6 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
               <input type="text" value={pwHint2} onChange={(e) => setPwHint2(e.target.value)} placeholder="Hint 2" maxLength={200} style={{ marginBottom: 6 }} required />
               <input type="text" value={pwHint3} onChange={(e) => setPwHint3(e.target.value)} placeholder="Hint 3" maxLength={200} required />
             </div>
-            <div className="form-group">
-              <label htmlFor="email">Email (optional)</label>
-              <input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" placeholder="you@email.com" />
-            </div>
-            <div className="form-group">
-              <label htmlFor="phone">Phone (optional)</label>
-              <input id="phone" type="tel" value={phoneNumber} onChange={(e) => setPhoneNumber(normalizePhoneInput(e.target.value))} autoComplete="tel" />
-            </div>
             <div className="auth-age-gender">
               <div className="form-group">
                 <label htmlFor="age">Age</label>
@@ -302,10 +290,15 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
                 </select>
               </div>
             </div>
+            <LookingForChips value={lookingFor} onChange={setLookingFor} />
             <div className="legal-agree-wrap">
               <input type="checkbox" id="agree-terms" checked={agreedToTerms} onChange={(e) => setAgreedToTerms(e.target.checked)} />
               <label htmlFor="agree-terms">I agree to the <Link to="/terms">Terms</Link> and <Link to="/privacy">Privacy</Link>. 18+.</label>
             </div>
+            <label className="stay-logged-in">
+              <input type="checkbox" checked={stayLoggedIn} onChange={(e) => setStayLoggedIn(e.target.checked)} />
+              Stay logged in — skip PIN/password on this device. Leave off to sign out when you close the tab.
+            </label>
             <button type="submit" className="auth-button face-id-primary" disabled={loading}>
               {loading ? 'Creating…' : 'Create account'}
             </button>
@@ -351,7 +344,7 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
                 )}
                 <label className="stay-logged-in">
                   <input type="checkbox" checked={stayLoggedIn} onChange={(e) => setStayLoggedIn(e.target.checked)} />
-                  Stay logged in — you won’t need your PIN or password again on this device
+                  Stay logged in — skip PIN/password on this device. Leave off to sign out when you close the tab.
                 </label>
                 <button type="submit" className="auth-button face-id-primary" disabled={loading}>
                   {loading ? 'Signing in…' : 'Sign in'}

@@ -9,7 +9,6 @@ import './Auth.css';
 const Signup = () => {
   const [name, setName] = useState('');
   const [username, setUsername] = useState('');
-  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -22,7 +21,7 @@ const Signup = () => {
     setLoading(true);
 
     try {
-      const response = await authAPI.signup({ name, username: normalizeUsernameInput(username), email, password });
+      const response = await authAPI.signup({ name, username: normalizeUsernameInput(username), password });
       if (!response.token || !response.user) throw new Error('Invalid signup response');
       login(response.user, response.token);
       navigate('/profile-setup');
@@ -74,18 +73,6 @@ const Signup = () => {
           </div>
 
           <div className="form-group">
-            <label htmlFor="email">Email</label>
-            <input
-              type="email"
-              id="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              placeholder="Enter your email"
-            />
-          </div>
-
-          <div className="form-group">
             <label htmlFor="password">Password</label>
             <input
               type="password"
@@ -112,4 +99,3 @@ const Signup = () => {
 };
 
 export default Signup;
-

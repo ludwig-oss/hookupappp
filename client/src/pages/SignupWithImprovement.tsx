@@ -6,6 +6,8 @@ import { discoverAPI } from '../api/discover';
 import { formatAxiosError } from '../lib/apiError';
 import { normalizeUsernameInput, USERNAME_HINT, USERNAME_MAX, USERNAME_MIN } from '../lib/username';
 import { walkMatchAPI } from '../api/walkMatch';
+import LookingForChips from '../components/LookingForChips';
+import { dateMatchAPI } from '../api/dateMatch';
 import './Auth.css';
 import './Legal.css';
 
@@ -25,11 +27,10 @@ const SignupWithImprovement = () => {
   const [passwordHint1, setPasswordHint1] = useState('');
   const [passwordHint2, setPasswordHint2] = useState('');
   const [passwordHint3, setPasswordHint3] = useState('');
-  const [phoneNumber, setPhoneNumber] = useState('');
   const [age, setAge] = useState('');
   const [gender, setGender] = useState('');
   const [orientation, setOrientation] = useState<'straight' | 'gay' | 'lesbian' | 'bisexual' | 'pansexual'>('straight');
-  const [lookingFor, setLookingFor] = useState<string[]>(['dating']);
+  const [lookingFor, setLookingFor] = useState<string[]>([]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [agreedToTerms, setAgreedToTerms] = useState(false);
@@ -99,7 +100,6 @@ const SignupWithImprovement = () => {
         passwordHint1: passwordHint1.trim(),
         passwordHint2: passwordHint2.trim(),
         passwordHint3: passwordHint3.trim(),
-        phoneNumber: phoneNumber.trim() || undefined,
       });
 
       const id = coerceUserId(response.user?.id);
@@ -108,7 +108,7 @@ const SignupWithImprovement = () => {
         return;
       }
 
-      const userForLogin = { ...response.user, id };
+      const userForLogin = { ...response.user, id, dateLookingFor: lookingFor };
 
       login(userForLogin, response.token);
       signedUp = true;
@@ -120,9 +120,9 @@ const SignupWithImprovement = () => {
       }
 
       try {
+        await dateMatchAPI.saveLookingFor(lookingFor);
         await discoverAPI.setPreference({
           orientation,
-          lookingFor: lookingFor as ('dating' | 'casual' | 'friends' | 'serious')[],
           userId: id,
         });
       } catch {
@@ -277,19 +277,6 @@ const SignupWithImprovement = () => {
           </div>
 
           <div className="form-group">
-            <label htmlFor="phone">Phone (optional)</label>
-            <input
-              type="tel"
-              id="phone"
-              value={phoneNumber}
-              onChange={(e) => setPhoneNumber(e.target.value)}
-              autoComplete="tel"
-              placeholder="For account recovery"
-              style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '2px solid rgba(0, 212, 255, 0.3)', background: 'rgba(0, 0, 0, 0.4)', color: '#fff', fontFamily: 'Orbitron, monospace' }}
-            />
-          </div>
-
-          <div className="form-group">
             <label htmlFor="orientation">Orientation</label>
             <select
               id="orientation"
@@ -305,47 +292,7 @@ const SignupWithImprovement = () => {
             </select>
           </div>
 
-          <div className="form-group">
-            <label style={{ display: 'block', marginBottom: '10px' }}>Looking For (select one or more)</label>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
-              {[
-                { value: 'dating', label: 'Dating' },
-                { value: 'casual', label: 'Casual' },
-                { value: 'friends', label: 'Friends' },
-                { value: 'serious', label: 'Serious Relationship' },
-              ].map((opt) => (
-                <label
-                  key={opt.value}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                    padding: '10px 14px',
-                    border: `2px solid ${lookingFor.includes(opt.value) ? 'rgba(0, 212, 255, 0.8)' : 'rgba(0, 212, 255, 0.3)'}`,
-                    borderRadius: '8px',
-                    background: lookingFor.includes(opt.value) ? 'rgba(0, 212, 255, 0.2)' : 'rgba(0, 0, 0, 0.4)',
-                    color: '#fff',
-                    fontFamily: 'Orbitron, monospace',
-                    cursor: 'pointer',
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={lookingFor.includes(opt.value)}
-                    onChange={() => {
-                      setLookingFor((prev) =>
-                        prev.includes(opt.value)
-                          ? prev.filter((v) => v !== opt.value)
-                          : [...prev, opt.value]
-                      );
-                    }}
-                    style={{ width: '18px', height: '18px', accentColor: '#00d4ff' }}
-                  />
-                  {opt.label}
-                </label>
-              ))}
-            </div>
-          </div>
+          <LookingForChips value={lookingFor} onChange={setLookingFor} />
 
           <div className="legal-agree-wrap">
             <input

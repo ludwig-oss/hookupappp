@@ -51,7 +51,7 @@
   border-radius: 16px;
   padding: 28px 24px 32px;
   width: 100%;
-  max-width: 440px;
+  max-width: 520px;
   box-shadow: 
     0 0 20px rgba(0, 212, 255, 0.3),
     0 0 40px rgba(255, 0, 255, 0.2),
@@ -533,6 +533,39 @@
   .auth-container {
     justify-content: center;
   }
+}
+
+.looking-for-chips {
+  margin: 4px 0 16px;
+}
+
+.looking-for-chips-label {
+  font-size: 13px;
+  color: #c4b8c8;
+  margin: 0 0 10px;
+}
+
+.looking-for-chips-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.looking-for-chip {
+  border: 2px solid rgba(255, 182, 193, 0.35);
+  background: rgba(0, 0, 0, 0.35);
+  color: #fff;
+  border-radius: 999px;
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 12px;
+  font-family: inherit;
+}
+
+.looking-for-chip.is-on {
+  border-color: #ff8fab;
+  background: rgba(255, 107, 157, 0.22);
+  box-shadow: 0 0 12px rgba(255, 107, 157, 0.35);
 }
 
 

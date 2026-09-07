@@ -20,6 +20,8 @@ import { prepareAndUploadFile } from '../../lib/uploadMedia';
 import { COUPLE_GUIDE_CATEGORY_IDS } from '../../constants/improvementCategories';
 import { notifyDevice } from '../../lib/deviceNotify';
 import { guideProgramAPI, type GuideProgramGrade, type PendingClientEval } from '../../api/guideProgram';
+import { aiGuidesAPI, type AiGuideCharacter } from '../../api/aiGuides';
+import AiGuideStudio from '../AiGuideStudio';
 import './Widget.css';
 
 const VIDEO_CALL_BASE = 'https://meet.jit.si';
@@ -33,11 +35,15 @@ function clipText(text: string, max: number): string {
 }
 
 export default function CompatibilityWidget() {
-  const { user } = useContext(AuthContext);
+  const { user, updateUser } = useContext(AuthContext);
   const navigate = useNavigate();
   const [view, setView] = useState<'main' | 'recommended' | 'search' | 'guides' | 'request' | 'send_proof' | 'booking' | 'expert_apply' | 'expert_dashboard'>('main');
   /** Wizard: want a guide → region → browse areas & pick an expert */
-  const [guideSeekStep, setGuideSeekStep] = useState<GuideSeekStep>('choose');
+  const [guideSeekStep, setGuideSeekStep] = useState<GuideSeekStep>(() => (user?.aiGuideId ? 'skipped' : 'choose'));
+  const [showAiCrew, setShowAiCrew] = useState(() => !user?.aiGuideId);
+  const [aiCrewQuery, setAiCrewQuery] = useState('');
+  const [aiGuides, setAiGuides] = useState<AiGuideCharacter[]>([]);
+  const [pickingAiId, setPickingAiId] = useState('');
   const [clientRegion, setClientRegion] = useState('');
   const [expertTab, setExpertTab] = useState<'requests' | 'upcoming' | 'previous' | 'availability' | 'wallet' | 'applications'>('requests');
   const [myApplication, setMyApplication] = useState<GuideApplication | null>(null);
@@ -121,14 +127,17 @@ export default function CompatibilityWidget() {
 
   useEffect(() => {
     loadCategories();
+    aiGuidesAPI.list().then((r) => setAiGuides(r.guides || [])).catch(() => setAiGuides([]));
   }, []);
 
   useEffect(() => {
     const handler = (e: Event) => {
       const catId = (e as CustomEvent<{ categoryId?: string }>).detail?.categoryId;
+      setGuideSeekStep('ready');
       if (catId) {
-        loadGuidesForCategory(catId);
-        setView('guides');
+        void loadGuidesForCategory(catId);
+      } else {
+        setShowAiCrew(true);
       }
     };
     window.addEventListener('school:open-guides', handler);
@@ -246,9 +255,38 @@ export default function CompatibilityWidget() {
     }
   };
 
+  const aiGuidesForCategory = (catId: string) => {
+    const matched = aiGuides.filter((g) => g.categoryIds.includes(catId));
+    return matched.length ? matched : aiGuides;
+  };
+
+  const pickAiGuide = async (guide: AiGuideCharacter) => {
+    setPickingAiId(guide.id);
+    setError('');
+    try {
+      await aiGuidesAPI.assign(guide.id);
+      updateUser({ aiGuideId: guide.id });
+      window.dispatchEvent(new Event('guide-program:updated'));
+      setShowAiCrew(false);
+      setView('main');
+      setGuideSeekStep('skipped');
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Could not choose this AI guide');
+    } finally {
+      setPickingAiId('');
+    }
+  };
+
+  const openAiCrewForCategory = (catId: string) => {
+    const catName = categories.find((c) => c.id === catId)?.name || catId;
+    setAiCrewQuery(catName);
+    setShowAiCrew(true);
+  };
+
   const loadGuidesForCategory = async (catId: string) => {
     setSelectedCategory(catId);
     setLoading(true);
+    setGuideSeekStep((prev) => (prev === 'choose' || prev === 'region' ? 'ready' : prev));
     try {
       const region =
         guideSeekStep === 'ready' && clientRegion.trim() ? clientRegion.trim() : undefined;
@@ -258,14 +296,73 @@ export default function CompatibilityWidget() {
         user?.country || undefined,
         user?.city || undefined
       );
-      setGuides(res.guides || []);
+      const humans = res.guides || [];
+      setGuides(humans);
       setView('guides');
+      // AI crew is the default — open them when humans are empty so users are never stuck
+      if (humans.length === 0 && !user?.aiGuideId) {
+        openAiCrewForCategory(catId);
+      }
     } catch {
       setError('Failed to load experts');
+      setView('guides');
+      if (!user?.aiGuideId) openAiCrewForCategory(catId);
     } finally {
       setLoading(false);
     }
   };
+
+  const renderAiGuideList = (list: AiGuideCharacter[], heading: string) => (
+    <div style={{ marginBottom: 16 }}>
+      <div style={{ color: '#fbbf24', fontFamily: 'Orbitron, monospace', fontSize: 12, marginBottom: 8 }}>
+        {heading}
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {list.map((g) => (
+          <div
+            key={g.id}
+            style={{
+              display: 'flex',
+              gap: 12,
+              alignItems: 'center',
+              padding: 12,
+              borderRadius: 10,
+              border: '2px solid rgba(245, 158, 11, 0.45)',
+              background: 'rgba(245, 158, 11, 0.08)',
+            }}
+          >
+            <img
+              src={g.portrait}
+              alt=""
+              style={{ width: 56, height: 56, borderRadius: 10, objectFit: 'cover', flexShrink: 0 }}
+            />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 'bold', color: '#fbbf24', fontFamily: 'Orbitron, monospace' }}>{g.name}</div>
+              <div style={{ fontSize: 12, color: '#e7c9a0' }}>{g.specialty}</div>
+              <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 4 }}>{g.tagline}</div>
+            </div>
+            <button
+              type="button"
+              disabled={pickingAiId === g.id}
+              onClick={() => void pickAiGuide(g)}
+              style={{
+                padding: '10px 14px',
+                background: 'rgba(245, 158, 11, 0.3)',
+                border: '2px solid #f59e0b',
+                borderRadius: 8,
+                color: '#fbbf24',
+                fontFamily: 'Orbitron, monospace',
+                cursor: 'pointer',
+                flexShrink: 0,
+              }}
+            >
+              {pickingAiId === g.id ? '…' : user?.aiGuideId === g.id ? 'Yours' : 'Choose'}
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 
   const loadAvailability = async (guideId: string) => {
     try {
@@ -719,9 +816,48 @@ export default function CompatibilityWidget() {
 
   return (
     <div className="widget compatibility-widget-inner" style={{ background: 'rgba(0,0,0,0.4)', border: '2px solid rgba(0, 212, 255, 0.4)', borderRadius: '16px', padding: '20px', boxShadow: '0 0 25px rgba(0, 212, 255, 0.2)' }}>
+      {showAiCrew && (
+        <AiGuideStudio
+          mode="app"
+          initialQuery={aiCrewQuery}
+          onClose={() => {
+            setShowAiCrew(false);
+            setAiCrewQuery('');
+          }}
+          onChooseHuman={() => {
+            setShowAiCrew(false);
+            setAiCrewQuery('');
+            setGuideSeekStep('ready');
+          }}
+        />
+      )}
       <div className="compat-line" style={{ marginBottom: '16px', color: '#00d4ff', fontFamily: 'Orbitron, monospace', fontSize: '16px', textShadow: '0 0 10px rgba(0, 212, 255, 0.5)' }}>
         IMPROVE YOURSELF — EXPERT HELPERS
       </div>
+      <button
+        type="button"
+        onClick={() => {
+          setAiCrewQuery('');
+          setShowAiCrew(true);
+        }}
+        style={{
+          width: '100%',
+          marginBottom: 14,
+          padding: '14px 16px',
+          textAlign: 'left',
+          background: 'linear-gradient(135deg, rgba(234,88,12,0.25), rgba(0,0,0,0.5))',
+          border: '2px solid #f59e0b',
+          borderRadius: 12,
+          color: '#fbbf24',
+          cursor: 'pointer',
+          fontFamily: 'Orbitron, monospace',
+        }}
+      >
+        AI Crew — pick your guide now
+        <div style={{ fontSize: 11, color: '#e7c9a0', marginTop: 4, fontFamily: 'Segoe UI, sans-serif' }}>
+          8 characters ready instantly. Choose one to unlock the app. Humans are optional later.
+        </div>
+      </button>
       <div className="compat-status" style={{ marginBottom: '16px', fontSize: '12px', color: '#9ca3af' }}>
         {guideSeekStep === 'ready'
           ? `Experts matched for ${clientRegion.trim() || 'your region'}. Pick a focus area, then choose a guide by name and expertise.`
@@ -1112,7 +1248,36 @@ export default function CompatibilityWidget() {
           <div style={{ marginBottom: '12px', color: '#00d4ff', fontSize: '14px' }}>
             {categories.find(c => c.id === selectedCategory)?.name || 'Experts'}
           </div>
-          {guides.length === 0 ? <p style={{ color: '#9ca3af' }}>No experts in this area yet.</p> : renderGuideList(guides, selectedCategory)}
+          {aiGuides.length > 0 &&
+            renderAiGuideList(
+              aiGuidesForCategory(selectedCategory),
+              'AI crew for this area — choose one to continue'
+            )}
+          <button
+            type="button"
+            onClick={() => openAiCrewForCategory(selectedCategory)}
+            style={{
+              width: '100%',
+              marginBottom: 14,
+              padding: '12px 14px',
+              background: 'rgba(245, 158, 11, 0.2)',
+              border: '2px solid #f59e0b',
+              borderRadius: 8,
+              color: '#fbbf24',
+              fontFamily: 'Orbitron, monospace',
+              cursor: 'pointer',
+            }}
+          >
+            Open full AI crew studio
+          </button>
+          <div style={{ color: '#9ca3af', fontSize: 12, marginBottom: 8, fontFamily: 'Orbitron, monospace' }}>
+            Human experts (optional)
+          </div>
+          {guides.length === 0 ? (
+            <p style={{ color: '#9ca3af' }}>No human experts in this area yet — pick an AI guide above.</p>
+          ) : (
+            renderGuideList(guides, selectedCategory)
+          )}
         </div>
       )}
 
@@ -1171,9 +1336,9 @@ export default function CompatibilityWidget() {
       {view === 'expert_apply' && (
         <div>
           <button type="button" onClick={() => setView('main')} style={{ marginBottom: '12px', background: 'transparent', border: '2px solid #00d4ff', color: '#00d4ff', padding: '8px 14px', borderRadius: '8px', fontFamily: 'Orbitron, monospace', cursor: 'pointer' }}>← Back</button>
-          <h3 style={{ color: '#00d4ff', marginBottom: '8px', fontFamily: 'Orbitron, monospace' }}>Apply to be a guide</h3>
+          <h3 style={{ color: '#00d4ff', marginBottom: '8px', fontFamily: 'Orbitron, monospace' }}>Apply to be a guide — later path</h3>
           <p style={{ fontSize: '12px', color: '#9ca3af', marginBottom: '16px' }}>
-            For each area: explain why you&apos;re good, then add proof. Couples can apply for relationship-problem areas if they are good at helping others stay together.
+            The in-app crew is AI characters. Humans apply here with proof. Reviews take time. After you are approved, people can choose you instead of (or after) an AI guide.
           </p>
           <label style={{ display: 'block', marginBottom: '8px', color: '#f472b6', fontSize: '12px' }}>Couples &amp; relationship (add if you are good at this and can help others)</label>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '12px', maxHeight: '120px', overflowY: 'auto' }}>

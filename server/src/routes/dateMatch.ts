@@ -2,6 +2,7 @@ import express from 'express';
 import { authenticateToken } from '../middleware/auth.js';
 import {
   getCatalog,
+  postLookingFor,
   postStartSearch,
   postCancelSearch,
   getPoll,
@@ -29,6 +30,7 @@ const router = express.Router();
 router.use(authenticateToken);
 
 router.get('/catalog', getCatalog);
+router.post('/looking-for', postLookingFor);
 router.get('/poll', getPoll);
 router.get('/mine', getMine);
 router.post('/search', postStartSearch);

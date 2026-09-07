@@ -1,10 +1,11 @@
 import axios from 'axios';
 import { API_BASE, MEDIA_API_BASE } from '../api/config';
+import { getAuthToken } from '../lib/authStorage';
 import { compressImageFile } from './compressImage';
 import { compressVideoFile, isProbablyImageFile, isProbablyVideoFile } from './compressVideo';
 
 function authHeaders(): Record<string, string> {
-  const token = typeof localStorage !== 'undefined' ? localStorage.getItem('token') : null;
+  const token = getAuthToken();
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 

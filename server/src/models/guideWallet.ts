@@ -35,7 +35,7 @@ export interface GuideWallet {
 export interface WalletTransaction {
   id: string;
   userId: string;
-  type: 'session_earning' | 'hold_earning' | 'platform_fee' | 'withdrawal' | 'withdrawal_refund' | 'advice_prize' | 'platform_fee_deduct' | 'date_fine' | 'lawyer_cut';
+  type: 'session_earning' | 'hold_earning' | 'platform_fee' | 'withdrawal' | 'withdrawal_refund' | 'advice_prize' | 'platform_fee_deduct' | 'date_fine' | 'lawyer_cut' | 'ai_guide_help';
   amountEur: number;
   netToGuideEur?: number;
   platformFeeEur?: number;
@@ -258,6 +258,31 @@ export async function creditGuideSessionPayment(params: {
   }).catch(() => {});
 
   return { guideShare, platformFee };
+}
+
+/** 100% of AI crew one-time help goes to the app account, not a human guide. */
+export async function creditPlatformAiHelp(params: {
+  grossEur: number;
+  userId: string;
+  paymentMethod: 'paypal' | 'stripe' | 'demo';
+  kind?: string;
+}): Promise<void> {
+  const amount = Math.round(params.grossEur * 100) / 100;
+  const w = await getOrCreateWallet('platform');
+  w.availableBalanceEur = Math.round((w.availableBalanceEur + amount) * 100) / 100;
+  w.totalEarnedEur = Math.round((w.totalEarnedEur + amount) * 100) / 100;
+  await saveWallet(w);
+
+  const txs = await readTransactions();
+  txs.push({
+    id: Date.now().toString() + '-aihelp',
+    userId: 'platform',
+    type: 'ai_guide_help',
+    amountEur: amount,
+    note: `AI crew help (${params.paymentMethod}) from user ${params.userId}${params.kind ? ` · ${params.kind}` : ''}`,
+    createdAt: new Date().toISOString(),
+  });
+  await writeTransactions(txs);
 }
 
 /** Credit after PayPal AUTHORIZE — held until the guide clicks Withdraw (capture). */

@@ -1,10 +1,11 @@
 import axios from 'axios';
 import { API_BASE } from './config';
+import { getAuthToken } from '../lib/authStorage';
 
 const API_URL = API_BASE + '/api/events';
 
 function getAuthHeaders(): Record<string, string> {
-  const token = typeof localStorage !== 'undefined' ? localStorage.getItem('token') : null;
+  const token = getAuthToken();
   if (token) return { Authorization: `Bearer ${token}` };
   return {};
 }

@@ -13,6 +13,7 @@ export interface ConnectionJourneyStepInfo {
   chatPrompt?: string;
   quizQuestion?: string;
   options?: string[];
+  playAction?: 'xo' | 'would-you-rather' | 'truth-or-dare';
 }
 
 export interface ConnectionJourneyState {
@@ -20,6 +21,15 @@ export interface ConnectionJourneyState {
   startedAt: string;
   assignedStepIds?: string[];
   completedStepIds: string[];
+  saidHiUserIds?: string[];
+  hostMode?: 'offer' | 'their_turn' | 'host_asks' | 'quiet';
+  hostMuted?: boolean;
+}
+
+export interface ConnectionHostScript {
+  headline: string;
+  body: string;
+  actions: string[];
 }
 
 export interface ConnectionJourneyResponse {
@@ -29,6 +39,12 @@ export interface ConnectionJourneyResponse {
   totalDays: number;
   allSteps?: { id: string; day: number; type: string; title: string; completed: boolean }[];
   completedStepId?: string;
+  phase?: 'say_hi' | 'connecting' | 'complete';
+  hostMode?: 'offer' | 'their_turn' | 'host_asks' | 'quiet';
+  hostMuted?: boolean;
+  saidHiUserIds?: string[];
+  host?: ConnectionHostScript;
+  partnerName?: string;
 }
 
 export const connectionJourneyAPI = {
@@ -44,6 +60,24 @@ export const connectionJourneyAPI = {
 
   completeStep: async (partnerUserId: string, stepId: string): Promise<ConnectionJourneyResponse> => {
     const response = await axios.post(`${API_URL}/complete`, { partnerUserId, stepId });
+    return response.data;
+  },
+
+  saidHi: async (partnerUserId: string): Promise<ConnectionJourneyResponse> => {
+    const response = await axios.post(`${API_URL}/said-hi`, { partnerUserId });
+    return response.data;
+  },
+
+  hostChoice: async (
+    partnerUserId: string,
+    choice: 'ask_them' | 'host_asks' | 'offer' | 'quiet'
+  ): Promise<ConnectionJourneyResponse> => {
+    const response = await axios.post(`${API_URL}/host-choice`, { partnerUserId, choice });
+    return response.data;
+  },
+
+  mute: async (partnerUserId: string, muted: boolean): Promise<ConnectionJourneyResponse> => {
+    const response = await axios.post(`${API_URL}/mute`, { partnerUserId, muted });
     return response.data;
   },
 };

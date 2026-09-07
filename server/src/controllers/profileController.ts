@@ -213,6 +213,9 @@ export const getUserProfile = async (req: Request, res: Response) => {
     let user = isOwnProfileRequest
       ? await resolveOwnUser(profileUserId, authEmail)
       : await getUserById(profileUserId);
+    if (!user && !isOwnProfileRequest) {
+      user = await runWithSystem(() => getUserById(profileUserId));
+    }
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }

@@ -184,6 +184,46 @@ export const DATE_IDEAS: DateIdea[] = [
   { id: 'd50', category: 'date', title: 'New soft-serve swirl', detail: 'The park kiosk, two flavors twisted.' },
 ];
 
+export function validLookingFor(ids: string[] | undefined | null): string[] {
+  if (!Array.isArray(ids)) return [];
+  const allow = new Set(LOOKING_FOR_OPTIONS.map((o) => o.id));
+  return [...new Set(ids.filter((id) => allow.has(id)))];
+}
+
+const DISCOVER_FROM_DATE: Record<string, Array<'dating' | 'casual' | 'friends' | 'serious'>> = {
+  serious_relationship: ['serious'],
+  marriage_minded: ['serious'],
+  exclusive_dating: ['serious'],
+  life_partner: ['serious'],
+  long_term_slow: ['serious'],
+  casual_dating: ['dating', 'casual'],
+  short_term_fun: ['casual'],
+  open_to_anything: ['dating', 'casual'],
+  see_where_it_goes: ['dating'],
+  friends_first: ['friends'],
+  activity_partner: ['friends'],
+  travel_companion: ['friends'],
+};
+
+export function toDiscoverLookingFor(ids: string[]): Array<'dating' | 'casual' | 'friends' | 'serious'> {
+  const out = new Set<'dating' | 'casual' | 'friends' | 'serious'>();
+  for (const id of validLookingFor(ids)) {
+    for (const v of DISCOVER_FROM_DATE[id] || []) out.add(v);
+  }
+  if (!out.size) out.add('dating');
+  return [...out];
+}
+
+export function fromDiscoverLookingFor(old: string[] | undefined | null): string[] {
+  if (!Array.isArray(old) || !old.length) return [];
+  const out: string[] = [];
+  if (old.includes('serious')) out.push('serious_relationship');
+  if (old.includes('casual')) out.push('casual_dating');
+  if (old.includes('friends')) out.push('friends_first');
+  if (old.includes('dating') && !old.includes('casual') && !old.includes('serious')) out.push('see_where_it_goes');
+  return validLookingFor(out);
+}
+
 export function getIdeaById(id: string): DateIdea | undefined {
   return DATE_IDEAS.find((d) => d.id === id);
 }

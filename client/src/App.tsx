@@ -208,7 +208,7 @@ function App() {
     const normalized = { ...userForStorage(userData as Record<string, unknown>), id };
     refreshGen.current += 1;
     hasRefreshedProfile.current = false;
-    persistAuth(normalized, token, options?.stayLoggedIn !== false);
+    persistAuth(normalized, token, options?.stayLoggedIn === true);
     axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
     // Commit user before the caller navigates so /profile-setup does not
     // briefly see a missing session and bounce to the landing page.

@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
 import { guideProgramAPI, type GuideProgramGrade, type GuideProgramStatus, type PendingClientEval } from '../api/guideProgram';
 import { DEFAULT_IMPROVEMENT_CATEGORIES, COUPLE_GUIDE_CATEGORY_IDS } from '../constants/improvementCategories';
+import AiGuideStudio from './AiGuideStudio';
 import './SchoolNotification.css';
 import './GuideProgramGate.css';
 
@@ -23,6 +24,7 @@ export default function GuideProgramGate() {
   const [grade, setGrade] = useState<GuideProgramGrade | ''>('');
   const [evalSaving, setEvalSaving] = useState(false);
   const [coupleSelected, setCoupleSelected] = useState<string[]>([]);
+  const [humanPath, setHumanPath] = useState(false);
 
   const refresh = useCallback(async () => {
     if (!user?.id || !user?.profileSetupComplete) return;
@@ -236,7 +238,28 @@ export default function GuideProgramGate() {
   if (status.canUseApp) return null;
 
   const onHome = location.pathname === '/home' || location.pathname === '/dashboard';
-  const showPickBanner = status.needsGuidePick && pickingGuide && onHome;
+  const showPickBanner = status.needsGuidePick && pickingGuide && onHome && humanPath;
+
+  if (!humanPath && (status.needsOnboarding || status.needsGuidePick) && !status.waitingOnEval) {
+    return (
+      <AiGuideStudio
+        mode="gate"
+        onUnlocked={() => {
+          void refresh();
+        }}
+        onChooseHuman={() => {
+          // Still allow browsing humans, but keep AI as the unlock path — do not trap users on empty human lists
+          setHumanPath(true);
+          setPickingGuide(true);
+          navigate('/home');
+          window.setTimeout(() => {
+            window.dispatchEvent(new CustomEvent('ai-guide:open', { detail: {} }));
+            window.dispatchEvent(new CustomEvent('school:open-guides', { detail: {} }));
+          }, 250);
+        }}
+      />
+    );
+  }
 
   const toggle = (id: string) => {
     setSelected((prev) => {
@@ -367,8 +390,17 @@ export default function GuideProgramGate() {
             </p>
             {error && <div className="school-error">{error}</div>}
             <div className="school-actions">
-              <button type="button" className="school-btn-primary" onClick={openGuides}>
-                Choose a guide
+              <button
+                type="button"
+                className="school-btn-primary"
+                onClick={() => {
+                  setHumanPath(false);
+                }}
+              >
+                Pick an AI guide
+              </button>
+              <button type="button" className="school-btn-secondary" onClick={openGuides}>
+                Browse human guides
               </button>
               <button type="button" className="school-btn-ghost" onClick={() => logout()}>
                 Log out

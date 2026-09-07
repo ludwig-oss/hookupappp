@@ -98,7 +98,9 @@ export default function DateMatchWidget({
     setLists(mine);
     setPitches(p);
     setLawyerSessions(sess.sessions || []);
-    if (!looking.length && c.lookingFor[0]) setLooking([c.lookingFor[0].id, c.lookingFor[1]?.id].filter(Boolean));
+    if (!looking.length && Array.isArray(c.savedLookingFor) && c.savedLookingFor.length) {
+      setLooking(c.savedLookingFor);
+    }
   };
 
   useEffect(() => {
@@ -271,7 +273,11 @@ export default function DateMatchWidget({
               <button type="button" className="da-btn da-btn-ghost" style={{ marginLeft: 8 }} onClick={() => { setActiveLawyer(lawyerSessions[0]); setView('lawyer'); }}>Join</button>
             </div>
           )}
-          <p style={{ fontSize: 13, marginBottom: 8 }}>What are you looking for? Pick at least one.</p>
+          <p style={{ fontSize: 13, marginBottom: 8 }}>
+            {looking.length
+              ? 'This is what you picked at signup. Change it if you want, then search.'
+              : 'What are you looking for? Pick at least one.'}
+          </p>
           <div className="da-row">
             {(catalog?.lookingFor || []).map((opt) => (
               <button

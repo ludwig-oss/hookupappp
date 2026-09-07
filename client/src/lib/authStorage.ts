@@ -1,6 +1,7 @@
 const TOKEN_KEY = 'token';
 const USER_KEY = 'user';
-const STAY_KEY = 'stayLoggedIn';
+/** Explicit opt-in. Old `stayLoggedIn` defaulted on, so it is ignored. */
+const STAY_KEY = 'stayLoggedInDevice';
 
 function ls(): Storage | null {
   try {
@@ -19,22 +20,35 @@ function ss(): Storage | null {
 }
 
 export function getStayLoggedIn(): boolean {
-  const v = ls()?.getItem(STAY_KEY);
-  if (v === '0') return false;
-  if (v === '1') return true;
-  if (ss()?.getItem(TOKEN_KEY) && !ls()?.getItem(TOKEN_KEY)) return false;
-  return true;
+  return ls()?.getItem(STAY_KEY) === '1';
 }
 
 export function setStayLoggedInFlag(on: boolean): void {
   ls()?.setItem(STAY_KEY, on ? '1' : '0');
 }
 
+/** Session-only unless they checked Stay logged in. Closing the tab logs them out. */
+function migrateEphemeralSession(): void {
+  if (getStayLoggedIn()) return;
+  const l = ls();
+  const s = ss();
+  if (!l || !s) return;
+  const token = l.getItem(TOKEN_KEY);
+  if (!token) return;
+  s.setItem(TOKEN_KEY, token);
+  const user = l.getItem(USER_KEY);
+  if (user) s.setItem(USER_KEY, user);
+  l.removeItem(TOKEN_KEY);
+  l.removeItem(USER_KEY);
+}
+
 export function getAuthToken(): string | null {
+  migrateEphemeralSession();
   return ls()?.getItem(TOKEN_KEY) || ss()?.getItem(TOKEN_KEY) || null;
 }
 
 export function getAuthUserRaw(): string | null {
+  migrateEphemeralSession();
   return ls()?.getItem(USER_KEY) || ss()?.getItem(USER_KEY) || null;
 }
 
@@ -71,20 +85,11 @@ export function applyStayLoggedIn(on: boolean): void {
 
 export function writeAuthUser(user: unknown): void {
   const json = JSON.stringify(user);
-  if (ls()?.getItem(TOKEN_KEY)) {
-    try {
-      ls()?.setItem(USER_KEY, json);
-    } catch {
-      /* quota */
-    }
-    return;
-  }
-  if (ss()?.getItem(TOKEN_KEY)) {
-    try {
-      ss()?.setItem(USER_KEY, json);
-    } catch {
-      /* quota */
-    }
+  const store = getStayLoggedIn() ? ls() : ss();
+  try {
+    store?.setItem(USER_KEY, json);
+  } catch {
+    /* quota */
   }
 }
 

@@ -1,12 +1,12 @@
 import axios from 'axios';
 import { API_BASE, MEDIA_API_BASE } from './config';
-import { getAuthUserRaw } from '../lib/authStorage';
+import { getAuthToken, getAuthUserRaw } from '../lib/authStorage';
 
 const API_URL = `${API_BASE}/api/profile`;
 const MEDIA_API_URL = `${MEDIA_API_BASE || API_BASE}/api/profile`;
 
 function getAuthHeaders(): Record<string, string> {
-  const token = typeof localStorage !== 'undefined' ? localStorage.getItem('token') : null;
+  const token = getAuthToken();
   if (token) return { Authorization: `Bearer ${token}` };
   return {};
 }
@@ -80,7 +80,9 @@ export const profileAPI = {
 
   getUserProfile: async (userId: string): Promise<ProfileData> => {
     try {
-      const response = await axios.get(`${MEDIA_API_URL}/${userId}`, { headers: getAuthHeaders() });
+      // Same origin/proxy as /me and chat — MEDIA_API_URL hits Render directly in
+      // production and can CORS-fail or 404 while the rest of the app still works.
+      const response = await axios.get(`${API_URL}/${userId}`, { headers: getAuthHeaders() });
       return response.data;
     } catch (err: any) {
       // Only fall back to /me when this really is the signed-in user — never swap in
@@ -96,10 +98,10 @@ export const profileAPI = {
       })();
       if (lookingAtSelf && (err.response?.status === 404 || err.response?.status === 400)) {
         try {
-          const meResponse = await axios.get(`${MEDIA_API_URL}/me`, { headers: getAuthHeaders() });
+          const meResponse = await axios.get(`${API_URL}/me`, { headers: getAuthHeaders() });
           return meResponse.data;
-        } catch (meErr) {
-          throw err; // Throw original error
+        } catch {
+          throw err;
         }
       }
       throw err;

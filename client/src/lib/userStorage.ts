@@ -21,5 +21,9 @@ export function userForStorage(user: Record<string, unknown>): Record<string, un
     photoVerifiedAt: user.photoVerifiedAt ?? null,
     createdAt: user.createdAt ?? null,
     photoLock: user.photoLock && typeof user.photoLock === 'object' ? user.photoLock : undefined,
+    aiGuideId: typeof user.aiGuideId === 'string' && user.aiGuideId ? user.aiGuideId : null,
+    dateLookingFor: Array.isArray(user.dateLookingFor)
+      ? user.dateLookingFor.filter((x): x is string => typeof x === 'string')
+      : [],
   };
 }

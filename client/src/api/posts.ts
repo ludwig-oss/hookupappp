@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { API_BASE, MEDIA_API_BASE } from './config';
+import { getAuthToken } from '../lib/authStorage';
 
 const API_URL = API_BASE + '/api/posts';
 const WRITE_API_URL = `${MEDIA_API_BASE || API_BASE}/api/posts`;
@@ -8,7 +9,7 @@ const WRITE_API_URL = `${MEDIA_API_BASE || API_BASE}/api/posts`;
 const FEED_TIMEOUT_MS = 25_000;
 
 function getAuthHeaders(): Record<string, string> {
-  const token = typeof localStorage !== 'undefined' ? localStorage.getItem('token') : null;
+  const token = getAuthToken();
   if (token) return { Authorization: `Bearer ${token}` };
   return {};
 }

@@ -70,7 +70,8 @@ export async function getGuideProgramStatus(userId: string): Promise<GuideProgra
   const isGuide = Boolean(guideProfile?.isActive) || Boolean(user.qualifiedCoach);
   const categoryIds = Array.isArray(user.improvementCategories) ? user.improvementCategories : [];
   const requests = await getRequestsByUserId(userId);
-  const linked = hasActiveGuideLink(requests);
+  const aiLinked = Boolean((user as { aiGuideId?: string | null }).aiGuideId);
+  const linked = hasActiveGuideLink(requests) || aiLinked;
   const accepted = acceptedRequest(requests);
 
   if (accepted && !user.guideProgramStartedAt && !user.guideProgramEvaluatedAt) {
@@ -111,7 +112,7 @@ export async function getGuideProgramStatus(userId: string): Promise<GuideProgra
   const needsGuidePick = areasChosen && !linked;
   const now = Date.now();
   const due = evalDueAt ? new Date(evalDueAt).getTime() : 0;
-  const waitingOnEval = Boolean(startedAt && due && now >= due && !evaluatedAt);
+  const waitingOnEval = Boolean(startedAt && due && now >= due && !evaluatedAt && !aiLinked);
 
   let message = '';
   if (needsOnboarding) {

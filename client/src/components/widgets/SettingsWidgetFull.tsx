@@ -52,7 +52,7 @@ const SettingsWidgetFull = () => {
   const [newPassword, setNewPassword] = useState('');
   const [confirmNewPassword, setConfirmNewPassword] = useState('');
   const [passwordError, setPasswordError] = useState('');
-  const [stayLoggedIn, setStayLoggedIn] = useState(true);
+  const [stayLoggedIn, setStayLoggedIn] = useState(getStayLoggedIn);
   const [passwordSuccess, setPasswordSuccess] = useState('');
   const [age, setAge] = useState<number | ''>('');
   const [gender, setGender] = useState('');
@@ -1529,7 +1529,7 @@ const SettingsWidgetFull = () => {
           <div style={{ marginBottom: '30px', padding: '20px', background: '#fff', border: '2px solid #e5e7eb', borderRadius: '12px' }}>
             <h4 style={{ marginBottom: '8px' }}>Stay logged in</h4>
             <p style={{ fontSize: 13, color: '#6b7280', marginBottom: 12 }}>
-              Like Instagram: when this is on, you don’t have to enter your PIN or password again on this device. Turn it off to sign in again next time you close the app.
+              When this is on, closing a tab keeps you signed in with no PIN or password. Leave it off to sign out when you close the tab or leave the page.
             </p>
             <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontWeight: 600 }}>
               <input

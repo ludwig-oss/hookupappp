@@ -83,7 +83,7 @@ export const HELP_FAQ: HelpFaqItem[] = [
   {
     category: 'Meeting people',
     q: 'What is Date Arena?',
-    a: 'Date Arena (⚔) finds you a date. Pick what you are looking for (serious, casual, and 10+ other intents), then search. You get 3 free searches a month; Plus unlocks unlimited. Matches pair similar interest levels. Both must Accept and pick when you are free. Then tap ? to roll a hobby, good deed, or cheap eat/drink neither of you has done. Chat stays locked until the date day. Cancelling without sick/emergency proof is a €10 fine paid to the other person. After the date, both of you choose whether to keep talking.',
+    a: 'Date Arena (⚔) finds you a date using what you picked at signup (serious, casual, and the other intents). You can change that in Date Arena before you search. You get 3 free searches a month; Plus unlocks unlimited. Matches pair similar interest levels. Both must Accept and pick when you are free. Then tap ? to roll a hobby, good deed, or cheap eat/drink neither of you has done. Chat stays locked until the date day. Cancelling without sick/emergency proof is a €10 fine paid to the other person. After the date, both of you choose whether to keep talking.',
     keywords: ['date arena', 'match', 'fun date', 'question mark', 'fine', 'accept'],
   },
   {
@@ -137,8 +137,20 @@ export const HELP_FAQ: HelpFaqItem[] = [
   {
     category: 'Communication',
     q: 'What is Connection Journey?',
-    a: 'In an active chat, Connection Journey offers daily challenges, games, and prompts before you both confirm you like each other. Open it from the chat tools to build rapport safely over several days.',
-    keywords: ['connection journey', 'challenge', 'journey'],
+    a: 'In an active chat, a connection host joins after you say Hi. Then you talk — the host mixes games, quizzes, XO, dares, and tiny challenges (50+ in the pool, 7 per match) and only jumps in if it goes quiet or you have been chatting a while. Pause host anytime if it is interrupting.',
+    keywords: ['connection journey', 'challenge', 'journey', 'host', 'games', 'quiz'],
+  },
+  {
+    category: 'Communication',
+    q: 'How do I get help with what to text?',
+    a: 'In a chat, tap SOS for live texting help (openers, replies, what to say next). On Home, tap Ask [your guide] for extra coaching. That is extra help — you already picked a guide in the required program. Chat SOS is not the safety SOS on Home for emergencies.',
+    keywords: ['texting help', 'sos', 'what to say', 'ask guide', 'ai guide'],
+  },
+  {
+    category: 'Account',
+    q: 'Stay logged in vs signing out when I close the tab',
+    a: 'Leave Stay logged in off (the default) and closing a tab or leaving the page signs you out. Check Stay logged in on login (or in Settings) to stay signed in on that device without entering PIN or password again.',
+    keywords: ['stay logged in', 'logout', 'close tab', 'session', 'password'],
   },
   {
     category: 'Safety & meetups',
@@ -193,6 +205,30 @@ export const HELP_FAQ: HelpFaqItem[] = [
     q: 'What is Compatibility (⚡)?',
     a: 'Browse guides by category, send a request, and track sessions. A guide is required: choose 1 to 5 problem areas, then pick a guide. Couples also get relationship-problem guides. If you are good at helping couples, apply as a guide in those areas. After they accept, they grade you in 2 months.',
     keywords: ['compatibility', 'guides', 'sessions', 'skip quiz', 'grade'],
+  },
+  {
+    category: 'Social & games',
+    q: 'How does Bedroom flow with Mei work?',
+    a: 'Open Ask [your guide], search last longer / positions / TermAct / foreplay, or pick Mei and tap Bedroom flow or TermAct. Positions: three warmup tips, then a 59-step loop with a timer. TermAct: 80 boy-to-girl tactics (for men with a woman) and 80 girl-to-boy (for women with a man), countdown, skip/previous/reset. Wear an earphone so Mei can talk you through it, or use silent mode and put the phone where it cannot be seen — the bar is a fake “video,” not a film. Stop if it hurts. Adults, both into it. First 5 AI crew helps are free; then Plus/Gold/Platinum (unlimited) or pay once to the app.',
+    keywords: ['mei', 'sex', 'positions', 'last longer', 'bedroom', 'intimacy', 'premature', 'termact', 'foreplay'],
+  },
+  {
+    category: 'Social & games',
+    q: 'Do I pay for AI crew help the same way as a human guide?',
+    a: 'Human guides still charge per session (PayPal/card); most of that goes to the person, with a platform fee. AI crew desks (outfit, face, bedroom/TermAct, lessons) give you 5 free helps. After that you need Plus, Gold, or Platinum for unlimited, or pay a one-time fee each time you get helped. That one-time money goes 100% to the app account, not a human guide. When you plan a date in chat, we ask once if you want tips from Ask [your guide].',
+    keywords: ['premium', 'pay', 'free helps', 'ai crew', 'termact', 'plus', 'gold', 'platinum'],
+  },
+  {
+    category: 'Social & games',
+    q: 'How does Face & look with Elena work?',
+    a: 'Open Ask [your guide] on Home, then Face & look. Elena is the appearance specialist. Upload three daylight photos — frontal, left profile, right profile. You get skin type, blemish scores, a 50-step habit plan, a 6-month after preview, and a full look (outfit + hair) she picks for you. Chat to change one piece. Nothing saves until you answer “Do you like this look?” Outfit help is the clothes-only desk next to it.',
+    keywords: ['face', 'skin', 'elena', 'appearance', 'mewing', 'after results', 'hair', 'glow up'],
+  },
+  {
+    category: 'Social & games',
+    q: 'How does outfit help with my guide work?',
+    a: 'Open Ask [your guide] on Home, then Outfit help. They ask what you are dressing for. Type it or tap the mic and describe it. You get two looks on a slider, fitted on your photo, a winner, and wardrobe folders. Elena is the style specialist; any crew member can still run the desk. Full studio try-on (IDM-VTON) uses a key in server/.env if you add one.',
+    keywords: ['outfit', 'fashion', 'elena', 'what to wear', 'wardrobe', 'voice note'],
   },
   {
     category: 'Social & games',

@@ -12,7 +12,7 @@
   border-radius: 16px;
   padding: 40px;
   width: 100%;
-  max-width: 500px;
+  max-width: 560px;
   box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
   text-align: center;
   position: relative;
@@ -234,6 +234,39 @@
 .skip-btn {
   margin-top: 12px;
   width: 100%;
+}
+
+.looking-for-chips-setup {
+  text-align: left;
+  margin: 0 0 24px;
+}
+
+.looking-for-chips-setup .looking-for-chips-label {
+  font-size: 14px;
+  color: #4b5563;
+  margin: 0 0 10px;
+}
+
+.looking-for-chips-setup .looking-for-chips-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.looking-for-chips-setup .looking-for-chip {
+  border: 2px solid #e5e7eb;
+  background: #f9fafb;
+  color: #111827;
+  border-radius: 999px;
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.looking-for-chips-setup .looking-for-chip.is-on {
+  border-color: #ff8fab;
+  background: rgba(255, 107, 157, 0.16);
+  color: #9d174d;
 }
 
 

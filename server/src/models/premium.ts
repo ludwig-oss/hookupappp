@@ -8,7 +8,8 @@ export type PremiumFeature =
   | 'pitch_on_reject'
   | 'unlimited_countries'
   | 'guide_lawyer'
-  | 'direct_pitch';
+  | 'direct_pitch'
+  | 'guide_help';
 
 export interface PremiumPlan {
   id: string;
@@ -54,9 +55,9 @@ const PREMIUM_PATH = join(process.cwd(), 'server', 'data', 'premium.json');
 const PAYMENTS_PATH = join(process.cwd(), 'server', 'data', 'payments.json');
 
 const TIER_FEATURES: Record<Exclude<PremiumTier, 'free'>, PremiumFeature[]> = {
-  plus: ['unlimited_searches', 'pitch_on_reject', 'unlimited_countries'],
-  gold: ['unlimited_searches', 'pitch_on_reject', 'unlimited_countries', 'guide_lawyer'],
-  platinum: ['unlimited_searches', 'pitch_on_reject', 'unlimited_countries', 'guide_lawyer', 'direct_pitch'],
+  plus: ['unlimited_searches', 'pitch_on_reject', 'unlimited_countries', 'guide_help'],
+  gold: ['unlimited_searches', 'pitch_on_reject', 'unlimited_countries', 'guide_lawyer', 'guide_help'],
+  platinum: ['unlimited_searches', 'pitch_on_reject', 'unlimited_countries', 'guide_lawyer', 'direct_pitch', 'guide_help'],
 };
 
 const defaultPlans: PremiumPlan[] = [
@@ -75,6 +76,7 @@ const defaultPlans: PremiumPlan[] = [
       'Unlimited Date Arena searches (free accounts get 3 per month)',
       'Pitch yourself when someone declines your interest',
       'Unlimited search in other countries and show interest',
+      'Unlimited AI crew help (outfit, face, bedroom/TermAct) after 5 free tries',
     ],
   },
   {
@@ -94,6 +96,7 @@ const defaultPlans: PremiumPlan[] = [
       'Summon a guide to hand-pick a potential date',
       'Private 3-person pitch room until they say yes or no',
       'Your guide gets a cut at the end of each month',
+      'Unlimited AI crew help on every specialist desk',
     ],
   },
   {
@@ -111,6 +114,7 @@ const defaultPlans: PremiumPlan[] = [
       'Everything in Gold',
       'Direct pitch without showing interest first',
       'They approve or reject your pitch',
+      'Unlimited AI crew help on every specialist desk',
     ],
   },
   // Aliases so older subscriptions keep working

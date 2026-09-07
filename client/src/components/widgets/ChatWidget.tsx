@@ -14,6 +14,8 @@ import BreakupReasonModal from '../BreakupReasonModal';
 import { singleAgainAPI } from '../../api/singleAgain';
 import { speedDateAPI, SpeedDate } from '../../api/speedDate';
 import { connectionJourneyAPI, ConnectionJourneyResponse } from '../../api/connectionJourney';
+import { chatEngagementAPI, ChatChallenge } from '../../api/chatEngagement';
+import { aiGuidesAPI } from '../../api/aiGuides';
 import RelationshipCouplePanel from './RelationshipCouplePanel';
 import VoiceSafetyPanel from '../VoiceSafetyPanel';
 import { askWhatYouAreWearing } from '../AppearanceSafetyPrompt';
@@ -27,6 +29,25 @@ import DisinterestAnalyzer from '../DisinterestAnalyzer';
 import TextingHelpWheel from '../TextingHelpWheel';
 import { disinterestAPI, type DisinterestReport } from '../../api/disinterest';
 import '../../pages/Dashboard.css';
+
+const EMPTY_XO = Array(9).fill('');
+
+function xoWinner(board: string[]): string | null {
+  const lines = [
+    [0, 1, 2],
+    [3, 4, 5],
+    [6, 7, 8],
+    [0, 3, 6],
+    [1, 4, 7],
+    [2, 5, 8],
+    [0, 4, 8],
+    [2, 4, 6],
+  ];
+  for (const [a, b, c] of lines) {
+    if (board[a] && board[a] === board[b] && board[a] === board[c]) return board[a];
+  }
+  return null;
+}
 
 const formatMessageTime = (createdAt: string | Date) => {
   const d = typeof createdAt === 'string' ? new Date(createdAt) : createdAt;
@@ -94,6 +115,7 @@ const ChatWidget = ({
   const [chatLane, setChatLane] = useState<'all' | ChatIntent>('all');
   const [showCommsTutorial, setShowCommsTutorial] = useState(() => !commsTutorialSeen());
   const [inputText, setInputText] = useState('');
+  const chatInputRef = useRef<HTMLInputElement>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -106,6 +128,9 @@ const ChatWidget = ({
   // Meetup safety popup
   const [showMeetupPopup, setShowMeetupPopup] = useState(false);
   const [meetupDismissedForChat, setMeetupDismissedForChat] = useState<string | null>(null);
+
+  const [showDateGuideAsk, setShowDateGuideAsk] = useState(false);
+  const [pendingMeetupAfterAsk, setPendingMeetupAfterAsk] = useState(false);
 
   // Boundaries / Safety & Consent (shown when date/meetup detected, before meetup plan)
   const [showBoundariesModal, setShowBoundariesModal] = useState(false);
@@ -214,6 +239,18 @@ const ChatWidget = ({
   const [connectionJourney, setConnectionJourney] = useState<ConnectionJourneyResponse | null>(null);
   const [connectionJourneyLoading, setConnectionJourneyLoading] = useState(false);
   const [connectionJourneyActionLoading, setConnectionJourneyActionLoading] = useState(false);
+  const [guideHintDismissed, setGuideHintDismissed] = useState(() => {
+    try {
+      return localStorage.getItem('chat-guide-hint') === '1';
+    } catch {
+      return false;
+    }
+  });
+  const msgsWhileQuietRef = useRef(0);
+  const [showGamesPicker, setShowGamesPicker] = useState(false);
+  const [activeChallenge, setActiveChallenge] = useState<ChatChallenge | null>(null);
+  const [xoBoard, setXoBoard] = useState<string[]>(EMPTY_XO);
+  const [guideFirstName, setGuideFirstName] = useState('your guide');
 
   const CONVO_PROMPTS = [
     "What's something you're really proud of?",
@@ -420,6 +457,40 @@ const ChatWidget = ({
   }, [resumeTextingHelpSessionId, onTextingHelpResumed]);
 
   useEffect(() => {
+    if (guideHintDismissed) return;
+    let cancelled = false;
+    aiGuidesAPI
+      .me()
+      .then((r) => {
+        const n = r.guide?.name?.split(' ')[0];
+        if (!cancelled && n) setGuideFirstName(n);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [guideHintDismissed]);
+
+  useEffect(() => {
+    if (!selectedUserId || !user?.id) {
+      setActiveChallenge(null);
+      return;
+    }
+    chatEngagementAPI
+      .getChallenges({ userId: user.id, otherUserId: selectedUserId })
+      .then((r) => {
+        const xo = r.challenges.find((c) => c.challengeType === 'xo' && c.status === 'active');
+        if (xo) {
+          setActiveChallenge(xo);
+          setXoBoard(xo.gameState?.board || EMPTY_XO);
+        } else {
+          setActiveChallenge(null);
+        }
+      })
+      .catch(() => {});
+  }, [selectedUserId, user?.id]);
+
+  useEffect(() => {
     const onShow = (e: Event) => {
       const other = (e as CustomEvent<{ otherUserId?: string }>).detail?.otherUserId;
       if (other && other === selectedUserId) setDisinterestOpen(true);
@@ -476,7 +547,7 @@ const ChatWidget = ({
       await loadConversations();
       if (!meetupDismissedForChat && data.messages.some((m: Message) => MEETUP_KEYWORDS.test(m.content))) {
         if (!boundariesDismissedForChat) setShowBoundariesModal(true);
-        else setShowMeetupPopup(true);
+        else offerDateGuideTips(true);
       }
     } catch (e: any) {
       setError(e.response?.data?.error || 'Failed to load messages');
@@ -537,7 +608,7 @@ const ChatWidget = ({
     }).catch(() => {});
   }, [user?.id, relationship?.status]);
 
-  // Connection Journey: load when in thread with someone we're not in an active relationship with
+  // Connection host: auto-starts when in a thread (not an active relationship)
   const showConnectionJourney =
     view === 'thread' &&
     !!selectedUserId &&
@@ -556,6 +627,16 @@ const ChatWidget = ({
       .finally(() => setConnectionJourneyLoading(false));
   }, [showConnectionJourney, selectedUserId]);
 
+  const refreshConnectionJourney = async () => {
+    if (!selectedUserId) return;
+    try {
+      const r = await connectionJourneyAPI.getJourney(selectedUserId);
+      setConnectionJourney(r);
+    } catch {
+      /* keep current host card */
+    }
+  };
+
   const sendContent = async (content: string) => {
     if (!selectedUserId || !user?.id) return;
     try {
@@ -565,10 +646,28 @@ const ChatWidget = ({
       await loadConversations();
       if (!content.startsWith('data:') && !parseChatGif(content) && !meetupDismissedForChat && MEETUP_KEYWORDS.test(content)) {
         if (!boundariesDismissedForChat) setShowBoundariesModal(true);
-        else setShowMeetupPopup(true);
+        else offerDateGuideTips(true);
       }
       if (relationship?.status === 'active' && selectedUserId === relationship.partnerUserId && !content.startsWith('data:') && !parseChatGif(content)) {
         voiceRecordingAPI.detectGathering(selectedUserId, content).catch(() => {});
+      }
+      if (showConnectionJourney && !content.startsWith('data:') && !parseChatGif(content)) {
+        const phase = connectionJourney?.phase;
+        const hostMode = connectionJourney?.hostMode;
+        if (phase === 'say_hi') {
+          connectionJourneyAPI.saidHi(selectedUserId).then(setConnectionJourney).catch(() => refreshConnectionJourney());
+        } else if (hostMode === 'their_turn' || hostMode === 'host_asks') {
+          msgsWhileQuietRef.current = 0;
+          connectionJourneyAPI.hostChoice(selectedUserId, 'quiet').then(setConnectionJourney).catch(() => refreshConnectionJourney());
+        } else if (hostMode === 'quiet') {
+          msgsWhileQuietRef.current += 1;
+          if (msgsWhileQuietRef.current >= 8 && !connectionJourney?.hostMuted) {
+            msgsWhileQuietRef.current = 0;
+            connectionJourneyAPI.hostChoice(selectedUserId, 'host_asks').then(setConnectionJourney).catch(() => refreshConnectionJourney());
+          }
+        } else {
+          refreshConnectionJourney();
+        }
       }
     } catch (e: any) {
       const msg = e.response?.data?.error || 'Failed to send';
@@ -590,12 +689,35 @@ const ChatWidget = ({
             return;
           }
           setReplyDeadline(data.replyDeadline ?? null);
+          if (showConnectionJourney) refreshConnectionJourney();
         })
         .catch(() => {});
     };
     const id = setInterval(tick, 60_000);
     return () => clearInterval(id);
   }, [view, selectedUserId, user?.id]);
+
+  useEffect(() => {
+    if (!showConnectionJourney || !selectedUserId) return;
+    if (connectionJourney?.hostMuted) return;
+    if (connectionJourney?.phase === 'say_hi') return;
+    if (connectionJourney?.hostMode === 'host_asks' || connectionJourney?.hostMode === 'offer') return;
+    const last = messages[messages.length - 1];
+    if (!last?.createdAt) return;
+    const age = Date.now() - new Date(last.createdAt).getTime();
+    const wait = Math.max(8000, 90_000 - age);
+    const t = window.setTimeout(() => {
+      connectionJourneyAPI.hostChoice(selectedUserId, 'host_asks').then(setConnectionJourney).catch(() => {});
+    }, wait);
+    return () => window.clearTimeout(t);
+  }, [
+    showConnectionJourney,
+    selectedUserId,
+    messages[messages.length - 1]?.id,
+    connectionJourney?.hostMode,
+    connectionJourney?.hostMuted,
+    connectionJourney?.phase,
+  ]);
 
   const iOweReply = Boolean(
     replyDeadline?.active &&
@@ -862,16 +984,102 @@ const ChatWidget = ({
     } catch (_) {}
   };
 
-  const handleStartConnectionJourney = async () => {
+  const handleHostSayHi = async () => {
+    if (!selectedUserId || !user?.id) return;
+    await sendContent('Hi');
+  };
+
+  const handleHostChoice = async (choice: 'ask_them' | 'host_asks' | 'quiet') => {
     if (!selectedUserId || !user?.id) return;
     setConnectionJourneyActionLoading(true);
     try {
-      const r = await connectionJourneyAPI.startJourney(selectedUserId);
+      const r = await connectionJourneyAPI.hostChoice(selectedUserId, choice);
       setConnectionJourney(r);
+      if (choice === 'ask_them') {
+        chatInputRef.current?.focus();
+      }
+      if (choice === 'quiet') msgsWhileQuietRef.current = 0;
     } catch (e: any) {
-      setError(e.response?.data?.error || 'Failed to start journey');
+      setError(e.response?.data?.error || 'Could not update host');
     } finally {
       setConnectionJourneyActionLoading(false);
+    }
+  };
+
+  const handleHostMute = async (muted: boolean) => {
+    if (!selectedUserId) return;
+    setConnectionJourneyActionLoading(true);
+    try {
+      const r = await connectionJourneyAPI.mute(selectedUserId, muted);
+      setConnectionJourney(r);
+    } catch (e: any) {
+      setError(e.response?.data?.error || 'Could not pause host');
+    } finally {
+      setConnectionJourneyActionLoading(false);
+    }
+  };
+
+  const startChatGame = async (challengeType: 'xo' | 'would-you-rather' | 'truth-or-dare', prompt?: string) => {
+    if (!selectedUserId || !user?.id) return;
+    const gameState =
+      challengeType === 'xo'
+        ? {
+            board: EMPTY_XO,
+            turn: user.id,
+            symbols: { [user.id]: 'X', [selectedUserId]: 'O' },
+          }
+        : undefined;
+    const { challenge } = await chatEngagementAPI.createChallenge({
+      otherUserId: selectedUserId,
+      challengeType,
+      userId: user.id,
+      gameState,
+    });
+    setActiveChallenge(challenge);
+    if (challengeType === 'xo') setXoBoard(EMPTY_XO);
+    setShowGamesPicker(false);
+    const line =
+      prompt ||
+      (challengeType === 'xo'
+        ? '🎮 Tic-tac-toe — your move when ready.'
+        : challengeType === 'would-you-rather'
+          ? 'Would you rather stay in with snacks or go out dancing?'
+          : 'Truth or dare — I pick truth. Ask me anything (keep it kind).');
+    await sendContent(line);
+  };
+
+  const playXoCell = async (idx: number) => {
+    if (!activeChallenge || !user?.id || xoBoard[idx]) return;
+    if (activeChallenge.gameState?.turn && activeChallenge.gameState.turn !== user.id) return;
+    const symbol = activeChallenge.gameState?.symbols?.[user.id] || 'X';
+    const next = [...xoBoard];
+    next[idx] = symbol;
+    const winner = xoWinner(next);
+    const { challenge } = await chatEngagementAPI.updateChallenge({
+      challengeId: activeChallenge.id,
+      gameState: {
+        ...activeChallenge.gameState,
+        board: next,
+        turn: winner ? null : selectedUserId,
+      },
+      status: winner ? 'completed' : 'active',
+      winner: winner === symbol ? user.id : winner ? selectedUserId : undefined,
+    });
+    setActiveChallenge(winner ? null : challenge);
+    setXoBoard(next);
+  };
+
+  const handleHostPlay = async () => {
+    if (!selectedUserId || !user?.id) return;
+    const action = connectionJourney?.nextStep?.playAction;
+    if (!action) return;
+    try {
+      await startChatGame(action, connectionJourney.nextStep?.chatPrompt);
+      if (connectionJourney.nextStep?.id) {
+        await handleCompleteConnectionStep(connectionJourney.nextStep.id);
+      }
+    } catch (e: any) {
+      setError(e.response?.data?.error || 'Could not start the game');
     }
   };
 
@@ -899,13 +1107,50 @@ const ChatWidget = ({
   const SAFETY_BOUNDARIES_MESSAGE = '⚠️ [Safety] I\'d prefer we stay in public and respect my boundaries. No intimate activity—please keep distance. Let\'s meet somewhere public with people around.';
   const allBoundariesChecked = boundariesChecklist.over18 && boundariesChecklist.withdraw && boundariesChecklist.publicPlace && boundariesChecklist.respect;
 
+  const dateAskStorageKey = (otherId: string) => `date-guide-ask:${user?.id || 'me'}:${otherId}`;
+
+  const alreadyAskedDateTips = (otherId: string) => {
+    try {
+      return localStorage.getItem(dateAskStorageKey(otherId)) === '1';
+    } catch {
+      return false;
+    }
+  };
+
+  const markDateTipsAsked = (otherId: string) => {
+    try {
+      localStorage.setItem(dateAskStorageKey(otherId), '1');
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const offerDateGuideTips = (thenMeetup: boolean) => {
+    if (!selectedUserId || alreadyAskedDateTips(selectedUserId)) {
+      if (thenMeetup) setShowMeetupPopup(true);
+      return;
+    }
+    setPendingMeetupAfterAsk(thenMeetup);
+    setShowDateGuideAsk(true);
+  };
+
+  const finishDateGuideAsk = (yes: boolean) => {
+    if (selectedUserId) markDateTipsAsked(selectedUserId);
+    setShowDateGuideAsk(false);
+    if (yes) {
+      window.dispatchEvent(new CustomEvent('ai-guide:open', { detail: { query: 'first date tips' } }));
+    }
+    if (pendingMeetupAfterAsk) setShowMeetupPopup(true);
+    setPendingMeetupAfterAsk(false);
+  };
+
   const handleBoundariesContinue = () => {
     if (!allBoundariesChecked || boundariesConsent === null) return;
     setBoundariesDismissedForChat(selectedUserId ?? null);
     setShowBoundariesModal(false);
     setBoundariesConsent(null);
     setBoundariesChecklist({ over18: false, withdraw: false, publicPlace: false, respect: false });
-    setShowMeetupPopup(true);
+    offerDateGuideTips(true);
   };
 
   const handleBoundariesNoConsent = async () => {
@@ -924,7 +1169,7 @@ const ChatWidget = ({
     setBoundariesDismissedForChat(selectedUserId);
     setShowBoundariesModal(false);
     setBoundariesChecklist({ over18: false, withdraw: false, publicPlace: false, respect: false });
-    setShowMeetupPopup(true);
+    offerDateGuideTips(true);
   };
 
   const handleBoundariesYesConsent = () => {
@@ -1089,7 +1334,12 @@ const ChatWidget = ({
       return;
     }
     navigate(`/profile/${selectedUserId}`, {
-      state: { fromChat: true, chatUserId: selectedUserId },
+      state: {
+        fromChat: true,
+        chatUserId: selectedUserId,
+        previewName: selectedName || undefined,
+        previewAvatar: selectedAvatar || undefined,
+      },
     });
   };
 
@@ -2010,63 +2260,108 @@ const ChatWidget = ({
           </div>
           {showConnectionJourney && (
             <div className="chat-connection-journey-wrap">
-              {connectionJourneyLoading ? (
-                <div className="chat-connection-journey-loading">Loading connection journey…</div>
-              ) : !connectionJourney?.journey ? (
-                <div className="chat-connection-journey-cta">
-                  <div className="chat-connection-journey-cta-icon">✨</div>
-                  <h4 className="chat-connection-journey-cta-title">Win them over in 7 days</h4>
-                  <p className="chat-connection-journey-cta-desc">
-                    Before you decide if you like each other, prove it. You get 7 random activities — challenges, games, quizzes, gifts, surprises & deep convos. Every chat gets a different mix so it never feels the same. Do each step in the chat, then see if you&apos;re both feeling the same way.
-                  </p>
-                  <button
-                    type="button"
-                    className="chat-connection-journey-btn chat-connection-journey-btn-primary"
-                    onClick={handleStartConnectionJourney}
-                    disabled={connectionJourneyActionLoading}
-                  >
-                    {connectionJourneyActionLoading ? 'Starting…' : 'Start connection journey'}
-                  </button>
+              {connectionJourneyLoading && !connectionJourney?.host ? (
+                <div className="chat-connection-journey-loading">Your host is joining…</div>
+              ) : connectionJourney?.phase === 'complete' ? (
+                <div className="chat-connection-journey-complete">
+                  <div className="chat-connection-journey-complete-icon">🏆</div>
+                  <h4>{connectionJourney.host?.headline || "You've got something going"}</h4>
+                  <p>{connectionJourney.host?.body}</p>
                 </div>
-              ) : connectionJourney.nextStep ? (
-                <div className={`chat-connection-journey-step chat-connection-journey-step-${connectionJourney.nextStep.type}`}>
-                  <div className="chat-connection-journey-step-header">
-                    <span className="chat-connection-journey-step-day">Day {connectionJourney.nextStep.day}</span>
-                    <span className="chat-connection-journey-step-type">
-                      {connectionJourney.nextStep.type === 'challenge' && '🎯'}
-                      {connectionJourney.nextStep.type === 'game' && '🎮'}
-                      {connectionJourney.nextStep.type === 'quiz' && '❓'}
-                      {connectionJourney.nextStep.type === 'gift' && '🎁'}
-                      {connectionJourney.nextStep.type === 'surprise' && '💝'}
-                      {connectionJourney.nextStep.type === 'deep' && '💬'}
-                      {' '}{connectionJourney.nextStep.type}
-                    </span>
-                  </div>
-                  <h4 className="chat-connection-journey-step-title">{connectionJourney.nextStep.title}</h4>
-                  <p className="chat-connection-journey-step-subtitle">{connectionJourney.nextStep.subtitle}</p>
-                  <p className="chat-connection-journey-step-instructions">{connectionJourney.nextStep.instructions}</p>
+              ) : connectionJourney?.hostMuted || connectionJourney?.hostMode === 'quiet' ? (
+                <div className="chat-host-quiet-bar">
+                  <span>{connectionJourney?.hostMuted ? 'Host off' : 'Host watching — talk. I’ll jump in if it goes quiet.'}</span>
                   <div className="chat-connection-journey-step-actions">
-                    {connectionJourney.nextStep.chatPrompt && (
-                      <button
-                        type="button"
-                        className="chat-connection-journey-btn chat-connection-journey-btn-outline"
-                        onClick={() => setInputText(connectionJourney.nextStep!.chatPrompt || '')}
-                      >
-                        Share in chat
+                    {!connectionJourney?.hostMuted && (
+                      <button type="button" className="chat-connection-journey-btn chat-connection-journey-btn-primary" onClick={() => handleHostChoice('host_asks')} disabled={connectionJourneyActionLoading}>
+                        Game / quiz
                       </button>
                     )}
                     <button
                       type="button"
-                      className="chat-connection-journey-btn chat-connection-journey-btn-primary"
-                      onClick={() => handleCompleteConnectionStep(connectionJourney.nextStep!.id)}
+                      className="chat-connection-journey-btn chat-connection-journey-btn-outline"
+                      onClick={() => handleHostMute(!connectionJourney?.hostMuted)}
                       disabled={connectionJourneyActionLoading}
                     >
-                      {connectionJourneyActionLoading ? '…' : "I did it"}
+                      {connectionJourney?.hostMuted ? 'Turn host on' : 'Pause host'}
                     </button>
                   </div>
-                  <div className="chat-connection-journey-progress">
-                    Day {connectionJourney.currentDay} of {connectionJourney.totalDays}
-                    {connectionJourney.allSteps && (
+                </div>
+              ) : (
+                <div className={`chat-connection-journey-host ${connectionJourney?.nextStep ? `chat-connection-journey-step-${connectionJourney.nextStep.type}` : ''}`}>
+                  <div className="chat-connection-journey-host-badge">✨ Host</div>
+                  {connectionJourney?.nextStep && connectionJourney.hostMode === 'host_asks' && connectionJourney.phase === 'connecting' && (
+                    <div className="chat-connection-journey-step-day">
+                      {connectionJourney.nextStep.type} · mix {connectionJourney.currentDay} of {connectionJourney.totalDays}
+                    </div>
+                  )}
+                  <h4 className="chat-connection-journey-cta-title">
+                    {connectionJourney?.hostMode === 'host_asks' && connectionJourney.nextStep
+                      ? connectionJourney.nextStep.title
+                      : connectionJourney?.host?.headline || 'Your host is here'}
+                  </h4>
+                  <p className="chat-connection-journey-cta-desc">
+                    {connectionJourney?.hostMode === 'host_asks' && connectionJourney.nextStep
+                      ? connectionJourney.nextStep.instructions
+                      : connectionJourney?.host?.body || 'Say Hi — then games, quizzes, and room to talk.'}
+                  </p>
+                  <div className="chat-connection-journey-step-actions">
+                    {connectionJourney?.host?.actions.includes('say_hi') && (
+                      <button type="button" className="chat-connection-journey-btn chat-connection-journey-btn-primary" onClick={handleHostSayHi} disabled={connectionJourneyActionLoading}>
+                        Say Hi
+                      </button>
+                    )}
+                    {connectionJourney?.host?.actions.includes('ask_them') && (
+                      <button type="button" className="chat-connection-journey-btn chat-connection-journey-btn-outline" onClick={() => handleHostChoice('ask_them')} disabled={connectionJourneyActionLoading}>
+                        I’ll ask
+                      </button>
+                    )}
+                    {connectionJourney?.host?.actions.includes('host_asks') && (
+                      <button type="button" className="chat-connection-journey-btn chat-connection-journey-btn-primary" onClick={() => handleHostChoice('host_asks')} disabled={connectionJourneyActionLoading}>
+                        {connectionJourney.hostMode === 'their_turn' ? 'Host, pick a game' : 'Start a game'}
+                      </button>
+                    )}
+                    {connectionJourney?.host?.actions.includes('play') && (
+                      <button type="button" className="chat-connection-journey-btn chat-connection-journey-btn-primary" onClick={() => void handleHostPlay()} disabled={connectionJourneyActionLoading}>
+                        Play
+                      </button>
+                    )}
+                    {connectionJourney?.host?.actions.includes('share') && connectionJourney.nextStep?.chatPrompt && (
+                      <button
+                        type="button"
+                        className="chat-connection-journey-btn chat-connection-journey-btn-outline"
+                        onClick={() => {
+                          setInputText(connectionJourney.nextStep!.chatPrompt || '');
+                          chatInputRef.current?.focus();
+                        }}
+                      >
+                        Share in chat
+                      </button>
+                    )}
+                    {connectionJourney?.host?.actions.includes('did_it') && connectionJourney.nextStep && (
+                      <button type="button" className="chat-connection-journey-btn chat-connection-journey-btn-primary" onClick={() => handleCompleteConnectionStep(connectionJourney.nextStep!.id)} disabled={connectionJourneyActionLoading}>
+                        {connectionJourneyActionLoading ? '…' : 'We did it'}
+                      </button>
+                    )}
+                    {connectionJourney?.host?.actions.includes('quiet') && (
+                      <button type="button" className="chat-connection-journey-btn chat-connection-journey-btn-outline" onClick={() => handleHostChoice('quiet')} disabled={connectionJourneyActionLoading}>
+                        We’ll talk
+                      </button>
+                    )}
+                    {connectionJourney?.host?.actions.includes('mute') && (
+                      <button type="button" className="chat-connection-journey-btn chat-connection-journey-btn-outline" onClick={() => handleHostMute(true)} disabled={connectionJourneyActionLoading}>
+                        Pause host
+                      </button>
+                    )}
+                    {connectionJourney?.host?.actions.includes('unmute') && (
+                      <button type="button" className="chat-connection-journey-btn chat-connection-journey-btn-primary" onClick={() => handleHostMute(false)} disabled={connectionJourneyActionLoading}>
+                        Turn host on
+                      </button>
+                    )}
+                  </div>
+                  {connectionJourney?.allSteps && connectionJourney.phase !== 'say_hi' && (
+                    <div className="chat-connection-journey-progress">
+                      Mix {connectionJourney.currentDay} of {connectionJourney.totalDays}
                       <span className="chat-connection-journey-dots">
                         {connectionJourney.allSteps.map((s) => (
                           <span
@@ -2076,19 +2371,13 @@ const ChatWidget = ({
                           />
                         ))}
                       </span>
-                    )}
-                  </div>
-                </div>
-              ) : (
-                <div className="chat-connection-journey-complete">
-                  <div className="chat-connection-journey-complete-icon">🏆</div>
-                  <h4>You&apos;ve completed the connection journey</h4>
-                  <p>You&apos;ve had challenges, games, and surprises. Ready to see if you&apos;re both feeling the same way? Keep chatting — we&apos;ll ask when it feels right.</p>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
           )}
-          {convoPrompt && (
+          {convoPrompt && !showConnectionJourney && (
             <div className="chat-convo-prompt">
               <span className="chat-convo-prompt-label">Conversation idea:</span> {convoPrompt}
               <button type="button" className="chat-convo-use" onClick={() => setInputText(convoPrompt || '')}>Use this</button>
@@ -2190,10 +2479,35 @@ const ChatWidget = ({
             >
               {recordingVideo ? '⏹ Stop' : '📹'}
             </button>
+            <button type="button" className="chat-toolbar-btn" onClick={() => setShowGamesPicker(true)} title="Games and quizzes">
+              🎮
+            </button>
             <button type="button" className="chat-toolbar-btn" onClick={handleVideoCall} title="Video call">
               📞
             </button>
           </div>
+          {!guideHintDismissed && (
+            <div className="chat-guide-hint">
+              <p>
+                Stuck on what to text? Tap <strong>SOS</strong> in this chat, or <strong>Ask {guideFirstName}</strong> on Home.
+                Extra help — you already picked your guide.
+              </p>
+              <button
+                type="button"
+                className="chat-guide-hint-dismiss"
+                onClick={() => {
+                  try {
+                    localStorage.setItem('chat-guide-hint', '1');
+                  } catch {
+                    /* ignore */
+                  }
+                  setGuideHintDismissed(true);
+                }}
+              >
+                Got it
+              </button>
+            </div>
+          )}
           <button
             type="button"
             className="chat-texting-help-fab"
@@ -2207,6 +2521,7 @@ const ChatWidget = ({
           </button>
           <div className="chat-input-wrap">
             <input
+              ref={chatInputRef}
               type="text"
               className="chat-input"
               placeholder={
@@ -2334,10 +2649,31 @@ const ChatWidget = ({
                 <button type="button" className="chat-send-btn" onClick={handleBoundariesContinue} disabled={!allBoundariesChecked || boundariesConsent === null}>
                   Continue to plan meetup
                 </button>
-                <button type="button" className="chat-back-btn" onClick={() => { setShowBoundariesModal(false); setBoundariesDismissedForChat(selectedUserId); }}>
+                <button type="button" className="chat-back-btn" onClick={() => { setShowBoundariesModal(false); setBoundariesDismissedForChat(selectedUserId); offerDateGuideTips(false); }}>
                   Skip
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showDateGuideAsk && selectedUserId && (
+        <div className="chat-meetup-overlay">
+          <div className="chat-meetup-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 420 }}>
+            <div className="chat-meetup-header">
+              <h3>Tips for this date?</h3>
+            </div>
+            <p style={{ fontSize: 14, marginBottom: 12 }}>
+              Ask {guideFirstName} once — outfit, what to say, pace, or anything else. First 5 crew helps are free, then Plus/Gold/Platinum or a one-time pay to the app.
+            </p>
+            <div className="chat-meetup-actions">
+              <button type="button" className="chat-send-btn" onClick={() => finishDateGuideAsk(true)}>
+                Yes, open Ask {guideFirstName}
+              </button>
+              <button type="button" className="chat-back-btn" onClick={() => finishDateGuideAsk(false)}>
+                No thanks
+              </button>
             </div>
           </div>
         </div>
@@ -2517,6 +2853,42 @@ const ChatWidget = ({
           partnerName={selectedName || 'this person'}
           onClose={() => setDisinterestOpen(false)}
         />
+      )}
+      {showGamesPicker && selectedUserId && (
+        <div className="chat-games-picker-backdrop" onClick={() => setShowGamesPicker(false)}>
+          <div className="chat-games-picker" onClick={(e) => e.stopPropagation()}>
+            <h4>Play together</h4>
+            <p>XO, quizzes, and dares — mix it up, then go back to talking.</p>
+            <button type="button" onClick={() => void startChatGame('xo')}>⭕ Tic-tac-toe (XO)</button>
+            <button type="button" onClick={() => void startChatGame('would-you-rather')}>🤔 Would you rather</button>
+            <button type="button" onClick={() => void startChatGame('truth-or-dare')}>🎲 Truth or dare</button>
+            <button type="button" className="chat-games-picker-close" onClick={() => setShowGamesPicker(false)}>Close</button>
+          </div>
+        </div>
+      )}
+      {activeChallenge?.challengeType === 'xo' && activeChallenge.status === 'active' && (
+        <div className="chat-xo-board">
+          <h4>Tic-tac-toe</h4>
+          <div className="chat-xo-grid">
+            {xoBoard.map((cell, idx) => (
+              <button key={idx} type="button" onClick={() => void playXoCell(idx)} disabled={Boolean(cell)}>
+                {cell || ''}
+              </button>
+            ))}
+          </div>
+          <button
+            type="button"
+            className="chat-games-picker-close"
+            onClick={async () => {
+              if (activeChallenge) {
+                await chatEngagementAPI.updateChallenge({ challengeId: activeChallenge.id, status: 'completed' }).catch(() => {});
+              }
+              setActiveChallenge(null);
+            }}
+          >
+            End game
+          </button>
+        </div>
       )}
       {textingHelpOpen && selectedUserId && (
         <TextingHelpWheel

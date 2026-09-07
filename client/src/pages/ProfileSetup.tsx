@@ -2,10 +2,12 @@ import { useState, useContext, useRef, useCallback, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
 import { profileAPI } from '../api/profile';
+import { dateMatchAPI } from '../api/dateMatch';
+import LookingForChips from '../components/LookingForChips';
 import { formatAxiosError } from '../lib/apiError';
 import { prepareAndUploadFile } from '../lib/uploadMedia';
 import { trimVideoToBlob, clampClipRange, MAX_CLIP_SEC } from '../lib/trimVideo';
-import './ProfileSetup.css';
+import { getAuthToken, getStayLoggedIn } from '../lib/authStorage';
 
 type MediaMode = 'photo' | 'clip';
 
@@ -16,7 +18,7 @@ function asUploadFile(blob: Blob, fallbackName: string): File {
 }
 
 const ProfileSetup = () => {
-  const { user, login, logout } = useContext(AuthContext);
+  const { user, login, logout, updateUser } = useContext(AuthContext);
   const navigate = useNavigate();
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [uploadBlob, setUploadBlob] = useState<Blob | null>(null);
@@ -29,6 +31,9 @@ const ProfileSetup = () => {
   const [trimStart, setTrimStart] = useState(0);
   const [trimEnd, setTrimEnd] = useState(MAX_CLIP_SEC);
   const [trimming, setTrimming] = useState(false);
+  const [lookingFor, setLookingFor] = useState<string[]>(
+    Array.isArray(user?.dateLookingFor) ? user.dateLookingFor.filter((x: unknown) => typeof x === 'string') : []
+  );
 
   const photoInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
@@ -62,23 +67,31 @@ const ProfileSetup = () => {
       setError('Session expired. Please log in again.');
       return;
     }
+    if (lookingFor.length < 1) {
+      setError('Pick at least one option for what you are looking for. Date Arena uses this.');
+      return;
+    }
     setLoading(true);
     setError('');
     try {
+      await dateMatchAPI.saveLookingFor(lookingFor);
+      updateUser({ dateLookingFor: lookingFor });
       let pictureUrl: string | null = null;
       if (blob) {
         const file = asUploadFile(blob, mediaMode === 'clip' ? 'clip.webm' : 'photo.jpg');
         pictureUrl = await prepareAndUploadFile(file, 'profile');
       }
       const response = await profileAPI.completeProfileSetup(pictureUrl, user.id);
-      const token = localStorage.getItem('token') || '';
+      const token = getAuthToken() || '';
       login(
         {
           ...user,
           profileSetupComplete: true,
           profilePicture: response.user?.profilePicture ?? pictureUrl,
+          dateLookingFor: lookingFor,
         },
-        token
+        token,
+        { stayLoggedIn: getStayLoggedIn() }
       );
       navigate('/home', { replace: true });
     } catch (err: unknown) {
@@ -230,7 +243,11 @@ const ProfileSetup = () => {
           ← Back to start
         </Link>
         <h1 className="setup-title">Complete Your Profile</h1>
-        <p className="setup-subtitle">Add a photo or GIF-length clip (max {MAX_CLIP_SEC}s) — or skip for now</p>
+        <p className="setup-subtitle">What you want, then a photo or GIF-length clip (max {MAX_CLIP_SEC}s) — photo can wait</p>
+
+        {error && <div className="error-message">{error}</div>}
+
+        <LookingForChips value={lookingFor} onChange={setLookingFor} variant="setup" />
 
         <div className="setup-mode-tabs">
           <button type="button" className={mediaMode === 'photo' ? 'active' : ''} onClick={() => switchMode('photo')}>
@@ -240,8 +257,6 @@ const ProfileSetup = () => {
             GIF clip
           </button>
         </div>
-
-        {error && <div className="error-message">{error}</div>}
 
         <div className="profile-picture-upload">
           <button

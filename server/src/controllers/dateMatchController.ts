@@ -12,6 +12,8 @@ import {
   listMyMatches,
   getSearchQuota,
   computeInterestLevel,
+  getSavedLookingFor,
+  saveDateLookingFor,
   createPitchOffer,
   submitPitchText,
   respondPitch,
@@ -36,7 +38,7 @@ function uid(req: Request): string {
 export async function getCatalog(req: Request, res: Response) {
   try {
     const userId = uid(req);
-    const [quota, tier, interestLevel, lawyer, plusPitch, plusCountries, gold, plat] = await Promise.all([
+    const [quota, tier, interestLevel, lawyer, plusPitch, plusCountries, gold, plat, savedLookingFor] = await Promise.all([
       getSearchQuota(userId),
       getUserTier(userId),
       computeInterestLevel(userId),
@@ -45,9 +47,11 @@ export async function getCatalog(req: Request, res: Response) {
       userHasFeature(userId, 'unlimited_countries'),
       userHasFeature(userId, 'guide_lawyer'),
       userHasFeature(userId, 'direct_pitch'),
+      getSavedLookingFor(userId),
     ]);
     res.json({
       ...catalog(),
+      savedLookingFor,
       quota,
       tier,
       interestLevel,
@@ -62,6 +66,19 @@ export async function getCatalog(req: Request, res: Response) {
     });
   } catch (e: any) {
     res.status(500).json({ error: e.message || 'Failed to load Date Arena' });
+  }
+}
+
+export async function postLookingFor(req: Request, res: Response) {
+  try {
+    const userId = uid(req);
+    const lookingFor = Array.isArray(req.body?.lookingFor) ? req.body.lookingFor : [];
+    const saved = await saveDateLookingFor(userId, lookingFor);
+    res.json({ lookingFor: saved });
+  } catch (e: any) {
+    const msg = e.message || 'Could not save';
+    const status = /not found/i.test(msg) ? 404 : /pick what/i.test(msg) ? 400 : 500;
+    res.status(status).json({ error: msg });
   }
 }
 

@@ -30,10 +30,59 @@ function scoreLook(look: FashionLook, intent: FashionIntent): number {
  * Optional UNSPLASH_ACCESS_KEY swaps in a current photo for the same recipe.
  * We do not scrape retailer catalogs (ToS / copyright). Shop links are search queries.
  */
-export async function sourceLooks(intent: FashionIntent): Promise<FashionLook[]> {
+export function pairForCompare(
+  looks: FashionLook[],
+  excludeIds: string[] = []
+): [FashionLook, FashionLook] {
+  const filtered = looks.filter((l) => !excludeIds.includes(l.id));
+  const pool = filtered.length >= 2 ? filtered : looks;
+  const a = pool[0];
+  const b = pool.find((l) => l.id !== a.id) || pool[1] || pool[0];
+  return [a, b];
+}
+
+/** Mix one wardrobe piece into a catalog look for a unique combo. */
+export function mixWardrobeIntoLook(
+  base: FashionLook,
+  wardrobe: { id: string; title: string; imageUrl: string; pieces: string[]; pieceSlot?: string }
+): FashionLook {
+  const slot = (wardrobe.pieceSlot || 'top').toLowerCase();
+  const pieces = [...base.pieces];
+  if (slot === 'bottom' && pieces[1]) pieces[1] = wardrobe.title || wardrobe.pieces[0] || pieces[1];
+  else if (slot === 'shoes' && pieces[3]) pieces[3] = wardrobe.title || wardrobe.pieces[0] || pieces[3];
+  else if (slot === 'outer') pieces.unshift(wardrobe.title || 'Your outer layer');
+  else pieces[0] = wardrobe.title || wardrobe.pieces[0] || pieces[0];
+
+  return {
+    ...base,
+    id: `mix-${wardrobe.id}-${base.id}`.slice(0, 64),
+    title: `${wardrobe.title.split(',')[0]} + ${base.title.split(',')[0]}`,
+    vibe: `your closet mixed with ${base.vibe}`,
+    pieces,
+    imageUrl: wardrobe.imageUrl || base.imageUrl,
+    trendNotes: `Unique mix: your ${slot} with a fresh ${base.event.replace('-', ' ')} base. ${base.trendNotes}`,
+  };
+}
+
+export async function sourceLooks(
+  intent: FashionIntent,
+  opts?: { excludeIds?: string[]; diversify?: boolean }
+): Promise<FashionLook[]> {
   const pool = looksForGender(intent.genderFit);
-  const ranked = [...pool].sort((a, b) => scoreLook(b, intent) - scoreLook(a, intent));
-  let top = ranked.slice(0, 6);
+  const exclude = new Set(opts?.excludeIds || []);
+  let ranked = [...pool]
+    .filter((l) => !exclude.has(l.id))
+    .sort((a, b) => scoreLook(b, intent) - scoreLook(a, intent));
+  if (opts?.diversify && ranked.length > 3) {
+    // Prefer something different from the top hit so "shuffle" feels new
+    const head = ranked.slice(0, 2);
+    const rest = ranked.slice(2).sort(() => Math.random() - 0.5);
+    ranked = [...rest.slice(0, 4), ...head];
+  }
+  let top = ranked.slice(0, 8);
+  if (top.length < 2) {
+    top = FASHION_CATALOG.filter((l) => !exclude.has(l.id)).slice(0, 4);
+  }
   if (top.length < 2) top = FASHION_CATALOG.slice(0, 2);
   const key = process.env.UNSPLASH_ACCESS_KEY;
   if (key && top[0]) {
@@ -52,10 +101,4 @@ export async function sourceLooks(intent: FashionIntent): Promise<FashionLook[]>
     }
   }
   return top;
-}
-
-export function pairForCompare(looks: FashionLook[]): [FashionLook, FashionLook] {
-  const a = looks[0];
-  const b = looks.find((l) => l.id !== a.id && l.event === a.event) || looks[1] || looks[0];
-  return [a, b];
 }

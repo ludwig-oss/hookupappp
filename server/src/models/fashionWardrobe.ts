@@ -1,6 +1,9 @@
 import { mkdir, readFile, writeFile } from 'fs/promises';
 import { join } from 'path';
 
+export type WardrobeKind = 'look' | 'piece' | 'draft';
+export type PieceSlot = 'top' | 'bottom' | 'shoes' | 'outer' | 'full' | 'other';
+
 export interface WardrobeItem {
   id: string;
   userId: string;
@@ -12,6 +15,11 @@ export interface WardrobeItem {
   event: string;
   savedAt: string;
   winner?: boolean;
+  kind?: WardrobeKind;
+  pieceSlot?: PieceSlot;
+  worn?: boolean;
+  vibe?: string;
+  notes?: string;
 }
 
 interface WardrobeFile {
@@ -38,15 +46,18 @@ async function writeAll(data: WardrobeFile): Promise<void> {
 
 export async function listWardrobe(userId: string): Promise<WardrobeItem[]> {
   const db = await readAll();
-  return db.items.filter((i) => i.userId === userId);
+  return db.items.filter((i) => i.userId === userId).sort((a, b) => b.savedAt.localeCompare(a.savedAt));
 }
 
-export async function saveWardrobeItem(item: Omit<WardrobeItem, 'id' | 'savedAt'>): Promise<WardrobeItem> {
+export async function saveWardrobeItem(
+  item: Omit<WardrobeItem, 'id' | 'savedAt'> & { id?: string }
+): Promise<WardrobeItem> {
   const db = await readAll();
   const row: WardrobeItem = {
     ...item,
-    id: `fw-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    id: item.id || `fw-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     savedAt: new Date().toISOString(),
+    kind: item.kind || 'look',
   };
   db.items.push(row);
   await writeAll(db);

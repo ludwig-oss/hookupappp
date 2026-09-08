@@ -3,7 +3,7 @@ import { AuthContext } from '../context/AuthContext';
 import { personalSafetyAPI, ShieldSettings } from '../api/personalSafety';
 import { useVolumeTripleSOS } from '../hooks/useVolumeTripleSOS';
 import { useScreenTapSOS } from '../hooks/useScreenTapSOS';
-import { speechRecognitionSupported } from '../hooks/useActivationWordListener';
+import { speechRecognitionSupported, speechRecognitionSupportHint, ensureMicPermission } from '../hooks/useActivationWordListener';
 import { askWhatYouAreWearing } from './AppearanceSafetyPrompt';
 import './PersonalSafetyShield.css';
 
@@ -125,13 +125,16 @@ export default function PersonalSafetyShield({ visible = false }: { visible?: bo
         autoArmWhenOutside: true,
       });
       setShowSetup(false);
+      const micOk = await ensureMicPermission();
       window.dispatchEvent(new CustomEvent('safety:settings-changed'));
       await load();
-      setStatus(
-        speechRecognitionSupported()
-          ? 'Word saved. This device will listen — shout it to activate.'
-          : 'Word saved. Voice detection is not available in this browser; use the Help button if you need it.'
-      );
+      if (!speechRecognitionSupported()) {
+        setStatus(`Word saved. ${speechRecognitionSupportHint()} Use the Help button if you need it.`);
+      } else if (!micOk) {
+        setStatus('Word saved. Allow the microphone when asked so voice detection can stay on.');
+      } else {
+        setStatus('Word saved. Voice detector is on for this device (PC or phone) while the app is open — shout your word to activate.');
+      }
     } finally {
       setSending(false);
     }
@@ -156,12 +159,14 @@ export default function PersonalSafetyShield({ visible = false }: { visible?: bo
 
   return (
     <div className="personal-safety-shield pss-embed">
-      {settings?.armed && !activeId && (
+      {settings?.hasActivationSecret && settings.enableSecretWord && !activeId && (
         <span className="pss-status-chip">
-          Shield armed
-          {speechRecognitionSupported() && settings.hasActivationSecret ? ' · listening for your word' : ''}
+          {speechRecognitionSupported()
+            ? 'Voice detector on · listening for your word'
+            : 'Activation word saved · voice needs Chrome/Edge'}
         </span>
       )}
+      {settings?.armed && !activeId && <span className="pss-status-chip">Shield armed</span>}
       {activeId && <span className="pss-status-chip">Safety signal active — tap False alarm if you are safe</span>}
 
       <div className="pss-panel" role="dialog">
@@ -182,18 +187,19 @@ export default function PersonalSafetyShield({ visible = false }: { visible?: bo
         {showSetup && (
           <div className="pss-section">
             <div className="pss-section-title">Your activation word (only you know)</div>
-            <label className="pss-hint">Shout this word to turn the shield on. This device listens after you save.</label>
+            <label className="pss-hint">Shout this word to turn the shield on. Listening stays on while the app is open (PC or phone).</label>
             <input
               className="pss-input"
               value={activationSecret}
               onChange={(e) => setActivationSecret(e.target.value)}
               placeholder="e.g. red bicycle"
             />
+            <p className="pss-hint" style={{ marginTop: 8 }}>{speechRecognitionSupportHint()}</p>
             {!speechRecognitionSupported() && (
               <p className="pss-setup-warn">Voice detection needs Chrome or Edge with a microphone.</p>
             )}
             <button type="button" className="pss-btn safe" disabled={sending} onClick={saveSetup}>
-              Save word &amp; start listening
+              Save word &amp; keep listening on
             </button>
           </div>
         )}

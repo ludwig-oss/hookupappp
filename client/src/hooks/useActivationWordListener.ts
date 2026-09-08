@@ -4,11 +4,17 @@ type SpeechRec = {
   continuous: boolean;
   interimResults: boolean;
   lang: string;
-  onresult: ((ev: { results: ArrayLike<ArrayLike<{ transcript?: string }>> }) => void) | null;
+  maxAlternatives?: number;
+  onresult: ((ev: {
+    resultIndex: number;
+    results: ArrayLike<{ isFinal?: boolean } & ArrayLike<{ transcript?: string }>>;
+  }) => void) | null;
   onend: (() => void) | null;
   onerror: ((ev: { error?: string }) => void) | null;
+  onstart: (() => void) | null;
   start: () => void;
   stop: () => void;
+  abort?: () => void;
 };
 
 function getSpeechRecognitionCtor(): (new () => SpeechRec) | null {
@@ -23,6 +29,54 @@ export function speechRecognitionSupported(): boolean {
   return Boolean(getSpeechRecognitionCtor());
 }
 
+/** Human-readable support hint for PC + phones. */
+export function speechRecognitionSupportHint(): string {
+  if (!speechRecognitionSupported()) {
+    return 'Voice detection needs Chrome or Edge (PC or Android) with a microphone. iPhone Safari often blocks continuous listening — keep the app open in Chrome if you can.';
+  }
+  const ua = navigator.userAgent || '';
+  const isIOS = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  if (isIOS) {
+    return 'On iPhone/iPad, keep this app open in the foreground. Screen lock or switching apps may pause listening.';
+  }
+  return 'Listening stays on while this app is open (PC or phone). Keep the tab in the foreground for best results.';
+}
+
+export async function ensureMicPermission(): Promise<boolean> {
+  try {
+    if (!navigator.mediaDevices?.getUserMedia) return speechRecognitionSupported();
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+      },
+      video: false,
+    });
+    // Keep a quiet track alive briefly so mobile browsers do not revoke mic mid-session
+    stream.getTracks().forEach((t) => {
+      try {
+        t.enabled = true;
+      } catch {
+        /* ignore */
+      }
+    });
+    // Stop tracks after priming — SpeechRecognition opens its own mic session
+    setTimeout(() => {
+      stream.getTracks().forEach((t) => {
+        try {
+          t.stop();
+        } catch {
+          /* ignore */
+        }
+      });
+    }, 400);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function transcriptHasWord(transcript: string, word: string): boolean {
   const hay = transcript.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, ' ');
   const needle = word.trim().toLowerCase();
@@ -31,14 +85,22 @@ function transcriptHasWord(transcript: string, word: string): boolean {
   return new RegExp(`(?:^|\\s)${escaped}(?:\\s|$)`, 'i').test(hay);
 }
 
-/** Listens on-device for the user's activation word and fires once when they shout it. */
+const FATAL_ERRORS = new Set(['not-allowed', 'service-not-allowed']);
+
+/**
+ * Always-on on-device listener for the activation word (PC + phones).
+ * Restarts after silence, errors, and when the tab becomes visible again.
+ */
 export function useActivationWordListener(
   word: string | null | undefined,
   enabled: boolean,
-  onHeard: () => void
+  onHeard: () => void,
+  onStatus?: (status: 'off' | 'listening' | 'blocked' | 'unsupported') => void
 ) {
   const onHeardRef = useRef(onHeard);
   onHeardRef.current = onHeard;
+  const onStatusRef = useRef(onStatus);
+  onStatusRef.current = onStatus;
   const firedRef = useRef(false);
 
   useEffect(() => {
@@ -47,65 +109,179 @@ export function useActivationWordListener(
 
   useEffect(() => {
     const secret = (word || '').trim();
-    if (!enabled || secret.length < 2) return;
+    if (!enabled || secret.length < 2) {
+      onStatusRef.current?.('off');
+      return;
+    }
     const Ctor = getSpeechRecognitionCtor();
-    if (!Ctor) return;
-
-    let stopped = false;
-    const rec = new Ctor();
-    rec.continuous = true;
-    rec.interimResults = true;
-    rec.lang = navigator.language || 'en-US';
-
-    rec.onresult = (ev) => {
-      if (firedRef.current) return;
-      const parts: string[] = [];
-      for (let i = 0; i < ev.results.length; i++) {
-        const alt = ev.results[i]?.[0]?.transcript;
-        if (alt) parts.push(alt);
-      }
-      if (transcriptHasWord(parts.join(' '), secret)) {
-        firedRef.current = true;
-        try {
-          rec.stop();
-        } catch {
-          /* ignore */
-        }
-        onHeardRef.current();
-      }
-    };
-
-    rec.onend = () => {
-      if (stopped || firedRef.current) return;
-      try {
-        rec.start();
-      } catch {
-        /* already started */
-      }
-    };
-
-    rec.onerror = (ev) => {
-      if (ev.error === 'not-allowed' || ev.error === 'service-not-allowed') {
-        stopped = true;
-      }
-    };
-
-    try {
-      rec.start();
-    } catch {
-      /* mic busy */
+    if (!Ctor) {
+      onStatusRef.current?.('unsupported');
+      return;
     }
 
-    return () => {
-      stopped = true;
-      rec.onresult = null;
-      rec.onend = null;
-      rec.onerror = null;
+    let stopped = false;
+    let restartTimer: ReturnType<typeof setTimeout> | null = null;
+    let wakeLock: { release: () => Promise<void> } | null = null;
+    let rec: SpeechRec | null = null;
+
+    const setStatus = (s: 'off' | 'listening' | 'blocked' | 'unsupported') => {
+      onStatusRef.current?.(s);
+    };
+
+    const clearRestart = () => {
+      if (restartTimer) {
+        clearTimeout(restartTimer);
+        restartTimer = null;
+      }
+    };
+
+    const scheduleRestart = (delayMs: number) => {
+      clearRestart();
+      if (stopped || firedRef.current) return;
+      restartTimer = setTimeout(() => {
+        restartTimer = null;
+        startRec();
+      }, delayMs);
+    };
+
+    const requestWakeLock = async () => {
       try {
-        rec.stop();
+        const wl = (navigator as Navigator & {
+          wakeLock?: { request: (type: 'screen') => Promise<{ release: () => Promise<void> }> };
+        }).wakeLock;
+        if (!wl?.request) return;
+        wakeLock = await wl.request('screen');
+      } catch {
+        /* optional */
+      }
+    };
+
+    const releaseWakeLock = async () => {
+      try {
+        await wakeLock?.release();
       } catch {
         /* ignore */
       }
+      wakeLock = null;
+    };
+
+    const startRec = () => {
+      if (stopped || firedRef.current) return;
+      try {
+        if (rec) {
+          try {
+            rec.onresult = null;
+            rec.onend = null;
+            rec.onerror = null;
+            rec.onstart = null;
+            rec.abort?.() || rec.stop();
+          } catch {
+            /* ignore */
+          }
+        }
+        rec = new Ctor();
+        rec.continuous = true;
+        rec.interimResults = true;
+        rec.lang = navigator.language || 'en-US';
+        if (typeof rec.maxAlternatives === 'number') rec.maxAlternatives = 3;
+
+        rec.onstart = () => {
+          if (!stopped) setStatus('listening');
+        };
+
+        rec.onresult = (ev) => {
+          if (firedRef.current || stopped) return;
+          const parts: string[] = [];
+          for (let i = 0; i < ev.results.length; i++) {
+            const row = ev.results[i];
+            const alt = row?.[0]?.transcript;
+            if (alt) parts.push(alt);
+          }
+          // Also check only the newest slice for interim matches
+          for (let i = Math.max(0, ev.resultIndex); i < ev.results.length; i++) {
+            const alt = ev.results[i]?.[0]?.transcript;
+            if (alt) parts.push(alt);
+          }
+          if (transcriptHasWord(parts.join(' '), secret)) {
+            firedRef.current = true;
+            stopped = true;
+            clearRestart();
+            try {
+              rec?.stop();
+            } catch {
+              /* ignore */
+            }
+            setStatus('off');
+            onHeardRef.current();
+          }
+        };
+
+        rec.onend = () => {
+          if (stopped || firedRef.current) return;
+          // Mobile browsers drop continuous sessions — restart quickly
+          scheduleRestart(280);
+        };
+
+        rec.onerror = (ev) => {
+          const err = ev.error || '';
+          if (FATAL_ERRORS.has(err)) {
+            stopped = true;
+            clearRestart();
+            setStatus('blocked');
+            return;
+          }
+          // no-speech, aborted, network, audio-capture → retry
+          if (stopped || firedRef.current) return;
+          scheduleRestart(err === 'network' ? 1200 : 400);
+        };
+
+        rec.start();
+      } catch {
+        scheduleRestart(800);
+      }
+    };
+
+    const onVisible = () => {
+      if (document.visibilityState === 'visible' && !stopped && !firedRef.current) {
+        void requestWakeLock();
+        scheduleRestart(200);
+      }
+    };
+
+    void (async () => {
+      const ok = await ensureMicPermission();
+      if (stopped) return;
+      if (!ok) {
+        setStatus('blocked');
+        // Still try SpeechRecognition — some browsers grant via recognition prompt
+      }
+      await requestWakeLock();
+      startRec();
+    })();
+
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', onVisible);
+    window.addEventListener('pageshow', onVisible);
+
+    return () => {
+      stopped = true;
+      clearRestart();
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', onVisible);
+      window.removeEventListener('pageshow', onVisible);
+      void releaseWakeLock();
+      if (rec) {
+        rec.onresult = null;
+        rec.onend = null;
+        rec.onerror = null;
+        rec.onstart = null;
+        try {
+          rec.abort?.() || rec.stop();
+        } catch {
+          /* ignore */
+        }
+      }
+      setStatus('off');
     };
   }, [word, enabled]);
 }

@@ -21,7 +21,8 @@
     {
       "source": "/(.*)",
       "headers": [
-        { "key": "Permissions-Policy", "value": "geolocation=*, camera=*, microphone=*" }
+        { "key": "Permissions-Policy", "value": "geolocation=*, camera=*, microphone=*" },
+        { "key": "x-vercel-skip-toolbar", "value": "1" }
       ]
     }
   ]

@@ -15,7 +15,9 @@ export default function LookingForChips({
 
   return (
     <div className={`looking-for-chips looking-for-chips-${variant}`}>
-      <p className="looking-for-chips-label">What are you looking for? Pick at least one.</p>
+      <p className="looking-for-chips-label">
+        {variant === 'setup' ? 'Pick at least one.' : 'What are you looking for? Pick at least one.'}
+      </p>
       <div className="looking-for-chips-row">
         {DATE_LOOKING_FOR.map((opt) => (
           <button

@@ -8,6 +8,7 @@ import { formatAxiosError } from '../lib/apiError';
 import { prepareAndUploadFile } from '../lib/uploadMedia';
 import { trimVideoToBlob, clampClipRange, MAX_CLIP_SEC } from '../lib/trimVideo';
 import { getAuthToken, getStayLoggedIn } from '../lib/authStorage';
+import './ProfileSetup.css';
 
 type MediaMode = 'photo' | 'clip';
 
@@ -68,7 +69,7 @@ const ProfileSetup = () => {
       return;
     }
     if (lookingFor.length < 1) {
-      setError('Pick at least one option for what you are looking for. Date Arena uses this.');
+      setError('Pick at least one option for what you are looking for.');
       return;
     }
     setLoading(true);
@@ -236,6 +237,8 @@ const ProfileSetup = () => {
     setError('');
   };
 
+  const canContinue = lookingFor.length >= 1 && !loading && !trimming;
+
   return (
     <div className="profile-setup-container">
       <div className="profile-setup-card">
@@ -243,110 +246,119 @@ const ProfileSetup = () => {
           ← Back to start
         </Link>
         <h1 className="setup-title">Complete Your Profile</h1>
-        <p className="setup-subtitle">What you want, then a photo or GIF-length clip (max {MAX_CLIP_SEC}s) — photo can wait</p>
+        <p className="setup-subtitle">Add a photo first, then say what you&apos;re looking for.</p>
 
         {error && <div className="error-message">{error}</div>}
 
-        <LookingForChips value={lookingFor} onChange={setLookingFor} variant="setup" />
+        <section className="setup-section" aria-labelledby="setup-photo-heading">
+          <h2 id="setup-photo-heading" className="setup-section-title">1. Upload a photo</h2>
+          <p className="setup-section-hint">Photo recommended — or a short GIF-length clip (max {MAX_CLIP_SEC}s). You can skip the photo.</p>
 
-        <div className="setup-mode-tabs">
-          <button type="button" className={mediaMode === 'photo' ? 'active' : ''} onClick={() => switchMode('photo')}>
-            Photo
-          </button>
-          <button type="button" className={mediaMode === 'clip' ? 'active' : ''} onClick={() => switchMode('clip')}>
-            GIF clip
-          </button>
-        </div>
+          <div className="setup-mode-tabs" role="tablist" aria-label="Media type">
+            <button type="button" role="tab" aria-selected={mediaMode === 'photo'} className={mediaMode === 'photo' ? 'active' : ''} onClick={() => switchMode('photo')}>
+              Photo
+            </button>
+            <button type="button" role="tab" aria-selected={mediaMode === 'clip'} className={mediaMode === 'clip' ? 'active' : ''} onClick={() => switchMode('clip')}>
+              GIF clip
+            </button>
+          </div>
 
-        <div className="profile-picture-upload">
-          <button
-            type="button"
-            className="circle-frame circle-frame-btn"
-            onClick={openCirclePicker}
-            aria-label={mediaMode === 'photo' ? 'Upload photo' : 'Upload short clip'}
-          >
-            {previewUrl ? (
-              isVideo ? (
-                <video src={previewUrl} className="preview-image" autoPlay loop muted playsInline />
+          <div className="profile-picture-upload">
+            <button
+              type="button"
+              className="circle-frame circle-frame-btn"
+              onClick={openCirclePicker}
+              aria-label={mediaMode === 'photo' ? 'Upload photo' : 'Upload short clip'}
+            >
+              {previewUrl ? (
+                isVideo ? (
+                  <video src={previewUrl} className="preview-image" autoPlay loop muted playsInline />
+                ) : (
+                  <img src={previewUrl} alt="Profile" className="preview-image" />
+                )
               ) : (
-                <img src={previewUrl} alt="Profile" className="preview-image" />
-              )
+                <div className="placeholder-circle">
+                  <span>+</span>
+                  <p>{mediaMode === 'photo' ? 'Tap to upload' : 'Tap to add clip'}</p>
+                </div>
+              )}
+            </button>
+
+            {mediaMode === 'photo' ? (
+              <button type="button" onClick={() => photoInputRef.current?.click()} className="upload-button" disabled={loading}>
+                {previewUrl ? 'Change photo' : 'Choose photo'}
+              </button>
             ) : (
-              <div className="placeholder-circle">
-                <span>+</span>
-                <p>{mediaMode === 'photo' ? 'Upload Photo' : 'Add GIF clip'}</p>
+              <div className="clip-actions">
+                <button type="button" className="upload-button" disabled={loading || recording} onClick={() => videoInputRef.current?.click()}>
+                  Upload video
+                </button>
+                <button type="button" className="upload-button clip-record" disabled={loading || recording} onClick={recording ? stopRecording : startRecording}>
+                  {recording ? 'Stop…' : `Record ${MAX_CLIP_SEC}s`}
+                </button>
               </div>
             )}
-          </button>
 
-          {mediaMode === 'photo' ? (
-            <button type="button" onClick={() => photoInputRef.current?.click()} className="upload-button" disabled={loading}>
-              {previewUrl ? 'Change Photo' : 'Choose Photo'}
-            </button>
-          ) : (
-            <div className="clip-actions">
-              <button type="button" className="upload-button" disabled={loading || recording} onClick={() => videoInputRef.current?.click()}>
-                Upload video
-              </button>
-              <button type="button" className="upload-button clip-record" disabled={loading || recording} onClick={recording ? stopRecording : startRecording}>
-                {recording ? 'Stop…' : `Record ${MAX_CLIP_SEC}s clip`}
-              </button>
-            </div>
-          )}
+            {mediaMode === 'clip' && rawVideoBlob && videoDuration > 0 && (
+              <div className="trim-panel">
+                <p className="trim-label">Adjust length (max {MAX_CLIP_SEC}s)</p>
+                <label className="trim-slider-row">
+                  Start: {trimStart.toFixed(1)}s
+                  <input
+                    type="range"
+                    min={0}
+                    max={Math.max(0, Math.min(videoDuration, MAX_CLIP_SEC) - 0.5)}
+                    step={0.1}
+                    value={trimStart}
+                    disabled={trimming}
+                    onChange={(e) => {
+                      const s = parseFloat(e.target.value);
+                      void onTrimChange(s, Math.max(s + 0.5, trimEnd));
+                    }}
+                  />
+                </label>
+                <label className="trim-slider-row">
+                  End: {trimEnd.toFixed(1)}s
+                  <input
+                    type="range"
+                    min={trimStart + 0.5}
+                    max={Math.min(videoDuration, MAX_CLIP_SEC)}
+                    step={0.1}
+                    value={trimEnd}
+                    disabled={trimming}
+                    onChange={(e) => {
+                      const end = parseFloat(e.target.value);
+                      void onTrimChange(trimStart, end);
+                    }}
+                  />
+                </label>
+                {trimming && <p className="trim-status">Processing clip…</p>}
+              </div>
+            )}
+          </div>
+        </section>
 
-          {mediaMode === 'clip' && rawVideoBlob && videoDuration > 0 && (
-            <div className="trim-panel">
-              <p className="trim-label">Adjust length (max {MAX_CLIP_SEC}s, loops like a GIF)</p>
-              <label className="trim-slider-row">
-                Start: {trimStart.toFixed(1)}s
-                <input
-                  type="range"
-                  min={0}
-                  max={Math.max(0, Math.min(videoDuration, MAX_CLIP_SEC) - 0.5)}
-                  step={0.1}
-                  value={trimStart}
-                  disabled={trimming}
-                  onChange={(e) => {
-                    const s = parseFloat(e.target.value);
-                    void onTrimChange(s, Math.max(s + 0.5, trimEnd));
-                  }}
-                />
-              </label>
-              <label className="trim-slider-row">
-                End: {trimEnd.toFixed(1)}s
-                <input
-                  type="range"
-                  min={trimStart + 0.5}
-                  max={Math.min(videoDuration, MAX_CLIP_SEC)}
-                  step={0.1}
-                  value={trimEnd}
-                  disabled={trimming}
-                  onChange={(e) => {
-                    const end = parseFloat(e.target.value);
-                    void onTrimChange(trimStart, end);
-                  }}
-                />
-              </label>
-              {trimming && <p className="trim-status">Processing clip…</p>}
-            </div>
-          )}
-        </div>
+        <section className="setup-section" aria-labelledby="setup-looking-heading">
+          <h2 id="setup-looking-heading" className="setup-section-title">2. What you&apos;re looking for</h2>
+          <LookingForChips value={lookingFor} onChange={setLookingFor} variant="setup" />
+        </section>
 
         <input ref={photoInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleImageSelect} />
         <input ref={videoInputRef} type="file" accept="video/*" style={{ display: 'none' }} onChange={handleVideoSelect} />
 
-        <button
-          type="button"
-          onClick={() => finishSetup(uploadBlob)}
-          className="continue-button"
-          disabled={loading || trimming || !uploadBlob}
-        >
-          {loading ? 'Setting up...' : 'Continue'}
-        </button>
-
-        <button type="button" onClick={() => finishSetup(null)} className="upload-button skip-btn" disabled={loading}>
-          Skip for now
-        </button>
+        <div className="setup-actions">
+          <button
+            type="button"
+            onClick={() => finishSetup(uploadBlob)}
+            className="continue-button"
+            disabled={!canContinue}
+          >
+            {loading ? 'Setting up…' : uploadBlob ? 'Continue' : 'Continue without photo'}
+          </button>
+          <button type="button" onClick={() => finishSetup(null)} className="skip-link" disabled={loading || lookingFor.length < 1}>
+            Skip photo for now
+          </button>
+        </div>
       </div>
     </div>
   );

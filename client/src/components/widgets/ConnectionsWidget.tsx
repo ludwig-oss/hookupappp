@@ -835,7 +835,7 @@ const ConnectionsWidget = () => {
           </p>
           <input
             type="text"
-            placeholder="e.g. Englischer Garten, new shop name, Berlin…"
+            placeholder="Search a place…"
             value={searchPlaceQuery}
             onChange={(e) => setSearchPlaceQuery(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && searchPlaces()}

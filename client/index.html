@@ -9,6 +9,21 @@
     <meta name="theme-color" content="#1a1a2e" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <title>Hook Up – Find Your Match</title>
+    <script>
+      // Keep Vercel Toolbar off for real users (also set x-vercel-skip-toolbar in vercel.json).
+      window.__VERCEL_TOOLBAR_DISABLED = true;
+      (function stripVercelToolbar() {
+        var kill = function () {
+          document.querySelectorAll(
+            'vercel-live-feedback, [data-vercel-toolbar], [data-vercel-toolbar-container], iframe[src*="vercel.live"]'
+          ).forEach(function (el) { el.remove(); });
+        };
+        kill();
+        if (typeof MutationObserver !== 'undefined') {
+          new MutationObserver(kill).observe(document.documentElement, { childList: true, subtree: true });
+        }
+      })();
+    </script>
     <style>
       html, body { margin: 0; min-height: 100vh; background: #1a1a2e; color: #fff; -webkit-text-size-adjust: 100%; }
       #root { min-height: 100vh; }

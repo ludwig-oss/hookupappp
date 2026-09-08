@@ -41,8 +41,8 @@ export default function PremiumTiersPanel({
     <div>
       <h3 style={{ marginBottom: 8 }}>Premium</h3>
       <p style={{ fontSize: 13, color: '#9ca3af', marginBottom: 16 }}>
-        Plus €68 / month: unlimited Date Arena searches, pitch after someone passes, unlimited other-country interest.
-        Gold: a guide hand-picks and pitches like your lawyer. Platinum: pitch directly without showing interest first.
+        Plus €68 / month: unlimited Date Arena searches, pitch after someone passes, unlimited other-country interest, and unlimited Activity Stream connections (after 3 free accepted).
+        Gold: a guide hand-picks and pitches like your lawyer. Platinum: pitch directly without showing interest first. Any of the three = unlimited Activity connect.
       </p>
       {status && (
         <div style={{ marginBottom: 18, padding: 14, borderRadius: 12, border: '1px solid #10b981', background: 'rgba(16,185,129,0.1)' }}>

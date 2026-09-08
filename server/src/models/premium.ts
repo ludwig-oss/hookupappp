@@ -75,7 +75,8 @@ const defaultPlans: PremiumPlan[] = [
     features: [
       'Unlimited Date Arena searches (free accounts get 3 per month)',
       'Pitch yourself when someone declines your interest',
-      'Unlimited search in other countries and show interest',
+      'Unlimited Activity Stream connections (free: 3 accepted interests, any city or country)',
+      'Unlimited search in other countries and show interest (Date Arena)',
       'Unlimited AI crew help (outfit, face, bedroom/TermAct) after 5 free tries',
     ],
   },
@@ -127,7 +128,7 @@ const defaultPlans: PremiumPlan[] = [
     theme: 'plus',
     tier: 'plus',
     headline: 'Unlimited date searches. Pitch after a no. Unlimited other-country interest.',
-    features: ['Unlimited Date Arena searches', 'Pitch after a decline', 'Unlimited other-country interest'],
+    features: ['Unlimited Date Arena searches', 'Pitch after a decline', 'Unlimited Activity Stream connections', 'Unlimited other-country interest'],
   },
   {
     id: 'premium_yearly',

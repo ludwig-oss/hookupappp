@@ -53,7 +53,7 @@ export const HELP_FAQ: HelpFaqItem[] = [
   {
     category: 'Getting around',
     q: 'How do I get started?',
-    a: '1) Finish profile setup and set country/city. 2) Verify your photo if prompted. 3) Open Activity Stream, confirm your region, tap "See active users". 4) Send interest or play Highlights games. 5) When matched, use Communication to chat. 6) Explore Settings for safety and notifications.',
+    a: '1) Finish profile setup and set country/city. 2) Verify your photo if prompted. 3) Open Activity Stream — search any city in your country or worldwide, confirm to see people. 4) Send interest — chat only after accept. Free: 3 accepted; Plus/Gold/Platinum = unlimited. 5) When matched, use Communication to chat. 6) Explore Settings for safety and notifications.',
     keywords: ['get started', 'begin', 'new user'],
   },
   {
@@ -89,25 +89,25 @@ export const HELP_FAQ: HelpFaqItem[] = [
   {
     category: 'Meeting people',
     q: 'How do Plus, Gold, and Platinum work?',
-    a: 'Settings → Premium. Plus (€68/month): unlimited Date Arena searches, pitch yourself if someone declines your interest, unlimited other-country interest. Gold: a guide hand-picks someone and pitches you in a 3-person room like a lawyer; they get a monthly cut. Platinum: pitch someone directly without showing interest first. Guides are summoned from Date Arena if you paid Gold.',
+    a: 'Settings → Premium. Plus (€68/month): unlimited Date Arena searches, pitch yourself if someone declines your interest, unlimited other-country interest, and unlimited Activity Stream connections after your 3 free accepted interests. Gold: a guide hand-picks someone and pitches you in a 3-person room like a lawyer; they get a monthly cut. Platinum: pitch someone directly without showing interest first. Guides are summoned from Date Arena if you paid Gold. Plus, Gold, or Platinum all give unlimited Activity send/accept.',
     keywords: ['premium', 'plus', 'gold', 'platinum', 'pitch', 'guide lawyer'],
   },
   {
     category: 'Meeting people',
     q: 'How do I find people in my region?',
-    a: 'Activity Stream (◇) → search country/city → Confirm region → "See active users in this region". Your own country/city in Profile must be set so others find you too.',
+    a: 'Activity Stream (◇) → pick a country, optionally any city (e.g. you live in Frankfurt, search Berlin — or another country worldwide) → Confirm region — see people here. Send interest; chat only after accept. Free: 3 accepted interests; Plus / Gold / Platinum = unlimited. Set your own country/city in Profile so others find you too.',
     keywords: ['region', 'activity', 'find people'],
   },
   {
     category: 'Meeting people',
     q: 'How do I send or receive interests?',
-    a: 'In Activity Stream after confirming region, tap Send interest on a card. View received interests to accept or decline. Accepted interests open Communication. Wheel games in Highlights can also send connection requests.',
+    a: 'In Activity Stream after confirming region (any city in your country or worldwide), tap Send interest. View received interests to accept or decline. Only after accept can you keep talking in Communications. Free accounts: 3 accepted interests, then Plus, Gold, or Platinum for unlimited. Wheel games in Highlights can also send connection requests.',
     keywords: ['interest', 'match', 'accept'],
   },
   {
     category: 'Meeting people',
     q: 'What is Connections (▣)?',
-    a: 'Shows nearby users (with location on) and venue discovery. Buzz to show interest. Enable location in Settings/device so others can see you when appropriate.',
+    a: 'Shows nearby users (with location on) and venue discovery. Search real places: leave type on None to find any park, shop, or place by name (live map). Or filter by bar/café/etc. Buzz to show interest. Enable location in Settings/device so others can see you when appropriate.',
     keywords: ['connections', 'nearby', 'buzz', 'venue'],
   },
   {

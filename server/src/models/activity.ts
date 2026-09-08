@@ -170,6 +170,49 @@ export async function getInterestsForUser(userId: string): Promise<{ sent: Inter
   return { sent, received };
 }
 
+/** Unique accepted connections this user is part of (each other person counts once). */
+export async function countAcceptedConnections(userId: string): Promise<number> {
+  const { sent, received } = await getInterestsForUser(userId);
+  const others = new Set<string>();
+  for (const i of [...sent, ...received]) {
+    if (i.status !== 'accepted') continue;
+    others.add(i.fromUserId === userId ? i.toUserId : i.fromUserId);
+  }
+  return others.size;
+}
+
+export const FREE_ACCEPTED_INTEREST_LIMIT = 3;
+
+/**
+ * Free users get 3 accepted Activity Stream connections (any city/country).
+ * Plus, Gold, or Platinum → unlimited send/accept.
+ */
+export async function assertCanContinueActivityInterests(userId: string): Promise<{
+  acceptedCount: number;
+  limit: number;
+  requiresPremium: boolean;
+  tier: string;
+}> {
+  const { getUserTier } = await import('./premium.js');
+  const tier = await getUserTier(userId);
+  const acceptedCount = await countAcceptedConnections(userId);
+  // Any paid tier is unlimited
+  if (tier !== 'free') {
+    return { acceptedCount, limit: FREE_ACCEPTED_INTEREST_LIMIT, requiresPremium: false, tier };
+  }
+  const requiresPremium = acceptedCount >= FREE_ACCEPTED_INTEREST_LIMIT;
+  if (requiresPremium) {
+    const err = new Error(
+      `You used your ${FREE_ACCEPTED_INTEREST_LIMIT} free accepted interests. Choose Plus, Gold, or Platinum for unlimited connections worldwide.`
+    ) as Error & { code?: string; acceptedCount?: number; limit?: number };
+    err.code = 'ACTIVITY_PREMIUM_REQUIRED';
+    err.acceptedCount = acceptedCount;
+    err.limit = FREE_ACCEPTED_INTEREST_LIMIT;
+    throw err;
+  }
+  return { acceptedCount, limit: FREE_ACCEPTED_INTEREST_LIMIT, requiresPremium: false, tier };
+}
+
 export async function getInterestById(interestId: string): Promise<Interest | null> {
   if (usePostgres()) return pgActivity.getInterestById(interestId);
   const interests = await readInterests();

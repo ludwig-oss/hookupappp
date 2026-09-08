@@ -155,14 +155,16 @@ export const connectionsAPI = {
     return response.data;
   },
 
-  /** Search real places (bar, mall, cinema, club, etc.) in a location; returns counts and most concentrated spot */
+  /** Search real places; type "none" = any place/shop by name (live OSM map). */
   searchPlaces: async (params: { q: string; type?: string }): Promise<{
     places: Array<{ venue: string; venueType: string; location: { lat: number; lon: number }; count: number }>;
     locationName?: string;
     mostConcentrated?: { venue: string; venueType: string; location: { lat: number; lon: number }; count: number } | null;
     message?: string;
+    liveMap?: boolean;
   }> => {
-    const response = await axios.get(`${API_URL}/search-places`, { params: { q: params.q.trim(), type: params.type || 'bar' } });
+    const type = !params.type || params.type === 'none' || params.type === 'any' ? 'none' : params.type;
+    const response = await axios.get(`${API_URL}/search-places`, { params: { q: params.q.trim(), type } });
     return response.data;
   },
 };

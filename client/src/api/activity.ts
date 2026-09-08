@@ -51,7 +51,16 @@ export const activityAPI = {
     await axios.post(`${API_URL}/interest/reject`, { interestId });
   },
 
-  getMyInterests: async (): Promise<{ sent: Interest[]; received: Interest[] }> => {
+  getMyInterests: async (): Promise<{
+    sent: Interest[];
+    received: Interest[];
+    quota?: {
+      acceptedCount: number;
+      freeLimit: number;
+      tier: string;
+      requiresPremium: boolean;
+    };
+  }> => {
     const res = await axios.get(`${API_URL}/interests`);
     return res.data;
   },

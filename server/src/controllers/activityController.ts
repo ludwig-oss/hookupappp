@@ -9,6 +9,9 @@ import {
   savePreCommProfile,
   getPreCommProfilesForInterest,
   canChatAfterPreComm,
+  assertCanContinueActivityInterests,
+  FREE_ACCEPTED_INTEREST_LIMIT,
+  countAcceptedConnections,
 } from '../models/activity.js';
 import { getUserById, getAllUsers } from '../models/user.js';
 import { ensureMatchConversation } from '../models/chat.js';
@@ -17,6 +20,7 @@ import { getNDAByInterest, hasSignedNDA, signNDA } from '../models/nda.js';
 import { preCommFieldsWithDefaults, sanitizeForStorage, LIMITS } from '../utils/sanitize.js';
 import { notifyNewInterest, notifyNewMatch } from '../realtime/notifications.js';
 import { sendPushToUser } from '../realtime/push.js';
+import { getUserTier } from '../models/premium.js';
 
 export async function getRegionUsers(req: Request, res: Response) {
   try {
@@ -24,14 +28,8 @@ export async function getRegionUsers(req: Request, res: Response) {
     if (!userId) return res.status(401).json({ error: 'Unauthorized' });
     const country = (req.query.country as string)?.trim();
     const city = (req.query.city as string)?.trim();
-    if (country) {
-      try {
-        const { assertCountrySearchAllowed } = await import('../models/dateMatch.js');
-        await assertCountrySearchAllowed(userId, country);
-      } catch (err: any) {
-        return res.status(403).json({ error: err.message || 'Upgrade to search other countries', code: err.code || 'PLUS_REQUIRED' });
-      }
-    }
+    // Activity Stream: free to browse any country/city worldwide (e.g. Frankfurt → Berlin,
+    // or another country). Sending/accepting interests is capped at 3 free accepted, then premium.
     const users = country
       ? await getActiveUsersByRegion(country, city || undefined)
       : await getAllUsers();
@@ -78,6 +76,19 @@ export async function sendInterestHandler(req: Request, res: Response) {
     if (!fromUserId) return res.status(401).json({ error: 'Unauthorized' });
     const { toUserId } = req.body;
     if (!toUserId) return res.status(400).json({ error: 'toUserId is required' });
+    try {
+      await assertCanContinueActivityInterests(fromUserId);
+    } catch (err: any) {
+      if (err.code === 'ACTIVITY_PREMIUM_REQUIRED') {
+        return res.status(402).json({
+          error: err.message,
+          code: err.code,
+          acceptedCount: err.acceptedCount,
+          limit: err.limit,
+        });
+      }
+      throw err;
+    }
     const interest = await sendInterest(fromUserId, toUserId);
     if ((interest as { mutual?: boolean }).mutual) {
       await ensureMatchConversation(fromUserId, toUserId);
@@ -111,7 +122,7 @@ export async function sendInterestHandler(req: Request, res: Response) {
     }
 
     res.json({
-      message: 'Interest sent! When they say yes too, you\'ll both land in Communications.',
+      message: 'Interest sent! Chat opens in Communications only after they accept.',
       interest,
     });
   } catch (e: any) {
@@ -126,6 +137,19 @@ export async function acceptInterestHandler(req: Request, res: Response) {
     if (!toUserId) return res.status(401).json({ error: 'Unauthorized' });
     const { interestId } = req.body;
     if (!interestId) return res.status(400).json({ error: 'interestId is required' });
+    try {
+      await assertCanContinueActivityInterests(toUserId);
+    } catch (err: any) {
+      if (err.code === 'ACTIVITY_PREMIUM_REQUIRED') {
+        return res.status(402).json({
+          error: err.message,
+          code: err.code,
+          acceptedCount: err.acceptedCount,
+          limit: err.limit,
+        });
+      }
+      throw err;
+    }
     const accepted = await acceptInterest(interestId, toUserId);
     await ensureMatchConversation(toUserId, accepted.fromUserId);
     notifyNewMatch(accepted.fromUserId, { fromUserId: toUserId, interestId });
@@ -202,7 +226,18 @@ export async function getMyInterests(req: Request, res: Response) {
         return { ...i, otherUser: base ? maskUserForViewer(base, userId) : null };
       })
     );
-    res.json({ sent: sentWithUser, received: receivedWithUser });
+    const acceptedCount = await countAcceptedConnections(userId);
+    const tier = await getUserTier(userId);
+    res.json({
+      sent: sentWithUser,
+      received: receivedWithUser,
+      quota: {
+        acceptedCount,
+        freeLimit: FREE_ACCEPTED_INTEREST_LIMIT,
+        tier,
+        requiresPremium: tier === 'free' && acceptedCount >= FREE_ACCEPTED_INTEREST_LIMIT,
+      },
+    });
   } catch (e: any) {
     console.error('Get my interests error:', e);
     res.status(500).json({ error: e.message || 'Internal server error' });

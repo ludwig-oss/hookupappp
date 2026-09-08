@@ -12,7 +12,7 @@ import {
 } from '../models/connections.js';
 import { updateUserLocation, getUserById, updateUserProfile } from '../models/user.js';
 import { ensureMatchConversation } from '../models/chat.js';
-import { fetchVenuesByType } from '../utils/overpass.js';
+import { fetchVenuesByType, fetchAnyNamedVenues, fetchVenuesByName, OsmVenue } from '../utils/overpass.js';
 import { sanitizeBuzzLocation } from '../utils/sanitize.js';
 import { runWithSystem } from '../db/context.js';
 import { sendPushToUser } from '../realtime/push.js';
@@ -284,42 +284,104 @@ export const getComfortingMsg = async (req: Request, res: Response) => {
 };
 
 const SEARCH_PLACES_RADIUS_M = 2500;
+const SEARCH_ANY_RADIUS_M = 4000;
 const VALID_PLACE_TYPES = ['bar', 'supermarket', 'mall', 'park', 'amusement_park', 'cinema', 'club', 'cafe', 'restaurant', 'gym', 'museum', 'library', 'theatre', 'shopping'];
+const NOMINATIM_URL = 'https://nominatim.openstreetmap.org';
+const NOMINATIM_REVERSE = `${NOMINATIM_URL}/reverse`;
+const USER_AGENT = 'ASWP/1.0 (Connections live location)';
 
-/** Search real places (bar, supermarket, park, etc.) in a location; returns only counts of preferences there */
+function mergeOsmVenues(...lists: OsmVenue[][]): OsmVenue[] {
+  const seen = new Set<string>();
+  const out: OsmVenue[] = [];
+  for (const list of lists) {
+    for (const v of list) {
+      const key = `${v.lat.toFixed(5)}-${v.lon.toFixed(5)}-${v.name.toLowerCase()}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(v);
+    }
+  }
+  return out;
+}
+
+/** Search real places — type optional ("none" = any place/shop by name). Live OSM + Nominatim. */
 export const searchPlaces = async (req: Request, res: Response) => {
   try {
     const userId = (req as any).userId;
     if (!userId) return res.status(401).json({ error: 'Unauthorized' });
     const q = (req.query.q as string)?.trim();
-    const type = ((req.query.type as string) || '').toLowerCase();
+    const typeRaw = ((req.query.type as string) || 'none').toLowerCase().trim();
     if (!q) return res.status(400).json({ error: 'Query q (location or place name, e.g. Berlin) is required' });
 
-    const placeType = VALID_PLACE_TYPES.includes(type) ? type : 'bar';
-    const geoUrl = `${NOMINATIM_URL}/search?q=${encodeURIComponent(q)}&format=json&limit=1`;
-    const geoRes = await fetch(geoUrl, { headers: { 'User-Agent': USER_AGENT } });
+    const placeType =
+      !typeRaw || typeRaw === 'none' || typeRaw === 'any'
+        ? null
+        : VALID_PLACE_TYPES.includes(typeRaw)
+          ? typeRaw
+          : null;
+
+    const geoLimit = placeType ? 1 : 15;
+    const geoUrl = `${NOMINATIM_URL}/search?q=${encodeURIComponent(q)}&format=json&limit=${geoLimit}&addressdetails=0`;
+    const geoRes = await fetch(geoUrl, {
+      headers: {
+        'User-Agent': USER_AGENT,
+        Accept: 'application/json',
+      },
+    });
     if (!geoRes.ok) return res.status(502).json({ error: 'Geocoding unavailable' });
     const geoData = await geoRes.json();
-    const first = Array.isArray(geoData) ? geoData[0] : null;
+    const hits = Array.isArray(geoData) ? geoData : [];
+    const first = hits[0];
     if (!first || first.lat == null || first.lon == null) {
-      return res.json({ places: [], message: 'Location not found. Try a different city or place name.' });
+      return res.json({ places: [], message: 'Location not found. Try a different city, shop, or place name.' });
     }
     const lat = parseFloat(first.lat);
     const lon = parseFloat(first.lon);
 
-    const osmVenues = await fetchVenuesByType(lat, lon, SEARCH_PLACES_RADIUS_M, placeType);
+    let osmVenues: OsmVenue[];
+    if (placeType) {
+      osmVenues = await fetchVenuesByType(lat, lon, SEARCH_PLACES_RADIUS_M, placeType);
+    } else {
+      // Any place: the searched spots themselves + OSM name matches + nearby named shops/POIs (live map)
+      const fromNominatim: OsmVenue[] = hits
+        .map((h: any, i: number) => {
+          const hLat = parseFloat(h.lat);
+          const hLon = parseFloat(h.lon);
+          if (!Number.isFinite(hLat) || !Number.isFinite(hLon)) return null;
+          const display = String(h.display_name || q).split(',')[0]?.trim() || q;
+          return {
+            id: Number(h.osm_id) || -(i + 1),
+            name: display,
+            venueType: String(h.type || h.class || 'place'),
+            lat: hLat,
+            lon: hLon,
+          } as OsmVenue;
+        })
+        .filter(Boolean) as OsmVenue[];
+
+      const [byName, nearbyAny] = await Promise.all([
+        fetchVenuesByName(lat, lon, SEARCH_ANY_RADIUS_M, q),
+        fetchAnyNamedVenues(lat, lon, SEARCH_PLACES_RADIUS_M, 60),
+      ]);
+
+      const qLower = q.toLowerCase();
+      const namePreferred = nearbyAny.filter((v) => v.name.toLowerCase().includes(qLower.split(/\s+/)[0] || qLower));
+      osmVenues = mergeOsmVenues(fromNominatim, byName, namePreferred, nearbyAny).slice(0, 80);
+    }
+
     const places = await getCountsForOsmVenues(userId, osmVenues);
     const mostConcentrated = places.length > 0 ? places[0] : null;
-    res.json({ places, locationName: first.display_name || q, mostConcentrated });
+    res.json({
+      places,
+      locationName: first.display_name || q,
+      mostConcentrated,
+      liveMap: true,
+    });
   } catch (error) {
     console.error('Search places error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 };
-
-const NOMINATIM_URL = 'https://nominatim.openstreetmap.org';
-const NOMINATIM_REVERSE = `${NOMINATIM_URL}/reverse`;
-const USER_AGENT = 'ASWP/1.0 (Connections live location)';
 
 /** Forward geocode: place name (e.g. "Berlin") -> lat, lon, displayName */
 export async function forwardGeocode(req: Request, res: Response) {

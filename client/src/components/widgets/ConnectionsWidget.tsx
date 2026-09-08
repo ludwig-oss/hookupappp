@@ -30,6 +30,7 @@ export interface PlaceCountOnly {
 }
 
 const PLACE_TYPES = [
+  { value: 'none', label: 'None — any place / shop' },
   { value: 'bar', label: 'Bar' },
   { value: 'supermarket', label: 'Supermarket' },
   { value: 'mall', label: 'Mall' },
@@ -65,7 +66,7 @@ const ConnectionsWidget = () => {
   const knownBuzzIdsRef = useRef<Set<string>>(new Set());
 
   const [searchPlaceQuery, setSearchPlaceQuery] = useState('');
-  const [searchPlaceType, setSearchPlaceType] = useState('bar');
+  const [searchPlaceType, setSearchPlaceType] = useState('none');
   const [searchPlaceResults, setSearchPlaceResults] = useState<PlaceCountOnly[]>([]);
   const [searchPlaceLocationName, setSearchPlaceLocationName] = useState<string | null>(null);
   const [searchPlaceMostConcentrated, setSearchPlaceMostConcentrated] = useState<PlaceCountOnly | null>(null);
@@ -830,11 +831,11 @@ const ConnectionsWidget = () => {
             <h3 style={{ margin: 0, fontSize: '16px', color: '#00d4ff', fontFamily: 'Orbitron, monospace' }}>Search real places</h3>
           </div>
           <p style={{ marginBottom: '12px', color: '#9ca3af', fontSize: '12px', fontFamily: 'Orbitron, monospace' }}>
-            Enter a city or location (e.g. Berlin, London). Choose type. See how many of your preferences are at each real place.
+            Type any place, park, shop, or city. Leave type on None to search everything (live map). Or pick a type to filter.
           </p>
           <input
             type="text"
-            placeholder="e.g. Berlin, Central Park, London"
+            placeholder="e.g. Englischer Garten, new shop name, Berlin…"
             value={searchPlaceQuery}
             onChange={(e) => setSearchPlaceQuery(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && searchPlaces()}
@@ -896,14 +897,23 @@ const ConnectionsWidget = () => {
                     background: 'rgba(0, 0, 0, 0.4)',
                   }}
                 >
-                  <span style={{ fontSize: '14px', color: '#fff', fontFamily: 'Orbitron, monospace' }}>{place.venue}</span>
+                  <span style={{ fontSize: '14px', color: '#fff', fontFamily: 'Orbitron, monospace' }}>
+                    {place.venue}
+                    {place.venueType ? (
+                      <span style={{ display: 'block', fontSize: '11px', color: '#9ca3af', marginTop: 2 }}>{place.venueType}</span>
+                    ) : null}
+                  </span>
                   <span style={{ fontSize: '20px', fontWeight: 'bold', color: '#ff00ff', minWidth: '32px', textAlign: 'right' }}>{place.count}</span>
                 </div>
               ))}
             </div>
           )}
           {searchPlaceResults.length === 0 && searchPlaceLocationName && !searchPlacesLoading && (
-            <p style={{ color: '#9ca3af', fontSize: '12px', fontFamily: 'Orbitron, monospace' }}>No {searchPlaceType.replace('_', ' ')}s found in this area, or no app users there yet.</p>
+            <p style={{ color: '#9ca3af', fontSize: '12px', fontFamily: 'Orbitron, monospace' }}>
+              {searchPlaceType === 'none'
+                ? 'No matching places found here yet, or no app users nearby. Try another name — results use the live map.'
+                : `No ${searchPlaceType.replace('_', ' ')}s found in this area, or no app users there yet.`}
+            </p>
           )}
         </div>
       )}

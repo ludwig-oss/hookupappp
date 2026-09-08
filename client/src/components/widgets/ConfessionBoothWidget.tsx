@@ -1,10 +1,27 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { confessionAPI, ConfessionSessionView, BlurredConfessionGuide } from '../../api/confession';
+import {
+  confessionAPI,
+  ConfessionSessionView,
+  BlurredConfessionGuide,
+  ConfessionAiGuide,
+} from '../../api/confession';
 import { formatAxiosError } from '../../lib/apiError';
 import ConfessionMaskedCall from '../ConfessionMaskedCall';
 import './Widget.css';
 
-type Step = 'intro' | 'scope' | 'guides' | 'book' | 'waiting_accept' | 'pay' | 'waiting' | 'chat' | 'guide';
+type Step =
+  | 'intro'
+  | 'path'
+  | 'ai_guides'
+  | 'ai_book'
+  | 'scope'
+  | 'guides'
+  | 'book'
+  | 'waiting_accept'
+  | 'pay'
+  | 'waiting'
+  | 'chat'
+  | 'guide';
 type GuideScope = 'local' | 'international';
 
 function defaultAppointmentValue(): string {
@@ -26,14 +43,29 @@ function stepForSession(session: ConfessionSessionView): Step {
   return 'intro';
 }
 
+/** Deepened / veiled TTS so AI replies feel like the lattice — not a clear real voice. */
+function speakVeiled(text: string) {
+  if (typeof window === 'undefined' || !window.speechSynthesis) return;
+  window.speechSynthesis.cancel();
+  const utter = new SpeechSynthesisUtterance(text);
+  utter.pitch = 0.55;
+  utter.rate = 0.88;
+  const voices = window.speechSynthesis.getVoices();
+  const deep = voices.find((v) => /male|david|daniel|google uk english male/i.test(`${v.name} ${v.lang}`));
+  if (deep) utter.voice = deep;
+  window.speechSynthesis.speak(utter);
+}
+
 export default function ConfessionBoothWidget() {
   const [step, setStep] = useState<Step>('intro');
-  const [info, setInfo] = useState<{ seekerSafetyAgreement: string; guideNdaAgreement: string; prices: number[] } | null>(null);
+  const [info, setInfo] = useState<Awaited<ReturnType<typeof confessionAPI.getInfo>> | null>(null);
   const [guideInfo, setGuideInfo] = useState<Awaited<ReturnType<typeof confessionAPI.getGuidePrefs>> | null>(null);
   const [session, setSession] = useState<ConfessionSessionView | null>(null);
   const [guideScope, setGuideScope] = useState<GuideScope | null>(null);
   const [guides, setGuides] = useState<BlurredConfessionGuide[]>([]);
   const [selectedGuide, setSelectedGuide] = useState<BlurredConfessionGuide | null>(null);
+  const [aiGuides, setAiGuides] = useState<ConfessionAiGuide[]>([]);
+  const [selectedAi, setSelectedAi] = useState<ConfessionAiGuide | null>(null);
   const [amountEur, setAmountEur] = useState<5 | 10>(5);
   const [appointmentAt, setAppointmentAt] = useState(defaultAppointmentValue());
   const [safetySignature, setSafetySignature] = useState('');
@@ -44,6 +76,7 @@ export default function ConfessionBoothWidget() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const lastAiSpoke = useRef('');
 
   const refreshSession = useCallback(async (sessionId: string) => {
     const { session: s } = await confessionAPI.getSession(sessionId);
@@ -54,7 +87,10 @@ export default function ConfessionBoothWidget() {
   }, []);
 
   useEffect(() => {
-    confessionAPI.getInfo().then(setInfo).catch(() => {});
+    confessionAPI.getInfo().then((r) => {
+      setInfo(r);
+      setAiGuides(r.aiGuides || []);
+    }).catch(() => {});
     confessionAPI.getGuidePrefs().then((g) => {
       setGuideInfo(g);
       setGuideEnabled(g.prefs.enabled);
@@ -95,6 +131,15 @@ export default function ConfessionBoothWidget() {
     };
   }, [session?.id, step, session?.status, refreshSession]);
 
+  useEffect(() => {
+    if (!session || session.kind !== 'ai' || session.status !== 'active') return;
+    const last = [...session.messages].reverse().find((m) => m.fromRole === 'guide');
+    if (last && last.content !== lastAiSpoke.current) {
+      lastAiSpoke.current = last.content;
+      speakVeiled(last.content);
+    }
+  }, [session?.messages, session?.kind, session?.status]);
+
   const loadGuides = async (scope: GuideScope) => {
     setLoading(true);
     setError('');
@@ -105,6 +150,31 @@ export default function ConfessionBoothWidget() {
       setStep('guides');
     } catch (e) {
       setError(formatAxiosError(e, 'Could not load guides'));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleBookAiSession = async () => {
+    if (!selectedAi) return;
+    if (!safetySignature.trim()) {
+      setError('Sign your name to agree to the AI Terms and safety rules');
+      return;
+    }
+    setLoading(true);
+    setError('');
+    try {
+      const { session: s } = await confessionAPI.createSession({
+        amountEur,
+        safetySignature: safetySignature.trim(),
+        kind: 'ai',
+        aiGuideId: selectedAi.id,
+      });
+      setSession(s);
+      setStep('pay');
+      setSuccess('Terms signed. Pay to open your private AI booth — 100% goes to the app.');
+    } catch (e) {
+      setError(formatAxiosError(e, 'Could not start AI confession'));
     } finally {
       setLoading(false);
     }
@@ -125,6 +195,7 @@ export default function ConfessionBoothWidget() {
         guideId: selectedGuide.id,
         appointmentAt: new Date(appointmentAt).toISOString(),
         guideScope,
+        kind: 'human',
       });
       setSession(s);
       setStep('waiting_accept');
@@ -230,6 +301,7 @@ export default function ConfessionBoothWidget() {
   const resetSeekerFlow = () => {
     setSession(null);
     setSelectedGuide(null);
+    setSelectedAi(null);
     setGuideScope(null);
     setGuides([]);
     setSafetySignature('');
@@ -238,13 +310,15 @@ export default function ConfessionBoothWidget() {
     setError('');
   };
 
+  const isAiSession = session?.kind === 'ai' || Boolean(session?.aiGuideId);
+
   return (
     <div className="widget confession-booth-widget">
       <div className="confession-booth-hero">
         <div style={{ fontSize: 48, marginBottom: 8 }} aria-hidden>⛪</div>
         <h2 style={{ margin: 0, fontSize: 20, color: '#fde68a' }}>Confession Booth</h2>
         <p style={{ fontSize: 13, color: '#a8a29e', marginTop: 8, lineHeight: 1.5 }}>
-          Like the old confessional — a screen between you. You never see each other, and on a voice call you never hear a real voice. Both sides are deepened through the lattice so you stay unknown.
+          Like the old confessional — a screen between you. You never see each other, and voices are deepened through the lattice so you stay unknown. Start with an AI helper for private matters, or a human guide from your region.
         </p>
       </div>
 
@@ -269,14 +343,134 @@ export default function ConfessionBoothWidget() {
       {step === 'intro' && (
         <div>
           <ul style={{ fontSize: 13, color: '#d1d5db', lineHeight: 1.6, paddingLeft: 18 }}>
-            <li>Completely anonymous — neither side knows who the other is</li>
-            <li>Voice calls go through a veil: your real voice never leaves this device; they only hear a deepened mask</li>
-            <li>Guide signs a legal NDA — revealing anything can lead to lawsuit</li>
-            <li>€5 or €10 after your guide accepts your appointment (guide keeps 80%)</li>
-            <li><strong>Forbidden:</strong> confessing crimes or intent to harm — blocked &amp; reported</li>
+            <li>Completely private — for personal matters you are not ready to share face-to-face</li>
+            <li>AI helpers first — ready now; payment goes 100% to the app</li>
+            <li>Human guides by region — blurred identity, NDA, veiled voice (guide keeps 80%)</li>
+            <li>Voice is deepened / messed with so nobody hears a clear real voice</li>
+            <li><strong>Forbidden:</strong> crimes or intent to harm — blocked &amp; reported</li>
           </ul>
-          <button type="button" className="select-user-btn" style={{ width: '100%', marginTop: 12 }} onClick={() => setStep('scope')}>
+          <button type="button" className="select-user-btn" style={{ width: '100%', marginTop: 12 }} onClick={() => setStep('path')}>
             Enter the booth
+          </button>
+        </div>
+      )}
+
+      {step === 'path' && (
+        <div className="confession-path-grid">
+          <p style={{ fontSize: 14, color: '#d1d5db', marginBottom: 4 }}>
+            Who do you want behind the lattice?
+          </p>
+          <button type="button" className="confession-path-card" onClick={() => setStep('ai_guides')}>
+            <strong>AI guide helpers — start here</strong>
+            <span>
+              Private AI support for things too personal to say out loud elsewhere. Agree to Terms, pay €5 or €10 (100% to the app), then confess anonymously with a veiled voice reply.
+            </span>
+          </button>
+          <button type="button" className="confession-path-card human" onClick={() => setStep('scope')}>
+            <strong>Human guide — same region or international</strong>
+            <span>
+              Pick blurred guides near you when they apply, or international. Appointment, PayPal, NDA, veiled call — neither of you sees the other.
+            </span>
+          </button>
+          <button type="button" className="chat-back-btn" onClick={() => setStep('intro')}>
+            Back
+          </button>
+        </div>
+      )}
+
+      {step === 'ai_guides' && (
+        <div>
+          <p style={{ fontSize: 13, color: '#9ca3af', marginBottom: 12 }}>
+            Choose an AI helper. They stay anonymous; replies are veiled. Private matters only — no crimes, no harm.
+          </p>
+          <div className="confession-guide-list">
+            {(aiGuides.length ? aiGuides : []).map((g) => (
+              <button
+                key={g.id}
+                type="button"
+                className={`confession-guide-card${selectedAi?.id === g.id ? ' selected' : ''}`}
+                onClick={() => {
+                  setSelectedAi(g);
+                  setStep('ai_book');
+                }}
+              >
+                <img className="confession-ai-avatar" src={g.portrait} alt="" />
+                <div className="confession-guide-meta">
+                  <strong>{g.name.split(' ')[0]} · AI</strong>
+                  <span>{g.specialty}</span>
+                  <span className="confession-guide-snippet">{g.tagline}</span>
+                </div>
+              </button>
+            ))}
+          </div>
+          {!aiGuides.length && <p style={{ fontSize: 13, color: '#d1d5db' }}>Loading AI helpers…</p>}
+          <button type="button" className="chat-back-btn" style={{ marginTop: 12 }} onClick={() => setStep('path')}>
+            Back
+          </button>
+        </div>
+      )}
+
+      {step === 'ai_book' && selectedAi && info && (
+        <div>
+          <div className="confession-guide-card selected" style={{ marginBottom: 12, cursor: 'default' }}>
+            <img className="confession-ai-avatar" src={selectedAi.portrait} alt="" />
+            <div className="confession-guide-meta">
+              <strong>{selectedAi.name.split(' ')[0]} · AI helper</strong>
+              <span>{selectedAi.specialty}</span>
+            </div>
+          </div>
+          <div
+            style={{
+              maxHeight: 180,
+              overflowY: 'auto',
+              padding: 12,
+              background: 'rgba(0,0,0,0.3)',
+              borderRadius: 8,
+              fontSize: 12,
+              color: '#fca5a5',
+              marginBottom: 12,
+              whiteSpace: 'pre-wrap',
+              border: '1px solid rgba(239,68,68,0.3)',
+            }}
+          >
+            {info.aiSeekerTerms || info.seekerSafetyAgreement}
+          </div>
+          <p style={{ fontSize: 13, marginBottom: 8 }}>
+            Session fee — <strong>100% to the app</strong> (not a human guide):
+          </p>
+          <div style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
+            {([5, 10] as const).map((p) => (
+              <button
+                key={p}
+                type="button"
+                onClick={() => setAmountEur(p)}
+                style={{
+                  flex: 1,
+                  padding: 12,
+                  borderRadius: 8,
+                  border: amountEur === p ? '2px solid #fbbf24' : '1px solid #4b5563',
+                  background: amountEur === p ? 'rgba(251,191,36,0.15)' : 'transparent',
+                  color: '#fff',
+                  cursor: 'pointer',
+                }}
+              >
+                €{p}
+              </button>
+            ))}
+          </div>
+          <label style={{ fontSize: 13, display: 'block', marginBottom: 6 }}>Sign full name — agree to Terms &amp; no crime / no harm</label>
+          <input
+            type="text"
+            value={safetySignature}
+            onChange={(e) => setSafetySignature(e.target.value)}
+            placeholder="Your full name"
+            style={{ width: '100%', padding: 12, borderRadius: 8, border: '1px solid #374151', background: '#111827', color: '#fff', marginBottom: 12, boxSizing: 'border-box' }}
+          />
+          <button type="button" className="select-user-btn" style={{ width: '100%' }} disabled={loading} onClick={handleBookAiSession}>
+            {loading ? 'Opening…' : 'Agree & continue to pay'}
+          </button>
+          <button type="button" className="chat-back-btn" style={{ width: '100%', marginTop: 8 }} onClick={() => setStep('ai_guides')}>
+            Choose another AI helper
           </button>
         </div>
       )}
@@ -284,7 +478,7 @@ export default function ConfessionBoothWidget() {
       {step === 'scope' && (
         <div>
           <p style={{ fontSize: 14, color: '#d1d5db', marginBottom: 12 }}>
-            Choose who you want to hear you. Guides stay blurred — you never see their identity.
+            Choose human guides from your region (when they apply) or international. Guides stay blurred — you never see their identity. Voices stay veiled.
           </p>
           <div style={{ display: 'flex', gap: 10 }}>
             <button type="button" className="select-user-btn" style={{ flex: 1 }} disabled={loading} onClick={() => loadGuides('local')}>
@@ -294,6 +488,9 @@ export default function ConfessionBoothWidget() {
               International guides
             </button>
           </div>
+          <button type="button" className="chat-back-btn" style={{ marginTop: 12 }} onClick={() => setStep('path')}>
+            Back
+          </button>
         </div>
       )}
 
@@ -304,7 +501,7 @@ export default function ConfessionBoothWidget() {
           </p>
           {guides.length === 0 ? (
             <p style={{ fontSize: 13, color: '#d1d5db' }}>
-              No guides available here right now. Try {guideScope === 'local' ? 'international' : 'local'} guides instead.
+              No human guides available here right now. Try {guideScope === 'local' ? 'international' : 'local'}, or use an AI helper instead.
             </p>
           ) : (
             <div className="confession-guide-list">
@@ -328,7 +525,10 @@ export default function ConfessionBoothWidget() {
               ))}
             </div>
           )}
-          <button type="button" className="chat-back-btn" style={{ marginTop: 12 }} onClick={() => setStep('scope')}>
+          <button type="button" className="select-user-btn" style={{ width: '100%', marginTop: 10 }} onClick={() => setStep('ai_guides')}>
+            Use an AI helper instead
+          </button>
+          <button type="button" className="chat-back-btn" style={{ marginTop: 8 }} onClick={() => setStep('scope')}>
             Back
           </button>
         </div>
@@ -367,7 +567,7 @@ export default function ConfessionBoothWidget() {
             onChange={(e) => setAppointmentAt(e.target.value)}
             style={{ width: '100%', padding: 12, borderRadius: 8, border: '1px solid #374151', background: '#111827', color: '#fff', marginBottom: 12, boxSizing: 'border-box' }}
           />
-          <p style={{ fontSize: 13, marginBottom: 8 }}>Session fee (paid only after the guide accepts):</p>
+          <p style={{ fontSize: 13, marginBottom: 8 }}>Session fee (paid only after the guide accepts — guide keeps 80%):</p>
           <div style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
             {([5, 10] as const).map((p) => (
               <button
@@ -422,11 +622,15 @@ export default function ConfessionBoothWidget() {
       {step === 'pay' && session && (
         <div>
           <p style={{ fontSize: 14, marginBottom: 8 }}>
-            {session.guideDisplayLabel || 'Your guide'} accepted your appointment
-            {session.appointmentAt ? ` for ${formatAppointment(session.appointmentAt)}` : ''}.
+            {isAiSession
+              ? `${session.guideDisplayLabel || 'Your AI helper'} is ready.`
+              : `${session.guideDisplayLabel || 'Your guide'} accepted your appointment${
+                  session.appointmentAt ? ` for ${formatAppointment(session.appointmentAt)}` : ''
+                }.`}
           </p>
           <p style={{ fontSize: 13, color: '#9ca3af', marginBottom: 12 }}>
-            Pay €{session.amountEur} to open the anonymous booth and start talking.
+            Pay €{session.amountEur} to open the anonymous booth.
+            {isAiSession ? ' Payment goes 100% to the app account.' : ' Guide keeps 80%.'}
           </p>
           <button type="button" className="select-user-btn" style={{ width: '100%' }} disabled={loading} onClick={handlePayPal}>
             {loading ? 'Opening PayPal…' : `Pay €${session.amountEur} with PayPal`}
@@ -448,7 +652,7 @@ export default function ConfessionBoothWidget() {
             <span>
               {session.role === 'seeker' ? `You: ${session.seekerAlias}` : `You: ${session.guideAlias}`}
               {' · '}
-              Other: anonymous
+              {isAiSession ? session.guideDisplayLabel || 'AI helper' : 'Other: anonymous'}
             </span>
             <button
               type="button"
@@ -464,8 +668,13 @@ export default function ConfessionBoothWidget() {
             </button>
           </div>
 
-          {session.status === 'active' && session.role && (
-            <ConfessionMaskedCall sessionId={session.id} role={session.role} />
+          {isAiSession ? (
+            <p className="confession-veil-note">
+              AI replies speak through a deepened veil — private matters only. Crimes and harm are blocked.
+            </p>
+          ) : (
+            session.status === 'active' &&
+            session.role && <ConfessionMaskedCall sessionId={session.id} role={session.role} />
           )}
 
           <div className="confession-chat-log">
@@ -515,7 +724,7 @@ export default function ConfessionBoothWidget() {
       {step === 'guide' && guideInfo && (
         <div>
           <p style={{ fontSize: 13, color: '#d1d5db', marginBottom: 12 }}>
-            As a guide, you never see who is confessing. Sign the NDA — breaking confidentiality may result in legal action.
+            As a human guide, you never see who is confessing. Sign the NDA — breaking confidentiality may result in legal action. Seekers from your region can find you under “Guides in my area”.
           </p>
           <div
             style={{

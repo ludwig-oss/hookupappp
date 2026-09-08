@@ -908,9 +908,52 @@
   color: #fde68a;
 }
 
-.confession-guide-snippet {
-  color: #9ca3af;
-  line-height: 1.35;
+.confession-path-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.confession-path-card {
+  width: 100%;
+  text-align: left;
+  padding: 14px;
+  border-radius: 12px;
+  border: 2px solid rgba(251, 191, 36, 0.35);
+  background: rgba(0, 0, 0, 0.35);
+  color: #f5efe6;
+  cursor: pointer;
+}
+
+.confession-path-card strong {
+  display: block;
+  color: #fde68a;
+  margin-bottom: 4px;
+}
+
+.confession-path-card span {
+  font-size: 12px;
+  color: #d1d5db;
+  line-height: 1.45;
+}
+
+.confession-path-card.human {
+  border-color: rgba(244, 114, 182, 0.45);
+}
+
+.confession-ai-avatar {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+  filter: contrast(0.9) brightness(0.85);
+  border: 2px solid rgba(251, 191, 36, 0.4);
+}
+
+.confession-veil-note {
+  font-size: 11px;
+  color: #a8a29e;
+  margin: 0 0 8px;
 }
 
 .confession-chat-log {

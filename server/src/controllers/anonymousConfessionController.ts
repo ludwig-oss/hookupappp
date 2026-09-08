@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import {
   createConfessionSession,
+  createAiConfessionSession,
   getSessionById,
   getSessionsForUser,
   getPendingGuideSessions,
@@ -15,6 +16,7 @@ import {
   retryGuideMatching,
   sanitizeSessionForClient,
   listBlurredConfessionGuides,
+  listConfessionAiGuides,
   getVoiceCallForClient,
   setVoiceCallOffer,
   setVoiceCallAnswer,
@@ -22,6 +24,7 @@ import {
   hangupVoiceCall,
   SEEKER_SAFETY_AGREEMENT,
   GUIDE_NDA_AGREEMENT,
+  AI_SEEKER_TERMS,
 } from '../models/anonymousConfession.js';
 import { getGuideByUserId } from '../models/improvement.js';
 import { getOrCreateWallet, holdGuideSessionPayment, splitSessionPayment } from '../models/guideWallet.js';
@@ -41,8 +44,11 @@ export async function getConfessionInfoHandler(_req: Request, res: Response) {
   res.json({
     seekerSafetyAgreement: SEEKER_SAFETY_AGREEMENT,
     guideNdaAgreement: GUIDE_NDA_AGREEMENT,
+    aiSeekerTerms: AI_SEEKER_TERMS,
     prices: [5, 10],
     split: { guidePercent: 80, platformPercent: 20 },
+    aiSplit: { guidePercent: 0, platformPercent: 100 },
+    aiGuides: listConfessionAiGuides(),
   });
 }
 
@@ -91,12 +97,14 @@ export async function listConfessionGuidesHandler(req: Request, res: Response) {
 export async function createSessionHandler(req: Request, res: Response) {
   try {
     const userId = (req as any).userId as string;
-    const { amountEur, safetySignature, guideId, appointmentAt, guideScope } = req.body as {
+    const { amountEur, safetySignature, guideId, appointmentAt, guideScope, kind, aiGuideId } = req.body as {
       amountEur?: number;
       safetySignature?: string;
       guideId?: string;
       appointmentAt?: string;
       guideScope?: string;
+      kind?: string;
+      aiGuideId?: string;
     };
     if (amountEur !== 5 && amountEur !== 10) {
       return res.status(400).json({ error: 'Choose €5 or €10 for your confession session' });
@@ -104,6 +112,22 @@ export async function createSessionHandler(req: Request, res: Response) {
     if (!safetySignature?.trim()) {
       return res.status(400).json({ error: 'Sign the safety agreement before continuing' });
     }
+
+    if (kind === 'ai' || aiGuideId) {
+      if (!aiGuideId) return res.status(400).json({ error: 'Choose an AI confession helper' });
+      const session = await createAiConfessionSession({
+        seekerUserId: userId,
+        amountEur,
+        safetySignature: safetySignature.trim(),
+        aiGuideId,
+      });
+      return res.json({
+        session: sanitizeSessionForClient(session, userId),
+        seekerSafetyAgreement: SEEKER_SAFETY_AGREEMENT,
+        aiSeekerTerms: AI_SEEKER_TERMS,
+      });
+    }
+
     if (!guideId) {
       return res.status(400).json({ error: 'Choose an anonymous guide' });
     }
@@ -191,13 +215,16 @@ export async function createPayPalOrderHandler(req: Request, res: Response) {
       return res.status(400).json({ error: 'Your guide must accept the appointment before you can pay' });
     }
 
-    const sellerWallet = session.guideUserId ? await getOrCreateWallet(session.guideUserId) : null;
-    const { platformFee } = splitSessionPayment(session.amountEur);
+    const isAi = session.kind === 'ai' || Boolean(session.aiGuideId);
+    const sellerWallet = !isAi && session.guideUserId ? await getOrCreateWallet(session.guideUserId) : null;
+    const { platformFee } = isAi
+      ? { platformFee: session.amountEur }
+      : splitSessionPayment(session.amountEur);
     const frontendUrl = (process.env.FRONTEND_URL || 'http://localhost:5173').replace(/\/$/, '');
     const orderPayload = buildAuthorizeOrderPayload({
       amountEur: session.amountEur,
       platformFeeEur: platformFee,
-      description: 'Anonymous confession session',
+      description: isAi ? 'AI confession session (app account)' : 'Anonymous confession session',
       customId: session.id,
       returnUrl: `${frontendUrl}/home?confession=success&sessionId=${session.id}`,
       cancelUrl: `${frontendUrl}/home?confession=cancel`,
@@ -254,7 +281,7 @@ export async function capturePayPalOrderHandler(req: Request, res: Response) {
       const parsed = parseAuthorizationFromOrder({ id: orderId, ...authRes.data });
       if (!parsed) return res.status(402).json({ error: 'PayPal did not return an authorization id' });
 
-      if (existing.guideUserId) {
+      if (existing.guideUserId && existing.kind !== 'ai' && !existing.aiGuideId) {
         const sellerWallet = await getOrCreateWallet(existing.guideUserId);
         const { guideShare, platformFee } = splitSessionPayment(existing.amountEur);
         await createAuthorizationHold({
@@ -293,7 +320,9 @@ export async function capturePayPalOrderHandler(req: Request, res: Response) {
 
     res.json({
       message: session.status === 'active'
-        ? 'Payment received. The confession booth is open — say what you need to share.'
+        ? session.kind === 'ai' || session.aiGuideId
+          ? 'Payment received. Your AI helper is ready in the private booth.'
+          : 'Payment received. The confession booth is open — say what you need to share.'
         : 'Payment received. Your guide will open the booth shortly.',
       session: sanitizeSessionForClient(session, userId),
     });

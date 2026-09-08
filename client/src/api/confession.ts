@@ -13,6 +13,8 @@ export interface ConfessionMessage {
 
 export interface ConfessionSessionView {
   id: string;
+  kind?: 'human' | 'ai';
+  aiGuideId?: string | null;
   role: 'seeker' | 'guide' | null;
   seekerAlias: string;
   guideAlias: string | null;
@@ -22,6 +24,7 @@ export interface ConfessionSessionView {
   appointmentStatus?: 'pending' | 'accepted' | 'declined' | null;
   amountEur: 5 | 10;
   paymentStatus: 'pending' | 'paid';
+  paymentDestination?: 'app' | 'guide_split';
   status: string;
   messages: ConfessionMessage[];
   createdAt: string;
@@ -43,6 +46,15 @@ export interface BlurredConfessionGuide {
   scope: 'local' | 'international';
 }
 
+export interface ConfessionAiGuide {
+  id: string;
+  name: string;
+  specialty: string;
+  tagline: string;
+  portrait: string;
+  personality: string;
+}
+
 export interface ConfessionCallState {
   callerRole: 'seeker' | 'guide' | null;
   offer: { type: 'offer' | 'answer'; sdp: string } | null;
@@ -58,8 +70,11 @@ export const confessionAPI = {
     return res.data as {
       seekerSafetyAgreement: string;
       guideNdaAgreement: string;
+      aiSeekerTerms: string;
       prices: number[];
       split: { guidePercent: number; platformPercent: number };
+      aiSplit: { guidePercent: number; platformPercent: number };
+      aiGuides: ConfessionAiGuide[];
     };
   },
 
@@ -91,9 +106,11 @@ export const confessionAPI = {
   createSession: async (data: {
     amountEur: 5 | 10;
     safetySignature: string;
-    guideId: string;
-    appointmentAt: string;
-    guideScope: 'local' | 'international';
+    guideId?: string;
+    appointmentAt?: string;
+    guideScope?: 'local' | 'international';
+    kind?: 'human' | 'ai';
+    aiGuideId?: string;
   }) => {
     const res = await axios.post(`${API_URL}/sessions`, data);
     return res.data as { session: ConfessionSessionView };

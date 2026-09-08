@@ -50,6 +50,22 @@ If you are in crisis or danger, contact emergency services or a licensed profess
 
 By signing below, you confirm you understand these rules and will not use this service for criminal confessions or threats of harm.`;
 
+export const AI_SEEKER_TERMS = `AI Confession Helper — Terms & Conditions
+
+You are about to speak with an AI guide in a private booth. This is for emotional support and private personal matters only.
+
+• You agree to the app Terms of Service and Privacy Policy.
+• Do NOT confess crimes or illegal acts.
+• Do NOT describe plans or intent to harm yourself or anyone else.
+• Forbidden content is blocked and may be reported.
+• The AI does not replace licensed therapy, legal advice, or emergency services.
+• Payment for AI confession sessions goes entirely to the app (not to a human guide).
+• Voice replies are veiled/deepened so the experience stays anonymous and private — even with AI.
+
+If you are in crisis or danger, contact emergency services or a licensed professional in your area.
+
+By signing below, you agree to these terms and confirm you will only share private personal matters that need support — not crimes or harm.`;
+
 export const GUIDE_NDA_AGREEMENT = `Anonymous Confession Guide — Confidentiality NDA
 
 You are entering a blind confession session. You will NOT know the seeker's identity and they will NOT know yours. Voice is veiled (deepened) — you will not hear their real voice.

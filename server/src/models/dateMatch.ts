@@ -70,6 +70,8 @@ export interface DateMatch {
 export interface SearchQueueEntry {
   userId: string;
   lookingFor: string[];
+  /** city = same city only; country = any city in the same country */
+  cityScope: 'city' | 'country';
   startedAt: string;
 }
 
@@ -177,7 +179,11 @@ async function writeMatches(list: DateMatch[]): Promise<void> {
   await writeJson(MATCHES_PATH, list);
 }
 async function readQueue(): Promise<SearchQueueEntry[]> {
-  return readJson(QUEUE_PATH, []);
+  const list = await readJson<SearchQueueEntry[]>(QUEUE_PATH, []);
+  return list.map((q) => ({
+    ...q,
+    cityScope: q.cityScope === 'country' ? 'country' : 'city',
+  }));
 }
 async function writeQueue(list: SearchQueueEntry[]): Promise<void> {
   await writeJson(QUEUE_PATH, list);
@@ -300,6 +306,33 @@ function overlapLooking(a: string[], b: string[]): boolean {
   return a.some((x) => b.includes(x));
 }
 
+function normPlace(s?: string | null): string {
+  return String(s || '')
+    .trim()
+    .toLowerCase();
+}
+
+export type DateCityScope = 'city' | 'country';
+
+/** Date Arena location filter: my city only, or any city in my country. */
+export function locationFitsDateSearch(
+  scope: DateCityScope,
+  me: { city?: string | null; country?: string | null },
+  other: { city?: string | null; country?: string | null }
+): boolean {
+  const myCountry = normPlace(me.country);
+  const theirCountry = normPlace(other.country);
+  if (!myCountry || !theirCountry || myCountry !== theirCountry) return false;
+  if (scope === 'country') return true;
+  const myCity = normPlace(me.city);
+  const theirCity = normPlace(other.city);
+  return Boolean(myCity && theirCity && myCity === theirCity);
+}
+
+function parseCityScope(raw: unknown): DateCityScope {
+  return raw === 'country' ? 'country' : 'city';
+}
+
 function otherId(m: DateMatch, userId: string): string {
   return m.userId1 === userId ? m.userId2 : m.userId1;
 }
@@ -337,7 +370,8 @@ async function bumpSearchUsage(userId: string): Promise<void> {
 
 export async function startSearch(
   userId: string,
-  lookingFor: string[]
+  lookingFor: string[],
+  cityScopeRaw: unknown = 'city'
 ): Promise<{
   quota: Awaited<ReturnType<typeof getSearchQuota>>;
   searching: boolean;
@@ -345,25 +379,47 @@ export async function startSearch(
   other: PublicUserCard | null;
   me: PublicUserCard | null;
   needUpgrade?: boolean;
+  cityScope?: DateCityScope;
 }> {
   let valid = validLookingFor(lookingFor);
   if (!valid.length) valid = await getSavedLookingFor(userId);
   if (valid.length === 0) throw new Error('Pick what you are looking for');
   await saveDateLookingFor(userId, valid);
 
+  const cityScope = parseCityScope(cityScopeRaw);
   const quota = await getSearchQuota(userId);
   if (!quota.unlimited && (quota.remaining ?? 0) <= 0) {
-    return { quota, searching: false, match: null, other: null, me: await toCard(userId), needUpgrade: true };
+    return {
+      quota,
+      searching: false,
+      match: null,
+      other: null,
+      me: await toCard(userId),
+      needUpgrade: true,
+      cityScope,
+    };
   }
 
   const meUser = await getUserById(userId);
   if (!meUser) throw new Error('User not found');
+  if (!normPlace(meUser.country)) {
+    throw new Error('Set your country in Profile before searching Date Arena.');
+  }
+  if (cityScope === 'city' && !normPlace(meUser.city)) {
+    throw new Error('Set your city in Profile to search your city only — or choose any city in your country.');
+  }
   const blocked = new Set([...(meUser.blockedUsers || []), ...(meUser.unmatchedUsers || [])]);
 
+  // Unlimited (Plus / Gold / Platinum) still counts usage for analytics but never blocks
   await bumpSearchUsage(userId);
 
   const queue = (await readQueue()).filter((q) => q.userId !== userId);
-  queue.push({ userId, lookingFor: valid, startedAt: new Date().toISOString() });
+  queue.push({
+    userId,
+    lookingFor: valid,
+    cityScope,
+    startedAt: new Date().toISOString(),
+  });
   await writeQueue(queue);
 
   const myScore = await computeInterestLevel(userId);
@@ -375,6 +431,7 @@ export async function startSearch(
     if (!other) continue;
     if (blocked.has(entry.userId) || (other.blockedUsers || []).includes(userId) || (other.unmatchedUsers || []).includes(userId)) continue;
     if (other.relationshipStatus === 'In a relationship') continue;
+    if (!locationFitsDateSearch(cityScope, meUser, other)) continue;
     const existing = (await readMatches()).find(
       (m) =>
         ((m.userId1 === userId && m.userId2 === entry.userId) || (m.userId1 === entry.userId && m.userId2 === userId)) &&
@@ -393,7 +450,14 @@ export async function startSearch(
   }
 
   if (!pick) {
-    return { quota: await getSearchQuota(userId), searching: true, match: null, other: null, me: await toCard(userId) };
+    return {
+      quota: await getSearchQuota(userId),
+      searching: true,
+      match: null,
+      other: null,
+      me: await toCard(userId),
+      cityScope,
+    };
   }
 
   const bothOnline = isSseConnected(userId) && isSseConnected(pick.entry.userId);
@@ -442,6 +506,7 @@ export async function startSearch(
     match,
     other: await toCard(pick.entry.userId),
     me: await toCard(userId),
+    cityScope,
   };
 }
 

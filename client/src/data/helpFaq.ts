@@ -83,7 +83,7 @@ export const HELP_FAQ: HelpFaqItem[] = [
   {
     category: 'Meeting people',
     q: 'What is Date Arena?',
-    a: 'Date Arena (⚔) finds you a date using what you picked at signup (serious, casual, and the other intents). You can change that in Date Arena before you search. You get 3 free searches a month; Plus unlocks unlimited. Matches pair similar interest levels. Both must Accept and pick when you are free. Then tap ? to roll a hobby, good deed, or cheap eat/drink neither of you has done. Chat stays locked until the date day. Cancelling without sick/emergency proof is a €10 fine paid to the other person. After the date, both of you choose whether to keep talking.',
+    a: 'Date Arena (⚔) finds you a date using what you picked at signup (serious, casual, and the other intents). You can change that in Date Arena before you search. Choose My city only or Whole country (any city). You get 3 free searches a month; Plus, Gold, or Platinum unlocks unlimited. Matches pair similar interest levels. Both must Accept and pick when you are free. Then tap ? to roll a hobby, good deed, or cheap eat/drink neither of you has done. Chat stays locked until the date day. Cancelling without sick/emergency proof is a €10 fine paid to the other person. After the date, both of you choose whether to keep talking.',
     keywords: ['date arena', 'match', 'fun date', 'question mark', 'fine', 'accept'],
   },
   {

@@ -66,6 +66,7 @@ export default function DateMatchWidget({
   const [view, setView] = useState<View>('home');
   const [catalog, setCatalog] = useState<DateMatchCatalog | null>(null);
   const [looking, setLooking] = useState<string[]>([]);
+  const [cityScope, setCityScope] = useState<'city' | 'country'>('city');
   const [match, setMatch] = useState<DateMatch | null>(null);
   const [me, setMe] = useState<PublicUserCard | null>(null);
   const [other, setOther] = useState<PublicUserCard | null>(null);
@@ -139,7 +140,7 @@ export default function DateMatchWidget({
     setLoading(true);
     setView('searching');
     try {
-      const r = await dateMatchAPI.search(looking);
+      const r = await dateMatchAPI.search(looking, cityScope);
       setCatalog((c) => (c ? { ...c, quota: r.quota } : c));
       if (r.needUpgrade) {
         setView('paywall');
@@ -293,6 +294,35 @@ export default function DateMatchWidget({
               </button>
             ))}
           </div>
+
+          <p style={{ fontSize: 13, margin: '16px 0 8px' }}>Where to search</p>
+          <div className="da-row">
+            <button
+              type="button"
+              className={`da-chip ${cityScope === 'city' ? 'on' : ''}`}
+              onClick={() => setCityScope('city')}
+              title="Only people in your city"
+            >
+              My city only
+            </button>
+            <button
+              type="button"
+              className={`da-chip ${cityScope === 'country' ? 'on' : ''}`}
+              onClick={() => setCityScope('country')}
+              title="Any city in your country"
+            >
+              Whole country (any city)
+            </button>
+          </div>
+          <p style={{ fontSize: 11, color: '#9ca3af', margin: '6px 0 14px' }}>
+            {cityScope === 'city'
+              ? 'Pairs you with people in your city. Set city on Profile.'
+              : 'Pairs you with people anywhere in your country.'}
+            {catalog?.quota.unlimited
+              ? ' You have unlimited searches with Plus / Gold / Platinum.'
+              : ' Free: 3 searches / month — upgrade for unlimited.'}
+          </p>
+
           <button type="button" className="da-btn da-btn-primary" disabled={!looking.length} onClick={() => setView('disclaimer')}>
             Search for a date
           </button>
@@ -366,7 +396,7 @@ export default function DateMatchWidget({
         <div className="da-searching">
           <div className="da-radar" />
           <h3>Finding a match…</h3>
-          <p className="da-sub">Pairing by interest level and what you are looking for. Stay here — we will put them on pending if they are offline.</p>
+          <p className="da-sub">Pairing by interest level, what you want, and {cityScope === 'city' ? 'your city' : 'your country'}. Stay here — we put them on pending if they are offline.</p>
           <button type="button" className="da-btn da-btn-ghost" onClick={async () => { await dateMatchAPI.cancelSearch(); setView('home'); }}>Stop searching</button>
         </div>
       )}
@@ -516,7 +546,7 @@ export default function DateMatchWidget({
 
       {view === 'paywall' && (
         <div>
-          <div className="da-warn">You used your 3 free Date Arena searches this month. Plus (€68 / month) unlocks unlimited searches, pitch-after-a-no, and other-country interest.</div>
+          <div className="da-warn">You used your 3 free Date Arena searches this month. Plus, Gold, or Platinum unlocks unlimited searches (and you can still choose my city only or whole country).</div>
           <button type="button" className="da-btn da-btn-primary" onClick={() => onOpenPremium?.()}>See plans</button>
           <button type="button" className="da-btn da-btn-ghost" style={{ marginLeft: 8 }} onClick={() => setView('home')}>Back</button>
         </div>

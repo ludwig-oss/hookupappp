@@ -86,7 +86,8 @@ export async function postStartSearch(req: Request, res: Response) {
   try {
     const userId = uid(req);
     const lookingFor = Array.isArray(req.body?.lookingFor) ? req.body.lookingFor : [];
-    const result = await startSearch(userId, lookingFor);
+    const cityScope = req.body?.cityScope === 'country' ? 'country' : 'city';
+    const result = await startSearch(userId, lookingFor, cityScope);
     if (result.match && result.other) {
       notifyDateMatch(result.other.id, { matchId: result.match.id, fromUserId: userId, status: result.match.status });
       sendPushToUser(result.other.id, {

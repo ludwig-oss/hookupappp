@@ -147,8 +147,8 @@ export const dateMatchAPI = {
     const { data } = await axios.post(`${API_URL}/looking-for`, { lookingFor });
     return data as { lookingFor: string[] };
   },
-  search: async (lookingFor: string[]) => {
-    const { data } = await axios.post(`${API_URL}/search`, { lookingFor });
+  search: async (lookingFor: string[], cityScope: 'city' | 'country' = 'city') => {
+    const { data } = await axios.post(`${API_URL}/search`, { lookingFor, cityScope });
     return data as {
       quota: DateMatchCatalog['quota'];
       searching: boolean;
@@ -156,6 +156,7 @@ export const dateMatchAPI = {
       other: PublicUserCard | null;
       me: PublicUserCard | null;
       needUpgrade?: boolean;
+      cityScope?: 'city' | 'country';
     };
   },
   cancelSearch: async () => {

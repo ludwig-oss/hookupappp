@@ -391,7 +391,7 @@ const ConnectionsWidget = () => {
         setComfortingMessage("It's a match! They're in your Communications — start chatting.");
       } else {
         notifyDevice('Hook Up', 'Interest sent. You will be notified when they answer.', 'interest');
-        setComfortingMessage("Interest sent! When they respond Yes or Talk later, they'll appear in Communications.");
+        setComfortingMessage("Interest sent! They only need to Accept — then you're both in Communications.");
       }
       setTimeout(() => setComfortingMessage(null), 4000);
     } catch (err: any) {
@@ -407,7 +407,10 @@ const ConnectionsWidget = () => {
     try {
       const result = await connectionsAPI.respondBuzz({ buzzId, response });
       const otherId = buzzes.received.find((b) => b.id === buzzId)?.fromUserId;
-      if (otherId) markProximityBannerShown('buzz-incoming', otherId);
+      if (otherId) {
+        markProximityBannerShown('buzz-incoming', otherId);
+        markProximityBannerShown('nearby-match', otherId);
+      }
       if (response === 'rejected' && result.comfortingMessage) {
         setComfortingMessage(result.comfortingMessage);
         setTimeout(() => setComfortingMessage(null), 8000);
@@ -436,16 +439,13 @@ const ConnectionsWidget = () => {
 
   const visibleNearbyUsers = nearbyUsers.filter((u) => {
     void handledRev;
-    const pendingIncoming = buzzes.received.some((b) => b.fromUserId === u.id && b.status === 'pending');
-    if (pendingIncoming) return true;
+    // Pending incoming belongs in the accept list only — not “show interest” nearby
+    if (buzzes.received.some((b) => b.fromUserId === u.id && b.status === 'pending')) return false;
     if (hasHandledNearbyPerson(u.id)) return false;
     if (buzzes.sent.some((b) => b.toUserId === u.id)) return false;
     return true;
   });
-  const nearbyIds = new Set(visibleNearbyUsers.map((u) => u.id));
-  const pendingBuzzNotNearby = buzzes.received.filter(
-    (b) => b.status === 'pending' && !nearbyIds.has(b.fromUserId)
-  );
+  const pendingBuzzNotNearby = buzzes.received.filter((b) => b.status === 'pending');
 
   const renderPersonActions = (personId: string, receivedBuzz?: Buzz) => {
     const buzz = receivedBuzz || buzzes.received.find((b) => b.fromUserId === personId && b.status === 'pending');
@@ -716,7 +716,7 @@ const ConnectionsWidget = () => {
             </p>
           )}
           <p style={{ marginBottom: '14px', color: '#9ca3af', fontFamily: 'Orbitron, monospace', fontSize: '12px' }}>
-            Nearby people update automatically. Send interest and wait for their response — mutual interest adds you both to Communications.
+            Nearby people update automatically. Show interest once — they only Accept or Decline (no need to send interest back).
           </p>
           {renderLocationPrompt()}
           {buzzes.received.some((b) => b.status === 'pending') && (
@@ -978,7 +978,7 @@ const ConnectionsWidget = () => {
             <h3 style={{ margin: 0, fontSize: '18px', color: '#00d4ff', fontFamily: 'Orbitron, monospace' }}>People nearby</h3>
           </div>
           <p style={{ margin: '0 0 14px', fontSize: '12px', color: '#9ca3af', fontFamily: 'Orbitron, monospace' }}>
-            Scroll the list, tap <strong style={{ color: '#ff00ff' }}>Show interest</strong>, then wait for Yes or No. Both interested → Communications.
+            Scroll the list, tap <strong style={{ color: '#ff00ff' }}>Show interest</strong>, then wait for Accept. They do not send interest back — Accept opens Communications.
           </p>
           {renderNearbyList()}
         </div>

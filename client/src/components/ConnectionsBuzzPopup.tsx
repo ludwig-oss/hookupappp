@@ -34,12 +34,15 @@ export default function ConnectionsBuzzPopup({ onOpenConnections }: Props) {
         return add.length ? [...prev, ...add] : prev;
       });
       notifyDevice(
-        'Hook Up — nearby interest',
+        'Hook Up — interest',
         fresh.length > 1
-          ? `${fresh.length} people want to connect.`
-          : 'Someone wants to connect. Accept or decline.',
+          ? `${fresh.length} people want to connect. Just Accept or Decline.`
+          : 'Someone nearby sent interest. Just Accept or Decline — you do not need to send interest back.',
         'interest'
       );
+      fresh.forEach((b) => {
+        markProximityBannerShown('nearby-match', b.fromUserId);
+      });
     } catch {
       /* offline */
     }
@@ -87,7 +90,7 @@ export default function ConnectionsBuzzPopup({ onOpenConnections }: Props) {
       <div className="walk-popup-card">
         <p className="walk-popup-badge">Nearby · your type</p>
         <h2>Someone nearby is interested</h2>
-        <p className="walk-popup-sub">Profile only — name hidden until you both match.</p>
+        <p className="walk-popup-sub">They already showed interest — just Accept or Decline. You do not need to send interest back.</p>
         {moreCount > 0 && (
           <p className="walk-popup-sub" style={{ color: '#00d4ff' }}>
             {moreCount} more waiting — Open list to see everyone.

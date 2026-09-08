@@ -93,7 +93,7 @@ export async function sendPushToUser(
       webPush.default.setVapidDetails(mailto, vapidPublic, vapidPrivate);
 
       const vibrateOn =
-        cat === 'interest'
+        cat === 'interest' || cat === 'matches'
           ? settings?.notifications.interestVibrate !== false
           : settings?.notifications.sound !== false;
       const silent = settings?.notifications.sound === false;

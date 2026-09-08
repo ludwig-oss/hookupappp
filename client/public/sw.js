@@ -17,27 +17,32 @@ self.addEventListener('push', (event) => {
   }
 
   const silent = payload.silent === '1';
-  const vibratePattern = !silent && payload.vibrate === '1' ? [200, 100, 200, 100, 200] : undefined;
+  // Slight phone vibration when allowed
+  const vibratePattern = !silent && payload.vibrate === '1' ? [90, 50, 90, 50, 110] : undefined;
+  const tag =
+    payload.type === 'chat_disinterest'
+      ? `disinterest-${Date.now()}`
+      : payload.type === 'texting_help_sos'
+        ? `texting-sos-${Date.now()}`
+        : payload.type === 'new_interest' || payload.type === 'buzz_incoming'
+          ? `interest-${Date.now()}`
+          : payload.type === 'buzz_match' || payload.type === 'buzz_accepted'
+            ? `match-${Date.now()}`
+            : `hookup-${Date.now()}`;
 
   event.waitUntil(
     self.registration.showNotification(payload.title, {
       body: payload.body || undefined,
       icon: '/vite.svg',
       badge: '/vite.svg',
-      tag: payload.type === 'chat_disinterest'
-        ? `disinterest-${Date.now()}`
-        : payload.type === 'texting_help_sos'
-          ? `texting-sos-${Date.now()}`
-          : payload.type === 'new_interest'
-            ? `interest-${Date.now()}`
-            : 'hookup',
+      tag,
       renotify: true,
       silent,
       vibrate: vibratePattern,
       data: {
         url: payload.type === 'chat_disinterest' && payload.otherUserId
           ? `/home?open=chat&disinterest=1&other=${encodeURIComponent(payload.otherUserId)}`
-          : payload.type === 'texting_help_sos'
+          : payload.type === 'texting_help_sos' || payload.type === 'buzz_incoming'
             ? '/home'
             : '/',
         type: payload.type,

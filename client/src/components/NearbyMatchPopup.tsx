@@ -5,6 +5,7 @@ import { markProximityBannerShown, setConnectionsStartView, shouldShowProximityB
 import { nearbyRadiusForCoords, resolveWorkingCoords } from '../lib/locationSession';
 import { formatAxiosError } from '../lib/apiError';
 import { openChatWithUser } from '../lib/openChat';
+import { notifyDevice } from '../lib/deviceNotify';
 import './WalkingPartnerPopup.css';
 
 type Props = {
@@ -34,33 +35,44 @@ export default function NearbyMatchPopup({ onOpenConnections }: Props) {
     );
     if (!coords) return;
     try {
-      const { users } = await connectionsAPI.getNearby({
-        lat: coords.lat,
-        lon: coords.lon,
-        radius: nearbyRadiusForCoords(coords),
-        userId: user.id,
-      });
+      const [{ users }, buzzes] = await Promise.all([
+        connectionsAPI.getNearby({
+          lat: coords.lat,
+          lon: coords.lon,
+          radius: nearbyRadiusForCoords(coords),
+          userId: user.id,
+        }),
+        connectionsAPI.getMyBuzzes(user.id).catch(() => ({ received: [], sent: [] })),
+      ]);
+      const blockedIds = new Set<string>();
+      for (const b of buzzes.received || []) {
+        if (b.status === 'pending') blockedIds.add(b.fromUserId);
+      }
+      for (const b of buzzes.sent || []) {
+        blockedIds.add(b.toUserId);
+      }
+
       const fresh = users.filter(
-        (u) => !queuedIdsRef.current.has(u.id) && shouldShowProximityBanner('nearby-match', u.id)
+        (u) =>
+          !blockedIds.has(u.id) &&
+          !queuedIdsRef.current.has(u.id) &&
+          shouldShowProximityBanner('nearby-match', u.id) &&
+          shouldShowProximityBanner('buzz-incoming', u.id)
       );
       if (!fresh.length) return;
       fresh.forEach((u) => queuedIdsRef.current.add(u.id));
       setQueue((prev) => {
         const have = new Set(prev.map((p) => p.id));
-        const add = fresh.filter((u) => !have.has(u.id));
+        const add = fresh.filter((u) => !have.has(u.id) && !blockedIds.has(u.id));
         return add.length ? [...prev, ...add] : prev;
       });
-      if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-        try {
-          new Notification('Hook Up — nearby match', {
-            body: fresh.length > 1
-              ? `${fresh.length} people matching you are nearby.`
-              : 'Someone matching your preferences is nearby. Tap to respond.',
-          });
-        } catch {
-          /* ignore */
-        }
-      }
+      notifyDevice(
+        'Hook Up — nearby',
+        fresh.length > 1
+          ? `${fresh.length} people matching you are nearby.`
+          : 'Someone matching you is nearby. Tap Show interest if you want.',
+        'interest'
+      );
     } catch {
       /* offline */
     }
@@ -72,6 +84,30 @@ export default function NearbyMatchPopup({ onOpenConnections }: Props) {
     const t = window.setInterval(poll, 12000);
     return () => window.clearInterval(t);
   }, [user?.id, poll]);
+
+  // Drop anyone who already sent you interest (accept flow owns that person)
+  useEffect(() => {
+    if (!user?.id || queue.length === 0) return;
+    let cancelled = false;
+    connectionsAPI.getMyBuzzes(user.id).then(({ received }) => {
+      if (cancelled) return;
+      const pendingFrom = new Set(
+        (received || []).filter((b) => b.status === 'pending').map((b) => b.fromUserId)
+      );
+      if (!pendingFrom.size) return;
+      setQueue((prev) => {
+        const next = prev.filter((u) => !pendingFrom.has(u.id));
+        prev.forEach((u) => {
+          if (pendingFrom.has(u.id)) queuedIdsRef.current.delete(u.id);
+        });
+        return next.length === prev.length ? prev : next;
+      });
+      pendingFrom.forEach((id) => markProximityBannerShown('nearby-match', id));
+    }).catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id, queue.length]);
 
   const match = queue[0] || null;
   const moreCount = Math.max(0, queue.length - 1);
@@ -125,7 +161,7 @@ export default function NearbyMatchPopup({ onOpenConnections }: Props) {
       <div className="walk-popup-card">
         <p className="walk-popup-badge">Nearby · your type</p>
         <h2>Someone matching you is nearby</h2>
-        <p className="walk-popup-sub">Profile only — name hidden until you both match.</p>
+        <p className="walk-popup-sub">Show interest once — they only need to accept. No need for them to send interest back.</p>
         {moreCount > 0 && (
           <p className="walk-popup-sub" style={{ color: '#00d4ff' }}>
             {moreCount} more nearby — Open list to see everyone.
@@ -150,7 +186,7 @@ export default function NearbyMatchPopup({ onOpenConnections }: Props) {
             Later
           </button>
           <button type="button" className="walk-btn-primary" disabled={loading} onClick={sendInterest}>
-            {loading ? '…' : 'Send interest'}
+            {loading ? '…' : 'Show interest'}
           </button>
         </div>
       </div>

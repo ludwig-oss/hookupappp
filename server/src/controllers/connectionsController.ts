@@ -45,12 +45,12 @@ export const sendBuzz = async (req: Request, res: Response) => {
         title: 'Hook Up',
         body: "It's a match — you can talk in Communications.",
         data: { type: 'buzz_match', vibrate: '1' },
-      }).catch(() => {});
+      }, 'matches').catch(() => {});
       sendPushToUser(userId, {
         title: 'Hook Up',
         body: "It's a match — you can talk in Communications.",
         data: { type: 'buzz_match', vibrate: '1' },
-      }).catch(() => {});
+      }, 'matches').catch(() => {});
       return res.json({
         message: "It's a match! They're in your Communications.",
         buzz,
@@ -61,11 +61,11 @@ export const sendBuzz = async (req: Request, res: Response) => {
 
     sendPushToUser(toUserId, {
       title: 'Someone nearby is interested',
-      body: 'Open Connections to accept or decline.',
+      body: 'Open Connections — just Accept or Decline. You do not need to send interest back.',
       data: { type: 'buzz_incoming', vibrate: '1' },
-    }).catch(() => {});
+    }, 'interest').catch(() => {});
 
-    res.json({ message: 'Buzz sent successfully', buzz });
+    res.json({ message: 'Interest sent — they only need to accept.', buzz });
   } catch (error: any) {
     console.error('Send buzz error:', error);
     res.status(500).json({ error: error.message || 'Internal server error' });
@@ -117,10 +117,10 @@ export const respondBuzz = async (req: Request, res: Response) => {
     if ((response === 'accepted' || response === 'talk_later') && result.buzz && userId && otherId) {
       await ensureMatchConversation(userId, otherId);
       sendPushToUser(otherId, {
-        title: 'They are interested too',
+        title: 'They accepted your interest',
         body: 'You can talk in Communications now.',
         data: { type: 'buzz_accepted', vibrate: '1' },
-      }).catch(() => {});
+      }, 'matches').catch(() => {});
       return res.json({
         ...result,
         openChat: true,

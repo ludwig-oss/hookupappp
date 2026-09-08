@@ -25,9 +25,9 @@ function parseHm(value: string): number | null {
 export function inferNotifyCategory(data?: Record<string, string>): NotifyCategory {
   const t = String(data?.type || '');
   if (t === 'new_message') return 'messages';
-  if (t === 'new_match') return 'matches';
+  if (t === 'new_match' || t === 'buzz_match' || t === 'buzz_accepted') return 'matches';
   if (t === 'new_like') return 'likes';
-  if (t === 'new_interest') return 'interest';
+  if (t === 'new_interest' || t === 'buzz_incoming') return 'interest';
   return 'safety';
 }
 

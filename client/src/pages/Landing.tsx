@@ -3,24 +3,24 @@ import { useContext } from 'react';
 import { AuthContext } from '../context/AuthContext';
 import './Landing.css';
 
-/** Interleaved: woman → couple → man → couple… so the ring never stacks same-gender portraits. */
+/** Interleaved woman → dating couple → man so faces don’t clump. No flower/heart fillers. */
 const ROMANCE_IMAGES = [
-  { url: 'https://images.unsplash.com/photo-1529626455594-4ff0802cfb7e?w=600&auto=format&fit=crop&q=80', alt: 'Woman' },
-  { url: 'https://images.unsplash.com/photo-1519741497674-611481863552?w=600&auto=format&fit=crop&q=80', alt: 'Wedding couple' },
-  { url: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=600&auto=format&fit=crop&q=80', alt: 'Man' },
-  { url: 'https://images.unsplash.com/photo-1529333166437-7750a6dd5a70?w=600&auto=format&fit=crop&q=80', alt: 'Happy couple' },
-  { url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=600&auto=format&fit=crop&q=80', alt: 'Woman portrait' },
-  { url: 'https://images.unsplash.com/photo-1583939003579-730e3918a60d?w=600&auto=format&fit=crop&q=80', alt: 'Wedding kiss' },
-  { url: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=600&auto=format&fit=crop&q=80', alt: 'Man smiling' },
-  { url: 'https://images.unsplash.com/photo-1516589178581-6cd7833ae3b2?w=600&auto=format&fit=crop&q=80', alt: 'Couple together' },
-  { url: 'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=600&auto=format&fit=crop&q=80', alt: 'Woman' },
-  { url: 'https://images.unsplash.com/photo-1537633552985-df8429e8048b?w=600&auto=format&fit=crop&q=80', alt: 'Couple hugging' },
-  { url: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=600&auto=format&fit=crop&q=80', alt: 'Man portrait' },
-  { url: 'https://images.unsplash.com/photo-1606800052052-a08af952794b?w=600&auto=format&fit=crop&q=80', alt: 'Wedding couple happy' },
-  { url: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=600&auto=format&fit=crop&q=80', alt: 'Woman smiling' },
-  { url: 'https://images.unsplash.com/photo-1529636798458-92182e662485?w=600&auto=format&fit=crop&q=80', alt: 'Couple walking' },
-  { url: 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=600&auto=format&fit=crop&q=80', alt: 'Man outdoors' },
-  { url: 'https://images.unsplash.com/photo-1501901609772-df0848060b33?w=600&auto=format&fit=crop&q=80', alt: 'Sweet couple moment' },
+  { url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=700&h=900&fit=crop&crop=faces&q=80', alt: 'Woman' },
+  { url: 'https://images.unsplash.com/photo-1529333166437-7750a6dd5a70?w=700&h=900&fit=crop&q=80', alt: 'Happy couple dating' },
+  { url: 'https://images.unsplash.com/photo-1552374196-c4e7ffc6e126?w=700&h=900&fit=crop&crop=faces&q=80', alt: 'Man' },
+  { url: 'https://images.unsplash.com/photo-1516589178581-6cd7833ae3b2?w=700&h=900&fit=crop&q=80', alt: 'Couple sweet moment' },
+  { url: 'https://images.unsplash.com/photo-1529626455594-4ff0802cfb7e?w=700&h=900&fit=crop&crop=faces&q=80', alt: 'Woman' },
+  { url: 'https://images.unsplash.com/photo-1537633552985-df8429e8048b?w=700&h=900&fit=crop&q=80', alt: 'Couple hugging' },
+  { url: 'https://images.unsplash.com/photo-1560250097-0b93528c311a?w=700&h=900&fit=crop&crop=faces&q=80', alt: 'Man' },
+  { url: 'https://images.unsplash.com/photo-1529636798458-92182e662485?w=700&h=900&fit=crop&q=80', alt: 'Couple walking together' },
+  { url: 'https://images.unsplash.com/photo-1488426862026-3ee34a7d66df?w=700&h=900&fit=crop&crop=faces&q=80', alt: 'Woman' },
+  { url: 'https://images.unsplash.com/photo-1501901609772-df0848060b33?w=700&h=900&fit=crop&q=80', alt: 'Couple in love' },
+  { url: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=700&h=900&fit=crop&crop=faces&q=80', alt: 'Man' },
+  { url: 'https://images.unsplash.com/photo-1516585427167-9f4af9627e6c?w=700&h=900&fit=crop&q=80', alt: 'Couple dating moment' },
+  { url: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=700&h=900&fit=crop&crop=faces&q=80', alt: 'Woman' },
+  { url: 'https://images.unsplash.com/photo-1494774157369-9dff0432c6e0?w=700&h=900&fit=crop&q=80', alt: 'Couple laughing' },
+  { url: 'https://images.unsplash.com/photo-1557862921-37829c790f19?w=700&h=900&fit=crop&crop=faces&q=80', alt: 'Man' },
+  { url: 'https://images.unsplash.com/photo-1583939003579-730e3918a60d?w=700&h=900&fit=crop&crop=faces&q=80', alt: 'Couple kiss' },
 ];
 
 const Landing = () => {
@@ -33,11 +33,11 @@ const Landing = () => {
         <div className="landing-bg-ring">
           {ROMANCE_IMAGES.map((img, i) => (
             <div
-              key={i}
+              key={`${img.url}-${i}`}
               className="landing-bg-frame"
               style={{ '--angle': `${i * (360 / ROMANCE_IMAGES.length)}deg` } as React.CSSProperties}
             >
-              <img src={img.url} alt={img.alt} />
+              <img src={img.url} alt={img.alt} loading="lazy" decoding="async" />
             </div>
           ))}
         </div>

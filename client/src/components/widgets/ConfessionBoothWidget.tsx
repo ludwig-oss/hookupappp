@@ -109,13 +109,25 @@ export default function ConfessionBoothWidget() {
     const confession = params.get('confession');
     const sessionId = params.get('sessionId');
     const orderId = params.get('token');
-    if (confession === 'success' && sessionId && orderId) {
-      confessionAPI.capturePayPalOrder(sessionId, orderId).then((r) => {
+    const stripeCheckoutId = params.get('session_id');
+    if (confession === 'success' && sessionId) {
+      const finish = (r: { session: ConfessionSessionView; message: string }) => {
         setSession(r.session);
         setSuccess(r.message);
         setStep(stepForSession(r.session));
         window.history.replaceState({}, '', window.location.pathname);
-      }).catch((e) => setError(formatAxiosError(e, 'Payment failed')));
+      };
+      if (stripeCheckoutId) {
+        confessionAPI
+          .confirmStripe(sessionId, stripeCheckoutId)
+          .then(finish)
+          .catch((e) => setError(formatAxiosError(e, 'Payment failed')));
+      } else if (orderId) {
+        confessionAPI
+          .capturePayPalOrder(sessionId, orderId)
+          .then(finish)
+          .catch((e) => setError(formatAxiosError(e, 'Payment failed')));
+      }
     }
   }, []);
 
@@ -217,6 +229,37 @@ export default function ConfessionBoothWidget() {
       else setError('PayPal unavailable');
     } catch (e) {
       setError(formatAxiosError(e, 'Could not start payment'));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleStripe = async () => {
+    if (!session) return;
+    setLoading(true);
+    setError('');
+    try {
+      const { url } = await confessionAPI.createStripeCheckout(session.id);
+      if (url) window.location.href = url;
+      else setError('Card checkout unavailable');
+    } catch (e) {
+      setError(formatAxiosError(e, 'Could not start card payment'));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDemoPay = async () => {
+    if (!session) return;
+    setLoading(true);
+    setError('');
+    try {
+      const r = await confessionAPI.demoPay(session.id);
+      setSession(r.session);
+      setSuccess(r.message);
+      setStep(stepForSession(r.session));
+    } catch (e) {
+      setError(formatAxiosError(e, 'Could not record payment'));
     } finally {
       setLoading(false);
     }
@@ -632,9 +675,38 @@ export default function ConfessionBoothWidget() {
             Pay €{session.amountEur} to open the anonymous booth.
             {isAiSession ? ' Payment goes 100% to the app account.' : ' Guide keeps 80%.'}
           </p>
-          <button type="button" className="select-user-btn" style={{ width: '100%' }} disabled={loading} onClick={handlePayPal}>
-            {loading ? 'Opening PayPal…' : `Pay €${session.amountEur} with PayPal`}
-          </button>
+          {info?.paypalConfigured && (
+            <button type="button" className="select-user-btn" style={{ width: '100%' }} disabled={loading} onClick={handlePayPal}>
+              {loading ? 'Opening PayPal…' : `Pay €${session.amountEur} with PayPal`}
+            </button>
+          )}
+          {info?.stripeConfigured && (
+            <button
+              type="button"
+              className="select-user-btn"
+              style={{ width: '100%', marginTop: 8 }}
+              disabled={loading}
+              onClick={() => void handleStripe()}
+            >
+              {loading ? 'Opening card…' : `Pay €${session.amountEur} with card`}
+            </button>
+          )}
+          {(info?.demoPayAllowed || (!info?.paypalConfigured && !info?.stripeConfigured)) && (
+            <button
+              type="button"
+              className="select-user-btn"
+              style={{ width: '100%', marginTop: 8, background: 'rgba(251, 191, 36, 0.15)', borderColor: '#fbbf24', color: '#fbbf24' }}
+              disabled={loading}
+              onClick={() => void handleDemoPay()}
+            >
+              {loading ? 'Opening…' : `Open booth €${session.amountEur} (setup mode)`}
+            </button>
+          )}
+          {info && !info.paypalConfigured && !info.stripeConfigured && (
+            <p style={{ fontSize: 12, color: '#fbbf24', marginTop: 10, lineHeight: 1.4 }}>
+              Live PayPal is not on the server yet. Setup mode opens the booth now — add PAYPAL_CLIENT_ID and PAYPAL_SECRET on Render for real PayPal.
+            </p>
+          )}
         </div>
       )}
 

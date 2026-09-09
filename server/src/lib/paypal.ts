@@ -8,11 +8,11 @@ export function paypalApiBase(): string {
 }
 
 export function paypalClientId(): string {
-  return (process.env.PAYPAL_CLIENT_ID || '').trim();
+  return (process.env.PAYPAL_CLIENT_ID || process.env.PAYPAL_CLIENTID || '').trim();
 }
 
 export function paypalSecret(): string {
-  return (process.env.PAYPAL_SECRET || '').trim();
+  return (process.env.PAYPAL_SECRET || process.env.PAYPAL_CLIENT_SECRET || '').trim();
 }
 
 export function paypalPartnerId(): string {
@@ -146,6 +146,34 @@ export function buildAuthorizeOrderPayload(opts: {
   return {
     intent: 'AUTHORIZE',
     purchase_units: [purchaseUnit],
+    application_context: {
+      return_url: opts.returnUrl,
+      cancel_url: opts.cancelUrl,
+      brand_name: opts.brandName,
+      user_action: 'PAY_NOW',
+    },
+  };
+}
+
+/** Direct capture to the platform account (AI booth / app fees — 100% to app). */
+export function buildCaptureOrderPayload(opts: {
+  amountEur: number;
+  description: string;
+  customId: string;
+  returnUrl: string;
+  cancelUrl: string;
+  brandName: string;
+}): Record<string, unknown> {
+  return {
+    intent: 'CAPTURE',
+    purchase_units: [
+      {
+        reference_id: opts.customId.slice(0, 256),
+        custom_id: opts.customId.slice(0, 127),
+        description: opts.description.slice(0, 127),
+        amount: { currency_code: 'EUR', value: formatPayPalMoney(opts.amountEur) },
+      },
+    ],
     application_context: {
       return_url: opts.returnUrl,
       cancel_url: opts.cancelUrl,

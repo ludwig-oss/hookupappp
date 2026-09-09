@@ -336,6 +336,13 @@ const Dashboard = () => {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
+    if (params.get('confession') === 'success' || params.get('open') === 'confession' || params.get('confession') === 'cancel') {
+      setOpenWidget('confession');
+    }
+  }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
     if (params.get('aiHelp') !== 'success') return;
     const stripeSession = params.get('session_id');
     const paypalOrder = params.get('token') || '';

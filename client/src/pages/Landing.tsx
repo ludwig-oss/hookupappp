@@ -3,24 +3,18 @@ import { useContext } from 'react';
 import { AuthContext } from '../context/AuthContext';
 import './Landing.css';
 
-/** Interleaved woman → dating couple → man so faces don’t clump. No flower/heart fillers. */
+/** Interleaved young women, dating couples, young men — local color photos only. */
 const ROMANCE_IMAGES = [
-  { url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=700&h=900&fit=crop&crop=faces&q=80', alt: 'Woman' },
-  { url: 'https://images.unsplash.com/photo-1529333166437-7750a6dd5a70?w=700&h=900&fit=crop&q=80', alt: 'Happy couple dating' },
-  { url: 'https://images.unsplash.com/photo-1552374196-c4e7ffc6e126?w=700&h=900&fit=crop&crop=faces&q=80', alt: 'Man' },
-  { url: 'https://images.unsplash.com/photo-1516589178581-6cd7833ae3b2?w=700&h=900&fit=crop&q=80', alt: 'Couple sweet moment' },
-  { url: 'https://images.unsplash.com/photo-1529626455594-4ff0802cfb7e?w=700&h=900&fit=crop&crop=faces&q=80', alt: 'Woman' },
-  { url: 'https://images.unsplash.com/photo-1537633552985-df8429e8048b?w=700&h=900&fit=crop&q=80', alt: 'Couple hugging' },
-  { url: 'https://images.unsplash.com/photo-1560250097-0b93528c311a?w=700&h=900&fit=crop&crop=faces&q=80', alt: 'Man' },
-  { url: 'https://images.unsplash.com/photo-1529636798458-92182e662485?w=700&h=900&fit=crop&q=80', alt: 'Couple walking together' },
-  { url: 'https://images.unsplash.com/photo-1488426862026-3ee34a7d66df?w=700&h=900&fit=crop&crop=faces&q=80', alt: 'Woman' },
-  { url: 'https://images.unsplash.com/photo-1501901609772-df0848060b33?w=700&h=900&fit=crop&q=80', alt: 'Couple in love' },
-  { url: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=700&h=900&fit=crop&crop=faces&q=80', alt: 'Man' },
-  { url: 'https://images.unsplash.com/photo-1516585427167-9f4af9627e6c?w=700&h=900&fit=crop&q=80', alt: 'Couple dating moment' },
-  { url: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=700&h=900&fit=crop&crop=faces&q=80', alt: 'Woman' },
-  { url: 'https://images.unsplash.com/photo-1494774157369-9dff0432c6e0?w=700&h=900&fit=crop&q=80', alt: 'Couple laughing' },
-  { url: 'https://images.unsplash.com/photo-1557862921-37829c790f19?w=700&h=900&fit=crop&crop=faces&q=80', alt: 'Man' },
-  { url: 'https://images.unsplash.com/photo-1583939003579-730e3918a60d?w=700&h=900&fit=crop&crop=faces&q=80', alt: 'Couple kiss' },
+  { url: '/landing/landing-w1.png', alt: 'Woman' },
+  { url: '/landing/landing-c1.png', alt: 'Happy couple on a date' },
+  { url: '/landing/landing-m1.png', alt: 'Man' },
+  { url: '/landing/landing-c2.png', alt: 'Couple hugging' },
+  { url: '/landing/landing-w2.png', alt: 'Woman' },
+  { url: '/landing/landing-c3.png', alt: 'Sweet couple moment' },
+  { url: '/landing/landing-m2.png', alt: 'Man' },
+  { url: '/landing/landing-c4.png', alt: 'Couple walking together' },
+  { url: '/landing/landing-w3.png', alt: 'Woman' },
+  { url: '/landing/landing-m3.png', alt: 'Man' },
 ];
 
 const Landing = () => {
@@ -28,7 +22,6 @@ const Landing = () => {
 
   return (
     <div className="landing-page">
-      {/* Revolving romance background */}
       <div className="landing-bg-carousel">
         <div className="landing-bg-ring">
           {ROMANCE_IMAGES.map((img, i) => (
@@ -37,24 +30,15 @@ const Landing = () => {
               className="landing-bg-frame"
               style={{ '--angle': `${i * (360 / ROMANCE_IMAGES.length)}deg` } as React.CSSProperties}
             >
-              <img src={img.url} alt={img.alt} loading="lazy" decoding="async" />
+              <img src={img.url} alt={img.alt} decoding="async" />
             </div>
           ))}
         </div>
       </div>
       <div className="landing-bg-overlay" />
 
-      {/* Floating hearts */}
-      <div className="landing-hearts" aria-hidden>
-        {[...Array(12)].map((_, i) => (
-          <span key={i} className="landing-heart" style={{ '--i': i } as React.CSSProperties}>♥</span>
-        ))}
-      </div>
-
-      {/* Top nav */}
       <nav className="landing-nav">
         <Link to="/" className="landing-logo">
-          <span className="landing-logo-icon">💕</span>
           Hook Up
         </Link>
         <div className="landing-nav-links">
@@ -81,7 +65,6 @@ const Landing = () => {
         </div>
       </nav>
 
-      {/* Hero */}
       <main className="landing-hero">
         <h1 className="landing-tagline">Find Your Match</h1>
         <p className="landing-sub">Real connections. Real moments.</p>
@@ -90,7 +73,6 @@ const Landing = () => {
         </Link>
       </main>
 
-      {/* Bottom legal */}
       <div className="landing-legal">
         <Link to="/terms">Terms of Service</Link>
         <span className="landing-legal-sep">·</span>

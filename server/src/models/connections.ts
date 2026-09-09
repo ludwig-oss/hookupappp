@@ -150,14 +150,16 @@ export async function getSentBuzzes(userId: string): Promise<Buzz[]> {
   return buzzes.filter(b => b.fromUserId === userId);
 }
 
-/** People already in a buzz with you (sent, received pending, or answered) — hide from “show interest” nearby. */
+/** People you already sent interest to, or already answered — hide from nearby discovery.
+ * Pending incoming stay discoverable for the list, but UI shows Accept (not Send interest).
+ */
 export async function getInteractedNearbyUserIds(userId: string): Promise<Set<string>> {
   if (usePostgres()) return pgBuzzes.getInteractedNearbyUserIds(userId);
   const buzzes = await readBuzzes();
   const ids = new Set<string>();
   for (const b of buzzes) {
     if (b.fromUserId === userId) ids.add(b.toUserId);
-    else if (b.toUserId === userId) ids.add(b.fromUserId);
+    else if (b.toUserId === userId && b.status !== 'pending') ids.add(b.fromUserId);
   }
   return ids;
 }

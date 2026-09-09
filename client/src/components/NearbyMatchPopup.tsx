@@ -56,8 +56,7 @@ export default function NearbyMatchPopup({ onOpenConnections }: Props) {
         (u) =>
           !blockedIds.has(u.id) &&
           !queuedIdsRef.current.has(u.id) &&
-          shouldShowProximityBanner('nearby-match', u.id) &&
-          shouldShowProximityBanner('buzz-incoming', u.id)
+          shouldShowProximityBanner('nearby-match', u.id)
       );
       if (!fresh.length) return;
       fresh.forEach((u) => queuedIdsRef.current.add(u.id));

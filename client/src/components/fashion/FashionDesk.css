@@ -125,6 +125,23 @@
   border: 2px solid rgba(245, 158, 11, 0.5);
 }
 
+.fashion-body-thumb {
+  width: 40px !important;
+  height: 56px !important;
+  border-radius: 8px !important;
+  object-fit: cover;
+  border: 2px solid rgba(180, 140, 90, 0.45) !important;
+}
+
+.fashion-body-placeholder {
+  background: linear-gradient(180deg, #3a2e22, #1a120c);
+  border: 2px dashed rgba(245, 158, 11, 0.35) !important;
+}
+
+.fashion-wardrobe-stage {
+  background: #0e0a08 !important;
+}
+
 .fashion-face-row p {
   margin: 0;
   flex: 1;

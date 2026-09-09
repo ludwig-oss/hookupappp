@@ -61,11 +61,8 @@ export function markProximityBannerShown(
   }
 }
 
-/** True if you already acted on this person (popup Send interest / Later / Yes / No). */
+/** True if you already acted on this person for nearby discovery (Later / Send interest). */
 export function hasHandledNearbyPerson(otherUserId: string): boolean {
   if (!otherUserId) return false;
-  return (
-    !shouldShowProximityBanner('nearby-match', otherUserId) ||
-    !shouldShowProximityBanner('buzz-incoming', otherUserId)
-  );
+  return !shouldShowProximityBanner('nearby-match', otherUserId);
 }

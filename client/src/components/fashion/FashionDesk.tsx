@@ -40,6 +40,7 @@ type SpeechRec = {
 function LookPane({
   look,
   personUrl,
+  bodyUrl,
   fitting,
   label,
   isWinner,
@@ -48,6 +49,7 @@ function LookPane({
 }: {
   look: FashionLookCard;
   personUrl: string | null;
+  bodyUrl: string | null;
   fitting: boolean;
   label: 'A' | 'B';
   isWinner: boolean;
@@ -63,14 +65,14 @@ function LookPane({
     if (!canvas) return;
     canvas.width = 720;
     canvas.height = 960;
-    void paintFashionTryOn(canvas, personUrl, look.imageUrl, look.warp, look.fallback);
-  }, [modelUrl, personUrl, look.imageUrl, look.warp, look.fallback]);
+    void paintFashionTryOn(canvas, personUrl, look.imageUrl, look.warp, look.fallback, bodyUrl);
+  }, [modelUrl, personUrl, bodyUrl, look.imageUrl, look.warp, look.fallback]);
 
-  const badge = modelUrl ? 'On you' : fitting ? 'Fitting…' : 'Full preview';
+  const badge = modelUrl ? 'On you' : fitting ? 'Fitting…' : 'Wardrobe preview';
 
   return (
     <article className={`fashion-card${isWinner ? ' is-winner' : ''}`}>
-      <div className="fashion-card-photo" style={{ background: look.fallback }}>
+      <div className="fashion-card-photo fashion-wardrobe-stage" style={{ background: look.fallback }}>
         {modelUrl ? (
           <img className="fashion-tryon" src={modelUrl} alt="" />
         ) : (
@@ -133,6 +135,13 @@ export default function FashionDesk({
   const [faceUrl, setFaceUrl] = useState<string | null>(
     typeof user?.profilePicture === 'string' ? user.profilePicture : null
   );
+  const [bodyUrl, setBodyUrl] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem('fashion-body-url') || null;
+    } catch {
+      return null;
+    }
+  });
   const [faceOk, setFaceOk] = useState<boolean | null>(null);
   const [faceNote, setFaceNote] = useState('Checking for a clear face…');
   const [chosenId, setChosenId] = useState<string | null>(null);
@@ -143,6 +152,7 @@ export default function FashionDesk({
   const recRef = useRef<{ stop: () => void } | null>(null);
   const asked = useRef(false);
   const faceInputRef = useRef<HTMLInputElement>(null);
+  const bodyInputRef = useRef<HTMLInputElement>(null);
   const closetInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -175,7 +185,9 @@ export default function FashionDesk({
       setFaceOk(check.ok);
       setFaceNote(
         check.ok
-          ? 'Face photo ready — try-on will use this.'
+          ? bodyUrl
+            ? 'Face + body ready — wardrobe preview uses both.'
+            : 'Face ready — upload a body photo for the full wardrobe figure.'
           : check.reason || 'Upload a clear face photo for try-on.'
       );
     })();
@@ -358,10 +370,34 @@ export default function FashionDesk({
       }
       setFaceUrl(url);
       setFaceOk(true);
-      setFaceNote('Face photo ready — try-on will use this.');
+      setFaceNote('Face on the mannequin — upload a body photo for your real build.');
       if (result) await applyFits(result, url);
     } catch {
       setError('Could not upload that face photo.');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const onBodyFile = async (file: File | null) => {
+    if (!file) return;
+    setUploading(true);
+    setError('');
+    try {
+      const url = await prepareAndUploadFile(file, 'fashion-body');
+      setBodyUrl(url);
+      try {
+        localStorage.setItem('fashion-body-url', url);
+      } catch {
+        /* ignore */
+      }
+      setFaceNote(
+        faceOk
+          ? 'Body photo set — face sits on your body in the wardrobe preview.'
+          : 'Body photo set — still need a clear face for the head.'
+      );
+    } catch {
+      setError('Could not upload that body photo.');
     } finally {
       setUploading(false);
     }
@@ -470,6 +506,11 @@ export default function FashionDesk({
         <p>{opener}</p>
         <div className={`fashion-face-row${faceOk ? ' ok' : ''}`}>
           {faceUrl ? <img src={faceUrl} alt="" /> : <div style={{ width: 56, height: 56, borderRadius: 10, background: '#222' }} />}
+          {bodyUrl ? (
+            <img src={bodyUrl} alt="" className="fashion-body-thumb" />
+          ) : (
+            <div className="fashion-body-thumb fashion-body-placeholder" />
+          )}
           <p>{faceNote}</p>
           <input
             ref={faceInputRef}
@@ -479,8 +520,18 @@ export default function FashionDesk({
             hidden
             onChange={(e) => void onFaceFile(e.target.files?.[0] || null)}
           />
+          <input
+            ref={bodyInputRef}
+            type="file"
+            accept="image/*"
+            hidden
+            onChange={(e) => void onBodyFile(e.target.files?.[0] || null)}
+          />
           <button type="button" className="ghost" disabled={uploading} onClick={() => faceInputRef.current?.click()}>
-            {uploading ? '…' : 'Upload face photo'}
+            {uploading ? '…' : 'Upload face'}
+          </button>
+          <button type="button" className="ghost" disabled={uploading} onClick={() => bodyInputRef.current?.click()}>
+            {bodyUrl ? 'Change body photo' : 'Upload body photo'}
           </button>
         </div>
         <div className="fashion-ask-row">
@@ -512,6 +563,7 @@ export default function FashionDesk({
               <LookPane
                 look={result.optionA}
                 personUrl={personUrl}
+                bodyUrl={bodyUrl}
                 fitting={fitting}
                 label="A"
                 isWinner={result.critic.winner === 'A' || chosenId === result.optionA.id}
@@ -521,6 +573,7 @@ export default function FashionDesk({
               <LookPane
                 look={result.optionB}
                 personUrl={personUrl}
+                bodyUrl={bodyUrl}
                 fitting={fitting}
                 label="B"
                 isWinner={result.critic.winner === 'B' || chosenId === result.optionB.id}
@@ -534,14 +587,14 @@ export default function FashionDesk({
               Winner: Option {result.critic.winner} ·{' '}
               {result.critic.winner === 'A' ? result.optionA.title : result.optionB.title}
             </p>
-            {fitting && <p className="fashion-fitting">Draping both looks on your face photo…</p>}
+            {fitting && <p className="fashion-fitting">Draping both looks on your body…</p>}
             {!fitting && !result.optionA.tryOnUrl && !result.optionB.tryOnUrl && (
               <p className="fashion-fitting-note">
                 {faceOk === false
-                  ? 'Upload a clear face photo to see the fit on you.'
-                  : result.tryOnReady
-                    ? 'Model fit did not return — canvas preview is on your photo.'
-                    : 'Canvas preview drapes the look on your photo. Full AI try-on needs a try-on key.'}
+                  ? 'Upload a clear face photo — it goes on the wardrobe body.'
+                  : bodyUrl
+                    ? 'Wardrobe preview: your face on your body photo with the outfit draped.'
+                    : 'Upload a full-body photo to replace the mannequin. Face photo sits on the head.'}
               </p>
             )}
             <p>{result.critic.line}</p>

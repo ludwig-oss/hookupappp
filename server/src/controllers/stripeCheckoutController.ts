@@ -90,7 +90,7 @@ export async function createCheckoutSessionHandler(req: Request, res: Response) 
       const guideRequest = await getRequestById(requestId);
       if (!guideRequest || guideRequest.userId !== userId) return res.status(404).json({ error: 'Request not found' });
       if (guideRequest.status !== 'accepted') return res.status(400).json({ error: 'Request must be accepted first' });
-      if (guideRequest.paymentStatus === 'confirmed' || guideRequest.paymentStatus === 'paid') {
+      if (guideRequest.paymentStatus === 'confirmed') {
         return res.status(400).json({ error: 'Already paid' });
       }
       amountEur = SESSION_PRICE_EUR;
@@ -212,7 +212,7 @@ export async function confirmCheckoutSessionHandler(req: Request, res: Response)
       const requestId = String(checkout.metadata?.requestId || '');
       const guideRequest = await getRequestById(requestId);
       if (!guideRequest || guideRequest.userId !== userId) return res.status(404).json({ error: 'Request not found' });
-      if (guideRequest.paymentStatus !== 'confirmed' && guideRequest.paymentStatus !== 'paid') {
+      if (guideRequest.paymentStatus !== 'confirmed') {
         await updateRequestPayment(requestId, `stripe:${checkoutSessionId}`);
         const guide = await getGuideById(guideRequest.guideId);
         if (guide) {

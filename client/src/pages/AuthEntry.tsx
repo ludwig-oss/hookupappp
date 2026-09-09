@@ -125,6 +125,14 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
       setError('Pick at least one option for what you are looking for');
       return;
     }
+    if (!gender) {
+      setError('Select your gender so we can match dating advice to your group');
+      return;
+    }
+    if (!orientation) {
+      setError('Select your orientation so dating advice reaches the right people');
+      return;
+    }
     setError('');
     setLoading(true);
     try {
@@ -282,13 +290,32 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
               </div>
               <div className="form-group">
                 <label htmlFor="gender">Gender</label>
-                <select id="gender" value={gender} onChange={(e) => setGender(e.target.value)} style={{ width: '100%', padding: 10 }}>
+                <select id="gender" value={gender} onChange={(e) => setGender(e.target.value)} style={{ width: '100%', padding: 10 }} required>
                   <option value="">Select…</option>
                   <option value="female">Female</option>
                   <option value="male">Male</option>
                   <option value="other">Other</option>
                 </select>
               </div>
+            </div>
+            <div className="form-group">
+              <label htmlFor="orientation">Orientation</label>
+              <select
+                id="orientation"
+                value={orientation}
+                onChange={(e) => setOrientation(e.target.value as typeof orientation)}
+                style={{ width: '100%', padding: 10 }}
+                required
+              >
+                <option value="straight">Straight — advice with straight guys / girls</option>
+                <option value="gay">Gay — advice with gay guys</option>
+                <option value="lesbian">Lesbian — advice with lesbians</option>
+                <option value="bisexual">Bisexual — advice with bi peers</option>
+                <option value="pansexual">Pansexual — open advice feed</option>
+              </select>
+              <p style={{ fontSize: 12, color: '#9ca3af', marginTop: 6, marginBottom: 0 }}>
+                Dating Advice posts stay anonymous and only notify your preference group first.
+              </p>
             </div>
             <LookingForChips value={lookingFor} onChange={setLookingFor} />
             <div className="legal-agree-wrap">

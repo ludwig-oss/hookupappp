@@ -65,9 +65,19 @@ export const ADVICE_GLOBAL_ENGAGEMENT = 5;
 
 export function normalizeGender(g?: string | null): string {
   const g2 = (g || '').trim().toLowerCase();
-  if (g2 === 'm' || g2 === 'man' || g2 === 'male') return 'male';
-  if (g2 === 'f' || g2 === 'woman' || g2 === 'female') return 'female';
+  if (g2 === 'm' || g2 === 'man' || g2 === 'male' || g2 === 'boy' || g2 === 'guy') return 'male';
+  if (g2 === 'f' || g2 === 'woman' || g2 === 'female' || g2 === 'girl' || g2 === 'lady') return 'female';
   return g2 || 'unknown';
+}
+
+export function normalizeOrientation(o?: string | null): string {
+  const raw = (o || 'straight').trim().toLowerCase();
+  if (['straight', 'hetero', 'heterosexual'].includes(raw)) return 'straight';
+  if (['gay', 'homosexual', 'mlm', 'same-sex-male'].includes(raw)) return 'gay';
+  if (['lesbian', 'wlw', 'same-sex-female'].includes(raw)) return 'lesbian';
+  if (['bisexual', 'bi'].includes(raw)) return 'bisexual';
+  if (['pansexual', 'pan', 'queer', 'omnisexual'].includes(raw)) return 'pansexual';
+  return raw || 'straight';
 }
 
 /** Map asker gender + orientation → peer group that should answer. */
@@ -76,7 +86,7 @@ export function computeAnswerCohort(
   gender: string | null | undefined
 ): AdviceAnswerCohort {
   const g = normalizeGender(gender);
-  const o = (orientation || 'straight').toLowerCase();
+  const o = normalizeOrientation(orientation);
 
   if (o === 'pansexual') return 'pan_all';
   if (o === 'bisexual') {
@@ -84,10 +94,13 @@ export function computeAnswerCohort(
     if (g === 'female') return 'bi_female';
     return 'bi_other';
   }
-  if (o === 'gay') return g === 'female' ? 'bi_other' : 'gay_male';
-  if (o === 'lesbian') return g === 'male' ? 'bi_other' : 'lesbian_female';
-  if (g === 'male') return 'straight_male';
-  if (g === 'female') return 'straight_female';
+  // Women who pick "gay" mean same-sex women → lesbian cohort
+  if (o === 'gay') return g === 'female' ? 'lesbian_female' : 'gay_male';
+  if (o === 'lesbian') return g === 'male' ? 'gay_male' : 'lesbian_female';
+  if (o === 'straight') {
+    if (g === 'male') return 'straight_male';
+    if (g === 'female') return 'straight_female';
+  }
   return 'pan_all';
 }
 
@@ -96,11 +109,11 @@ export function cohortLabel(c: AdviceAnswerCohort): string {
     straight_male: 'straight guys',
     straight_female: 'straight girls',
     gay_male: 'gay guys',
-    lesbian_female: 'lesbian women',
+    lesbian_female: 'lesbians',
     bi_male: 'bi guys',
-    bi_female: 'bi women',
-    bi_other: 'bi / other',
-    pan_all: 'everyone',
+    bi_female: 'bi girls',
+    bi_other: 'bi / queer folks',
+    pan_all: 'everyone in your dating scene',
   };
   return labels[c] || c;
 }
@@ -264,7 +277,14 @@ export async function searchQuestions(
     list = list.filter((x) => x.answerCohort === cohort || x.answerCohort === 'pan_all' || cohort === 'pan_all');
   }
   if (q) {
-    list = list.filter((x) => x.query.toLowerCase().includes(q));
+    list = list.filter((x) => {
+      if (x.query.toLowerCase().includes(q)) return true;
+      return x.answers.some(
+        (a) =>
+          a.content.toLowerCase().includes(q) ||
+          (a.replies || []).some((r) => r.content.toLowerCase().includes(q))
+      );
+    });
   }
   list = list.filter((item) => {
     if (isLocalQuestion(item, viewerCity, viewerCountry)) return true;

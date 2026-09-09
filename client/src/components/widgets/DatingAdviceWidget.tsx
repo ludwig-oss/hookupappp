@@ -118,8 +118,10 @@ export default function DatingAdviceWidget() {
     <div className="widget dating-advice-widget">
       <h2 className="widget-title">Dating Advice</h2>
       <p style={{ fontSize: 13, color: '#9ca3af', marginBottom: 12 }}>
-        Ask anything — your post stays <strong>anonymous</strong>. {cohortLabel || 'Your cohort'} in your area see it first;
-        hot questions spread wider. Best advice each month wins €{prizeEur}.
+        Ask anything — your post stays <strong>anonymous</strong>.{' '}
+        <strong style={{ color: '#f9a8d4' }}>{cohortLabel || 'Your preference group'}</strong> in your area see it
+        first (from your Orientation in Settings — straight, gay, lesbian, bi, or pan). Hot questions spread wider.
+        Best advice each month wins €{prizeEur}.
       </p>
 
       <form onSubmit={handleSearch} style={{ marginBottom: 16 }}>
@@ -153,16 +155,22 @@ export default function DatingAdviceWidget() {
           disabled={searching || !searchQuery.trim()}
           style={{ width: '100%', marginTop: 10 }}
         >
-          {searching ? 'Posting…' : 'Ask & notify my group'}
+          {searching ? 'Posting…' : `Ask & notify ${cohortLabel || 'my group'}`}
         </button>
       </form>
 
-      <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          void loadFeed(feedQuery || undefined);
+        }}
+        style={{ display: 'flex', gap: 8, marginBottom: 12 }}
+      >
         <input
           type="text"
           value={feedQuery}
           onChange={(e) => setFeedQuery(e.target.value)}
-          placeholder="Filter feed…"
+          placeholder={`Filter ${cohortLabel || 'your'} feed…`}
           style={{
             flex: 1,
             padding: '10px 12px',
@@ -172,10 +180,23 @@ export default function DatingAdviceWidget() {
             color: '#fff',
           }}
         />
-        <button type="button" className="select-user-btn" onClick={() => loadFeed(feedQuery || undefined)}>
+        <button type="submit" className="select-user-btn">
           Filter
         </button>
-      </div>
+        {feedQuery.trim() && (
+          <button
+            type="button"
+            className="select-user-btn"
+            style={{ background: 'transparent', border: '1px solid #4b5563' }}
+            onClick={() => {
+              setFeedQuery('');
+              void loadFeed();
+            }}
+          >
+            Clear
+          </button>
+        )}
+      </form>
 
       {error && <div className="error-message" style={{ marginBottom: 10 }}>{error}</div>}
       {success && (
@@ -187,7 +208,11 @@ export default function DatingAdviceWidget() {
       {loading ? (
         <p style={{ color: '#9ca3af' }}>Loading advice feed…</p>
       ) : questions.length === 0 ? (
-        <p style={{ color: '#9ca3af' }}>No questions yet. Be the first to ask!</p>
+        <p style={{ color: '#9ca3af' }}>
+          {feedQuery.trim()
+            ? `No posts for ${cohortLabel || 'your group'} match “${feedQuery.trim()}”. Try another search or ask a new question.`
+            : `No questions yet for ${cohortLabel || 'your preference group'}. Be the first to ask!`}
+        </p>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           {questions.map((q) => {

@@ -26,12 +26,14 @@ import { checkContent } from '../utils/moderation.js';
 async function getAskerContext(userId: string) {
   const user = await getUserById(userId);
   const pref = await getUserPreference(userId);
+  const orientation = pref?.orientation || 'straight';
+  const gender = user?.gender;
   return {
     user,
-    orientation: pref?.orientation || 'straight',
+    orientation,
     lookingFor: pref?.lookingFor || ['dating'],
-    gender: user?.gender,
-    cohort: computeAnswerCohort(pref?.orientation || 'straight', user?.gender),
+    gender,
+    cohort: computeAnswerCohort(orientation, gender),
     city: user?.city,
     country: user?.country,
   };
@@ -120,6 +122,7 @@ export async function getAdviceFeedHandler(req: Request, res: Response) {
       questions: enriched,
       yourCohort: ctx.cohort,
       cohortLabel: cohortLabel(ctx.cohort),
+      orientation: ctx.orientation,
       prizeEur: ADVICE_PRIZE_EUR,
     });
   } catch (e: any) {

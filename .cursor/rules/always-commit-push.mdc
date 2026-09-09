@@ -1,0 +1,15 @@
+---
+description: Always commit and push finished work to main without waiting to be asked
+alwaysApply: true
+---
+
+# Always commit and push
+
+When you finish implementing a user-requested change in this repo:
+
+1. **Commit** with a clear message (follow the repo’s git commit protocol / HEREDOC style).
+2. **Push** to `origin` on the current branch immediately after a successful commit.
+3. Do **not** wait for the user to say “commit” or “push” unless they explicitly said not to, or the change is exploratory and they asked you not to ship it yet.
+4. After push, briefly confirm the commit hash (or that it landed on `main`).
+
+Exceptions: secrets/credentials, empty commits, or when the user says to hold off.

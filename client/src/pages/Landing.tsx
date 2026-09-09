@@ -4,16 +4,16 @@ import { AuthContext } from '../context/AuthContext';
 import './Landing.css';
 
 const ROMANCE_IMAGES = [
-  { url: 'https://images.unsplash.com/photo-1522673607200-164d1b6ce486?w=600', alt: 'Couple holding hands' },
-  { url: 'https://images.unsplash.com/photo-1518199266791-5375a83190b7?w=600', alt: 'Couple in love' },
-  { url: 'https://images.unsplash.com/photo-1529333166437-7750a6dd5a70?w=600', alt: 'Romantic moment' },
-  { url: 'https://images.unsplash.com/photo-1529333166437-7750a6dd5a70?w=600', alt: 'Date night' },
-  { url: 'https://images.unsplash.com/photo-1537633552985-df8429e8048b?w=600', alt: 'Couple hugging' },
-  { url: 'https://images.unsplash.com/photo-1516589178581-6cd7833ae3b2?w=600', alt: 'Friends together' },
-  { url: 'https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?w=600', alt: 'Love and connection' },
-  { url: 'https://images.unsplash.com/photo-1727760042419-efefc73ee311?w=600&auto=format&fit=crop&q=80', alt: 'Couple walking' },
-  { url: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=600', alt: 'Joy and love' },
-  { url: 'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=600', alt: 'Romantic sunset' },
+  { url: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=600&auto=format&fit=crop&q=80', alt: 'Man smiling' },
+  { url: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=600&auto=format&fit=crop&q=80', alt: 'Woman smiling' },
+  { url: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=600&auto=format&fit=crop&q=80', alt: 'Man portrait' },
+  { url: 'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=600&auto=format&fit=crop&q=80', alt: 'Woman portrait' },
+  { url: 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=600&auto=format&fit=crop&q=80', alt: 'Young man outdoors' },
+  { url: 'https://images.unsplash.com/photo-1522673607200-164d1b6ce486?w=600&auto=format&fit=crop&q=80', alt: 'Couple holding hands' },
+  { url: 'https://images.unsplash.com/photo-1463453091185-61582044d556?w=600&auto=format&fit=crop&q=80', alt: 'Man laughing' },
+  { url: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=600&auto=format&fit=crop&q=80', alt: 'Woman outdoors' },
+  { url: 'https://images.unsplash.com/photo-1492562080023-ab3db95bfbce?w=600&auto=format&fit=crop&q=80', alt: 'Man in city' },
+  { url: 'https://images.unsplash.com/photo-1537633552985-df8429e8048b?w=600&auto=format&fit=crop&q=80', alt: 'Couple together' },
 ];
 
 const Landing = () => {

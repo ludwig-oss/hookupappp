@@ -21,16 +21,6 @@ services:
         generateValue: true
       - key: FRONTEND_URL
         value: https://hookupapp.dev
-      - key: PAYPAL_SANDBOX
-        value: "true"
-      - key: PAYPAL_CLIENT_ID
-        sync: false
-      - key: PAYPAL_SECRET
-        sync: false
-      - key: PAYPAL_PARTNER_ID
-        sync: false
-      - key: PAYPAL_BN_CODE
-        sync: false
       - key: STRIPE_SECRET_KEY
         sync: false
       - key: DATABASE_URL

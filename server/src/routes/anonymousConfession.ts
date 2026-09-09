@@ -9,11 +9,8 @@ import {
   createSessionHandler,
   listSessionsHandler,
   getSessionHandler,
-  createPayPalOrderHandler,
-  capturePayPalOrderHandler,
   createConfessionStripeCheckoutHandler,
   confirmConfessionStripeHandler,
-  confirmConfessionDemoPayHandler,
   guideAcceptHandler,
   guideRespondAppointmentHandler,
   postMessageHandler,
@@ -36,11 +33,8 @@ router.put('/guide/prefs', updateGuideConfessionPrefsHandler);
 router.get('/sessions', listSessionsHandler);
 router.post('/sessions', requirePhotoUnlocked, createSessionHandler);
 router.get('/sessions/:sessionId', getSessionHandler);
-router.post('/sessions/:sessionId/paypal/create-order', createPayPalOrderHandler);
-router.post('/sessions/:sessionId/paypal/capture', capturePayPalOrderHandler);
 router.post('/sessions/:sessionId/stripe/checkout', createConfessionStripeCheckoutHandler);
 router.post('/sessions/:sessionId/stripe/confirm', confirmConfessionStripeHandler);
-router.post('/sessions/:sessionId/demo-pay', confirmConfessionDemoPayHandler);
 router.post('/sessions/:sessionId/accept', guideAcceptHandler);
 router.post('/sessions/:sessionId/respond-appointment', guideRespondAppointmentHandler);
 router.post('/sessions/:sessionId/messages', postMessageHandler);

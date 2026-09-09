@@ -31,7 +31,6 @@ import {
   getUserImprovement,
 } from '../controllers/improvementController.js';
 import { createPaymentIntent, confirmPaymentWebhook, createGuideRequestStripePayment, confirmGuideRequestStripePayment } from '../controllers/paymentController.js';
-import { createPayPalOrder, capturePayPalOrder, startPaypalOnboarding, completePaypalOnboarding } from '../controllers/paypalController.js';
 import {
   getPendingVotes,
   submitVote,
@@ -98,7 +97,7 @@ router.post('/guides/requests/reject', rejectRequest);
 router.post('/guides/requests/:requestId/submit-payment-proof', submitPaymentProofHandler);
 router.post('/guides/requests/confirm-payment', confirmPaymentReceivedHandler);
 
-// Trainer: set PayPal info (email or PayPal.me link) so users can send €50
+// Trainer: optional payout email (legacy field name paypalInfo)
 router.put('/guides/my-paypal', setMyPaypalInfo);
 
 // Bookings
@@ -120,16 +119,11 @@ router.post('/coach-votes/:campaignId/swipe', submitPopupSwipe);
 
 // Guide wallet & payouts
 router.get('/wallet', getMyWallet);
+// Optional payout email (legacy path /wallet/paypal)
 router.put('/wallet/paypal', updateWalletPaypal);
 router.put('/wallet/bank', updateWalletBank);
 router.post('/wallet/withdraw', createWithdrawal);
-router.post('/wallet/paypal/onboard', startPaypalOnboarding);
-router.post('/wallet/paypal/onboard/complete', completePaypalOnboarding);
 router.get('/payments/split-info', getPaymentSplitInfo);
-
-// PayPal checkout (prepay before session)
-router.post('/payments/paypal/create-order', createPayPalOrder);
-router.post('/payments/paypal/capture', capturePayPalOrder);
 
 // Stripe checkout for guide request
 router.post('/payments/stripe/guide-request', createGuideRequestStripePayment);

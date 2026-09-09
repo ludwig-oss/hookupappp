@@ -1,6 +1,5 @@
 import { readFile, writeFile, mkdir } from 'fs/promises';
 import { join } from 'path';
-import { formatPayPalMoney, isPayPalConfigured, paypalRequest, platformFeeInstruction } from '../lib/paypal.js';
 import {
   listOpenHolds,
   listHoldsForUser,
@@ -404,7 +403,7 @@ export async function creditAdvicePrize(
   notifyWalletUpdate(userId, { amountEur, reason: 'Monthly advice prize' });
   sendPushToUser(userId, {
     title: 'You won €' + amountEur + ' for best advice!',
-    body: 'Prize added to your balance. Withdraw via PayPal or bank details in Settings.',
+    body: 'Prize added to your balance. Withdraw via payout email or bank details in Settings.',
     data: { type: 'advice_prize', amountEur: String(amountEur) },
   }).catch(() => {});
 }
@@ -431,61 +430,8 @@ export async function getWalletSummary(userId: string): Promise<{
     recentTransactions: txs.filter((t) => t.userId === userId).slice(-20).reverse(),
     pendingWithdrawals: withdrawals.filter((w) => w.userId === userId && (w.status === 'pending' || w.status === 'processing')),
     holds,
-    paypalConnected: Boolean(wallet.paypalMerchantId && wallet.paypalOnboardingStatus === 'active'),
+    paypalConnected: Boolean(wallet.paypalEmail?.trim()),
   };
-}
-
-async function capturePaypalHold(hold: PaypalAuthorizationHold): Promise<string> {
-  if (!isPayPalConfigured()) {
-    throw new Error('PayPal is not configured. Set PAYPAL_CLIENT_ID and PAYPAL_SECRET.');
-  }
-  const body: Record<string, unknown> = {
-    amount: { currency_code: 'EUR', value: formatPayPalMoney(hold.grossEur) },
-    final_capture: true,
-  };
-  if (hold.merchantId) {
-    body.payment_instruction = platformFeeInstruction(hold.platformFeeEur);
-  }
-  // Official Payments API path (v2/payments/authorizations/{id}/capture)
-  const result = await paypalRequest<{ id?: string }>({
-    method: 'POST',
-    path: `/v2/payments/authorizations/${encodeURIComponent(hold.authorizationId)}/capture`,
-    body,
-    sellerMerchantId: hold.merchantId,
-    requestId: `cap-${hold.authorizationId}`,
-  });
-  if (!result.ok) {
-    throw new Error(`PayPal capture failed: ${result.raw.slice(0, 400)}`);
-  }
-  return result.data.id || hold.authorizationId;
-}
-
-async function payoutGuideShareToEmail(email: string, amountEur: number, batchId: string): Promise<string | null> {
-  const result = await paypalRequest<{ batch_header?: { payout_batch_id?: string } }>({
-    method: 'POST',
-    path: '/v1/payments/payouts',
-    body: {
-      sender_batch_header: {
-        sender_batch_id: batchId,
-        email_subject: 'Your earnings withdrawal',
-        email_message: 'Held session earnings have been released to your PayPal.',
-      },
-      items: [
-        {
-          recipient_type: 'EMAIL',
-          amount: { value: formatPayPalMoney(amountEur), currency: 'EUR' },
-          receiver: email,
-          note: 'Session earnings withdrawal',
-          sender_item_id: batchId.slice(0, 63),
-        },
-      ],
-    },
-    requestId: batchId,
-  });
-  if (!result.ok) {
-    throw new Error(`PayPal payout failed: ${result.raw.slice(0, 400)}`);
-  }
-  return result.data.batch_header?.payout_batch_id || batchId;
 }
 
 export async function withdrawAndReleaseHolds(
@@ -519,54 +465,38 @@ export async function withdrawAndReleaseHolds(
     remainingHoldTarget = Math.round((remainingHoldTarget - hold.guideShareEur) * 100) / 100;
   }
 
-  if (toCapture.length > 0 && !isPayPalConfigured()) {
-    throw new Error('PayPal is not configured. Set PAYPAL_CLIENT_ID and PAYPAL_SECRET.');
-  }
-
   const capturedAuthorizationIds: string[] = [];
   const captureIds: string[] = [];
   let capturedGuideShare = 0;
-  let payoutNeededEur = 0;
 
+  // Mark holds captured locally (no PayPal API). Admin pays out via pending withdrawal email.
   for (const hold of toCapture) {
-    const captureId = await capturePaypalHold(hold);
+    const captureId = `local-cap-${hold.authorizationId}`;
     await markHoldCaptured(hold.authorizationId, captureId);
     capturedAuthorizationIds.push(hold.authorizationId);
     captureIds.push(captureId);
     capturedGuideShare = Math.round((capturedGuideShare + hold.guideShareEur) * 100) / 100;
-    if (!hold.merchantId) {
-      payoutNeededEur = Math.round((payoutNeededEur + hold.guideShareEur) * 100) / 100;
-    }
-  }
-
-  let payoutBatchId: string | null = null;
-  if (payoutNeededEur > 0) {
-    if (!email) throw new Error('Connect PayPal or set your PayPal email to receive funds captured to the platform');
-    payoutBatchId = await payoutGuideShareToEmail(email, payoutNeededEur, `wd-${userId.slice(-6)}-${Date.now()}`);
   }
 
   const leftover = Math.round((amountEur - capturedGuideShare) * 100) / 100;
   wallet.heldBalanceEur = Math.max(0, Math.round((wallet.heldBalanceEur - capturedGuideShare) * 100) / 100);
-  wallet.totalWithdrawnEur = Math.round((wallet.totalWithdrawnEur + capturedGuideShare) * 100) / 100;
+
+  const totalPending = Math.round((capturedGuideShare + Math.max(0, leftover)) * 100) / 100;
+  if (totalPending > 0.009 && !email) {
+    throw new Error('Set your payout email to receive withdrawals');
+  }
 
   let leftoverWithdrawal: WithdrawalRequest | null = null;
   if (leftover > 0.009) {
     if (wallet.availableBalanceEur < leftover) {
       throw new Error('Insufficient available balance for the remaining amount');
     }
-    if (!email) throw new Error('Set your PayPal email for prize / available-balance withdrawals');
     wallet.availableBalanceEur = Math.round((wallet.availableBalanceEur - leftover) * 100) / 100;
-    wallet.pendingBalanceEur = Math.round((wallet.pendingBalanceEur + leftover) * 100) / 100;
-    leftoverWithdrawal = {
-      id: `${Date.now()}-avail`,
-      userId,
-      amountEur: leftover,
-      method: 'paypal',
-      paypalEmail: email,
-      status: 'pending',
-      createdAt: new Date().toISOString(),
-      processedAt: null,
-    };
+  }
+
+  // Entire withdraw amount becomes a pending email payout (held captures + available leftover)
+  if (totalPending > 0.009) {
+    wallet.pendingBalanceEur = Math.round((wallet.pendingBalanceEur + totalPending) * 100) / 100;
   }
 
   await saveWallet(wallet);
@@ -574,48 +504,40 @@ export async function withdrawAndReleaseHolds(
   const withdrawal: WithdrawalRequest = {
     id: Date.now().toString(),
     userId,
-    amountEur: capturedGuideShare,
+    amountEur: totalPending,
     method: 'paypal',
-    paypalEmail: email || wallet.paypalMerchantId || '',
-    status: capturedGuideShare > 0 ? 'completed' : leftoverWithdrawal ? 'pending' : 'completed',
+    paypalEmail: email,
+    status: 'pending',
     createdAt: new Date().toISOString(),
-    processedAt: capturedGuideShare > 0 ? new Date().toISOString() : null,
+    processedAt: null,
     capturedAuthorizationIds,
     captureIds,
-    payoutBatchId,
-    adminNote: capturedGuideShare > 0 ? 'Captured PayPal authorizations on withdraw' : undefined,
+    payoutBatchId: null,
+    adminNote:
+      capturedGuideShare > 0
+        ? 'Held balance released locally; pending email payout'
+        : 'Pending email payout from available balance',
   };
 
   const withdrawals = await readWithdrawals();
-  if (capturedGuideShare > 0) withdrawals.push(withdrawal);
-  if (leftoverWithdrawal) withdrawals.push(leftoverWithdrawal);
+  if (totalPending > 0.009) withdrawals.push(withdrawal);
   await writeWithdrawals(withdrawals);
 
   const txs = await readTransactions();
-  if (capturedGuideShare > 0) {
+  if (totalPending > 0.009) {
     txs.push({
-      id: Date.now().toString() + '-wd-cap',
+      id: Date.now().toString() + '-wd',
       userId,
       type: 'withdrawal',
-      amountEur: capturedGuideShare,
-      note: `Withdraw captured ${capturedAuthorizationIds.length} held payment(s)`,
-      createdAt: new Date().toISOString(),
-    });
-  }
-  if (leftoverWithdrawal) {
-    txs.push({
-      id: Date.now().toString() + '-wd-avail',
-      userId,
-      type: 'withdrawal',
-      amountEur: leftover,
-      note: `Withdrawal request to ${email}`,
+      amountEur: totalPending,
+      note: `Withdrawal request to ${email}${capturedAuthorizationIds.length ? ` (released ${capturedAuthorizationIds.length} hold(s))` : ''}`,
       createdAt: new Date().toISOString(),
     });
   }
   await writeTransactions(txs);
 
   return {
-    withdrawal: capturedGuideShare > 0 ? withdrawal : leftoverWithdrawal!,
+    withdrawal,
     capturedAuthorizationIds,
     leftoverWithdrawal,
   };

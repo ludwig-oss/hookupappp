@@ -1,5 +1,4 @@
 import { Request, Response } from 'express';
-import Stripe from 'stripe';
 import {
   createConfessionSession,
   createAiConfessionSession,
@@ -28,42 +27,20 @@ import {
   AI_SEEKER_TERMS,
 } from '../models/anonymousConfession.js';
 import { getGuideByUserId } from '../models/improvement.js';
-import { getOrCreateWallet, holdGuideSessionPayment, splitSessionPayment, creditPlatformAiHelp } from '../models/guideWallet.js';
-import { createAuthorizationHold, getHoldByRequestId } from '../models/paypalHolds.js';
+import { creditPlatformAiHelp } from '../models/guideWallet.js';
 import {
-  buildAuthorizeOrderPayload,
-  buildCaptureOrderPayload,
-  findPayPalLink,
-  isPayPalConfigured,
-  parseAuthorizationFromOrder,
-  paypalRequest,
-} from '../lib/paypal.js';
+  formatEurCents,
+  getStripe,
+  isStripeConfigured,
+  stripeFrontendBase,
+} from '../lib/stripeClient.js';
 import { sendPushToUser } from '../realtime/push.js';
 import { notifyConfessionRequest, notifyConfessionMessage } from '../realtime/notifications.js';
 import { sanitizeMessageContent, LIMITS } from '../utils/sanitize.js';
 
-function stripeClient(): Stripe | null {
-  if (!process.env.STRIPE_SECRET_KEY) return null;
-  return new Stripe(process.env.STRIPE_SECRET_KEY, {
-    apiVersion: '2024-06-20.acacia' as '2023-10-16',
-  });
-}
-
-function frontendBase(req: Request): string {
-  const fromEnv = (process.env.FRONTEND_URL || '').trim().replace(/\/$/, '');
-  const origin = String(req.headers.origin || '').replace(/\/$/, '');
-  if (origin && /hookupapp\.dev|vercel\.app|localhost/i.test(origin)) return origin;
-  if (fromEnv) return fromEnv;
-  return 'https://hookupapp.dev';
-}
-
 function paymentsStatus() {
-  const paypalConfigured = isPayPalConfigured();
-  const stripeConfigured = Boolean(process.env.STRIPE_SECRET_KEY);
   return {
-    paypalConfigured,
-    stripeConfigured,
-    demoPayAllowed: !paypalConfigured && !stripeConfigured,
+    stripeConfigured: isStripeConfigured(),
   };
 }
 
@@ -230,186 +207,12 @@ export async function getSessionHandler(req: Request, res: Response) {
   }
 }
 
-export async function createPayPalOrderHandler(req: Request, res: Response) {
-  try {
-    if (!isPayPalConfigured()) {
-      return res.status(503).json({
-        error:
-          'PayPal is not configured on the server. Add PAYPAL_CLIENT_ID and PAYPAL_SECRET on Render (hookupappp), then redeploy.',
-        ...paymentsStatus(),
-      });
-    }
-    const userId = (req as any).userId as string;
-    const session = await getSessionById(req.params.sessionId);
-    if (!session || session.seekerUserId !== userId) return res.status(404).json({ error: 'Session not found' });
-    if (session.paymentStatus === 'paid') return res.status(400).json({ error: 'Already paid' });
-    if (session.status !== 'awaiting_payment') {
-      return res.status(400).json({ error: 'Your guide must accept the appointment before you can pay' });
-    }
-
-    const isAi = session.kind === 'ai' || Boolean(session.aiGuideId);
-    const base = frontendBase(req);
-    const returnUrl = `${base}/home?confession=success&sessionId=${encodeURIComponent(session.id)}`;
-    const cancelUrl = `${base}/home?confession=cancel&open=confession`;
-
-    let orderPayload: Record<string, unknown>;
-    let sellerMerchantId: string | null = null;
-    if (isAi) {
-      orderPayload = buildCaptureOrderPayload({
-        amountEur: session.amountEur,
-        description: 'AI confession session (app account)',
-        customId: session.id,
-        returnUrl,
-        cancelUrl,
-        brandName: 'Hook Up Confession',
-      });
-    } else {
-      const sellerWallet = session.guideUserId ? await getOrCreateWallet(session.guideUserId) : null;
-      sellerMerchantId = sellerWallet?.paypalMerchantId || null;
-      const { platformFee } = splitSessionPayment(session.amountEur);
-      orderPayload = buildAuthorizeOrderPayload({
-        amountEur: session.amountEur,
-        platformFeeEur: platformFee,
-        description: 'Anonymous confession session',
-        customId: session.id,
-        returnUrl,
-        cancelUrl,
-        brandName: 'Hook Up Confession',
-        sellerMerchantId,
-      });
-    }
-
-    const orderRes = await paypalRequest<{ id?: string; links?: Array<{ rel: string; href?: string }> }>({
-      method: 'POST',
-      path: '/v2/checkout/orders',
-      body: orderPayload,
-      sellerMerchantId,
-      requestId: `confession-order-${session.id}`,
-    });
-
-    if (!orderRes.ok) {
-      console.error('Confession PayPal order failed:', orderRes.raw);
-      return res.status(502).json({ error: 'PayPal order failed. Check PayPal credentials and sandbox mode.' });
-    }
-    const approveLink = findPayPalLink(orderRes.data.links, 'approve') || findPayPalLink(orderRes.data.links, 'payer-action');
-    res.json({
-      orderId: orderRes.data.id,
-      sessionId: session.id,
-      approvalUrl: approveLink,
-      intent: isAi ? 'CAPTURE' : 'AUTHORIZE',
-    });
-  } catch (e: any) {
-    console.error('Confession PayPal create error:', e);
-    res.status(500).json({ error: e.message || 'Failed' });
-  }
-}
-
-export async function capturePayPalOrderHandler(req: Request, res: Response) {
-  try {
-    if (!isPayPalConfigured()) {
-      return res.status(503).json({ error: 'PayPal is not configured', ...paymentsStatus() });
-    }
-    const userId = (req as any).userId as string;
-    const { orderId, sessionId } = req.body as { orderId?: string; sessionId?: string };
-    if (!orderId || !sessionId) return res.status(400).json({ error: 'orderId and sessionId required' });
-
-    const existing = await getSessionById(sessionId);
-    if (!existing || existing.seekerUserId !== userId) return res.status(404).json({ error: 'Session not found' });
-    if (existing.paymentStatus === 'paid') {
-      return res.json({ message: 'Already paid', session: sanitizeSessionForClient(existing, userId) });
-    }
-
-    const isAi = existing.kind === 'ai' || Boolean(existing.aiGuideId);
-    const alreadyHeld = await getHoldByRequestId(sessionId);
-
-    if (isAi) {
-      const cap = await paypalRequest({
-        method: 'POST',
-        path: `/v2/checkout/orders/${encodeURIComponent(orderId)}/capture`,
-        body: {},
-        requestId: `confession-cap-${orderId}`,
-      });
-      if (!cap.ok) {
-        console.error('Confession AI PayPal capture failed:', cap.raw);
-        return res.status(402).json({ error: 'Payment capture failed' });
-      }
-      await creditPlatformAiHelp({
-        grossEur: existing.amountEur,
-        userId,
-        paymentMethod: 'paypal',
-      });
-    } else if (!alreadyHeld) {
-      const authRes = await paypalRequest<{
-        id?: string;
-        purchase_units?: Array<{
-          payments?: { authorizations?: Array<{ id?: string; expiration_time?: string; status?: string }> };
-        }>;
-      }>({
-        method: 'POST',
-        path: `/v2/checkout/orders/${encodeURIComponent(orderId)}/authorize`,
-        body: {},
-        requestId: `confession-auth-${orderId}`,
-      });
-      if (!authRes.ok) return res.status(402).json({ error: 'Payment authorization failed' });
-
-      const parsed = parseAuthorizationFromOrder({ id: orderId, ...authRes.data });
-      if (!parsed) return res.status(402).json({ error: 'PayPal did not return an authorization id' });
-
-      if (existing.guideUserId && existing.kind !== 'ai' && !existing.aiGuideId) {
-        const sellerWallet = await getOrCreateWallet(existing.guideUserId);
-        const { guideShare, platformFee } = splitSessionPayment(existing.amountEur);
-        await createAuthorizationHold({
-          userId: existing.guideUserId,
-          orderId,
-          authorizationId: parsed.authorizationId,
-          requestId: sessionId,
-          sessionId,
-          payerUserId: userId,
-          grossEur: existing.amountEur,
-          platformFeeEur: platformFee,
-          guideShareEur: guideShare,
-          currency: 'EUR',
-          merchantId: sellerWallet.paypalMerchantId,
-          expiresAt: parsed.expiresAt,
-        });
-        await holdGuideSessionPayment({
-          guideUserId: existing.guideUserId,
-          grossEur: existing.amountEur,
-          requestId: sessionId,
-        });
-      }
-    }
-
-    let session = await markSessionPaid(sessionId, orderId);
-    if (session.status === 'pending_guide_nda' && session.guideUserId) {
-      notifyConfessionRequest(session.guideUserId, { sessionId: session.id });
-      sendPushToUser(session.guideUserId, {
-        title: 'Anonymous confession — paid & ready',
-        body: `Someone paid €${session.amountEur}. Open the booth when you are ready.`,
-        data: { type: 'confession_request', sessionId: session.id },
-      }).catch(() => {});
-    } else if (session.status === 'active') {
-      notifyConfessionMessage(session.seekerUserId, { sessionId: session.id, preview: 'Your guide is ready.' });
-    }
-
-    res.json({
-      message: session.status === 'active'
-        ? session.kind === 'ai' || session.aiGuideId
-          ? 'Payment received. Your AI helper is ready in the private booth.'
-          : 'Payment received. The confession booth is open — say what you need to share.'
-        : 'Payment received. Your guide will open the booth shortly.',
-      session: sanitizeSessionForClient(session, userId),
-    });
-  } catch (e: any) {
-    console.error('Confession PayPal capture error:', e);
-    res.status(500).json({ error: e.message || 'Failed' });
-  }
-}
-
 export async function createConfessionStripeCheckoutHandler(req: Request, res: Response) {
   try {
-    const stripe = stripeClient();
-    if (!stripe) return res.status(503).json({ error: 'Card pay is not configured', ...paymentsStatus() });
+    if (!isStripeConfigured()) {
+      return res.status(503).json({ error: 'Stripe is not configured', ...paymentsStatus() });
+    }
+    const stripe = getStripe();
     const userId = (req as any).userId as string;
     const session = await getSessionById(req.params.sessionId);
     if (!session || session.seekerUserId !== userId) return res.status(404).json({ error: 'Session not found' });
@@ -417,7 +220,7 @@ export async function createConfessionStripeCheckoutHandler(req: Request, res: R
     if (session.status !== 'awaiting_payment') {
       return res.status(400).json({ error: 'Session is not awaiting payment' });
     }
-    const base = frontendBase(req);
+    const base = stripeFrontendBase(req);
     const checkout = await stripe.checkout.sessions.create({
       mode: 'payment',
       line_items: [
@@ -430,7 +233,7 @@ export async function createConfessionStripeCheckoutHandler(req: Request, res: R
                   ? 'AI confession booth'
                   : 'Anonymous confession session',
             },
-            unit_amount: Math.round(session.amountEur * 100),
+            unit_amount: formatEurCents(session.amountEur),
           },
           quantity: 1,
         },
@@ -439,7 +242,7 @@ export async function createConfessionStripeCheckoutHandler(req: Request, res: R
       cancel_url: `${base}/home?confession=cancel&open=confession`,
       metadata: { type: 'confession', sessionId: session.id, userId },
     });
-    res.json({ url: checkout.url, checkoutSessionId: checkout.id });
+    res.json({ url: checkout.url, sessionId: checkout.id, checkoutSessionId: checkout.id });
   } catch (e: any) {
     console.error('Confession Stripe checkout error:', e);
     res.status(500).json({ error: e.message || 'Stripe failed' });
@@ -448,11 +251,16 @@ export async function createConfessionStripeCheckoutHandler(req: Request, res: R
 
 export async function confirmConfessionStripeHandler(req: Request, res: Response) {
   try {
-    const stripe = stripeClient();
-    if (!stripe) return res.status(503).json({ error: 'Card pay is not configured' });
+    if (!isStripeConfigured()) return res.status(503).json({ error: 'Stripe is not configured' });
+    const stripe = getStripe();
     const userId = (req as any).userId as string;
-    const { sessionId, checkoutSessionId } = req.body as { sessionId?: string; checkoutSessionId?: string };
-    if (!sessionId || !checkoutSessionId) {
+    const { sessionId, checkoutSessionId, session_id } = req.body as {
+      sessionId?: string;
+      checkoutSessionId?: string;
+      session_id?: string;
+    };
+    const checkoutId = checkoutSessionId || session_id;
+    if (!sessionId || !checkoutId) {
       return res.status(400).json({ error: 'sessionId and checkoutSessionId required' });
     }
     const existing = await getSessionById(sessionId);
@@ -460,7 +268,7 @@ export async function confirmConfessionStripeHandler(req: Request, res: Response
     if (existing.paymentStatus === 'paid') {
       return res.json({ message: 'Already paid', session: sanitizeSessionForClient(existing, userId) });
     }
-    const checkout = await stripe.checkout.sessions.retrieve(checkoutSessionId);
+    const checkout = await stripe.checkout.sessions.retrieve(checkoutId);
     if (checkout.payment_status !== 'paid' || checkout.metadata?.sessionId !== sessionId) {
       return res.status(402).json({ error: 'Payment not complete' });
     }
@@ -471,7 +279,7 @@ export async function confirmConfessionStripeHandler(req: Request, res: Response
         paymentMethod: 'stripe',
       });
     }
-    const session = await markSessionPaid(sessionId, `stripe:${checkoutSessionId}`);
+    const session = await markSessionPaid(sessionId, `stripe:${checkoutId}`);
     res.json({
       message: 'Payment received. Booth is open.',
       session: sanitizeSessionForClient(session, userId),
@@ -479,38 +287,6 @@ export async function confirmConfessionStripeHandler(req: Request, res: Response
   } catch (e: any) {
     console.error('Confession Stripe confirm error:', e);
     res.status(500).json({ error: e.message || 'Confirm failed' });
-  }
-}
-
-export async function confirmConfessionDemoPayHandler(req: Request, res: Response) {
-  try {
-    if (isPayPalConfigured() || process.env.STRIPE_SECRET_KEY) {
-      return res.status(400).json({ error: 'Use PayPal or card to pay' });
-    }
-    const userId = (req as any).userId as string;
-    const session = await getSessionById(req.params.sessionId);
-    if (!session || session.seekerUserId !== userId) return res.status(404).json({ error: 'Session not found' });
-    if (session.paymentStatus === 'paid') {
-      return res.json({ message: 'Already paid', session: sanitizeSessionForClient(session, userId) });
-    }
-    if (session.status !== 'awaiting_payment') {
-      return res.status(400).json({ error: 'Session is not awaiting payment' });
-    }
-    if (session.kind === 'ai' || session.aiGuideId) {
-      await creditPlatformAiHelp({
-        grossEur: session.amountEur,
-        userId,
-        paymentMethod: 'demo',
-      });
-    }
-    const paid = await markSessionPaid(session.id, `demo:${Date.now()}`);
-    res.json({
-      message: 'Local payment recorded. Booth is open. Add PayPal keys on Render for live PayPal.',
-      session: sanitizeSessionForClient(paid, userId),
-    });
-  } catch (e: any) {
-    console.error('Confession demo pay error:', e);
-    res.status(500).json({ error: e.message || 'Demo pay failed' });
   }
 }
 

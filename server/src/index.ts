@@ -63,6 +63,7 @@ import fashionRoutes from './routes/fashion.js';
 import appearanceRoutes from './routes/appearance.js';
 import intimacyRoutes from './routes/intimacy.js';
 import guideHelpRoutes from './routes/guideHelp.js';
+import stripeRoutes from './routes/stripe.js';
 import { runSchema } from './db/index.js';
 import { runWithSystem } from './db/context.js';
 import { apiLimiter } from './middleware/rateLimit.js';
@@ -174,6 +175,7 @@ app.use('/api/fashion', fashionRoutes);
 app.use('/api/appearance', appearanceRoutes);
 app.use('/api/intimacy', intimacyRoutes);
 app.use('/api/guide-help', guideHelpRoutes);
+app.use('/api/stripe', stripeRoutes);
 app.use('/api/admin', adminRoutes);
 
 app.get('/api/health', (req, res) => {

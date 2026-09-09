@@ -50,10 +50,19 @@ export async function updateWalletPaypal(req: Request, res: Response) {
     const { paypalEmail } = req.body as { paypalEmail?: string };
     if (!paypalEmail?.trim()) return res.status(400).json({ error: 'paypalEmail is required' });
     const wallet = await setWalletPaypalEmail(userId, paypalEmail.trim());
-    res.json({ message: 'PayPal email saved for withdrawals', wallet });
+    res.json({ message: 'Payout email saved for withdrawals', wallet });
   } catch (e: any) {
     res.status(400).json({ error: e.message || 'Failed' });
   }
+}
+
+/** Legacy PayPal partner onboarding — removed; use Stripe. */
+export async function startPaypalOnboarding(_req: Request, res: Response) {
+  return res.status(410).json({ error: 'PayPal onboarding is gone. Use Stripe Checkout for payments.' });
+}
+
+export async function completePaypalOnboarding(_req: Request, res: Response) {
+  return res.status(410).json({ error: 'PayPal onboarding is gone. Use Stripe Checkout for payments.' });
 }
 
 export async function createWithdrawal(req: Request, res: Response) {
@@ -65,8 +74,8 @@ export async function createWithdrawal(req: Request, res: Response) {
     const captured = result.capturedAuthorizationIds.length;
     res.json({
       message: captured
-        ? `Withdrawal complete. ${captured} held payment(s) captured; the app fee was collected.`
-        : 'Withdrawal requested. Available-balance payouts are sent to PayPal shortly.',
+        ? `Withdrawal requested. ${captured} held payment(s) released; payout will be sent to your email.`
+        : 'Withdrawal requested. Payout will be sent to your email shortly.',
       withdrawal: result.withdrawal,
       capturedAuthorizationIds: result.capturedAuthorizationIds,
       leftoverWithdrawal: result.leftoverWithdrawal,
@@ -107,7 +116,7 @@ export async function getPaymentSplitInfo(_req: Request, res: Response) {
     platformPercent: PLATFORM_FEE_PERCENT,
     guideEarnsPerSession: Math.round(SESSION_PRICE_EUR * (GUIDE_EARNINGS_PERCENT / 100) * 100) / 100,
     platformFeePerSession: Math.round(SESSION_PRICE_EUR * (PLATFORM_FEE_PERCENT / 100) * 100) / 100,
-    methods: ['paypal', 'stripe', 'card'],
+    methods: ['stripe', 'card'],
     prepayRequired: true,
     recordingForbidden: true,
     guideTipPolicy: 'Share helpful tips during sessions, but keep your best secrets — like a great teacher, not everything at once.',

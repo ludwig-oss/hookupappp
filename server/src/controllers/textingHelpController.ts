@@ -1,5 +1,4 @@
 import { Request, Response } from 'express';
-import Stripe from 'stripe';
 import { getUserById } from '../models/user.js';
 import {
   TEXTING_HELP_PRICE_EUR,
@@ -13,30 +12,19 @@ import {
   pickTextingHelpGuides,
 } from '../models/textingHelp.js';
 import { getGuideByUserId } from '../models/improvement.js';
-import { creditGuideSessionPayment, splitSessionPayment } from '../models/guideWallet.js';
+import { creditGuideSessionPayment } from '../models/guideWallet.js';
 import {
-  buildAuthorizeOrderPayload,
-  findPayPalLink,
-  isPayPalConfigured,
-  paypalRequest,
-} from '../lib/paypal.js';
+  formatEurCents,
+  getStripe,
+  isStripeConfigured,
+  stripeFrontendBase,
+} from '../lib/stripeClient.js';
 import {
   notifyTextingHelpAnswered,
   notifyTextingHelpChosen,
   notifyTextingHelpSos,
 } from '../realtime/notifications.js';
 import { sendPushToUser } from '../realtime/push.js';
-
-function frontendBase(): string {
-  return (process.env.FRONTEND_URL || 'http://localhost:5173').replace(/\/$/, '');
-}
-
-function stripeClient(): Stripe | null {
-  if (!process.env.STRIPE_SECRET_KEY) return null;
-  return new Stripe(process.env.STRIPE_SECRET_KEY, {
-    apiVersion: '2024-06-20.acacia' as '2023-10-16',
-  });
-}
 
 export async function startTextingHelp(req: Request, res: Response) {
   try {
@@ -50,8 +38,7 @@ export async function startTextingHelp(req: Request, res: Response) {
     res.json({
       session,
       priceEur: TEXTING_HELP_PRICE_EUR,
-      paypalConfigured: isPayPalConfigured(),
-      stripeConfigured: Boolean(process.env.STRIPE_SECRET_KEY),
+      stripeConfigured: isStripeConfigured(),
     });
   } catch (error) {
     console.error('Start texting help error:', error);
@@ -73,11 +60,13 @@ export async function getTextingHelpSessionHandler(req: Request, res: Response) 
   }
 }
 
-export async function createTextingHelpPayPalOrder(req: Request, res: Response) {
+/** Hosted Stripe Checkout — returns { url, sessionId }. */
+export async function createTextingHelpCheckout(req: Request, res: Response) {
   try {
-    if (!isPayPalConfigured()) {
-      return res.status(503).json({ error: 'PayPal is not configured' });
+    if (!isStripeConfigured()) {
+      return res.status(503).json({ error: 'Stripe is not configured' });
     }
+    const stripe = getStripe();
     const userId = (req as any).userId as string;
     const { sessionId } = req.body as { sessionId?: string };
     if (!sessionId) return res.status(400).json({ error: 'sessionId is required' });
@@ -85,68 +74,35 @@ export async function createTextingHelpPayPalOrder(req: Request, res: Response) 
     if (!session || session.userId !== userId) return res.status(404).json({ error: 'Session not found' });
     if (session.status !== 'pending_payment') return res.json({ alreadyPaid: true, session });
 
-    const { platformFee } = splitSessionPayment(TEXTING_HELP_PRICE_EUR);
-    const orderPayload = buildAuthorizeOrderPayload({
-      amountEur: TEXTING_HELP_PRICE_EUR,
-      platformFeeEur: platformFee,
-      description: 'Live texting help (guide SOS)',
-      customId: sessionId,
-      returnUrl: `${frontendBase()}/home?textingHelp=success&sessionId=${sessionId}`,
-      cancelUrl: `${frontendBase()}/home?textingHelp=cancel`,
-      brandName: 'ASWP Texting Help',
+    const base = stripeFrontendBase(req);
+    const checkout = await stripe.checkout.sessions.create({
+      mode: 'payment',
+      line_items: [
+        {
+          price_data: {
+            currency: 'eur',
+            product_data: { name: 'Live texting help (guide SOS)' },
+            unit_amount: formatEurCents(TEXTING_HELP_PRICE_EUR),
+          },
+          quantity: 1,
+        },
+      ],
+      success_url: `${base}/home?textingHelp=success&sessionId=${encodeURIComponent(sessionId)}&session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${base}/home?textingHelp=cancel`,
+      metadata: { type: 'texting_help', sessionId, userId },
     });
-    (orderPayload as { intent: string }).intent = 'CAPTURE';
-
-    const orderRes = await paypalRequest<{ id?: string; links?: Array<{ rel: string; href?: string }> }>({
-      method: 'POST',
-      path: '/v2/checkout/orders',
-      body: orderPayload,
-      requestId: `texting-help-${sessionId}`,
-    });
-    if (!orderRes.ok || !orderRes.data.id) {
-      console.error('Texting help PayPal order failed:', orderRes.raw);
-      return res.status(502).json({ error: 'PayPal order failed' });
-    }
-    const approvalUrl = findPayPalLink(orderRes.data.links, 'approve');
-    res.json({ orderId: orderRes.data.id, approvalUrl });
+    res.json({ url: checkout.url, sessionId: checkout.id });
   } catch (error: any) {
-    console.error('Texting help PayPal create error:', error);
+    console.error('Texting help Stripe checkout error:', error);
     res.status(500).json({ error: error.message || 'Internal server error' });
   }
 }
 
-export async function captureTextingHelpPayPal(req: Request, res: Response) {
-  try {
-    if (!isPayPalConfigured()) return res.status(503).json({ error: 'PayPal is not configured' });
-    const userId = (req as any).userId as string;
-    const { sessionId, orderId } = req.body as { sessionId?: string; orderId?: string };
-    if (!sessionId || !orderId) return res.status(400).json({ error: 'sessionId and orderId are required' });
-    const session = await getTextingHelpSession(sessionId);
-    if (!session || session.userId !== userId) return res.status(404).json({ error: 'Session not found' });
-    if (session.status !== 'pending_payment') return res.json({ paid: true, session });
-
-    const cap = await paypalRequest({
-      method: 'POST',
-      path: `/v2/checkout/orders/${encodeURIComponent(orderId)}/capture`,
-      body: {},
-      requestId: `texting-help-cap-${orderId}`,
-    });
-    if (!cap.ok) {
-      console.error('Texting help PayPal capture failed:', cap.raw);
-      return res.status(402).json({ error: 'Payment capture failed' });
-    }
-    const paid = await markTextingHelpPaid(sessionId, 'paypal', { paypalOrderId: orderId });
-    res.json({ paid: true, session: paid });
-  } catch (error: any) {
-    console.error('Texting help PayPal capture error:', error);
-    res.status(500).json({ error: error.message || 'Internal server error' });
-  }
-}
-
+/** PaymentIntent flow (Elements) — kept for clients that still use clientSecret. */
 export async function createTextingHelpStripePayment(req: Request, res: Response) {
   try {
-    const stripe = stripeClient();
-    if (!stripe) return res.status(503).json({ error: 'Stripe is not configured' });
+    if (!isStripeConfigured()) return res.status(503).json({ error: 'Stripe is not configured' });
+    const stripe = getStripe();
     const userId = (req as any).userId as string;
     const { sessionId } = req.body as { sessionId?: string };
     if (!sessionId) return res.status(400).json({ error: 'sessionId is required' });
@@ -155,7 +111,7 @@ export async function createTextingHelpStripePayment(req: Request, res: Response
     if (session.status !== 'pending_payment') return res.json({ alreadyPaid: true, session });
 
     const intent = await stripe.paymentIntents.create({
-      amount: Math.round(TEXTING_HELP_PRICE_EUR * 100),
+      amount: formatEurCents(TEXTING_HELP_PRICE_EUR),
       currency: 'eur',
       automatic_payment_methods: { enabled: true },
       metadata: { type: 'texting_help', sessionId, userId },
@@ -169,15 +125,35 @@ export async function createTextingHelpStripePayment(req: Request, res: Response
 
 export async function confirmTextingHelpStripePayment(req: Request, res: Response) {
   try {
-    const stripe = stripeClient();
-    if (!stripe) return res.status(503).json({ error: 'Stripe is not configured' });
+    if (!isStripeConfigured()) return res.status(503).json({ error: 'Stripe is not configured' });
+    const stripe = getStripe();
     const userId = (req as any).userId as string;
-    const { sessionId, paymentIntentId } = req.body as { sessionId?: string; paymentIntentId?: string };
-    if (!sessionId || !paymentIntentId) return res.status(400).json({ error: 'sessionId and paymentIntentId are required' });
+    const { sessionId, paymentIntentId, checkoutSessionId, session_id } = req.body as {
+      sessionId?: string;
+      paymentIntentId?: string;
+      checkoutSessionId?: string;
+      session_id?: string;
+    };
+    if (!sessionId) return res.status(400).json({ error: 'sessionId is required' });
     const session = await getTextingHelpSession(sessionId);
     if (!session || session.userId !== userId) return res.status(404).json({ error: 'Session not found' });
     if (session.status !== 'pending_payment') return res.json({ paid: true, session });
 
+    const checkoutId = checkoutSessionId || session_id;
+    if (checkoutId) {
+      const checkout = await stripe.checkout.sessions.retrieve(checkoutId);
+      if (checkout.payment_status !== 'paid' || checkout.metadata?.sessionId !== sessionId) {
+        return res.status(402).json({ error: 'Payment not complete' });
+      }
+      const paid = await markTextingHelpPaid(sessionId, 'stripe', {
+        stripePaymentIntentId: String(checkout.payment_intent || checkoutId),
+      });
+      return res.json({ paid: true, session: paid });
+    }
+
+    if (!paymentIntentId) {
+      return res.status(400).json({ error: 'paymentIntentId or checkoutSessionId is required' });
+    }
     const intent = await stripe.paymentIntents.retrieve(paymentIntentId);
     if (intent.status !== 'succeeded' || intent.metadata?.sessionId !== sessionId) {
       return res.status(402).json({ error: 'Payment not complete' });
@@ -190,22 +166,8 @@ export async function confirmTextingHelpStripePayment(req: Request, res: Respons
   }
 }
 
-export async function confirmTextingHelpDemoPay(req: Request, res: Response) {
-  try {
-    if (isPayPalConfigured() || process.env.STRIPE_SECRET_KEY) {
-      return res.status(400).json({ error: 'Use PayPal or card to pay €5' });
-    }
-    const userId = (req as any).userId as string;
-    const { sessionId } = req.body as { sessionId?: string };
-    if (!sessionId) return res.status(400).json({ error: 'sessionId is required' });
-    const session = await getTextingHelpSession(sessionId);
-    if (!session || session.userId !== userId) return res.status(404).json({ error: 'Session not found' });
-    const paid = await markTextingHelpPaid(sessionId, 'demo');
-    res.json({ paid: true, session: paid });
-  } catch (error) {
-    console.error('Texting help demo pay error:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
+export async function confirmTextingHelpDemoPay(_req: Request, res: Response) {
+  return res.status(400).json({ error: 'Use Stripe Checkout to pay €5' });
 }
 
 async function pingGuides(sessionId: string, guideUserIds: string[], fromUserId: string, fromName: string) {
@@ -284,21 +246,12 @@ export async function chooseTextingHelp(req: Request, res: Response) {
     if (!sessionId || !guideUserId) return res.status(400).json({ error: 'sessionId and guideUserId are required' });
     const session = await chooseTextingHelpGuide(sessionId, userId, guideUserId);
     if (!session) return res.status(404).json({ error: 'Session not found' });
-    if (session.paymentMethod && session.paymentMethod !== 'demo') {
-      await creditGuideSessionPayment({
-        guideUserId,
-        grossEur: TEXTING_HELP_PRICE_EUR,
-        requestId: session.id,
-        paymentMethod: session.paymentMethod === 'stripe' ? 'stripe' : 'paypal',
-      }).catch((err) => console.error('Texting help wallet credit:', err));
-    } else {
-      await creditGuideSessionPayment({
-        guideUserId,
-        grossEur: TEXTING_HELP_PRICE_EUR,
-        requestId: session.id,
-        paymentMethod: 'paypal',
-      }).catch((err) => console.error('Texting help wallet credit:', err));
-    }
+    await creditGuideSessionPayment({
+      guideUserId,
+      grossEur: TEXTING_HELP_PRICE_EUR,
+      requestId: session.id,
+      paymentMethod: 'stripe',
+    }).catch((err) => console.error('Texting help wallet credit:', err));
     notifyTextingHelpChosen(guideUserId, {
       sessionId: session.id,
       liveRoomUrl: session.liveRoomUrl || '',

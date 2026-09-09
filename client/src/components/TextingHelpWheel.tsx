@@ -72,7 +72,6 @@ function StripePay({ sessionId, onPaid }: { sessionId: string; onPaid: (s: Texti
 
 export default function TextingHelpWheel({ otherUserId, partnerName, resumeSessionId, onClose }: Props) {
   const [session, setSession] = useState<TextingHelpSession | null>(null);
-  const [paypalOn, setPaypalOn] = useState(false);
   const [stripeOn, setStripeOn] = useState(false);
   const [stripeSecret, setStripeSecret] = useState<string | null>(null);
   const [guides, setGuides] = useState<TextingHelpGuideCard[]>([]);
@@ -81,6 +80,7 @@ export default function TextingHelpWheel({ otherUserId, partnerName, resumeSessi
   const [rotation, setRotation] = useState(0);
   const [spinning, setSpinning] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [paying, setPaying] = useState(false);
   const [error, setError] = useState('');
   const [reviewStars, setReviewStars] = useState(5);
   const [reviewText, setReviewText] = useState('');
@@ -104,15 +104,13 @@ export default function TextingHelpWheel({ otherUserId, partnerName, resumeSessi
           const { session: s } = await textingHelpAPI.getSession(resumeSessionId);
           if (cancelled) return;
           setSession(s);
-          setPaypalOn(true);
           setStripeOn(true);
           if (s.status !== 'pending_payment') await loadGuides(s, 0);
         } else {
           const started = await textingHelpAPI.start(otherUserId);
           if (cancelled) return;
           setSession(started.session);
-          setPaypalOn(started.paypalConfigured);
-          setStripeOn(started.stripeConfigured);
+          setStripeOn(!!started.stripeConfigured);
           if (started.session.status !== 'pending_payment') await loadGuides(started.session, 0);
           if (started.stripeConfigured) {
             textingHelpAPI.createStripe(started.session.id).then((r) => {
@@ -172,30 +170,21 @@ export default function TextingHelpWheel({ otherUserId, partnerName, resumeSessi
     dragRef.current = null;
   };
 
-  const payPaypal = async () => {
+  const payCheckout = async () => {
     if (!session) return;
     setError('');
+    setPaying(true);
     try {
-      const r = await textingHelpAPI.payPal(session.id);
+      const r = await textingHelpAPI.checkout(session.id);
       if (r.alreadyPaid && r.session) {
         await loadGuides(r.session, 0);
         return;
       }
-      if (!r.approvalUrl) throw new Error('PayPal unavailable');
-      window.location.href = r.approvalUrl;
+      if (!r.url) throw new Error('Stripe checkout unavailable');
+      window.location.href = r.url;
     } catch (e: unknown) {
-      setError(formatAxiosError(e, 'PayPal failed'));
-    }
-  };
-
-  const payDemo = async () => {
-    if (!session) return;
-    setError('');
-    try {
-      const { session: paid } = await textingHelpAPI.payDemo(session.id);
-      await loadGuides(paid, 0);
-    } catch (e: unknown) {
-      setError(formatAxiosError(e, 'Payment failed'));
+      setError(formatAxiosError(e, 'Stripe checkout failed'));
+      setPaying(false);
     }
   };
 
@@ -265,9 +254,9 @@ export default function TextingHelpWheel({ otherUserId, partnerName, resumeSessi
               Pay €{TEXTING_HELP_PRICE_EUR} to unlock live guides in your region. They get an SOS, the first to
               answer is highlighted, and you pick who joins you — including live screen share.
             </p>
-            {paypalOn && (
-              <button type="button" className="th-primary" onClick={payPaypal}>
-                Pay €{TEXTING_HELP_PRICE_EUR} with PayPal
+            {stripeOn && (
+              <button type="button" className="th-primary" disabled={paying} onClick={() => void payCheckout()}>
+                {paying ? 'Opening Stripe…' : `Pay €${TEXTING_HELP_PRICE_EUR} with Stripe`}
               </button>
             )}
             {stripeOn && stripeSecret && stripePromise && (
@@ -275,10 +264,10 @@ export default function TextingHelpWheel({ otherUserId, partnerName, resumeSessi
                 <StripePay sessionId={session.id} onPaid={(s) => loadGuides(s, 0)} />
               </Elements>
             )}
-            {!paypalOn && !stripeOn && (
-              <button type="button" className="th-primary" onClick={payDemo}>
-                Confirm €{TEXTING_HELP_PRICE_EUR} and see guides
-              </button>
+            {!stripeOn && (
+              <p className="th-error">
+                Stripe is not configured on the server. Add STRIPE_SECRET_KEY, then redeploy.
+              </p>
             )}
           </div>
         )}

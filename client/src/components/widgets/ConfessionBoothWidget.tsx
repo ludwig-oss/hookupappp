@@ -108,26 +108,17 @@ export default function ConfessionBoothWidget() {
     const params = new URLSearchParams(window.location.search);
     const confession = params.get('confession');
     const sessionId = params.get('sessionId');
-    const orderId = params.get('token');
     const stripeCheckoutId = params.get('session_id');
-    if (confession === 'success' && sessionId) {
-      const finish = (r: { session: ConfessionSessionView; message: string }) => {
-        setSession(r.session);
-        setSuccess(r.message);
-        setStep(stepForSession(r.session));
-        window.history.replaceState({}, '', window.location.pathname);
-      };
-      if (stripeCheckoutId) {
-        confessionAPI
-          .confirmStripe(sessionId, stripeCheckoutId)
-          .then(finish)
-          .catch((e) => setError(formatAxiosError(e, 'Payment failed')));
-      } else if (orderId) {
-        confessionAPI
-          .capturePayPalOrder(sessionId, orderId)
-          .then(finish)
-          .catch((e) => setError(formatAxiosError(e, 'Payment failed')));
-      }
+    if (confession === 'success' && sessionId && stripeCheckoutId) {
+      confessionAPI
+        .confirmStripe(sessionId, stripeCheckoutId)
+        .then((r) => {
+          setSession(r.session);
+          setSuccess(r.message);
+          setStep(stepForSession(r.session));
+          window.history.replaceState({}, '', window.location.pathname);
+        })
+        .catch((e) => setError(formatAxiosError(e, 'Payment failed')));
     }
   }, []);
 
@@ -219,31 +210,16 @@ export default function ConfessionBoothWidget() {
     }
   };
 
-  const handlePayPal = async () => {
-    if (!session) return;
-    setLoading(true);
-    setError('');
-    try {
-      const { approvalUrl } = await confessionAPI.createPayPalOrder(session.id);
-      if (approvalUrl) window.location.href = approvalUrl;
-      else setError('PayPal unavailable');
-    } catch (e) {
-      setError(formatAxiosError(e, 'Could not start payment'));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleStripe = async () => {
+  const handlePay = async () => {
     if (!session) return;
     setLoading(true);
     setError('');
     try {
       const { url } = await confessionAPI.createStripeCheckout(session.id);
       if (url) window.location.href = url;
-      else setError('Card checkout unavailable');
+      else setError('Stripe checkout unavailable. Set STRIPE_SECRET_KEY on the server.');
     } catch (e) {
-      setError(formatAxiosError(e, 'Could not start card payment'));
+      setError(formatAxiosError(e, 'Could not start Stripe payment'));
     } finally {
       setLoading(false);
     }
@@ -396,7 +372,7 @@ export default function ConfessionBoothWidget() {
           <button type="button" className="confession-path-card human" onClick={() => setStep('scope')}>
             <strong>Human guide — same region or international</strong>
             <span>
-              Pick blurred guides near you when they apply, or international. Appointment, PayPal, NDA, veiled call — neither of you sees the other.
+              Pick blurred guides near you when they apply, or international. Appointment, Stripe, NDA, veiled call — neither of you sees the other.
             </span>
           </button>
           <button type="button" className="chat-back-btn" onClick={() => setStep('intro')}>
@@ -659,23 +635,12 @@ export default function ConfessionBoothWidget() {
             Pay €{session.amountEur} to open the anonymous booth.
             {isAiSession ? ' Payment goes 100% to the app account.' : ' Guide keeps 80%.'}
           </p>
-          <button type="button" className="select-user-btn" style={{ width: '100%' }} disabled={loading} onClick={handlePayPal}>
-            {loading ? 'Opening PayPal…' : `Pay €${session.amountEur} with PayPal`}
+          <button type="button" className="select-user-btn" style={{ width: '100%' }} disabled={loading} onClick={() => void handlePay()}>
+            {loading ? 'Opening Stripe…' : `Pay €${session.amountEur} with Stripe`}
           </button>
-          {info?.stripeConfigured && (
-            <button
-              type="button"
-              className="select-user-btn"
-              style={{ width: '100%', marginTop: 8 }}
-              disabled={loading}
-              onClick={() => void handleStripe()}
-            >
-              {loading ? 'Opening card…' : `Pay €${session.amountEur} with card`}
-            </button>
-          )}
-          {info && info.paypalConfigured === false && !info.stripeConfigured && (
+          {info && info.stripeConfigured === false && (
             <p style={{ fontSize: 12, color: '#fca5a5', marginTop: 10, lineHeight: 1.4 }}>
-              PayPal keys are missing on the live server (Render). Add PAYPAL_CLIENT_ID and PAYPAL_SECRET from your PayPal Business / Developer dashboard, set PAYPAL_SANDBOX=false for live charges, then redeploy.
+              Stripe is not configured on the live server. Add STRIPE_SECRET_KEY on Render, then redeploy.
             </p>
           )}
         </div>

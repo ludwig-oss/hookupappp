@@ -9,7 +9,7 @@ export interface TextingHelpSession {
   otherUserId: string;
   status: 'pending_payment' | 'paid' | 'live' | 'ended';
   paidAt: string | null;
-  paymentMethod: 'paypal' | 'stripe' | 'demo' | null;
+  paymentMethod: 'stripe' | 'demo' | null;
   offeredGuideUserIds: string[];
   firstAnsweredGuideUserId: string | null;
   chosenGuideUserId: string | null;
@@ -45,7 +45,6 @@ export const textingHelpAPI = {
     return response.data as {
       session: TextingHelpSession;
       priceEur: number;
-      paypalConfigured: boolean;
       stripeConfigured: boolean;
     };
   },
@@ -53,13 +52,9 @@ export const textingHelpAPI = {
     const response = await axios.get(`${API_BASE}/api/texting-help/session/${sessionId}`);
     return response.data as { session: TextingHelpSession; priceEur: number };
   },
-  payPal: async (sessionId: string) => {
-    const response = await axios.post(`${API_BASE}/api/texting-help/pay/paypal`, { sessionId });
-    return response.data as { orderId?: string; approvalUrl?: string; alreadyPaid?: boolean; session?: TextingHelpSession };
-  },
-  capturePayPal: async (sessionId: string, orderId: string) => {
-    const response = await axios.post(`${API_BASE}/api/texting-help/pay/paypal/capture`, { sessionId, orderId });
-    return response.data as { paid: boolean; session: TextingHelpSession };
+  checkout: async (sessionId: string) => {
+    const response = await axios.post(`${API_BASE}/api/texting-help/pay/checkout`, { sessionId });
+    return response.data as { url?: string; sessionId?: string; alreadyPaid?: boolean; session?: TextingHelpSession };
   },
   createStripe: async (sessionId: string) => {
     const response = await axios.post(`${API_BASE}/api/texting-help/pay/stripe`, { sessionId });
@@ -69,8 +64,11 @@ export const textingHelpAPI = {
     const response = await axios.post(`${API_BASE}/api/texting-help/pay/stripe/confirm`, { sessionId, paymentIntentId });
     return response.data as { paid: boolean; session: TextingHelpSession };
   },
-  payDemo: async (sessionId: string) => {
-    const response = await axios.post(`${API_BASE}/api/texting-help/pay/demo`, { sessionId });
+  confirmCheckout: async (sessionId: string, checkoutSessionId: string) => {
+    const response = await axios.post(`${API_BASE}/api/texting-help/pay/stripe/confirm`, {
+      sessionId,
+      checkoutSessionId,
+    });
     return response.data as { paid: boolean; session: TextingHelpSession };
   },
   listGuides: async (sessionId: string, offset = 0) => {

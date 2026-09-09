@@ -1,9 +1,8 @@
 import { useState, useEffect, useContext } from 'react';
 import { AuthContext } from '../../context/AuthContext';
 import { improvementAPI, paymentAPI, SESSION_PRICE_EUR, ImprovementCategory, Guide, AvailabilitySlot, Booking, GuideRequest } from '../../api/improvement';
+import GuidePrepayPanel from './GuidePrepayPanel';
 import './Widget.css';
-
-// Stripe is only used in Checkout page, not in widget
 
 function clipText(text: string, max: number): string {
   const t = (text || '').trim();
@@ -27,8 +26,6 @@ const ImprovementWidget = () => {
   const [myRequests, setMyRequests] = useState<GuideRequest[]>([]);
   const [requestMessage, setRequestMessage] = useState('');
   const [acceptedRequestForProof, setAcceptedRequestForProof] = useState<GuideRequest | null>(null);
-  const [proofText, setProofText] = useState('');
-  const [proofImageUrl, setProofImageUrl] = useState('');
   const [myPaypalInfo, setMyPaypalInfo] = useState('');
   const [myGuideId, setMyGuideId] = useState<string | null>(null);
   const [guideRequestsForMe, setGuideRequestsForMe] = useState<GuideRequest[]>([]);
@@ -367,8 +364,8 @@ const ImprovementWidget = () => {
           </div>
           {myGuideId && (
             <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <button onClick={() => setView('trainer_paypal')} className="select-user-btn" style={{ background: '#0070ba', color: '#fff' }}>
-                Trainer: My PayPal info
+              <button onClick={() => setView('trainer_paypal')} className="select-user-btn">
+                Trainer: payout email
               </button>
               <button onClick={async () => { setView('trainer_confirm'); const res = await improvementAPI.getGuideRequests(myGuideId!); setGuideRequestsForMe(res.requests || []); }} className="select-user-btn" style={{ background: '#059669', color: '#fff' }}>
                 Trainer: Pending confirmations
@@ -389,10 +386,12 @@ const ImprovementWidget = () => {
         <div className="improvement-content">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
             <button onClick={() => setView('categories')} className="back-btn">← Back</button>
-            <h3 style={{ margin: 0, fontSize: '18px' }}>Your PayPal info</h3>
+            <h3 style={{ margin: 0, fontSize: '18px' }}>Payout email</h3>
           </div>
-          <p style={{ marginBottom: '12px', fontSize: '14px', color: '#6b7280' }}>Users will send €50 here. Enter your PayPal email or PayPal.me link.</p>
-          <input type="text" value={myPaypalInfo} onChange={e => setMyPaypalInfo(e.target.value)} placeholder="e.g. you@email.com or https://paypal.me/yourname" style={{ width: '100%', padding: '12px', marginBottom: '12px', border: '2px solid #e5e7eb', borderRadius: '8px' }} />
+          <p style={{ marginBottom: '12px', fontSize: '14px', color: '#6b7280' }}>
+            Optional contact email for payouts. Session payments go through Stripe; earnings withdraw from your guide wallet.
+          </p>
+          <input type="text" value={myPaypalInfo} onChange={e => setMyPaypalInfo(e.target.value)} placeholder="you@email.com" style={{ width: '100%', padding: '12px', marginBottom: '12px', border: '2px solid #e5e7eb', borderRadius: '8px' }} />
           <button onClick={async () => { setLoading(true); try { await paymentAPI.setMyPaypalInfo(myPaypalInfo.trim()); alert('Saved.'); setView('categories'); } catch (err: any) { setError(err.response?.data?.error || 'Failed'); } finally { setLoading(false); }} } className="select-user-btn" disabled={loading} style={{ width: '100%' }}>{loading ? 'Saving...' : 'Save'}</button>
         </div>
       )}
@@ -517,9 +516,9 @@ const ImprovementWidget = () => {
                     const pendingRequest = myRequests.find(
                       r => r.guideId === guide.id && r.category === selectedCategory && r.status === 'pending'
                     );
-                    const needSendProof = acceptedRequest && acceptedRequest.paymentStatus !== 'sent_pending_confirmation' && acceptedRequest.paymentStatus !== 'confirmed';
+                    const needSendProof = acceptedRequest && acceptedRequest.paymentStatus !== 'sent_pending_confirmation' && acceptedRequest.paymentStatus !== 'confirmed' && acceptedRequest.paymentStatus !== 'paid';
                     const waitingConfirmation = acceptedRequest && acceptedRequest.paymentStatus === 'sent_pending_confirmation';
-                    const confirmed = acceptedRequest && acceptedRequest.paymentStatus === 'confirmed';
+                    const confirmed = acceptedRequest && (acceptedRequest.paymentStatus === 'confirmed' || acceptedRequest.paymentStatus === 'paid');
 
                     if (needSendProof) {
                       return (
@@ -530,9 +529,9 @@ const ImprovementWidget = () => {
                             setAcceptedRequestForProof(acceptedRequest!);
                           }}
                           className="send-btn"
-                          style={{ background: '#ffa500', color: '#000' }}
+                          style={{ background: '#6366f1', color: '#fff' }}
                         >
-                          Send €{SESSION_PRICE_EUR} & proof
+                          Pay €{SESSION_PRICE_EUR} with Stripe
                         </button>
                       );
                     } else if (waitingConfirmation) {
@@ -589,7 +588,7 @@ const ImprovementWidget = () => {
               <strong>Category:</strong> {categories.find(c => c.id === selectedCategory)?.name}
             </p>
             <p style={{ margin: '4px 0 0', fontSize: '14px' }}>
-              <strong>Session:</strong> €{selectedGuide.sessionPriceEur ?? 50} — Send via PayPal (trainer&apos;s info) then submit proof; they confirm within 48h, then you book.
+              <strong>Session:</strong> €{selectedGuide.sessionPriceEur ?? 50} — After they accept, pay with Stripe, then book.
             </p>
           </div>
 
@@ -625,50 +624,19 @@ const ImprovementWidget = () => {
       )}
 
       {view === 'send_proof' && selectedGuide && acceptedRequestForProof && (
-        <div className="improvement-content">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-            <button onClick={() => { setView('guides'); setAcceptedRequestForProof(null); }} className="back-btn">← Back</button>
-            <h3 style={{ margin: 0, fontSize: '18px' }}>Send €{SESSION_PRICE_EUR} & proof to {selectedGuide.user?.name}</h3>
-          </div>
-          <p style={{ marginBottom: '12px', fontSize: '14px', color: '#6b7280' }}>
-            Send €{SESSION_PRICE_EUR} to the trainer&apos;s PayPal below. Then submit proof (e.g. transaction ID or screenshot URL). They have 48 hours to confirm; then you can book.
-          </p>
-          {selectedGuide.paypalInfo ? (
-            <div style={{ marginBottom: '16px', padding: '12px', background: '#f9fafb', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
-              <div style={{ fontSize: '12px', color: '#6b7280', marginBottom: '4px' }}>Trainer&apos;s PayPal (send €{SESSION_PRICE_EUR} here):</div>
-              <div style={{ fontFamily: 'monospace', wordBreak: 'break-all' }}>{selectedGuide.paypalInfo}</div>
-            </div>
-          ) : (
-            <p style={{ color: '#b45309', marginBottom: '12px' }}>This trainer has not set their PayPal info yet.</p>
-          )}
-          <label style={{ display: 'block', marginBottom: '6px', fontWeight: 600 }}>Proof of payment (required) *</label>
-          <textarea value={proofText} onChange={e => setProofText(e.target.value)} placeholder="e.g. Transaction ID or note" rows={3} style={{ width: '100%', padding: '10px', marginBottom: '10px', border: '2px solid #e5e7eb', borderRadius: '8px' }} />
-          <label style={{ display: 'block', marginBottom: '6px', fontWeight: 600 }}>Proof image URL (optional)</label>
-          <input type="text" value={proofImageUrl} onChange={e => setProofImageUrl(e.target.value)} placeholder="https://... screenshot" style={{ width: '100%', padding: '10px', marginBottom: '12px', border: '2px solid #e5e7eb', borderRadius: '8px' }} />
-          <button
-            onClick={async () => {
-              if (!proofText.trim()) { setError('Enter proof of payment'); return; }
-              setLoading(true);
-              setError('');
-              try {
-                await paymentAPI.submitPaymentProof(acceptedRequestForProof.id, proofText.trim(), proofImageUrl.trim() || undefined);
-                setView('guides');
-                setAcceptedRequestForProof(null);
-                loadMyRequests();
-                alert('Proof submitted. Trainer has up to 48 hours to confirm.');
-              } catch (err: any) {
-                setError(err.response?.data?.error || 'Failed');
-              } finally {
-                setLoading(false);
-              }
-            }}
-            className="select-user-btn"
-            disabled={loading || !selectedGuide.paypalInfo}
-            style={{ width: '100%' }}
-          >
-            {loading ? 'Submitting...' : 'Submit proof'}
-          </button>
-        </div>
+        <GuidePrepayPanel
+          requestId={acceptedRequestForProof.id}
+          guideName={selectedGuide.user?.name || 'guide'}
+          onPaid={() => {
+            setView('guides');
+            setAcceptedRequestForProof(null);
+            loadMyRequests();
+          }}
+          onBack={() => {
+            setView('guides');
+            setAcceptedRequestForProof(null);
+          }}
+        />
       )}
 
       {view === 'booking' && selectedGuide && (

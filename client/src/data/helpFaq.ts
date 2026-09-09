@@ -215,7 +215,7 @@ export const HELP_FAQ: HelpFaqItem[] = [
   {
     category: 'Social & games',
     q: 'Do I pay for AI crew help the same way as a human guide?',
-    a: 'Human guides still charge per session (PayPal/card); most of that goes to the person, with a platform fee. AI crew desks (outfit, face, bedroom/TermAct, lessons) give you 5 free helps. After that you need Plus, Gold, or Platinum for unlimited, or pay a one-time fee each time you get helped. That one-time money goes 100% to the app account, not a human guide. When you plan a date in chat, we ask once if you want tips from Ask [your guide].',
+    a: 'Human guides still charge per session (Stripe card checkout); most of that goes to the person, with a platform fee. AI crew desks (outfit, face, bedroom/TermAct, lessons) give you 5 free helps. After that you need Plus, Gold, or Platinum for unlimited, or pay a one-time fee each time you get helped. That one-time money goes 100% to the app account, not a human guide. When you plan a date in chat, we ask once if you want tips from Ask [your guide].',
     keywords: ['premium', 'pay', 'free helps', 'ai crew', 'termact', 'plus', 'gold', 'platinum'],
   },
   {

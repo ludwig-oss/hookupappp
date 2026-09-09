@@ -75,9 +75,7 @@ export const confessionAPI = {
       split: { guidePercent: number; platformPercent: number };
       aiSplit: { guidePercent: number; platformPercent: number };
       aiGuides: ConfessionAiGuide[];
-      paypalConfigured?: boolean;
       stripeConfigured?: boolean;
-      demoPayAllowed?: boolean;
     };
   },
 
@@ -124,16 +122,6 @@ export const confessionAPI = {
     return res.data as { session: ConfessionSessionView };
   },
 
-  createPayPalOrder: async (sessionId: string) => {
-    const res = await axios.post(`${API_URL}/sessions/${sessionId}/paypal/create-order`);
-    return res.data as { orderId: string; approvalUrl?: string; intent?: string };
-  },
-
-  capturePayPalOrder: async (sessionId: string, orderId: string) => {
-    const res = await axios.post(`${API_URL}/sessions/${sessionId}/paypal/capture`, { orderId, sessionId });
-    return res.data as { session: ConfessionSessionView; message: string };
-  },
-
   createStripeCheckout: async (sessionId: string) => {
     const res = await axios.post(`${API_URL}/sessions/${sessionId}/stripe/checkout`);
     return res.data as { url?: string; checkoutSessionId?: string };
@@ -144,11 +132,6 @@ export const confessionAPI = {
       sessionId,
       checkoutSessionId,
     });
-    return res.data as { session: ConfessionSessionView; message: string };
-  },
-
-  demoPay: async (sessionId: string) => {
-    const res = await axios.post(`${API_URL}/sessions/${sessionId}/demo-pay`);
     return res.data as { session: ConfessionSessionView; message: string };
   },
 

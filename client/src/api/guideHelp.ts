@@ -13,7 +13,6 @@ export interface GuideHelpStatus {
   paidCredits: number;
   priceEur: number;
   code?: 'OK' | 'GUIDE_HELP_REQUIRED';
-  paypalConfigured?: boolean;
   stripeConfigured?: boolean;
   error?: string;
 }
@@ -27,24 +26,12 @@ export const guideHelpAPI = {
     const response = await axios.post(`${API_URL}/consume`, { kind });
     return response.data;
   },
-  paypalOrder: async (): Promise<{ orderId: string; approvalUrl?: string; priceEur: number }> => {
-    const response = await axios.post(`${API_URL}/pay/paypal`);
-    return response.data;
-  },
-  paypalCapture: async (orderId: string): Promise<{ paid: boolean; status: GuideHelpStatus }> => {
-    const response = await axios.post(`${API_URL}/pay/paypal/capture`, { orderId });
-    return response.data;
-  },
   stripeCheckout: async (): Promise<{ url: string; sessionId: string; priceEur: number }> => {
     const response = await axios.post(`${API_URL}/pay/stripe`);
     return response.data;
   },
   stripeConfirm: async (sessionId: string): Promise<{ paid: boolean; status: GuideHelpStatus }> => {
     const response = await axios.post(`${API_URL}/pay/stripe/confirm`, { sessionId });
-    return response.data;
-  },
-  demoPay: async (): Promise<{ paid: boolean; status: GuideHelpStatus }> => {
-    const response = await axios.post(`${API_URL}/pay/demo`);
     return response.data;
   },
 };

@@ -140,31 +140,6 @@ const SettingsWidgetFull = () => {
       .finally(() => setWalletLoading(false));
   }, [activeTab]);
 
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    if (params.get('paypal_connect') !== 'return') return;
-    const merchantIdInPayPal = params.get('merchantIdInPayPal') || params.get('merchantId') || '';
-    if (!merchantIdInPayPal) return;
-    walletAPI
-      .completePaypalOnboarding({
-        merchantIdInPayPal,
-        permissionsGranted: params.get('permissionsGranted') || 'true',
-      })
-      .then(() => {
-        setWalletMessage('PayPal connected. Session earnings stay held until you withdraw.');
-        walletAPI.getMyWallet().then((s) => {
-          setWalletSummary(s);
-          setWalletPaypal(s.wallet.paypalEmail || '');
-        });
-      })
-      .catch((err: { response?: { data?: { error?: string } } }) => {
-        setWalletError(err.response?.data?.error || 'Could not finish PayPal connect');
-      })
-      .finally(() => {
-        window.history.replaceState({}, '', window.location.pathname);
-      });
-  }, []);
-
   const loadAllData = async () => {
     try {
       const [profileRes] = await Promise.all([
@@ -1588,39 +1563,19 @@ const SettingsWidgetFull = () => {
                   </div>
                 </div>
 
-                <p style={{ fontSize: 13, marginBottom: 10, color: walletSummary.paypalConnected ? '#065f46' : '#92400e' }}>
-                  {walletSummary.paypalConnected
-                    ? `PayPal connected · Merchant ${walletSummary.wallet.paypalMerchantId}`
-                    : walletSummary.wallet.paypalOnboardingStatus === 'pending'
-                      ? 'PayPal connection pending — finish setup in PayPal'
-                      : 'Connect PayPal so session payments can be held and released to you.'}
+                <p style={{ fontSize: 13, marginBottom: 10, color: walletSummary.wallet.paypalEmail ? '#065f46' : '#92400e' }}>
+                  {walletSummary.wallet.paypalEmail
+                    ? `Payout email on file: ${walletSummary.wallet.paypalEmail}`
+                    : 'Add a payout email so withdrawals can be sent to you after session earnings clear.'}
                 </p>
-                <button
-                  type="button"
-                  className="select-user-btn"
-                  style={{ marginBottom: 16, background: '#0070ba', color: '#fff', border: 'none' }}
-                  onClick={async () => {
-                    setWalletError('');
-                    setWalletMessage('');
-                    try {
-                      const r = await walletAPI.startPaypalOnboarding();
-                      if (r.actionUrl) window.location.href = r.actionUrl;
-                      else setWalletError('PayPal onboarding is not available. Check server PayPal partner settings.');
-                    } catch (err: any) {
-                      setWalletError(err.response?.data?.error || 'Could not start PayPal connect');
-                    }
-                  }}
-                >
-                  {walletSummary.paypalConnected ? 'Reconnect PayPal' : 'Connect PayPal'}
-                </button>
 
                 <div className="form-group" style={{ marginBottom: 12 }}>
-                  <label style={{ display: 'block', marginBottom: 6, fontWeight: 600, fontSize: 14 }}>PayPal email (fallback payouts)</label>
+                  <label style={{ display: 'block', marginBottom: 6, fontWeight: 600, fontSize: 14 }}>Payout email</label>
                   <input
                     type="email"
                     value={walletPaypal}
                     onChange={(e) => setWalletPaypal(e.target.value)}
-                    placeholder="you@paypal.com"
+                    placeholder="you@email.com"
                     style={{ width: '100%', padding: 12, border: '2px solid #e5e7eb', borderRadius: 8 }}
                   />
                 </div>
@@ -1633,14 +1588,14 @@ const SettingsWidgetFull = () => {
                     setWalletMessage('');
                     try {
                       await walletAPI.setPaypalEmail(walletPaypal);
-                      setWalletMessage('PayPal email saved.');
+                      setWalletMessage('Payout email saved.');
                       walletAPI.getMyWallet().then(setWalletSummary);
                     } catch (err: any) {
-                      setWalletError(err.response?.data?.error || 'Failed to save PayPal');
+                      setWalletError(err.response?.data?.error || 'Failed to save payout email');
                     }
                   }}
                 >
-                  Save PayPal
+                  Save payout email
                 </button>
 
                 <div className="form-group" style={{ marginBottom: 12 }}>

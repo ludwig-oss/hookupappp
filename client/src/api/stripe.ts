@@ -1,8 +1,13 @@
 import axios from 'axios';
 import { API_BASE } from './config';
-import { getAuthHeaders } from './authHeaders';
+import { getAuthToken } from '../lib/authStorage';
 
 const API_URL = `${API_BASE}/api/stripe`;
+
+function authHeaders(): Record<string, string> {
+  const token = getAuthToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
 
 export type StripeCheckoutKind =
   | 'ai_guide_help'
@@ -17,7 +22,7 @@ export const stripeAPI = {
     return res.data as { stripeConfigured: boolean };
   },
 
-  /** Hosted Checkout — redirects via returned url */
+  /** Hosted Checkout — redirect the browser to returned url */
   createCheckoutSession: async (body: {
     kind: StripeCheckoutKind;
     amountEur?: number;
@@ -29,7 +34,7 @@ export const stripeAPI = {
     metadata?: Record<string, string>;
   }): Promise<{ url: string; sessionId: string }> => {
     const res = await axios.post(`${API_URL}/create-checkout-session`, body, {
-      headers: getAuthHeaders(),
+      headers: authHeaders(),
     });
     const url = res.data?.url || res.data?.session?.url;
     if (!url) throw new Error('Stripe did not return a checkout URL');
@@ -37,11 +42,7 @@ export const stripeAPI = {
   },
 
   confirmSession: async (sessionId: string) => {
-    const res = await axios.post(
-      `${API_URL}/confirm-session`,
-      { sessionId },
-      { headers: getAuthHeaders() }
-    );
+    const res = await axios.post(`${API_URL}/confirm-session`, { sessionId }, { headers: authHeaders() });
     return res.data;
   },
 };

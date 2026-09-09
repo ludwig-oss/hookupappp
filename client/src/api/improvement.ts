@@ -112,7 +112,7 @@ export interface GuideRequest {
   message?: string;
   createdAt: string;
   respondedAt?: string | null;
-  paymentStatus?: 'pending' | 'sent_pending_confirmation' | 'confirmed';
+  paymentStatus?: 'pending' | 'sent_pending_confirmation' | 'confirmed' | 'paid';
   paymentProofText?: string | null;
   paymentProofImageUrl?: string | null;
   paymentSentAt?: string | null;
@@ -407,16 +407,9 @@ export const walletAPI = {
     const res = await axios.get(`${API_URL}/wallet`);
     return res.data;
   },
+  /** Payout contact email (legacy path still named /wallet/paypal). */
   setPaypalEmail: async (paypalEmail: string) => {
     await axios.put(`${API_URL}/wallet/paypal`, { paypalEmail });
-  },
-  startPaypalOnboarding: async () => {
-    const res = await axios.post(`${API_URL}/wallet/paypal/onboard`);
-    return res.data as { actionUrl?: string; trackingId?: string; status?: string };
-  },
-  completePaypalOnboarding: async (params: { merchantIdInPayPal: string; permissionsGranted?: string }) => {
-    const res = await axios.post(`${API_URL}/wallet/paypal/onboard/complete`, params);
-    return res.data;
   },
   setBankLabel: async (bankAccountLabel: string) => {
     await axios.put(`${API_URL}/wallet/bank`, { bankAccountLabel });
@@ -451,15 +444,6 @@ export const paymentAPI = {
 
   confirmPaymentReceived: async (requestId: string): Promise<void> => {
     await axios.post(`${API_URL}/guides/requests/confirm-payment`, { requestId });
-  },
-
-  createPayPalOrder: async (requestId: string): Promise<{ orderId: string; approvalUrl?: string }> => {
-    const res = await axios.post(`${API_URL}/payments/paypal/create-order`, { requestId });
-    return res.data;
-  },
-
-  capturePayPalOrder: async (orderId: string, requestId: string): Promise<void> => {
-    await axios.post(`${API_URL}/payments/paypal/capture`, { orderId, requestId });
   },
 
   createGuideStripePayment: async (requestId: string): Promise<{ clientSecret: string; paymentIntentId: string }> => {

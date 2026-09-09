@@ -345,7 +345,6 @@ const Dashboard = () => {
     const params = new URLSearchParams(window.location.search);
     if (params.get('aiHelp') !== 'success') return;
     const stripeSession = params.get('session_id');
-    const paypalOrder = params.get('token') || '';
     const finish = () => {
       window.history.replaceState({}, '', window.location.pathname);
       window.dispatchEvent(new CustomEvent('ai-guide:open', { detail: {} }));
@@ -354,13 +353,6 @@ const Dashboard = () => {
       guideHelpAPI
         .stripeConfirm(stripeSession)
         .catch((err) => console.error('AI help Stripe confirm:', err))
-        .finally(finish);
-      return;
-    }
-    if (paypalOrder) {
-      guideHelpAPI
-        .paypalCapture(paypalOrder)
-        .catch((err) => console.error('AI help PayPal capture:', err))
         .finally(finish);
       return;
     }
@@ -378,16 +370,16 @@ const Dashboard = () => {
     }
     if (params.get('textingHelp') !== 'success') return;
     const sessionId = params.get('sessionId');
-    const orderId = params.get('token') || '';
-    if (!sessionId) return;
+    const checkoutSessionId = params.get('session_id') || '';
+    if (!sessionId || !checkoutSessionId) return;
     textingHelpAPI
-      .capturePayPal(sessionId, orderId)
+      .confirmCheckout(sessionId, checkoutSessionId)
       .then(({ session }) => {
         setResumeTextingHelpId(session.id);
         setOpenChatWithUserId(session.otherUserId);
         setOpenWidget('chat');
       })
-      .catch((err) => console.error('Texting help PayPal capture:', err))
+      .catch((err) => console.error('Texting help Stripe confirm:', err))
       .finally(() => {
         window.history.replaceState({}, '', window.location.pathname);
       });

@@ -14,6 +14,7 @@ import {
   Booking,
   GuideWalletSummary,
 } from '../../api/improvement';
+import { stripeAPI } from '../../api/stripe';
 import CoachVoteWidget from './CoachVoteWidget';
 import GuidePrepayPanel from './GuidePrepayPanel';
 import { prepareAndUploadFile } from '../../lib/uploadMedia';
@@ -89,39 +90,21 @@ export default function CompatibilityWidget() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    if (params.get('paypal') === 'success' && params.get('requestId')) {
-      const requestId = params.get('requestId')!;
-      const orderId = params.get('token') || '';
-      if (orderId) {
-        paymentAPI
-          .capturePayPalOrder(orderId, requestId)
-          .then(() => {
-            alert('PayPal payment complete — session is prepaid. Recording is forbidden during your meeting.');
-            loadMyRequests();
-          })
-          .catch((err) => console.error('PayPal capture:', err))
-          .finally(() => {
-            window.history.replaceState({}, '', window.location.pathname);
-          });
-      }
-    }
-    if (params.get('paypal_connect') === 'return') {
-      const merchantIdInPayPal = params.get('merchantIdInPayPal') || params.get('merchantId') || '';
-      if (merchantIdInPayPal) {
-        walletAPI
-          .completePaypalOnboarding({
-            merchantIdInPayPal,
-            permissionsGranted: params.get('permissionsGranted') || 'true',
-          })
-          .then(() => {
-            alert('PayPal connected. Session earnings will be held until you withdraw.');
-            walletAPI.getMyWallet().then(setWalletSummary).catch(() => {});
-          })
-          .catch((err) => console.error('PayPal onboard:', err))
-          .finally(() => {
-            window.history.replaceState({}, '', window.location.pathname);
-          });
-      }
+    const stripeOk =
+      params.get('stripe') === 'success' &&
+      (params.get('kind') === 'guide_request' || params.get('requestId'));
+    if (stripeOk && params.get('session_id') && params.get('requestId')) {
+      const sessionId = params.get('session_id')!;
+      stripeAPI
+        .confirmSession(sessionId)
+        .then(() => {
+          alert('Stripe payment complete — session is prepaid. Recording is forbidden during your meeting.');
+          loadMyRequests();
+        })
+        .catch((err) => console.error('Stripe confirm:', err))
+        .finally(() => {
+          window.history.replaceState({}, '', window.location.pathname);
+        });
     }
   }, []);
 
@@ -1286,7 +1269,7 @@ export default function CompatibilityWidget() {
           <button type="button" onClick={() => setView('guides')} style={{ marginBottom: '12px', background: 'transparent', border: '2px solid #00d4ff', color: '#00d4ff', padding: '8px 14px', borderRadius: '8px', fontFamily: 'Orbitron, monospace', cursor: 'pointer' }}>← Back</button>
           <div style={cardStyle()}>
             <div style={{ marginBottom: '12px' }}>Send request to <strong style={{ color: '#00d4ff' }}>{selectedGuide.user?.name}</strong></div>
-            <div style={{ marginBottom: '12px', fontSize: '12px', color: '#9ca3af' }}>€{selectedGuide.sessionPriceEur ?? SESSION_PRICE_EUR} per session. After they accept, you pay via PayPal and then book a time.</div>
+            <div style={{ marginBottom: '12px', fontSize: '12px', color: '#9ca3af' }}>€{selectedGuide.sessionPriceEur ?? SESSION_PRICE_EUR} per session. After they accept, you pay via Stripe and then book a time.</div>
             <textarea value={requestMessage} onChange={e => setRequestMessage(e.target.value)} placeholder="Message (optional)" rows={3} style={{ width: '100%', padding: '10px', marginBottom: '12px', background: 'rgba(0,0,0,0.5)', border: '2px solid rgba(0, 212, 255, 0.5)', borderRadius: '8px', color: '#fff', fontFamily: 'Orbitron, monospace' }} />
             <button type="button" onClick={handleSubmitRequest} disabled={loading} style={{ padding: '12px 20px', background: 'rgba(255, 0, 255, 0.3)', border: '2px solid #ff00ff', borderRadius: '8px', color: '#ff00ff', fontFamily: 'Orbitron, monospace', cursor: 'pointer' }}>{loading ? 'Sending...' : 'Send request'}</button>
           </div>
@@ -1732,34 +1715,13 @@ export default function CompatibilityWidget() {
                     <div style={{ fontSize: 11, color: '#9ca3af' }}>Available (prizes): €{walletSummary.wallet.availableBalanceEur.toFixed(2)}</div>
                     <div style={{ fontSize: 11, color: '#9ca3af' }}>Pending withdrawal: €{walletSummary.wallet.pendingBalanceEur.toFixed(2)}</div>
                     <div style={{ fontSize: 11, color: '#9ca3af' }}>Total earned: €{walletSummary.wallet.totalEarnedEur.toFixed(2)}</div>
-                    <div style={{ fontSize: 11, color: walletSummary.paypalConnected ? '#22c55e' : '#fbbf24', marginTop: 6 }}>
-                      {walletSummary.paypalConnected
-                        ? `PayPal connected · Merchant ${walletSummary.wallet.paypalMerchantId}`
-                        : walletSummary.wallet.paypalOnboardingStatus === 'pending'
-                          ? 'PayPal connection pending — finish setup in PayPal'
-                          : 'PayPal not connected yet'}
+                    <div style={{ fontSize: 11, color: walletSummary.wallet.paypalEmail ? '#22c55e' : '#fbbf24', marginTop: 6 }}>
+                      {walletSummary.wallet.paypalEmail
+                        ? `Payout email: ${walletSummary.wallet.paypalEmail}`
+                        : 'Add a payout email for withdrawals'}
                     </div>
                   </div>
-                  <button
-                    type="button"
-                    disabled={loading}
-                    onClick={async () => {
-                      setLoading(true);
-                      try {
-                        const r = await walletAPI.startPaypalOnboarding();
-                        if (r.actionUrl) window.location.href = r.actionUrl;
-                        else setError('PayPal onboarding is not available. Check server PayPal partner settings.');
-                      } catch (err: unknown) {
-                        setError((err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Could not start PayPal connect');
-                      } finally {
-                        setLoading(false);
-                      }
-                    }}
-                    style={{ padding: '10px 18px', marginTop: 10, marginBottom: 12, background: 'rgba(0,112,186,0.35)', border: '2px solid #0070ba', color: '#fff', borderRadius: 8, cursor: 'pointer' }}
-                  >
-                    {walletSummary.paypalConnected ? 'Reconnect PayPal' : 'Connect PayPal'}
-                  </button>
-                  <label style={{ display: 'block', marginTop: 4, marginBottom: 6, color: '#00d4ff', fontSize: 12 }}>PayPal email (fallback payouts)</label>
+                  <label style={{ display: 'block', marginTop: 4, marginBottom: 6, color: '#00d4ff', fontSize: 12 }}>Payout email</label>
                   <input
                     type="text"
                     value={walletPaypal || walletSummary.wallet.paypalEmail || ''}
@@ -1773,16 +1735,17 @@ export default function CompatibilityWidget() {
                       setLoading(true);
                       try {
                         await walletAPI.setPaypalEmail(walletPaypal || walletSummary.wallet.paypalEmail || '');
-                        alert('PayPal saved');
+                        alert('Payout email saved');
+                        walletAPI.getMyWallet().then(setWalletSummary).catch(() => {});
                       } catch (err: unknown) {
                         setError((err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Failed');
                       } finally {
                         setLoading(false);
                       }
                     }}
-                    style={{ padding: '8px 14px', marginBottom: 12, background: 'rgba(0,112,186,0.3)', border: '2px solid #0070ba', color: '#fff', borderRadius: 8, cursor: 'pointer' }}
+                    style={{ padding: '8px 14px', marginBottom: 12, background: 'rgba(0,212,255,0.2)', border: '2px solid #00d4ff', color: '#fff', borderRadius: 8, cursor: 'pointer' }}
                   >
-                    Save PayPal email
+                    Save payout email
                   </button>
                   <label style={{ display: 'block', marginBottom: 6, color: '#00d4ff', fontSize: 12 }}>Withdraw amount (€)</label>
                   <input

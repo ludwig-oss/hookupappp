@@ -106,6 +106,50 @@ function nextHair(current: HairLook, message: string): HairLook {
   return current;
 }
 
+/** Design a custom cut from free text (barbershop “create your own”). */
+export function designHairFromPrompt(message: string, current?: HairLook | null): { hair: HairLook; reply: string } {
+  const q = (message || '').trim();
+  if (q.length < 2) {
+    return {
+      hair: current || HAIR_CATALOG[0],
+      reply: 'Describe the cut — length, texture, part, vibe. Or pick a style from the list.',
+    };
+  }
+  const fromCatalog = nextHair(current || HAIR_CATALOG[0], q);
+  if (fromCatalog.id !== (current?.id || '') && /\b(braid|bun|crop|fade|slick|wave|curtain|twist|layer|cornrow)\b/i.test(q)) {
+    return {
+      hair: fromCatalog,
+      reply: `I mapped that to ${fromCatalog.title}. Switch styles on the left, or keep describing until it feels right.`,
+    };
+  }
+  let family: HairLook['family'] = current?.family || 'medium';
+  let density: HairLook['density'] = current?.density || 'soft';
+  if (/\b(short|crop|fade|buzz)\b/i.test(q)) family = 'short';
+  else if (/\b(long|wave|bun)\b/i.test(q)) family = 'long';
+  else if (/\b(slick)\b/i.test(q)) family = 'slick';
+  else if (/\b(braid|cornrow|protective|locs)\b/i.test(q)) family = 'protective';
+  else if (/\b(shoulder|curtain|layer|blowout|mid)\b/i.test(q)) family = 'medium';
+  if (/\b(tight|neat|sharp|clean)\b/i.test(q)) density = 'tight';
+  else if (/\b(volume|big|full|fluffy)\b/i.test(q)) density = 'voluminous';
+  else if (/\b(soft|loose|natural)\b/i.test(q)) density = 'soft';
+
+  const title = q.length > 48 ? `${q.slice(0, 45)}…` : q;
+  const hair: HairLook = {
+    id: `hair-custom-${Date.now().toString(36)}`,
+    title: title.replace(/^./, (c) => c.toUpperCase()),
+    vibe: 'custom design',
+    family,
+    density,
+    genderFit: 'any',
+    prompt: q,
+    notes: 'Designed with your guide in the barbershop. Upload a reference photo if you want that exact shape on your head.',
+  };
+  return {
+    hair,
+    reply: `Custom cut locked: ${hair.title}. Preview is on your face — upload a reference photo to match someone else’s shape, or tweak the description.`,
+  };
+}
+
 /**
  * Re-render only the named element. Unmentioned outfit/hair stays put.
  */

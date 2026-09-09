@@ -3,8 +3,10 @@ import { authenticateToken } from '../middleware/auth.js';
 import {
   approveAppearanceHandler,
   deleteAppearanceLookHandler,
+  designHairHandler,
   iterateAppearanceHandler,
   listAppearanceLooksHandler,
+  listHairCatalogHandler,
   scanAppearanceHandler,
   styleAppearanceHandler,
 } from '../controllers/appearanceController.js';
@@ -17,5 +19,7 @@ router.post('/iterate', iterateAppearanceHandler);
 router.post('/approve', approveAppearanceHandler);
 router.get('/looks', listAppearanceLooksHandler);
 router.delete('/looks/:id', deleteAppearanceLookHandler);
+router.get('/hair', listHairCatalogHandler);
+router.post('/hair/design', designHairHandler);
 
 export default router;

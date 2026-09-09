@@ -168,6 +168,15 @@
   gap: 12px;
 }
 
+.fashion-compare-label {
+  margin: 0 0 8px;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #f59e0b;
+  font-weight: 700;
+}
+
 .fashion-card {
   display: flex;
   flex-direction: column;
@@ -392,14 +401,85 @@
 }
 
 @media (max-width: 860px) {
+  .fashion-desk {
+    padding: 0 8px 12px;
+  }
+
+  .fashion-desk-bar {
+    gap: 6px;
+    margin-bottom: 6px;
+  }
+
+  .fashion-desk-tabs button {
+    padding: 5px 9px;
+    font-size: 12px;
+  }
+
+  .fashion-ask p {
+    font-size: 13px;
+  }
+
+  .fashion-face-row {
+    padding: 8px;
+    gap: 8px;
+  }
+
+  .fashion-face-row p {
+    min-width: 0;
+    flex: 1 1 100%;
+    font-size: 11px;
+  }
+
+  .fashion-ask-row {
+    flex-wrap: wrap;
+  }
+
+  .fashion-ask-row input {
+    flex: 1 1 100%;
+    padding: 10px 12px;
+  }
+
   .fashion-compare-wrap {
     grid-template-columns: 1fr;
+    gap: 10px;
   }
+
+  /* Keep A | B side-by-side on phones so compare still reads as a pair */
   .fashion-pair {
-    grid-template-columns: 1fr;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
   }
+
   .fashion-card-photo {
-    min-height: 420px;
-    max-height: none;
+    min-height: 180px;
+    max-height: 38vh;
+  }
+
+  .fashion-card-copy {
+    padding: 8px;
+  }
+
+  .fashion-card-copy h3 {
+    font-size: 13px;
+  }
+
+  .fashion-card-copy p,
+  .fashion-card-copy li {
+    font-size: 11px;
+  }
+
+  .fashion-card-actions {
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 8px;
+  }
+
+  .fashion-card-actions button {
+    padding: 8px 10px;
+    font-size: 11px;
+  }
+
+  .fashion-critic {
+    padding: 10px;
   }
 }

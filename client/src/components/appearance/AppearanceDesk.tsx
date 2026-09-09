@@ -5,20 +5,23 @@ import {
   appearanceAPI,
   type AppearanceAngle,
   type CompleteLook,
+  type HairLook,
   type ScanResponse,
   type SavedAppearanceLook,
 } from '../../api/appearance';
 import { measureFace, readAngleFile } from '../../lib/appearanceFaceMetrics';
 import { paintAppearanceAfter } from '../../lib/appearanceAfterCanvas';
 import { paintFashionTryOn } from '../../lib/fashionTryOnCanvas';
+import { paintHairTryOn } from '../../lib/hairTryOnCanvas';
 import { speakGuideLine } from '../../lib/aiGuideSpeech';
+import { prepareAndUploadFile } from '../../lib/uploadMedia';
 import './AppearanceDesk.css';
 
 function speakLine(guide: AiGuideCharacter, text: string, onStart: () => void, onEnd: () => void) {
   void speakGuideLine(guide.voice, text, onStart, onEnd);
 }
 
-type Tab = 'scan' | 'after' | 'look' | 'compare' | 'wardrobe';
+type Tab = 'scan' | 'after' | 'look' | 'hair' | 'compare' | 'wardrobe';
 
 function AfterPane({
   src,
@@ -62,6 +65,35 @@ function LookPreview({ look, personUrl }: { look: CompleteLook; personUrl: strin
   );
 }
 
+function HairPreview({
+  faceUrl,
+  hair,
+  refHairUrl,
+}: {
+  faceUrl: string | null;
+  hair: HairLook | null;
+  refHairUrl: string | null;
+}) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    canvas.width = 720;
+    canvas.height = 960;
+    void paintHairTryOn(canvas, faceUrl, {
+      family: hair?.family,
+      density: hair?.density,
+      refHairUrl,
+      color: '#241810',
+    });
+  }, [faceUrl, hair?.id, hair?.family, hair?.density, refHairUrl]);
+  return (
+    <div className="appear-hair-stage">
+      <canvas ref={canvasRef} className="appear-hair-canvas" />
+    </div>
+  );
+}
+
 export default function AppearanceDesk({
   guide,
   onClose,
@@ -89,8 +121,14 @@ export default function AppearanceDesk({
   const [liked, setLiked] = useState<boolean | null>(null);
   const [group, setGroup] = useState('First dates');
   const [wardrobe, setWardrobe] = useState<SavedAppearanceLook[]>([]);
+  const [hairCatalog, setHairCatalog] = useState<HairLook[]>([]);
+  const [selectedHair, setSelectedHair] = useState<HairLook | null>(null);
+  const [hairRefUrl, setHairRefUrl] = useState<string | null>(null);
+  const [hairDesign, setHairDesign] = useState('');
+  const [hairChat, setHairChat] = useState<{ role: 'guide' | 'you'; text: string }[]>([]);
   const asked = useRef(false);
   const compareRef = useRef<HTMLDivElement>(null);
+  const hairRefInput = useRef<HTMLInputElement>(null);
   const [compareW, setCompareW] = useState(0);
 
   useEffect(() => {
@@ -101,7 +139,18 @@ export default function AppearanceDesk({
 
   useEffect(() => {
     appearanceAPI.looks().then((r) => setWardrobe(r.items)).catch(() => {});
+    appearanceAPI
+      .hairCatalog()
+      .then((r) => {
+        setHairCatalog(r.items || []);
+        setSelectedHair((prev) => prev || r.items?.[0] || null);
+      })
+      .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (look?.hair) setSelectedHair(look.hair);
+  }, [look?.hair?.id]);
 
   useEffect(() => {
     const el = compareRef.current;
@@ -137,18 +186,17 @@ export default function AppearanceDesk({
         measureFace(previews.leftProfile),
         measureFace(previews.rightProfile),
       ]);
-      const r = await appearanceAPI.scan(
-        {
-          frontal: { dataUrl: previews.frontal, metrics: frontal },
-          leftProfile: { dataUrl: previews.leftProfile, metrics: leftProfile },
-          rightProfile: { dataUrl: previews.rightProfile, metrics: rightProfile },
-          occasion,
-          guideId: guide.id,
-        }
-      );
+      const r = await appearanceAPI.scan({
+        frontal: { dataUrl: previews.frontal, metrics: frontal },
+        leftProfile: { dataUrl: previews.leftProfile, metrics: leftProfile },
+        rightProfile: { dataUrl: previews.rightProfile, metrics: rightProfile },
+        occasion,
+        guideId: guide.id,
+      });
       setScan(r);
       setLook(r.style.optionA);
       setOptionB(r.style.optionB);
+      setSelectedHair(r.style.optionA.hair);
       setLiked(null);
       setChat([{ role: 'guide', text: r.style.critic.line }]);
       setTab('after');
@@ -170,11 +218,64 @@ export default function AppearanceDesk({
     try {
       const r = await appearanceAPI.iterate(look, message);
       setLook(r.look);
+      setSelectedHair(r.look.hair);
       setLiked(null);
       setChat((c) => [...c, { role: 'guide', text: r.reply }]);
       speakLine(guide, r.reply, () => onSpeaking(true), () => onSpeaking(false));
     } catch {
       setError('Could not change that piece.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const pickHair = (h: HairLook) => {
+    setSelectedHair(h);
+    setHairRefUrl(null);
+    if (look) {
+      setLook({ ...look, hair: h, id: `${look.outfit.id}__${h.id}` });
+      setLiked(null);
+    }
+  };
+
+  const onHairRefFile = async (file: File | null) => {
+    if (!file) return;
+    setBusy(true);
+    setError('');
+    try {
+      const url = await prepareAndUploadFile(file, 'hair-ref');
+      setHairRefUrl(url);
+      const line = `${first}: Got the reference. That hair shape is on your head in the preview — switch styles on the left anytime.`;
+      setHairChat((c) => [...c, { role: 'guide', text: line }]);
+      speakLine(guide, line, () => onSpeaking(true), () => onSpeaking(false));
+    } catch {
+      setError('Could not upload that hairstyle reference.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const designHair = async () => {
+    const message = hairDesign.trim();
+    if (message.length < 2) return;
+    setHairDesign('');
+    setHairChat((c) => [...c, { role: 'you', text: message }]);
+    setBusy(true);
+    try {
+      const r = await appearanceAPI.designHair(message, selectedHair, guide.id);
+      setSelectedHair(r.hair);
+      setHairCatalog((list) => {
+        if (list.some((x) => x.id === r.hair.id)) return list;
+        return [r.hair, ...list];
+      });
+      if (look) {
+        setLook({ ...look, hair: r.hair, id: `${look.outfit.id}__${r.hair.id}` });
+        setLiked(null);
+      }
+      setHairChat((c) => [...c, { role: 'guide', text: r.reply }]);
+      speakLine(guide, r.reply, () => onSpeaking(true), () => onSpeaking(false));
+    } catch {
+      setError('Could not design that cut.');
     } finally {
       setBusy(false);
     }
@@ -199,15 +300,16 @@ export default function AppearanceDesk({
   };
 
   const personUrl = previews.frontal || (typeof user?.profilePicture === 'string' ? user.profilePicture : null);
+  const hairList = hairCatalog.length ? hairCatalog : selectedHair ? [selectedHair] : [];
 
   return (
     <div className="appear-desk">
       <div className="appear-bar">
         <strong>Face & look · {first}</strong>
         <div className="appear-tabs">
-          {(['scan', 'after', 'look', 'compare', 'wardrobe'] as Tab[]).map((t) => (
+          {(['scan', 'after', 'look', 'hair', 'compare', 'wardrobe'] as Tab[]).map((t) => (
             <button key={t} type="button" className={tab === t ? 'is-on' : ''} onClick={() => setTab(t)}>
-              {t === 'after' ? 'After' : t === 'look' ? 'Look' : t[0].toUpperCase() + t.slice(1)}
+              {t === 'after' ? 'After' : t === 'look' ? 'Look' : t === 'hair' ? 'Hair' : t[0].toUpperCase() + t.slice(1)}
             </button>
           ))}
           <button type="button" className="appear-close" onClick={onClose}>
@@ -313,7 +415,9 @@ export default function AppearanceDesk({
             <h3>
               {look.outfit.title} · {look.hair.title}
             </h3>
-            <p>{look.outfit.vibe} · {look.hair.vibe}</p>
+            <p>
+              {look.outfit.vibe} · {look.hair.vibe}
+            </p>
             <ul>
               {look.outfit.pieces.map((p) => (
                 <li key={p}>{p}</li>
@@ -326,6 +430,9 @@ export default function AppearanceDesk({
               </button>
               <button type="button" className={liked === false ? 'is-on' : ''} onClick={() => void answerLike(false)}>
                 No, change it
+              </button>
+              <button type="button" className="ghost" onClick={() => setTab('hair')}>
+                Open barbershop
               </button>
               <input value={group} onChange={(e) => setGroup(e.target.value)} placeholder="Folder" />
             </div>
@@ -358,6 +465,93 @@ export default function AppearanceDesk({
         </div>
       )}
 
+      {tab === 'hair' && (
+        <div className="appear-barber">
+          <aside className="appear-barber-menu">
+            <header>
+              <strong>{first.toUpperCase()} · BARBERS</strong>
+              <span>
+                HAIRSTYLES {selectedHair ? hairList.findIndex((h) => h.id === selectedHair.id) + 1 : 0} /{' '}
+                {Math.max(hairList.length, 1)}
+              </span>
+            </header>
+            <ul className="appear-barber-list">
+              {hairList.map((h) => (
+                <li key={h.id}>
+                  <button type="button" className={selectedHair?.id === h.id ? 'is-on' : ''} onClick={() => pickHair(h)}>
+                    <span>{h.title}</span>
+                    <em>{h.family}</em>
+                  </button>
+                </li>
+              ))}
+            </ul>
+            <div className="appear-barber-tools">
+              <input
+                ref={hairRefInput}
+                type="file"
+                accept="image/*"
+                hidden
+                onChange={(e) => void onHairRefFile(e.target.files?.[0] || null)}
+              />
+              <button type="button" className="ghost" disabled={busy} onClick={() => hairRefInput.current?.click()}>
+                {hairRefUrl ? 'Change hair photo' : 'Upload hair reference'}
+              </button>
+              {hairRefUrl && (
+                <button type="button" className="ghost" onClick={() => setHairRefUrl(null)}>
+                  Clear reference
+                </button>
+              )}
+            </div>
+            <form
+              className="appear-barber-design"
+              onSubmit={(e) => {
+                e.preventDefault();
+                void designHair();
+              }}
+            >
+              <p>{first} can design a cut with you — describe it.</p>
+              <input
+                value={hairDesign}
+                onChange={(e) => setHairDesign(e.target.value)}
+                placeholder="e.g. soft curtain bangs, matte texture"
+                disabled={busy}
+              />
+              <button type="submit" disabled={busy || hairDesign.trim().length < 2}>
+                Design with {first}
+              </button>
+            </form>
+            <div className="appear-chat-log appear-barber-chat">
+              {hairChat.map((m, i) => (
+                <p key={i} className={m.role === 'you' ? 'is-you' : ''}>
+                  {m.text}
+                </p>
+              ))}
+            </div>
+          </aside>
+          <div className="appear-barber-preview">
+            <HairPreview faceUrl={personUrl} hair={selectedHair} refHairUrl={hairRefUrl} />
+            <p className="appear-barber-caption">
+              {hairRefUrl
+                ? 'Reference hair on your face — switch styles on the left to compare.'
+                : selectedHair
+                  ? `${selectedHair.title} · ${selectedHair.notes}`
+                  : 'Pick a style or upload a hair reference photo.'}
+            </p>
+            {!personUrl && (
+              <p className="appear-note">Upload your frontal scan (or set a profile photo) so hair sits on your head.</p>
+            )}
+            <div className="appear-like-row">
+              <button type="button" onClick={() => setTab('look')} disabled={!look}>
+                Apply to look
+              </button>
+              <button type="button" className="ghost" onClick={() => setTab('compare')} disabled={!look || !optionB}>
+                Compare outfits
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {tab === 'compare' && look && optionB && (
         <div className="appear-compare-wrap">
           <div className="appear-compare" ref={compareRef}>
@@ -383,15 +577,16 @@ export default function AppearanceDesk({
           </div>
           {scan && (
             <aside className="appear-critic">
-              <p className="appear-winner">
-                Winner: Option {scan.style.critic.winner} · hair harmony scored
-              </p>
+              <p className="appear-winner">Winner: Option {scan.style.critic.winner} · hair harmony scored</p>
               <p>{scan.style.critic.line}</p>
               <ul>
                 {scan.style.critic.reasons.map((r) => (
                   <li key={r}>{r}</li>
                 ))}
               </ul>
+              <button type="button" className="ghost" onClick={() => setTab('hair')}>
+                Open barbershop
+              </button>
             </aside>
           )}
         </div>

@@ -559,6 +559,7 @@ export default function FashionDesk({
       {tab === 'compare' && result && (
         <div className="fashion-compare-wrap">
           <div>
+            <p className="fashion-compare-label">Compare outfits · Option A vs Option B</p>
             <div className="fashion-pair">
               <LookPane
                 look={result.optionA}

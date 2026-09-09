@@ -395,16 +395,35 @@
 }
 
 @media (max-width: 800px) {
+  .ai-studio-overlay {
+    padding: 0;
+  }
+
+  .ai-studio-top {
+    padding: 10px 12px 6px;
+    gap: 8px;
+  }
+
+  .ai-studio-search {
+    padding: 0 12px 8px;
+  }
+
   .ai-stage {
     grid-template-columns: 1fr;
+    gap: 10px;
+    padding: 10px 12px;
   }
+
   .ai-featured {
-    height: 180px;
+    height: 140px;
   }
+
   .ai-kind {
     grid-template-columns: 1fr;
   }
+
   .ai-blocks {
     grid-template-columns: 1fr 1fr;
+    gap: 8px;
   }
 }

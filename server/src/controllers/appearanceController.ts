@@ -5,7 +5,7 @@
 
 import { Request, Response } from 'express';
 import { getGuide } from '../data/aiGuideCatalog.js';
-import { WELLNESS_HABITS } from '../data/appearanceCatalog.js';
+import { HAIR_CATALOG, WELLNESS_HABITS, type HairLook } from '../data/appearanceCatalog.js';
 import { getUserById } from '../models/user.js';
 import {
   deleteAppearanceLook,
@@ -16,7 +16,12 @@ import { analyzeAppearance } from '../services/appearanceAnalysis.js';
 import { generateAfterResults } from '../services/appearanceAfter.js';
 import { critiqueCompleteLooks } from '../services/appearanceCritic.js';
 import { validateThreeAngles, type AnglePayload } from '../services/appearanceScan.js';
-import { autoChooseLooks, iterateLook, type CompleteLook } from '../services/appearanceStyling.js';
+import {
+  autoChooseLooks,
+  designHairFromPrompt,
+  iterateLook,
+  type CompleteLook,
+} from '../services/appearanceStyling.js';
 
 function asAngle(body: unknown): AnglePayload | null {
   const row = body as { dataUrl?: string; metrics?: AnglePayload['metrics'] } | null;
@@ -180,5 +185,33 @@ export const deleteAppearanceLookHandler = async (req: Request, res: Response) =
   } catch (error) {
     console.error('Appearance wardrobe delete error:', error);
     res.status(500).json({ error: 'Could not delete look' });
+  }
+};
+
+export const listHairCatalogHandler = async (_req: Request, res: Response) => {
+  try {
+    res.json({ items: HAIR_CATALOG });
+  } catch (error) {
+    console.error('Hair catalog error:', error);
+    res.status(500).json({ error: 'Could not load hairstyles.' });
+  }
+};
+
+export const designHairHandler = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).userId as string | undefined;
+    if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+    const message = String(req.body?.message || '');
+    const current = (req.body?.hair as HairLook | undefined) || null;
+    const designed = designHairFromPrompt(message, current);
+    const guideId = String(req.body?.guideId || 'elena');
+    const first = ((getGuide(guideId) || getGuide('elena'))?.name || 'Elena').split(' ')[0];
+    res.json({
+      hair: designed.hair,
+      reply: `${first}: ${designed.reply}`,
+    });
+  } catch (error) {
+    console.error('Design hair error:', error);
+    res.status(500).json({ error: 'Could not design that cut.' });
   }
 };

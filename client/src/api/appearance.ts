@@ -162,4 +162,12 @@ export const appearanceAPI = {
   remove: async (id: string) => {
     await axios.delete(`${API_URL}/looks/${id}`);
   },
+  hairCatalog: async () => {
+    const response = await axios.get(`${API_URL}/hair`);
+    return response.data as { items: HairLook[] };
+  },
+  designHair: async (message: string, hair?: HairLook | null, guideId?: string) => {
+    const response = await axios.post(`${API_URL}/hair/design`, { message, hair, guideId });
+    return response.data as { hair: HairLook; reply: string };
+  },
 };

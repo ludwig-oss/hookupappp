@@ -285,6 +285,7 @@ export default function LoveFeedWidget({ onShareToFriends }: { onShareToFriends?
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [selectedMediaType, setSelectedMediaType] = useState<'image' | 'video' | null>(null);
   const [posting, setPosting] = useState(false);
+  const [postPhase, setPostPhase] = useState('');
   const [fullScreenMedia, setFullScreenMedia] = useState<{ type: 'image' | 'video'; src: string; postId: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const captureImageRef = useRef<HTMLInputElement>(null);
@@ -373,14 +374,18 @@ export default function LoveFeedWidget({ onShareToFriends }: { onShareToFriends?
       return;
     }
     setPosting(true);
+    setPostPhase(pendingFile ? 'Preparing…' : 'Posting…');
     try {
       let content = postContent.trim();
       let resolvedContentType: 'text' | 'image' | 'video' = 'text';
       if (pendingFile) {
-        content = await prepareAndUploadFile(pendingFile, 'posts');
+        content = await prepareAndUploadFile(pendingFile, 'posts', (phase) => {
+          setPostPhase(phase === 'compress' ? 'Compressing…' : 'Uploading…');
+        });
         resolvedContentType = pendingFile.type.startsWith('video/') ? 'video' : 'image';
       }
-      await postsAPI.createPost({
+      setPostPhase('Posting…');
+      const { post } = await postsAPI.createPost({
         type: postType,
         contentType: resolvedContentType,
         content,
@@ -391,12 +396,15 @@ export default function LoveFeedWidget({ onShareToFriends }: { onShareToFriends?
           .filter(Boolean),
       });
       closeCreateModal();
-      await loadFeed(feedMode);
+      setPosts((prev) => [post, ...prev.filter((p) => p.id !== post.id)]);
+      // Refresh quietly in background — don't block the UI on a full feed reload
+      void loadFeed(feedMode, true);
     } catch (err: unknown) {
       console.error('Failed to create post', err);
       alert(formatAxiosError(err, 'Could not post. Try a shorter video or a smaller photo.'));
     } finally {
       setPosting(false);
+      setPostPhase('');
     }
   };
 
@@ -927,8 +935,8 @@ export default function LoveFeedWidget({ onShareToFriends }: { onShareToFriends?
             </div>
             <div className="love-feed-modal-footer">
               <button type="button" onClick={closeCreateModal} disabled={posting}>Cancel</button>
-              <button type="button" className="love-feed-create-btn" onClick={handleCreatePost} disabled={posting}>
-                {posting ? 'Posting…' : 'Post'}
+              <button type="button" className="love-feed-create-btn" onClick={() => void handleCreatePost()} disabled={posting}>
+                {posting ? postPhase || 'Posting…' : 'Post'}
               </button>
             </div>
           </div>

@@ -1,6 +1,6 @@
 /** Phone camera videos (iPhone .mov/HEVC, Android 4K mp4) are often 100MB+. Re-encode to 720p so they upload. */
 
-const SKIP_UNDER_BYTES = 16 * 1024 * 1024;
+const SKIP_UNDER_BYTES = 28 * 1024 * 1024;
 const TARGET_MAX_BYTES = 32 * 1024 * 1024;
 const DEFAULT_MAX_DURATION_SEC = 180;
 const VIDEO_EXT = /\.(mp4|mov|m4v|webm|3gp|3gpp|mkv|avi|mpeg|mpg|ogv|ogg)$/i;

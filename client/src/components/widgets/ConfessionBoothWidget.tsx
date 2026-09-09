@@ -249,22 +249,6 @@ export default function ConfessionBoothWidget() {
     }
   };
 
-  const handleDemoPay = async () => {
-    if (!session) return;
-    setLoading(true);
-    setError('');
-    try {
-      const r = await confessionAPI.demoPay(session.id);
-      setSession(r.session);
-      setSuccess(r.message);
-      setStep(stepForSession(r.session));
-    } catch (e) {
-      setError(formatAxiosError(e, 'Could not record payment'));
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handleSend = async () => {
     if (!session || !message.trim()) return;
     setLoading(true);
@@ -675,11 +659,9 @@ export default function ConfessionBoothWidget() {
             Pay €{session.amountEur} to open the anonymous booth.
             {isAiSession ? ' Payment goes 100% to the app account.' : ' Guide keeps 80%.'}
           </p>
-          {info?.paypalConfigured && (
-            <button type="button" className="select-user-btn" style={{ width: '100%' }} disabled={loading} onClick={handlePayPal}>
-              {loading ? 'Opening PayPal…' : `Pay €${session.amountEur} with PayPal`}
-            </button>
-          )}
+          <button type="button" className="select-user-btn" style={{ width: '100%' }} disabled={loading} onClick={handlePayPal}>
+            {loading ? 'Opening PayPal…' : `Pay €${session.amountEur} with PayPal`}
+          </button>
           {info?.stripeConfigured && (
             <button
               type="button"
@@ -691,20 +673,9 @@ export default function ConfessionBoothWidget() {
               {loading ? 'Opening card…' : `Pay €${session.amountEur} with card`}
             </button>
           )}
-          {(info?.demoPayAllowed || (!info?.paypalConfigured && !info?.stripeConfigured)) && (
-            <button
-              type="button"
-              className="select-user-btn"
-              style={{ width: '100%', marginTop: 8, background: 'rgba(251, 191, 36, 0.15)', borderColor: '#fbbf24', color: '#fbbf24' }}
-              disabled={loading}
-              onClick={() => void handleDemoPay()}
-            >
-              {loading ? 'Opening…' : `Open booth €${session.amountEur} (setup mode)`}
-            </button>
-          )}
-          {info && !info.paypalConfigured && !info.stripeConfigured && (
-            <p style={{ fontSize: 12, color: '#fbbf24', marginTop: 10, lineHeight: 1.4 }}>
-              Live PayPal is not on the server yet. Setup mode opens the booth now — add PAYPAL_CLIENT_ID and PAYPAL_SECRET on Render for real PayPal.
+          {info && info.paypalConfigured === false && !info.stripeConfigured && (
+            <p style={{ fontSize: 12, color: '#fca5a5', marginTop: 10, lineHeight: 1.4 }}>
+              PayPal keys are missing on the live server (Render). Add PAYPAL_CLIENT_ID and PAYPAL_SECRET from your PayPal Business / Developer dashboard, set PAYPAL_SANDBOX=false for live charges, then redeploy.
             </p>
           )}
         </div>

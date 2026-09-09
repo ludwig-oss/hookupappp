@@ -62,28 +62,41 @@ export async function uploadMediaFile(file: Blob, folder = 'posts', _filename = 
 }
 
 /** Compress photos and large phone videos, then upload the file. */
-export async function prepareAndUploadFile(file: File, folder: string): Promise<string> {
+export async function prepareAndUploadFile(
+  file: File,
+  folder: string,
+  onProgress?: (phase: 'compress' | 'upload') => void
+): Promise<string> {
   const isImage = isProbablyImageFile(file);
   const isVideo = isProbablyVideoFile(file);
   if (!isImage && !isVideo) {
     throw new Error('Please choose a photo or video.');
   }
   if (isImage) {
-    let blob = await compressImageFile(file, 1080, 0.82);
-    if (blob.size > 2_500_000) {
-      blob = await compressImageFile(file, 720, 0.72);
+    // Small phone photos: skip canvas recompress — big win on mobile.
+    if (file.size <= 900_000 && /^image\/(jpe?g|png|webp)$/i.test(file.type || '')) {
+      onProgress?.('upload');
+      return uploadMediaFile(file, folder, file.name || 'photo.jpg');
+    }
+    onProgress?.('compress');
+    let blob = await compressImageFile(file, folder === 'posts' ? 1280 : 1080, folder === 'posts' ? 0.78 : 0.82);
+    if (blob.size > 2_000_000) {
+      blob = await compressImageFile(file, 900, 0.7);
     }
     const name = (file.name || 'photo').replace(/\.[^.]+$/, '') + '.jpg';
+    onProgress?.('upload');
     return uploadMediaFile(blob, folder, name);
   }
+  onProgress?.('compress');
   const compressed = await compressVideoFile(file, {
-    maxDurationSec: folder === 'stories' ? 120 : 180,
+    maxDurationSec: folder === 'stories' ? 120 : folder === 'posts' ? 90 : 180,
   });
   const mime = compressed.type || file.type || 'video/mp4';
   const ext = mime.includes('webm') ? '.webm' : '.mp4';
   const named = compressed instanceof File
     ? compressed
     : new File([compressed], (file.name || 'video').replace(/\.[^.]+$/, '') + ext, { type: mime });
+  onProgress?.('upload');
   return uploadMediaFile(named, folder, named.name);
 }
 

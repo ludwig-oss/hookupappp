@@ -4,9 +4,32 @@ import { schoolAPI, TodayLesson } from '../api/school';
 import SchoolScheduleModal from './SchoolScheduleModal';
 import './SchoolNotification.css';
 
+const SETUP_SNOOZE_MS = 2 * 60 * 60 * 1000; // 2 hours after "Not now"
+
 type Props = {
   onOpenGuides: (categoryId: string) => void;
 };
+
+function setupSnoozeKey(userId: string) {
+  return `school-setup-snooze-${userId}`;
+}
+
+function isSetupSnoozed(userId: string): boolean {
+  try {
+    const until = Number(localStorage.getItem(setupSnoozeKey(userId)) || 0);
+    return Number.isFinite(until) && Date.now() < until;
+  } catch {
+    return false;
+  }
+}
+
+function snoozeSetup(userId: string) {
+  try {
+    localStorage.setItem(setupSnoozeKey(userId), String(Date.now() + SETUP_SNOOZE_MS));
+  } catch {
+    /* ignore */
+  }
+}
 
 export default function SchoolDailyNotification({ onOpenGuides }: Props) {
   const { user } = useContext(AuthContext);
@@ -26,6 +49,11 @@ export default function SchoolDailyNotification({ onOpenGuides }: Props) {
     setShowSetup(false);
   }, [setupStorageKey]);
 
+  const dismissSetupForNow = useCallback(() => {
+    if (user?.id) snoozeSetup(user.id);
+    setShowSetup(false);
+  }, [user?.id]);
+
   const refresh = useCallback(async () => {
     if (!user?.id) return;
     try {
@@ -33,7 +61,7 @@ export default function SchoolDailyNotification({ onOpenGuides }: Props) {
       setLesson(data);
       if (data.setupComplete) {
         markSetupSaved();
-      } else if (!setupSavedLocally) {
+      } else if (!setupSavedLocally && !isSetupSnoozed(user.id)) {
         setShowSetup(true);
         setVisible(false);
         return;
@@ -94,7 +122,7 @@ export default function SchoolDailyNotification({ onOpenGuides }: Props) {
           markSetupSaved();
           refresh();
         }}
-        onDismiss={() => setShowSetup(false)}
+        onDismiss={dismissSetupForNow}
       />
     );
   }
@@ -148,25 +176,25 @@ export default function SchoolDailyNotification({ onOpenGuides }: Props) {
                 className="school-btn-primary"
                 onClick={() => {
                   onOpenGuides(topic.guideCategoryId);
-                  dismiss();
+                  void dismiss();
                 }}
               >
                 Go to guides → {topic.title}
               </button>
-              <button type="button" className="school-btn-secondary" onClick={complete} disabled={loading}>
+              <button type="button" className="school-btn-secondary" onClick={() => void complete()} disabled={loading}>
                 {loading ? '…' : 'I did today’s lesson ✓'}
               </button>
             </>
           )}
-          <button type="button" className="school-btn-ghost" onClick={dismiss}>
+          <button type="button" className="school-btn-ghost" onClick={() => void dismiss()}>
             {lesson.alreadyCompletedToday ? 'Close' : 'Remind me later'}
           </button>
           {!lesson.alreadyCompletedToday && lesson.compliance?.enabled && (
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center' }}>
-              <button type="button" className="school-btn-ghost" onClick={() => exception('work')}>
+              <button type="button" className="school-btn-ghost" onClick={() => void exception('work')}>
                 Work busy (exception)
               </button>
-              <button type="button" className="school-btn-ghost" onClick={() => exception('emergency')}>
+              <button type="button" className="school-btn-ghost" onClick={() => void exception('emergency')}>
                 Emergency (exception)
               </button>
             </div>

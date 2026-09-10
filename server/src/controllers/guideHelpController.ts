@@ -9,7 +9,7 @@ import {
 import { creditPlatformAiHelp } from '../models/guideWallet.js';
 import { formatEurCents, getStripe, isStripeConfigured, stripeFrontendBase } from '../lib/stripeClient.js';
 
-const KINDS: GuideHelpKind[] = ['fashion', 'appearance', 'intimacy', 'termact', 'lesson', 'date-tips'];
+const KINDS: GuideHelpKind[] = ['fashion', 'appearance', 'intimacy', 'termact', 'lesson', 'date-tips', 'texting'];
 
 function parseKind(raw: unknown): GuideHelpKind {
   const k = String(raw || 'lesson') as GuideHelpKind;

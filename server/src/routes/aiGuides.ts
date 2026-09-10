@@ -6,6 +6,7 @@ import {
   getAiLessonHandler,
   assignAiGuideHandler,
   meAiGuideHandler,
+  coachTextingHandler,
 } from '../controllers/aiGuideController.js';
 
 const router = express.Router();
@@ -16,5 +17,6 @@ router.get('/me', meAiGuideHandler);
 router.post('/interpret', interpretAiQueryHandler);
 router.get('/lesson/:topicId', getAiLessonHandler);
 router.post('/assign', assignAiGuideHandler);
+router.post('/coach-texting', coachTextingHandler);
 
 export default router;

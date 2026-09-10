@@ -72,4 +72,27 @@ export const aiGuidesAPI = {
     const response = await axios.post(`${API_URL}/assign`, { guideId, topicId });
     return response.data;
   },
+  coachTexting: async (body: {
+    otherUserId: string;
+    guideId?: string;
+    question?: string;
+    messages?: Array<{ from: 'me' | 'them'; text: string }>;
+  }): Promise<{
+    advice: {
+      guideId: string;
+      guideName: string;
+      specialty: string;
+      situation: string;
+      opinion: string;
+      whyItWorks: string;
+      replies: string[];
+      nextMove: string;
+      watchFor: string;
+    };
+    guide: AiGuideCharacter | null;
+    help: { freeRemaining: number; allowed: boolean; isPremium: boolean };
+  }> => {
+    const response = await axios.post(`${API_URL}/coach-texting`, body);
+    return response.data;
+  },
 };

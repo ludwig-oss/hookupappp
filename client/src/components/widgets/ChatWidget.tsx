@@ -78,6 +78,50 @@ const INTENT_LABEL: Record<ChatIntent, string> = {
   friends: 'Friends',
 };
 
+/** Play-together catalog — starts a challenge + seeds a chat prompt. */
+const PLAY_TOGETHER_GAMES: { type: string; label: string; prompt: string }[] = [
+  { type: 'xo', label: '⭕ Tic-tac-toe (XO)', prompt: '🎮 Tic-tac-toe — your move when ready.' },
+  { type: 'would-you-rather', label: '🤔 Would you rather', prompt: 'Would you rather stay in with snacks or go out dancing?' },
+  { type: 'truth-or-dare', label: '🎲 Truth or dare', prompt: 'Truth or dare — I pick truth. Ask me anything (keep it kind).' },
+  { type: 'this-or-that', label: '⚖️ This or that', prompt: 'This or that: sunrise hike or late-night drive?' },
+  { type: 'two-truths-lie', label: '🃏 Two truths & a lie', prompt: 'Two truths and a lie — guess which is fake: (1) … (2) … (3) …' },
+  { type: 'never-have-i-ever', label: '🙅 Never have I ever', prompt: 'Never have I ever… your turn — keep it PG-13 unless we both agree.' },
+  { type: 'emoji-story', label: '✨ Emoji story', prompt: 'Emoji story only — describe your perfect weekend with emojis. I go second.' },
+  { type: 'word-association', label: '🔗 Word association', prompt: 'Word association — I say “spark.” You reply with the first word that hits.' },
+  { type: 'story-building', label: '📖 Story building', prompt: 'Story building: I’ll start — “We missed the last train…” You add one sentence.' },
+  { type: 'guess-the-song', label: '🎵 Guess the song', prompt: 'Guess the song from these lyrics (no Googling): “…”' },
+  { type: 'guess-the-movie', label: '🎬 Guess the movie', prompt: 'Guess the movie from this quote: “…”' },
+  { type: 'riddle-challenge', label: '🧩 Riddle challenge', prompt: 'Riddle: I have cities but no houses, mountains but no trees — what am I?' },
+  { type: 'compatibility-quiz', label: '💘 Compatibility quiz', prompt: 'Compatibility quiz — round 1: beach vacation or city break? Answer then ask me one.' },
+  { type: 'trivia-challenge', label: '🧠 Trivia', prompt: 'Trivia: name a food that tastes better at 2am. Then ask me one.' },
+  { type: 'photo-challenge', label: '📸 Photo challenge', prompt: 'Photo challenge: send something that feels like “your vibe” right now (no face required).' },
+  { type: 'scavenger-hunt', label: '🕵️ Scavenger hunt', prompt: 'Scavenger hunt: find something blue near you and describe it in one line.' },
+  { type: 'category-game', label: '📦 Categories', prompt: 'Category game: things that make a first date better — go!' },
+  { type: 'rhyme-time', label: '🎤 Rhyme time', prompt: 'Rhyme time — last word is “night.” Hit me with a couplet.' },
+  { type: 'guess-the-celebrity', label: '🌟 Guess the celeb', prompt: 'Guess the celebrity: I’m thinking of someone… ask yes/no questions.' },
+  { type: 'guess-the-place', label: '🗺️ Guess the place', prompt: 'Guess the place: I’ll describe a city without naming it. You get 5 questions.' },
+  { type: 'guess-the-food', label: '🍜 Guess the food', prompt: 'Guess the food: smelling this would make you hungry in 3 words…' },
+  { type: 'guess-the-emotion', label: '😶 Guess the emotion', prompt: 'Guess the emotion I’m acting out in text (no naming it): “…”' },
+  { type: 'completion-game', label: '✏️ Finish the line', prompt: 'Finish the line: “The most underrated date idea is…”' },
+  { type: 'story-roulette', label: '🎡 Story roulette', prompt: 'Story roulette prompt: we wake up with amnesia in a train station. You go first.' },
+  { type: 'word-chain', label: '⛓️ Word chain', prompt: 'Word chain — last letter rules. I start with “Adventure…”' },
+  { type: 'memory-game', label: '🧠 Memory game', prompt: 'Memory: list 5 things on your desk/nightstand. I’ll try to recall them later.' },
+  { type: 'drawing-game', label: '✏️ Draw & guess', prompt: 'Draw & guess: describe a simple doodle in words — I’ll guess what it is.' },
+  { type: 'song-lyrics', label: '🎶 Finish the lyric', prompt: 'Finish the lyric: “Is this the real life? Is this just…”' },
+  { type: 'hot-seat', label: '🔥 Hot seat', prompt: 'Hot seat: ask me one bold-but-kind question. Then I ask you.' },
+  { type: 'rose-bud-thorn', label: '🌹 Rose / bud / thorn', prompt: 'Rose, bud, thorn — share today’s high, something growing, and a low.' },
+  { type: 'five-favorites', label: '5️⃣ Five favorites', prompt: 'Five favorites rapid-fire: movie, snack, season, city, song. Go!' },
+  { type: 'dealbreakers', label: '🚫 Soft dealbreakers', prompt: 'Soft dealbreakers (funny ones welcome): name one dating ick that is actually yours.' },
+  { type: 'bucket-list-blitz', label: '🪂 Bucket list blitz', prompt: 'Bucket list blitz: one thing you want to do this year — I’ll match energy.' },
+  { type: 'time-travel', label: '⏳ Time travel', prompt: 'Time travel: dinner with your 16-year-old self — what do you tell them?' },
+  { type: 'superpower-trade', label: '🦸 Superpower trade', prompt: 'Superpower trade: you get one ability for a day — what and why?' },
+  { type: 'desert-island', label: '🏝️ Desert island', prompt: 'Desert island: 3 items only (no phone). What are you packing?' },
+  { type: 'first-date-remix', label: '🎭 First-date remix', prompt: 'First-date remix: redesign a boring coffee date into something memorable (budget €30).' },
+  { type: 'text-charades', label: '🎭 Text charades', prompt: 'Text charades: I’ll act a movie with emojis only. Guess it.' },
+  { type: 'yes-and', label: '➕ Yes, and…', prompt: 'Improv “yes, and…” — I start: “We’re secretly spies at this café…”' },
+  { type: 'values-lightning', label: '⚡ Values lightning', prompt: 'Values lightning: loyalty, adventure, or peace — rank them, then ask me.' },
+];
+
 export interface EnrichedMeetupPlan extends MeetupPlan {
   emergencyContactName?: string;
   emergencyContactPhone?: string;
@@ -1019,7 +1063,7 @@ const ChatWidget = ({
     }
   };
 
-  const startChatGame = async (challengeType: 'xo' | 'would-you-rather' | 'truth-or-dare', prompt?: string) => {
+  const startChatGame = async (challengeType: string, prompt?: string) => {
     if (!selectedUserId || !user?.id) return;
     const gameState =
       challengeType === 'xo'
@@ -1038,13 +1082,15 @@ const ChatWidget = ({
     setActiveChallenge(challenge);
     if (challengeType === 'xo') setXoBoard(EMPTY_XO);
     setShowGamesPicker(false);
+    const catalogLine = PLAY_TOGETHER_GAMES.find((g) => g.type === challengeType)?.prompt;
     const line =
       prompt ||
+      catalogLine ||
       (challengeType === 'xo'
         ? '🎮 Tic-tac-toe — your move when ready.'
         : challengeType === 'would-you-rather'
           ? 'Would you rather stay in with snacks or go out dancing?'
-          : 'Truth or dare — I pick truth. Ask me anything (keep it kind).');
+          : `🎮 Let's play ${challengeType.replace(/-/g, ' ')} — you start.`);
     await sendContent(line);
   };
 
@@ -2905,10 +2951,14 @@ const ChatWidget = ({
         <div className="chat-games-picker-backdrop" onClick={() => setShowGamesPicker(false)}>
           <div className="chat-games-picker" onClick={(e) => e.stopPropagation()}>
             <h4>Play together</h4>
-            <p>XO, quizzes, and dares — mix it up, then go back to talking.</p>
-            <button type="button" onClick={() => void startChatGame('xo')}>⭕ Tic-tac-toe (XO)</button>
-            <button type="button" onClick={() => void startChatGame('would-you-rather')}>🤔 Would you rather</button>
-            <button type="button" onClick={() => void startChatGame('truth-or-dare')}>🎲 Truth or dare</button>
+            <p>XO, quizzes, dares, and 20+ more — mix it up, then go back to talking.</p>
+            <div className="chat-games-picker-grid">
+              {PLAY_TOGETHER_GAMES.map((g) => (
+                <button key={g.type} type="button" onClick={() => void startChatGame(g.type)}>
+                  {g.label}
+                </button>
+              ))}
+            </div>
             <button type="button" className="chat-games-picker-close" onClick={() => setShowGamesPicker(false)}>Close</button>
           </div>
         </div>
@@ -2942,6 +2992,17 @@ const ChatWidget = ({
           otherUserId={selectedUserId}
           partnerName={selectedName || 'them'}
           resumeSessionId={helpSessionId}
+          chatLines={messages
+            .filter((m) => !String(m.content || '').startsWith('data:'))
+            .slice(-24)
+            .map((m) => ({
+              from: m.fromUserId === user?.id ? ('me' as const) : ('them' as const),
+              text: String(m.content || '').slice(0, 400),
+            }))}
+          onUseReply={(text) => {
+            setInputText(text);
+            chatInputRef.current?.focus();
+          }}
           onClose={() => setTextingHelpOpen(false)}
         />
       )}

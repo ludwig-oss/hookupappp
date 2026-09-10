@@ -3,7 +3,7 @@ import { API_BASE } from './config';
 
 const API_URL = `${API_BASE}/api/guide-help`;
 
-export type GuideHelpKind = 'fashion' | 'appearance' | 'intimacy' | 'termact' | 'lesson' | 'date-tips';
+export type GuideHelpKind = 'fashion' | 'appearance' | 'intimacy' | 'termact' | 'lesson' | 'date-tips' | 'texting';
 
 export interface GuideHelpStatus {
   allowed: boolean;

@@ -6,6 +6,7 @@ import {
   confirmTextingHelpStripePayment,
   createTextingHelpCheckout,
   createTextingHelpStripePayment,
+  demoPayTextingHelp,
   getTextingHelpSessionHandler,
   incomingTextingHelp,
   listTextingHelpGuides,
@@ -23,6 +24,7 @@ router.get('/session/:sessionId', getTextingHelpSessionHandler);
 router.post('/pay/checkout', createTextingHelpCheckout);
 router.post('/pay/stripe', createTextingHelpStripePayment);
 router.post('/pay/stripe/confirm', confirmTextingHelpStripePayment);
+router.post('/pay/demo', demoPayTextingHelp);
 router.post('/answer', answerTextingHelp);
 router.post('/choose', chooseTextingHelp);
 router.post('/review', reviewTextingHelp);

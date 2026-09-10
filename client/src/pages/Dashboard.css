@@ -3356,6 +3356,20 @@ img.celeb-blur-img {
   color: #00d4ff;
   cursor: pointer;
   font-weight: 600;
+  text-align: left;
+}
+.chat-games-picker-grid {
+  max-height: min(52vh, 420px);
+  overflow-y: auto;
+  margin: 4px 0 8px;
+  padding-right: 4px;
+}
+@media (min-width: 480px) {
+  .chat-games-picker-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0 8px;
+  }
 }
 .chat-games-picker-close {
   border-color: #6b7280 !important;

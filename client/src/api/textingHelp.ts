@@ -91,4 +91,8 @@ export const textingHelpAPI = {
     const response = await axios.post(`${API_BASE}/api/texting-help/review`, { sessionId, stars, text });
     return response.data as { review: { sessionId: string; stars: number; text: string } };
   },
+  demoPay: async (sessionId: string) => {
+    const response = await axios.post(`${API_BASE}/api/texting-help/pay/demo`, { sessionId });
+    return response.data as { session: TextingHelpSession; paid: boolean };
+  },
 };

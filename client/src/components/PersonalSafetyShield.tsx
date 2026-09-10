@@ -1,6 +1,7 @@
 import { useCallback, useContext, useEffect, useState } from 'react';
 import { AuthContext } from '../context/AuthContext';
 import { personalSafetyAPI, ShieldSettings } from '../api/personalSafety';
+import { safetyAPI, type EmergencyContact } from '../api/safety';
 import { useVolumeTripleSOS } from '../hooks/useVolumeTripleSOS';
 import { useScreenTapSOS } from '../hooks/useScreenTapSOS';
 import { speechRecognitionSupported, speechRecognitionSupportHint, ensureMicPermission } from '../hooks/useActivationWordListener';
@@ -18,6 +19,7 @@ export default function PersonalSafetyShield({ visible = false }: { visible?: bo
   const [sending, setSending] = useState(false);
   const [showSetup, setShowSetup] = useState(false);
   const [activationSecret, setActivationSecret] = useState('');
+  const [contacts, setContacts] = useState<EmergencyContact[]>([]);
 
   const load = useCallback(async () => {
     if (!user?.id) return;
@@ -28,6 +30,7 @@ export default function PersonalSafetyShield({ visible = false }: { visible?: bo
       setMissing(data.ready.missing);
       setActiveId(data.activeSignal?.id || null);
       if (data.settings.activationSecret) setActivationSecret(data.settings.activationSecret);
+      safetyAPI.getEmergencyContacts().then((r) => setContacts(r.contacts || [])).catch(() => {});
 
       if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(
@@ -65,10 +68,24 @@ export default function PersonalSafetyShield({ visible = false }: { visible?: bo
 
   const getLocation = () =>
     new Promise<{ lat: number; lon: number }>((resolve, reject) => {
+      const fromUser = (user as { location?: { lat?: number; lon?: number } } | null)?.location;
+      const fallback =
+        settings?.lastLocation ||
+        (typeof fromUser?.lat === 'number' && typeof fromUser?.lon === 'number'
+          ? { lat: fromUser.lat, lon: fromUser.lon }
+          : null);
+      if (!navigator.geolocation) {
+        if (fallback) return resolve(fallback);
+        reject(new Error('Turn on location to arm the shield.'));
+        return;
+      }
       navigator.geolocation.getCurrentPosition(
         (p) => resolve({ lat: p.coords.latitude, lon: p.coords.longitude }),
-        reject,
-        { enableHighAccuracy: true, timeout: 15000 }
+        (err) => {
+          if (fallback) resolve(fallback);
+          else reject(new Error(err.message || 'Could not get GPS. Allow location and try again.'));
+        },
+        { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 }
       );
     });
 
@@ -81,16 +98,20 @@ export default function PersonalSafetyShield({ visible = false }: { visible?: bo
         const { lat, lon } = await getLocation();
         const res = await personalSafetyAPI.trigger(lat, lon, via, phrase);
         setActiveId(res.alert.id);
-        setStatus(res.message);
+        setStatus(
+          res.nearbyNotified > 0
+            ? `Help is on the way — ${res.nearbyNotified} nearby people got your exact location. They can text you to check in. False alarm cancels the alert.`
+            : `Help signal sent. Nearby helpers will see your pin when they are online. Keep the app open.`
+        );
         window.dispatchEvent(new CustomEvent('safety:signal-changed'));
-        window.location.href = `tel:${res.policeNumber}`;
+        // Do not auto-dial emergency services — user can call from the alert screen if needed
       } catch (e: unknown) {
         setStatus((e as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Could not send safety signal.');
       } finally {
         setSending(false);
       }
     },
-    [user?.id, sending]
+    [user?.id, sending, settings?.lastLocation, user]
   );
 
   const armed = settings?.armed ?? false;
@@ -222,15 +243,28 @@ export default function PersonalSafetyShield({ visible = false }: { visible?: bo
                   className="pss-btn safe"
                   disabled={sending}
                   onClick={async () => {
+                    setSending(true);
+                    setStatus('');
                     try {
-                      await askWhatYouAreWearing();
+                      // Optional appearance prompt — never block arming if skipped/timed out
+                      await Promise.race([
+                        askWhatYouAreWearing(),
+                        new Promise<null>((r) => setTimeout(() => r(null), 25000)),
+                      ]);
                       const { lat, lon } = await getLocation();
                       const res = await personalSafetyAPI.arm(lat, lon);
                       setSettings(res.settings);
-                      setStatus(res.message);
+                      setStatus(res.message || 'Shield armed. Shout your word or tap Help if you need it.');
                       window.dispatchEvent(new CustomEvent('safety:settings-changed'));
                     } catch (e: unknown) {
-                      setStatus((e as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Could not arm');
+                      const msg =
+                        (e as { response?: { data?: { error?: string } }; message?: string })?.response?.data
+                          ?.error ||
+                        (e as { message?: string })?.message ||
+                        'Could not arm — allow location and set your activation word.';
+                      setStatus(msg);
+                    } finally {
+                      setSending(false);
                     }
                   }}
                 >
@@ -244,23 +278,61 @@ export default function PersonalSafetyShield({ visible = false }: { visible?: bo
             </div>
 
             <div className="pss-section">
+              <div className="pss-section-title">Emergency contact (Hook Up user)</div>
+              <p className="pss-hint">
+                Paste a friend&apos;s account user id so they get your pin in-app. Phone contacts from Safety plans still
+                work for meetup check-ins.
+                {contacts.length > 0 ? ` You have ${contacts.length} phone contact(s) on file.` : ''}
+              </p>
+              <input
+                className="pss-input"
+                value={settings?.emergencyContactUserId || ''}
+                placeholder="Friend’s user id (optional)"
+                onChange={(e) =>
+                  setSettings((s) => (s ? { ...s, emergencyContactUserId: e.target.value || null } : s))
+                }
+                onBlur={async (e) => {
+                  const v = e.target.value.trim() || null;
+                  try {
+                    const r = await personalSafetyAPI.updateSettings({ emergencyContactUserId: v });
+                    setSettings(r.settings);
+                  } catch {
+                    setStatus('Could not save emergency contact.');
+                  }
+                }}
+              />
+            </div>
+
+            <div className="pss-section">
               <div className="pss-section-title">Need help now</div>
               <button type="button" className="pss-btn primary" disabled={sending || !canTrigger} onClick={() => triggerSignal('help_button')}>
                 Help — send safety signal
               </button>
+              {!armed && (
+                <p className="pss-hint" style={{ marginTop: 8 }}>
+                  Tip: arm the shield when you go out, or tap Help anytime if the help button is enabled.
+                </p>
+              )}
             </div>
           </>
         )}
 
         {activeId && (
           <div className="pss-section">
+            <div className="pss-section-title">Help is on the way</div>
+            <p className="pss-hint">
+              Nearby people and your emergency contact can see your exact pin and may text to ask if you are OK. Stay where you can reply if it is safe.
+            </p>
             <div className="pss-section-title">False alarm?</div>
             <p className="pss-hint">
-              Tap the button if you are safe. Everyone who received your alert gets an all-clear.
+              Tap below if you are safe. Everyone who received your alert gets an all-clear.
             </p>
             <button type="button" className="pss-btn safe" disabled={sending} onClick={cancelFalseAlarm}>
               False alarm — notify everyone
             </button>
+            <a className="pss-btn primary" style={{ display: 'block', textAlign: 'center', marginTop: 10, textDecoration: 'none' }} href="tel:112">
+              Call local emergency (optional)
+            </a>
           </div>
         )}
 

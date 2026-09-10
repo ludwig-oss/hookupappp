@@ -5,8 +5,10 @@ import {
   lessonWithGuides,
   assignAiGuide,
   getAssignedAiGuide,
+  coachTextingHelp,
 } from '../models/aiGuides.js';
 import { getLesson } from '../data/aiGuideCatalog.js';
+import { consumeGuideHelp } from '../models/guideHelp.js';
 
 export const listAiGuidesHandler = async (_req: Request, res: Response) => {
   try {
@@ -75,6 +77,34 @@ export const speakLineHandler = async (req: Request, res: Response) => {
     res.json({ line });
   } catch (error) {
     console.error('Speak line error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+export const coachTextingHandler = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).userId as string | undefined;
+    if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+    const otherUserId = String(req.body?.otherUserId || '');
+    if (!otherUserId) return res.status(400).json({ error: 'otherUserId is required' });
+
+    const help = await consumeGuideHelp(userId, 'texting');
+    if (!help.allowed) {
+      return res.status(402).json({ ...help, error: 'Free AI helps used up — upgrade for unlimited guides.' });
+    }
+
+    const result = await coachTextingHelp({
+      userId,
+      otherUserId,
+      guideId: req.body?.guideId ? String(req.body.guideId) : undefined,
+      question: req.body?.question ? String(req.body.question) : undefined,
+      messages: Array.isArray(req.body?.messages) ? req.body.messages : undefined,
+    });
+    res.json({ ...result, help });
+  } catch (error: any) {
+    const msg = error?.message || 'Could not coach texting';
+    if (/not found/i.test(msg)) return res.status(404).json({ error: msg });
+    console.error('Coach texting error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 };

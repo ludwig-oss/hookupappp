@@ -7,7 +7,7 @@ export const AI_HELP_PRICE_EUR = Number(process.env.AI_HELP_PRICE_EUR || 9.9);
 
 const DB_PATH = join(process.cwd(), 'server', 'data', 'guide-help.json');
 
-export type GuideHelpKind = 'fashion' | 'appearance' | 'intimacy' | 'termact' | 'lesson' | 'date-tips';
+export type GuideHelpKind = 'fashion' | 'appearance' | 'intimacy' | 'termact' | 'lesson' | 'date-tips' | 'texting';
 
 export interface GuideHelpAccount {
   userId: string;

@@ -214,10 +214,21 @@ export async function triggerSafetySignal(params: {
   const settings = await getShieldSettings(params.userId);
 
   if (params.via === 'secret_word' || params.via === 'custom_phrase') {
+    if (!settings.enableSecretWord && params.via === 'secret_word') {
+      throw new Error('Voice activation is turned off in your safety settings.');
+    }
     const phrase = (params.phrase || '').trim().toLowerCase();
     const activation = settings.activationSecret.trim().toLowerCase();
     const custom = (settings.customActivationPhrase || '').trim().toLowerCase();
-    if (!phrase || (phrase !== activation && phrase !== custom)) {
+    const compact = (s: string) => s.replace(/[^\p{L}\p{N}]+/gu, '');
+    const matches =
+      !phrase || // authenticated client already heard the word
+      phrase === activation ||
+      phrase === custom ||
+      (activation && compact(phrase).includes(compact(activation))) ||
+      (activation && compact(activation).includes(compact(phrase))) ||
+      (custom && compact(phrase).includes(compact(custom)));
+    if (!matches) {
       throw new Error('Activation phrase did not match your safety signal setup.');
     }
   }
@@ -252,7 +263,25 @@ export async function triggerSafetySignal(params: {
   alert.notifiedUserIds = notified.userIds;
   alert.notifyCount = 1;
   await writeSignals(signals);
-  return { alert, nearbyNotified: notified.count, policeNumber: '911' };
+
+  let nearbyCount = notified.count;
+  // Simulator: nearby mocks text the user asking if they are OK (+ map pin)
+  try {
+    const { isSimulatorEnabled } = await import('../simulator/runtime.js');
+    if (isSimulatorEnabled()) {
+      const { spawnSimulatorSafetyResponders } = await import('../simulator/safetyResponders.js');
+      const simIds = await spawnSimulatorSafetyResponders(alert);
+      if (simIds.length) {
+        nearbyCount += simIds.length;
+        alert.notifiedUserIds = [...new Set([...(alert.notifiedUserIds || []), ...simIds])];
+        await writeSignals(signals);
+      }
+    }
+  } catch {
+    /* optional */
+  }
+
+  return { alert, nearbyNotified: nearbyCount, policeNumber: '911' };
 }
 
 export async function cancelSafetySignalFalseAlarm(

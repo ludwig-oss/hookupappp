@@ -78,11 +78,40 @@ export async function ensureMicPermission(): Promise<boolean> {
 }
 
 function transcriptHasWord(transcript: string, word: string): boolean {
-  const hay = transcript.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, ' ');
-  const needle = word.trim().toLowerCase();
+  const hay = transcript.toLowerCase().replace(/[^\p{L}\p{N}\s']/gu, ' ').replace(/\s+/g, ' ').trim();
+  const needle = word.trim().toLowerCase().replace(/\s+/g, ' ');
   if (!needle || needle.length < 2) return false;
+  // Exact token match
   const escaped = needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+');
-  return new RegExp(`(?:^|\\s)${escaped}(?:\\s|$)`, 'i').test(hay);
+  if (new RegExp(`(?:^|\\s)${escaped}(?:\\s|$)`, 'i').test(hay)) return true;
+  // Speech engines often drop spaces ("redbicycle") or add filler — allow compact includes
+  const compactHay = hay.replace(/\s+/g, '');
+  const compactNeedle = needle.replace(/\s+/g, '');
+  if (compactNeedle.length >= 2 && compactHay.includes(compactNeedle)) return true;
+  // Fuzzy: allow 1-char ASR slip for longer secrets (e.g. "bicycle" vs "bicicle")
+  if (compactNeedle.length >= 5) {
+    for (let i = 0; i <= compactHay.length - compactNeedle.length + 1; i++) {
+      const slice = compactHay.slice(i, i + compactNeedle.length);
+      if (!slice || Math.abs(slice.length - compactNeedle.length) > 1) continue;
+      let diff = 0;
+      const n = Math.min(slice.length, compactNeedle.length);
+      for (let j = 0; j < n; j++) if (slice[j] !== compactNeedle[j]) diff += 1;
+      diff += Math.abs(slice.length - compactNeedle.length);
+      if (diff <= 1) return true;
+    }
+  }
+  // Also accept if every word of the secret appears in order
+  const parts = needle.split(/\s+/).filter((p) => p.length >= 2);
+  if (parts.length > 1) {
+    let idx = 0;
+    for (const p of parts) {
+      const at = hay.indexOf(p, idx);
+      if (at < 0) return false;
+      idx = at + p.length;
+    }
+    return true;
+  }
+  return false;
 }
 
 const FATAL_ERRORS = new Set(['not-allowed', 'service-not-allowed']);

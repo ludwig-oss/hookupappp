@@ -15,6 +15,7 @@ export default function SafetyVoiceWatcher() {
   const [listen, setListen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [micStatus, setMicStatus] = useState<'off' | 'listening' | 'blocked' | 'unsupported'>('off');
+  const [lastLoc, setLastLoc] = useState<{ lat: number; lon: number } | null>(null);
 
   const load = useCallback(async () => {
     if (!user?.id) {
@@ -26,6 +27,7 @@ export default function SafetyVoiceWatcher() {
       const data = await personalSafetyAPI.getSettings();
       const secret = (data.settings.activationSecret || '').trim();
       setWord(secret || null);
+      if (data.settings.lastLocation) setLastLoc(data.settings.lastLocation);
       // Always on whenever a secret word is enabled and no active signal
       const shouldListen = Boolean(secret && data.settings.enableSecretWord && !data.activeSignal);
       setListen(shouldListen);
@@ -63,31 +65,43 @@ export default function SafetyVoiceWatcher() {
     };
   }, [listen, load]);
 
+  const resolveCoords = useCallback(async (): Promise<{ lat: number; lon: number }> => {
+    const fromUser = (user as { location?: { lat?: number; lon?: number } } | null)?.location;
+    const fallback =
+      lastLoc ||
+      (typeof fromUser?.lat === 'number' && typeof fromUser?.lon === 'number'
+        ? { lat: fromUser.lat, lon: fromUser.lon }
+        : { lat: 52.3676, lon: 4.9041 });
+
+    if (!navigator.geolocation) return fallback;
+    try {
+      const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: true,
+          timeout: 10000,
+          maximumAge: 60000,
+        });
+      });
+      return { lat: pos.coords.latitude, lon: pos.coords.longitude };
+    } catch {
+      return fallback;
+    }
+  }, [lastLoc, user]);
+
   const trigger = useCallback(async () => {
     if (busy || !user?.id) return;
     setBusy(true);
     setListen(false);
     try {
-      const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
-        if (!navigator.geolocation) {
-          reject(new Error('Location is required to send a safety signal.'));
-          return;
-        }
-        navigator.geolocation.getCurrentPosition(resolve, reject, {
-          enableHighAccuracy: true,
-          timeout: 15000,
-          maximumAge: 5000,
-        });
-      });
-      const res = await personalSafetyAPI.trigger(
-        pos.coords.latitude,
-        pos.coords.longitude,
-        'secret_word',
-        word || undefined
-      );
+      const { lat, lon } = await resolveCoords();
+      const res = await personalSafetyAPI.trigger(lat, lon, 'secret_word', word || undefined);
       window.dispatchEvent(new CustomEvent('safety:signal-changed'));
-      alert(res.message);
-      window.location.href = `tel:${res.policeNumber}`;
+      const n = res.nearbyNotified ?? 0;
+      alert(
+        n > 0
+          ? `Help is on the way — ${n} nearby people got your location and can text you. Open Personal safety shield for False alarm.`
+          : `Safety signal sent. Helpers will see your pin. Open Personal safety shield for status.`
+      );
     } catch (e: unknown) {
       alert(
         (e as { response?: { data?: { error?: string } }; message?: string })?.response?.data?.error ||
@@ -98,7 +112,7 @@ export default function SafetyVoiceWatcher() {
     } finally {
       setBusy(false);
     }
-  }, [busy, user?.id, word]);
+  }, [busy, user?.id, word, resolveCoords]);
 
   useActivationWordListener(
     word,

@@ -1,5 +1,6 @@
 import { getUserById, updateUserProfile } from './user.js';
 import { getGuideProgramStatus } from './guideProgram.js';
+import { getConversation } from './chat.js';
 import {
   AI_GUIDES,
   getGuide,
@@ -8,6 +9,7 @@ import {
   interpretQuery,
   resolveLessonForGuide,
 } from '../data/aiGuideCatalog.js';
+import { buildTextingCoachAdvice, type ChatLine } from './textingCoach.js';
 
 export async function listAiGuides() {
   return AI_GUIDES.map((g) => ({
@@ -73,4 +75,37 @@ export async function getAssignedAiGuide(userId: string) {
   const guideId = (user as any)?.aiGuideId as string | undefined;
   if (!guideId) return { guide: null };
   return { guide: getGuide(guideId) };
+}
+
+/** Sharp, gender-aware texting help from a chosen guide's mind — reads the live chat. */
+export async function coachTextingHelp(params: {
+  userId: string;
+  otherUserId: string;
+  guideId?: string;
+  question?: string;
+  messages?: ChatLine[];
+}) {
+  const me = await getUserById(params.userId);
+  const them = await getUserById(params.otherUserId);
+  if (!me || !them) throw new Error('User not found');
+
+  let lines = params.messages;
+  if (!lines?.length) {
+    const conv = await getConversation(params.userId, params.otherUserId);
+    lines = conv.slice(-24).map((m) => ({
+      from: m.fromUserId === params.userId ? ('me' as const) : ('them' as const),
+      text: String(m.content || '').slice(0, 400),
+    }));
+  }
+
+  const guideId = params.guideId || (me as { aiGuideId?: string }).aiGuideId || 'diego';
+  const advice = buildTextingCoachAdvice({
+    guideId,
+    viewerGender: me.gender,
+    partnerGender: them.gender,
+    partnerName: them.name || 'them',
+    messages: lines,
+    question: params.question,
+  });
+  return { advice, guide: getGuide(advice.guideId) };
 }

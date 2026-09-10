@@ -34,14 +34,43 @@ export async function startTextingHelp(req: Request, res: Response) {
     if (!otherUserId) return res.status(400).json({ error: 'otherUserId is required' });
     const other = await getUserById(otherUserId);
     if (!other) return res.status(404).json({ error: 'User not found' });
-    const session = await createTextingHelpSession(userId, otherUserId);
+    let session = await createTextingHelpSession(userId, otherUserId);
+    // Simulator / local: unlock human guides without Stripe so SOS can be tested
+    try {
+      const { isSimulatorEnabled } = await import('../simulator/runtime.js');
+      if (isSimulatorEnabled() && !isStripeConfigured() && session.status === 'pending_payment') {
+        session = (await markTextingHelpPaid(session.id, 'demo')) || session;
+      }
+    } catch {
+      /* optional */
+    }
     res.json({
       session,
       priceEur: TEXTING_HELP_PRICE_EUR,
       stripeConfigured: isStripeConfigured(),
+      demoPayAvailable: !isStripeConfigured(),
     });
   } catch (error) {
     console.error('Start texting help error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+/** Local / no-Stripe unlock for human texting help (never for production with Stripe). */
+export async function demoPayTextingHelp(req: Request, res: Response) {
+  try {
+    if (isStripeConfigured()) {
+      return res.status(403).json({ error: 'Demo pay is disabled when Stripe is configured. Use real checkout.' });
+    }
+    const userId = (req as any).userId as string;
+    const { sessionId } = req.body as { sessionId?: string };
+    if (!sessionId) return res.status(400).json({ error: 'sessionId is required' });
+    const existing = await getTextingHelpSession(sessionId);
+    if (!existing || existing.userId !== userId) return res.status(404).json({ error: 'Session not found' });
+    const session = await markTextingHelpPaid(sessionId, 'demo');
+    res.json({ session, paid: true });
+  } catch (error) {
+    console.error('Demo pay texting help error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 }

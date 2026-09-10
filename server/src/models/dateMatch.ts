@@ -8,7 +8,9 @@ import { userHasFeature } from './premium.js';
 import { ensureMatchConversation } from './chat.js';
 
 export const FREE_SEARCHES_PER_MONTH = 3;
+export const FREE_ARENA_DATES = 4;
 export const CANCELLATION_FINE_EUR = 10;
+export const CANCEL_FREE_HOURS = 4;
 export const GUIDE_LAWYER_CUT_PERCENT = 80;
 export const GOLD_PLAN_PRICE_EUR = 114;
 
@@ -258,6 +260,20 @@ export async function saveDateLookingFor(userId: string, lookingFor: string[]): 
 export async function computeInterestLevel(userId: string): Promise<number> {
   let score = 40;
   try {
+    const user = await getUserById(userId);
+    if (user) {
+      const tier = user.financialTier;
+      const stage = String(user.lifeStage || '').toLowerCase();
+      // Higher life check-in choices → more visible interest + preference reach
+      if (tier === 'wealthy' || stage === 'established') score += 35;
+      else if (tier === 'stable' || stage === 'stable') score += 18;
+      else if (tier === 'building' || stage === 'building') score += 4;
+      if (user.isFamousOrInfluencer || user.publicFigureVerified) score += 12;
+    }
+  } catch {
+    /* optional */
+  }
+  try {
     const { getInterestsForUser: act } = await import('./activity.js');
     const a = await act(userId);
     score += Math.min(30, a.received.length * 4);
@@ -284,6 +300,29 @@ export async function computeInterestLevel(userId: string): Promise<number> {
   );
   score += Math.min(20, done.length * 5);
   return Math.max(10, Math.min(99, Math.round(score)));
+}
+
+/** Top life-check tiers: established life stage or very comfortable / wealthy finances. */
+export function hasTopLifeTier(user: { financialTier?: string | null; lifeStage?: string | null }): boolean {
+  const tier = String(user.financialTier || '').toLowerCase();
+  const stage = String(user.lifeStage || '').toLowerCase();
+  return tier === 'wealthy' || stage === 'established';
+}
+
+export async function countCompletedArenaDates(userId: string): Promise<number> {
+  const matches = await readMatches();
+  return matches.filter(
+    (m) =>
+      (m.userId1 === userId || m.userId2 === userId) &&
+      (m.status === 'completed' || m.status === 'scheduled' || m.status === 'cancelled')
+  ).length;
+}
+
+export async function canStartMoreArenaDates(userId: string): Promise<{ ok: boolean; used: number; limit: number | null }> {
+  const unlimited = await userHasFeature(userId, 'unlimited_searches');
+  const used = await countCompletedArenaDates(userId);
+  if (unlimited) return { ok: true, used, limit: null };
+  return { ok: used < FREE_ARENA_DATES, used, limit: FREE_ARENA_DATES };
 }
 
 async function toCard(userId: string): Promise<PublicUserCard | null> {
@@ -387,6 +426,18 @@ export async function startSearch(
   await saveDateLookingFor(userId, valid);
 
   const cityScope = parseCityScope(cityScopeRaw);
+  const dateQuota = await canStartMoreArenaDates(userId);
+  if (!dateQuota.ok) {
+    return {
+      quota: await getSearchQuota(userId),
+      searching: false,
+      match: null,
+      other: null,
+      me: await toCard(userId),
+      needUpgrade: true,
+      cityScope,
+    };
+  }
   const quota = await getSearchQuota(userId);
   if (!quota.unlimited && (quota.remaining ?? 0) <= 0) {
     return {
@@ -423,9 +474,10 @@ export async function startSearch(
   await writeQueue(queue);
 
   const myScore = await computeInterestLevel(userId);
+  const meTop = hasTopLifeTier(meUser);
   const candidates = queue.filter((q) => q.userId !== userId && overlapLooking(valid, q.lookingFor));
 
-  const scored: { entry: SearchQueueEntry; score: number; diff: number }[] = [];
+  const scored: { entry: SearchQueueEntry; score: number; diff: number; prefBoost: number }[] = [];
   for (const entry of candidates) {
     const other = await getUserById(entry.userId);
     if (!other) continue;
@@ -439,10 +491,16 @@ export async function startSearch(
     );
     if (existing) continue;
     const score = await computeInterestLevel(entry.userId);
-    scored.push({ entry, score, diff: Math.abs(score - myScore) });
+    const prefBoost = overlapLooking(valid, entry.lookingFor)
+      ? meTop
+        ? 40
+        : 10
+      : 0;
+    scored.push({ entry, score: score + prefBoost, diff: Math.abs(score - myScore) - prefBoost, prefBoost });
   }
 
-  scored.sort((a, b) => a.diff - b.diff);
+  // Top-tier users: strongly prefer people who share their dating intent
+  scored.sort((a, b) => (meTop ? b.prefBoost - a.prefBoost || a.diff - b.diff : a.diff - b.diff));
   let pick = scored[0];
   if (scored.length > 1 && Math.random() < 0.28) {
     const higher = scored.filter((s) => s.score > myScore);
@@ -695,7 +753,11 @@ export async function cancelScheduledDate(
   if (!m || (m.userId1 !== userId && m.userId2 !== userId)) throw new Error('Match not found');
   if (m.status !== 'scheduled' && m.status !== 'picking_idea') throw new Error('Nothing to cancel');
 
-  const excused = Boolean(proofUrl) && /sick|ill|emergenc|hospital|doctor|family/i.test(reason || '');
+  const excused = Boolean(proofUrl) && /sick|ill|emergenc|hospital|doctor|family|death|funeral/i.test(reason || '');
+  const hoursUntil =
+    m.scheduledAt != null ? (new Date(m.scheduledAt).getTime() - Date.now()) / (60 * 60 * 1000) : 0;
+  const earlyCancel = hoursUntil >= CANCEL_FREE_HOURS;
+
   m.status = 'cancelled';
   m.cancelledBy = userId;
   m.cancelReason = (reason || '').slice(0, 500);
@@ -703,7 +765,8 @@ export async function cancelScheduledDate(
   m.updatedAt = new Date().toISOString();
 
   const other = otherId(m, userId);
-  if (!excused) {
+  // Free cancel: ≥4h before, or emergency/family with proof anytime
+  if (!excused && !earlyCancel) {
     m.fineEur = CANCELLATION_FINE_EUR;
     m.finePaidTo = other;
     const { creditUserBalance } = await import('./guideWallet.js');
@@ -711,7 +774,7 @@ export async function cancelScheduledDate(
       userId: other,
       amountEur: CANCELLATION_FINE_EUR,
       type: 'date_fine',
-      note: `No-show / cancellation fine from a Date Arena match`,
+      note: `No-show / late cancellation fine from a Date Arena match`,
     });
   }
 
@@ -1077,5 +1140,94 @@ export async function maybeOfferPitchOnReject(fromUserId: string, toUserId: stri
   if (!ok) return null;
   return createPitchOffer({ fromUserId, toUserId, source: 'reject', interestId });
 }
+
+/**
+ * Real-app rule: men 25–35 who did NOT pick top life-check tiers
+ * (established / wealthy) get occasional auto Date Arena pairs with women 18–20 or 33–55.
+ * Both must still confirm free slots; chat stays locked until the date day.
+ */
+export async function maybeAutoArenaDateForBuildingMan(userId: string): Promise<DateMatch | null> {
+  const me = await getUserById(userId);
+  if (!me) return null;
+  const age = typeof me.age === 'number' ? me.age : null;
+  const gender = (me.gender || '').toLowerCase();
+  if (!(gender === 'male' || gender === 'm')) return null;
+  if (age == null || age < 25 || age > 35) return null;
+  if (hasTopLifeTier(me)) return null;
+
+  const quota = await canStartMoreArenaDates(userId);
+  if (!quota.ok) return null;
+
+  const matches = await readMatches();
+  const active = matches.find(
+    (m) =>
+      (m.userId1 === userId || m.userId2 === userId) &&
+      ['pending', 'awaiting_accept', 'picking_idea', 'scheduled', 'proposed'].includes(m.status)
+  );
+  if (active) return null;
+
+  // Don't spam — at most one auto-offer every ~3 days
+  const recentAuto = matches
+    .filter((m) => (m.userId1 === userId || m.userId2 === userId) && m.lookingFor?.includes('__auto_band'))
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+  if (recentAuto && Date.now() - new Date(recentAuto.createdAt).getTime() < 3 * 24 * 60 * 60 * 1000) {
+    return null;
+  }
+
+  const looking = await getSavedLookingFor(userId);
+  const users = await getAllUsers();
+  const blocked = new Set([...(me.blockedUsers || []), ...(me.unmatchedUsers || [])]);
+  const band = users.filter((u) => {
+    if (u.id === userId || blocked.has(u.id)) return false;
+    const g = (u.gender || '').toLowerCase();
+    if (!(g === 'female' || g === 'f')) return false;
+    const a = typeof u.age === 'number' ? u.age : null;
+    if (a == null) return false;
+    const young = a >= 18 && a <= 20;
+    const mature = a >= 33 && a <= 55;
+    if (!young && !mature) return false;
+    if (u.relationshipStatus === 'In a relationship') return false;
+    if ((u.blockedUsers || []).includes(userId)) return false;
+    return true;
+  });
+  if (!band.length) return null;
+  const other = band[Math.floor(Math.random() * band.length)];
+
+  const m: DateMatch = {
+    id: nid(),
+    userId1: userId,
+    userId2: other.id,
+    lookingFor: [...(looking.length ? looking : ['see_where_it_goes']), '__auto_band'],
+    status: 'pending',
+    interest1: await computeInterestLevel(userId),
+    interest2: await computeInterestLevel(other.id),
+    user1Accepted: false,
+    user2Accepted: false,
+    user1FreeSlots: [],
+    user2FreeSlots: [],
+    agreedSlot: null,
+    ideaId: null,
+    ideaTitle: null,
+    ideaDetail: null,
+    ideaCategory: null,
+    scheduledAt: null,
+    chatUnlocked: false,
+    user1Continue: null,
+    user2Continue: null,
+    user1GoingWell: null,
+    user2GoingWell: null,
+    cancelledBy: null,
+    cancelReason: null,
+    cancelProofUrl: null,
+    finePaidTo: null,
+    fineEur: 0,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+  matches.push(m);
+  await writeMatches(matches);
+  return m;
+}
+
 
 export { sameCalendarDay, LOOKING_FOR_OPTIONS, DATE_IDEAS };

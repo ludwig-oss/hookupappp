@@ -39,9 +39,16 @@ export function ensureSimulatorStarted(): void {
   console.log('   Example login: username mock_user_1');
   console.log('   Stop: kill this process or start without SIMULATOR=1 — mocks vanish.');
   console.log('');
+  void import('./interactions.js').then(({ startSimulatorInteractions }) => {
+    startSimulatorInteractions();
+  });
 }
 
 export function stopSimulator(): void {
+  void import('./interactions.js').then(({ stopSimulatorInteractions, purgeSimulatorInteractions }) => {
+    stopSimulatorInteractions();
+    void purgeSimulatorInteractions();
+  });
   active = false;
   bundle = null;
   userOverrides.clear();

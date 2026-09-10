@@ -156,6 +156,8 @@ export interface User {
 
   /** Outdoor walk matching: financial / life stage */
   financialTier?: 'building' | 'stable' | 'wealthy';
+  /** From life check-in: building | stable | established */
+  lifeStage?: 'building' | 'stable' | 'established' | string | null;
   lifeQuizCompleted?: boolean;
   lifeQuizGoals?: string;
   isFamousOrInfluencer?: boolean;
@@ -311,7 +313,7 @@ async function readUsers(): Promise<User[]> {
       dateLookingFor: Array.isArray((user as any).dateLookingFor) ? (user as any).dateLookingFor : [],
     }));
     const { mergeUsersWithSimulator } = await import('../simulator/runtime.js');
-    return mergeUsersWithSimulator(mapped);
+    return mergeUsersWithSimulator(mapped as User[]);
   } catch (error) {
     const { mergeUsersWithSimulator } = await import('../simulator/runtime.js');
     return mergeUsersWithSimulator([]);

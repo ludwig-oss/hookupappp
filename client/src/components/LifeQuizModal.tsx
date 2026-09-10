@@ -44,7 +44,7 @@ export default function LifeQuizModal({ onClose, onComplete }: Props) {
       <div className="walk-popup-card walk-quiz-card">
         <h2>Quick life check-in</h2>
         <p className="walk-popup-sub">
-          Men 20–30: help us match you with the right partners when you are out walking. Be honest — this improves suggestions.
+          Help us match you better when you are out walking. Higher life / finance choices raise how much interest others see and how strongly your preferences surface. Be honest.
         </p>
         {error && <div className="walk-popup-error">{error}</div>}
         <form onSubmit={handleSubmit} className="walk-quiz-form">

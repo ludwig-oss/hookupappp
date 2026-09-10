@@ -249,7 +249,12 @@ async function start() {
   }
   try {
     const { ensureSimulatorStarted, isSimulatorEnabled } = await import('./simulator/runtime.js');
-    if (isSimulatorEnabled()) ensureSimulatorStarted();
+    if (isSimulatorEnabled()) {
+      ensureSimulatorStarted();
+    } else {
+      const { purgeSimulatorInteractions } = await import('./simulator/interactions.js');
+      await purgeSimulatorInteractions();
+    }
   } catch {
     /* non-fatal */
   }

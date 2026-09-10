@@ -25,6 +25,9 @@ import {
   respondLawyer,
   lawyerSessionsFor,
   directPitchCandidates,
+  maybeAutoArenaDateForBuildingMan,
+  canStartMoreArenaDates,
+  FREE_ARENA_DATES,
 } from '../models/dateMatch.js';
 import { getUserTier, userHasFeature } from '../models/premium.js';
 import { getAllGuides, getGuideByUserId } from '../models/improvement.js';
@@ -38,23 +41,43 @@ function uid(req: Request): string {
 export async function getCatalog(req: Request, res: Response) {
   try {
     const userId = uid(req);
-    const [quota, tier, interestLevel, lawyer, plusPitch, plusCountries, gold, plat, savedLookingFor] = await Promise.all([
-      getSearchQuota(userId),
-      getUserTier(userId),
-      computeInterestLevel(userId),
-      userHasFeature(userId, 'guide_lawyer'),
-      userHasFeature(userId, 'pitch_on_reject'),
-      userHasFeature(userId, 'unlimited_countries'),
-      userHasFeature(userId, 'guide_lawyer'),
-      userHasFeature(userId, 'direct_pitch'),
-      getSavedLookingFor(userId),
-    ]);
+    const auto = await maybeAutoArenaDateForBuildingMan(userId).catch(() => null);
+    if (auto) {
+      try {
+        notifyDateMatch(auto.userId2, {
+          matchId: auto.id,
+          fromUserId: auto.userId1,
+          status: auto.status,
+        });
+        await sendPushToUser(auto.userId2, {
+          title: 'Date Arena match',
+          body: 'Someone was paired with you. Open Date Arena to accept.',
+        });
+      } catch {
+        /* optional notify */
+      }
+    }
+    const [quota, tier, interestLevel, lawyer, plusPitch, plusCountries, gold, plat, savedLookingFor, dateQuota] =
+      await Promise.all([
+        getSearchQuota(userId),
+        getUserTier(userId),
+        computeInterestLevel(userId),
+        userHasFeature(userId, 'guide_lawyer'),
+        userHasFeature(userId, 'pitch_on_reject'),
+        userHasFeature(userId, 'unlimited_countries'),
+        userHasFeature(userId, 'guide_lawyer'),
+        userHasFeature(userId, 'direct_pitch'),
+        getSavedLookingFor(userId),
+        canStartMoreArenaDates(userId),
+      ]);
     res.json({
       ...catalog(),
       savedLookingFor,
       quota,
+      dateQuota: { ...dateQuota, freeLimit: FREE_ARENA_DATES },
       tier,
       interestLevel,
+      autoMatchId: auto?.id || null,
       features: {
         unlimitedSearches: quota.unlimited,
         pitchOnReject: plusPitch,

@@ -187,12 +187,40 @@ function malePremium(user: WalkUser): boolean {
   );
 }
 
+function maleBuildingArenaBand(user: WalkUser): boolean {
+  const age = getUserAge(user);
+  if (!isMale(user) || age == null || age < 25 || age > 35) return false;
+  const tier = getFinancialTier(user);
+  const stage = String(user.lifeStage || '').toLowerCase();
+  if (tier === 'wealthy' || stage === 'established') return false;
+  return true;
+}
+
+function femaleAutoArenaBand(user: WalkUser): boolean {
+  const age = getUserAge(user);
+  if (!isFemale(user) || age == null) return false;
+  return (age >= 18 && age <= 20) || (age >= 33 && age <= 55);
+}
+
 function scorePair(viewer: WalkUser, candidate: WalkUser): { score: number; reason: string; tags: string[] } {
   const vAge = getUserAge(viewer);
   const cAge = getUserAge(candidate);
   const tags: string[] = [];
   let score = 40;
   let reason = 'Nearby — open to connect';
+
+  if (maleBuildingArenaBand(viewer) && femaleAutoArenaBand(candidate)) {
+    score += 50;
+    reason = 'Date Arena band — complementary ages for your life stage';
+    tags.push('arena-auto-band');
+    return { score, reason, tags };
+  }
+  if (femaleAutoArenaBand(viewer) && maleBuildingArenaBand(candidate)) {
+    score += 50;
+    reason = 'Date Arena band — complementary ages for your life stage';
+    tags.push('arena-auto-band');
+    return { score, reason, tags };
+  }
 
   if (Math.random() < DIVERSIFY_CHANCE && vAge != null && cAge != null) {
     if (Math.abs(vAge - cAge) <= 5) {
@@ -359,6 +387,11 @@ export async function submitLifeQuiz(
 
   return updateUserProfile(userId, {
     financialTier,
+    lifeStage: lifeStage.includes('established')
+      ? 'established'
+      : lifeStage.includes('stable')
+        ? 'stable'
+        : 'building',
     lifeQuizCompleted: true,
     lifeQuizGoals: answers.datingGoals.slice(0, 500),
     isFamousOrInfluencer: answers.isFamousOrInfluencer,

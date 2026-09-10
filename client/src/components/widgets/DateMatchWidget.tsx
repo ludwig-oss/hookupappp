@@ -146,14 +146,18 @@ export default function DateMatchWidget({
         setView('paywall');
         return;
       }
-      if (r.match) applyMatch(r.match, r.other, r.me);
-      else {
-        setMe(r.me);
-        setView('searching');
+      if (r.match) {
+        applyMatch(r.match, r.other, r.me);
+        return;
       }
+      setMe(r.me);
+      setView('searching');
     } catch (e: any) {
-      setError(e.response?.data?.error || 'Search failed');
-      setView('home');
+      const msg = e.response?.data?.error || 'Search failed';
+      setError(msg);
+      // Stay on searching briefly so the error is visible, then return home with banner
+      setView('searching');
+      window.setTimeout(() => setView('home'), 1600);
     } finally {
       setLoading(false);
     }
@@ -316,11 +320,14 @@ export default function DateMatchWidget({
           </div>
           <p style={{ fontSize: 11, color: '#9ca3af', margin: '6px 0 14px' }}>
             {cityScope === 'city'
-              ? 'Pairs you with people in your city. Set city on Profile.'
+              ? 'Pairs you with people in your city. Set country + city on Profile (simulator fills Berlin if blank).'
               : 'Pairs you with people anywhere in your country.'}
             {catalog?.quota.unlimited
               ? ' You have unlimited searches with Plus / Gold / Platinum.'
               : ' Free: 3 searches / month — upgrade for unlimited.'}
+          </p>
+          <p style={{ fontSize: 12, color: '#cbd5e1', margin: '0 0 12px', lineHeight: 1.45 }}>
+            How a date gets set: Search → vs screen → both Accept → Arena “?” roll → you are scheduled with a plan and chat unlock day.
           </p>
 
           <button type="button" className="da-btn da-btn-primary" disabled={!looking.length} onClick={() => setView('disclaimer')}>
@@ -424,6 +431,9 @@ export default function DateMatchWidget({
             </div>
           </div>
           {match.status === 'pending' && <p className="da-sub">This stays on your pending list until you are both online. Then you both Accept.</p>}
+          {theyAccepted(match, user?.id || '') && !iAccepted(match, user?.id || '') && (
+            <p className="da-ok">They already accepted — pick your free times, then tap Accept date. Next you roll “?” for the actual date plan.</p>
+          )}
           <h3 style={{ fontSize: 14, marginTop: 16 }}>When are you free?</h3>
           <p className="da-sub">Both of you pick times. If one overlaps, that becomes the date window.</p>
           <div className="da-slots">

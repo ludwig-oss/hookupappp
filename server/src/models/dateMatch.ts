@@ -328,13 +328,20 @@ export async function canStartMoreArenaDates(userId: string): Promise<{ ok: bool
 async function toCard(userId: string): Promise<PublicUserCard | null> {
   const u = await getUserById(userId);
   if (!u) return null;
+  let online = isSseConnected(userId);
+  try {
+    const { isSimulatorUserId } = await import('../simulator/runtime.js');
+    if (isSimulatorUserId(userId)) online = true;
+  } catch {
+    /* ignore */
+  }
   return {
     id: u.id,
     name: u.name,
     username: u.username,
     profilePicture: u.profilePicture ?? null,
     interestLevel: await computeInterestLevel(userId),
-    online: isSseConnected(userId),
+    online,
     city: u.city,
     country: u.country,
   };
@@ -451,8 +458,30 @@ export async function startSearch(
     };
   }
 
-  const meUser = await getUserById(userId);
-  if (!meUser) throw new Error('User not found');
+  const meUserRaw = await getUserById(userId);
+  if (!meUserRaw) throw new Error('User not found');
+
+  let meUser = meUserRaw;
+  // Simulator: blank Profile geo was aborting search with a flash — fill a test city and keep going
+  try {
+    const { isSimulatorEnabled } = await import('../simulator/runtime.js');
+    const { suggestSimGeoFallback } = await import('../simulator/dateArena.js');
+    if (isSimulatorEnabled()) {
+      const geo = suggestSimGeoFallback(meUser);
+      if (geo) {
+        const { updateUserProfile } = await import('./user.js');
+        const patched = await updateUserProfile(userId, {
+          country: geo.country,
+          city: geo.city,
+        });
+        if (patched) meUser = patched;
+        else meUser = { ...meUser, country: geo.country, city: geo.city };
+      }
+    }
+  } catch {
+    /* optional */
+  }
+
   if (!normPlace(meUser.country)) {
     throw new Error('Set your country in Profile before searching Date Arena.');
   }
@@ -507,6 +536,39 @@ export async function startSearch(
     if (higher.length) pick = higher[0];
   }
 
+  // Simulator: no one in the live queue → match a mock so Date Arena is testable
+  if (!pick) {
+    try {
+      const { isSimulatorEnabled } = await import('../simulator/runtime.js');
+      const { pickSimulatorDatePartner } = await import('../simulator/dateArena.js');
+      if (isSimulatorEnabled()) {
+        const sim = pickSimulatorDatePartner({
+          seekerId: userId,
+          lookingFor: valid,
+          cityScope,
+          seeker: meUser,
+        });
+        if (sim) {
+          const { splitUsersForWrite } = await import('../simulator/runtime.js');
+          splitUsersForWrite([sim]);
+          pick = {
+            entry: {
+              userId: sim.id,
+              lookingFor: (sim as { dateLookingFor?: string[] }).dateLookingFor || valid,
+              cityScope,
+              startedAt: new Date().toISOString(),
+            },
+            score: await computeInterestLevel(sim.id),
+            diff: 0,
+            prefBoost: 20,
+          };
+        }
+      }
+    } catch {
+      /* optional */
+    }
+  }
+
   if (!pick) {
     return {
       quota: await getSearchQuota(userId),
@@ -518,7 +580,14 @@ export async function startSearch(
     };
   }
 
-  const bothOnline = isSseConnected(userId) && isSseConnected(pick.entry.userId);
+  let pickIsSim = false;
+  try {
+    const { isSimulatorUserId } = await import('../simulator/runtime.js');
+    pickIsSim = isSimulatorUserId(pick.entry.userId);
+  } catch {
+    pickIsSim = false;
+  }
+  const bothOnline = (isSseConnected(userId) && isSseConnected(pick.entry.userId)) || pickIsSim;
   const now = new Date().toISOString();
   const match: DateMatch = {
     id: nid(),
@@ -551,6 +620,19 @@ export async function startSearch(
     createdAt: now,
     updatedAt: now,
   };
+
+  // Simulator mock: already "accepted" + free times so you can Accept → roll the date
+  if (pickIsSim) {
+    const slots = [1, 2, 3].map((d) => new Date(Date.now() + d * 24 * 60 * 60 * 1000).toISOString());
+    if (match.userId2 === pick.entry.userId) {
+      match.user2Accepted = true;
+      match.user2FreeSlots = slots;
+    } else {
+      match.user1Accepted = true;
+      match.user1FreeSlots = slots;
+    }
+  }
+
   const matches = await readMatches();
   matches.push(match);
   await writeMatches(matches);

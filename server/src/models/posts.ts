@@ -1,5 +1,5 @@
-import { readFile, writeFile } from 'fs/promises';
-import { join } from 'path';
+import { readFile, writeFile, mkdir, access } from 'fs/promises';
+import { dirname, join } from 'path';
 import { usePostgres } from '../db/index.js';
 import * as pgPosts from '../db/pg-posts.js';
 
@@ -33,25 +33,51 @@ export interface DatingPost {
 
 const BLOWING_UP_LIKES_THRESHOLD = 25;
 
-const POSTS_PATH = join(process.cwd(), 'server', 'data', 'dating-posts.json');
+const POSTS_CANDIDATES = [
+  join(process.cwd(), 'data', 'dating-posts.json'),
+  join(process.cwd(), 'server', 'data', 'dating-posts.json'),
+];
+
+async function resolvePostsPath(): Promise<string> {
+  for (const p of POSTS_CANDIDATES) {
+    try {
+      await access(p);
+      return p;
+    } catch {
+      /* next */
+    }
+  }
+  const cwd = process.cwd().replace(/\\/g, '/');
+  return cwd.endsWith('/server') ? POSTS_CANDIDATES[0] : POSTS_CANDIDATES[1];
+}
 
 async function readPosts(): Promise<DatingPost[]> {
-  try {
-    const data = await readFile(POSTS_PATH, 'utf-8');
-    const posts = JSON.parse(data);
-    return posts.map((post: DatingPost) => ({
-      ...post,
-      likes: post.likes ?? 0,
-      shares: post.shares ?? 0,
-      createdAt: post.createdAt ? new Date(post.createdAt) : new Date(),
-      comments: (post.comments || []).map((c: any) => ({
-        ...c,
-        createdAt: c.createdAt ? new Date(c.createdAt) : new Date(),
-      })),
-    }));
-  } catch {
-    return [];
+  const byId = new Map<string, DatingPost>();
+  for (const p of POSTS_CANDIDATES) {
+    try {
+      const data = await readFile(p, 'utf-8');
+      const posts = JSON.parse(data) as DatingPost[];
+      if (!Array.isArray(posts)) continue;
+      for (const post of posts) {
+        if (!post?.id) continue;
+        byId.set(post.id, {
+          ...post,
+          likes: post.likes ?? 0,
+          shares: post.shares ?? 0,
+          createdAt: post.createdAt ? new Date(post.createdAt) : new Date(),
+          comments: (post.comments || []).map((c: any) => ({
+            ...c,
+            createdAt: c.createdAt ? new Date(c.createdAt) : new Date(),
+          })),
+        });
+      }
+    } catch {
+      /* next */
+    }
   }
+  return Array.from(byId.values()).sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+  );
 }
 
 /** Hybrid YouTube + Twitter + TikTok feed ranking (personalized when userId provided). */
@@ -92,9 +118,9 @@ export async function sharePost(postId: string): Promise<boolean> {
 }
 
 async function writePosts(posts: DatingPost[]): Promise<void> {
-  const dir = join(process.cwd(), 'server', 'data');
-  await import('fs/promises').then(fs => fs.mkdir(dir, { recursive: true }));
-  await writeFile(POSTS_PATH, JSON.stringify(posts, null, 2));
+  const path = await resolvePostsPath();
+  await mkdir(dirname(path), { recursive: true });
+  await writeFile(path, JSON.stringify(posts, null, 2));
 }
 
 export async function createPost(post: Omit<DatingPost, 'id' | 'createdAt' | 'likes' | 'shares' | 'comments'>): Promise<DatingPost> {

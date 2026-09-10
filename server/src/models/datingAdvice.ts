@@ -1,5 +1,5 @@
-import { readFile, writeFile, mkdir } from 'fs/promises';
-import { join } from 'path';
+import { readFile, writeFile, mkdir, access } from 'fs/promises';
+import { dirname, join } from 'path';
 
 /** Who should answer this question (same love-interest peer group). */
 export type AdviceAnswerCohort =
@@ -56,9 +56,36 @@ export interface AdviceUserMeta {
   firstCommentNotified: boolean;
 }
 
-const QUESTIONS_PATH = join(process.cwd(), 'server', 'data', 'advice-questions.json');
-const META_PATH = join(process.cwd(), 'server', 'data', 'advice-user-meta.json');
-const PAYOUTS_PATH = join(process.cwd(), 'server', 'data', 'advice-monthly-payouts.json');
+const QUESTIONS_CANDIDATES = [
+  join(process.cwd(), 'data', 'advice-questions.json'),
+  join(process.cwd(), 'server', 'data', 'advice-questions.json'),
+];
+const META_CANDIDATES = [
+  join(process.cwd(), 'data', 'advice-user-meta.json'),
+  join(process.cwd(), 'server', 'data', 'advice-user-meta.json'),
+];
+const PAYOUTS_CANDIDATES = [
+  join(process.cwd(), 'data', 'advice-monthly-payouts.json'),
+  join(process.cwd(), 'server', 'data', 'advice-monthly-payouts.json'),
+];
+
+async function firstExisting(paths: string[]): Promise<string | null> {
+  for (const p of paths) {
+    try {
+      await access(p);
+      return p;
+    } catch {
+      /* next */
+    }
+  }
+  return null;
+}
+
+function preferWritePath(paths: string[]): string {
+  const cwd = process.cwd().replace(/\\/g, '/');
+  if (cwd.endsWith('/server')) return paths[0];
+  return paths[1] || paths[0];
+}
 
 export const ADVICE_PRIZE_EUR = 5;
 export const ADVICE_GLOBAL_ENGAGEMENT = 5;
@@ -123,45 +150,62 @@ function monthKey(d = new Date()): string {
 }
 
 async function readQuestions(): Promise<AdviceQuestion[]> {
-  try {
-    return JSON.parse(await readFile(QUESTIONS_PATH, 'utf-8'));
-  } catch {
-    return [];
+  const byId = new Map<string, AdviceQuestion>();
+  for (const p of QUESTIONS_CANDIDATES) {
+    try {
+      const list = JSON.parse(await readFile(p, 'utf-8')) as AdviceQuestion[];
+      if (!Array.isArray(list)) continue;
+      for (const q of list) if (q?.id) byId.set(q.id, q);
+    } catch {
+      /* next */
+    }
   }
+  return Array.from(byId.values()).sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+  );
 }
 
 async function writeQuestions(list: AdviceQuestion[]): Promise<void> {
-  const dir = join(process.cwd(), 'server', 'data');
-  await mkdir(dir, { recursive: true });
-  await writeFile(QUESTIONS_PATH, JSON.stringify(list, null, 2));
+  const existing = await firstExisting(QUESTIONS_CANDIDATES);
+  const path = existing || preferWritePath(QUESTIONS_CANDIDATES);
+  await mkdir(dirname(path), { recursive: true });
+  await writeFile(path, JSON.stringify(list, null, 2));
 }
 
 async function readMeta(): Promise<AdviceUserMeta[]> {
-  try {
-    return JSON.parse(await readFile(META_PATH, 'utf-8'));
-  } catch {
-    return [];
+  for (const p of META_CANDIDATES) {
+    try {
+      return JSON.parse(await readFile(p, 'utf-8'));
+    } catch {
+      /* next */
+    }
   }
+  return [];
 }
 
 async function writeMeta(list: AdviceUserMeta[]): Promise<void> {
-  const dir = join(process.cwd(), 'server', 'data');
-  await mkdir(dir, { recursive: true });
-  await writeFile(META_PATH, JSON.stringify(list, null, 2));
+  const existing = await firstExisting(META_CANDIDATES);
+  const path = existing || preferWritePath(META_CANDIDATES);
+  await mkdir(dirname(path), { recursive: true });
+  await writeFile(path, JSON.stringify(list, null, 2));
 }
 
 async function readPayoutLog(): Promise<string[]> {
-  try {
-    return JSON.parse(await readFile(PAYOUTS_PATH, 'utf-8'));
-  } catch {
-    return [];
+  for (const p of PAYOUTS_CANDIDATES) {
+    try {
+      return JSON.parse(await readFile(p, 'utf-8'));
+    } catch {
+      /* next */
+    }
   }
+  return [];
 }
 
 async function writePayoutLog(keys: string[]): Promise<void> {
-  const dir = join(process.cwd(), 'server', 'data');
-  await mkdir(dir, { recursive: true });
-  await writeFile(PAYOUTS_PATH, JSON.stringify(keys, null, 2));
+  const existing = await firstExisting(PAYOUTS_CANDIDATES);
+  const path = existing || preferWritePath(PAYOUTS_CANDIDATES);
+  await mkdir(dirname(path), { recursive: true });
+  await writeFile(path, JSON.stringify(keys, null, 2));
 }
 
 export async function createAdviceQuestion(params: {

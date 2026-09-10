@@ -221,7 +221,7 @@ export const profileAPI = {
     celebChatDisappearSeconds?: number;
     celebMessagesOnlyWhenOpened?: boolean;
     closeFriendIds?: string[];
-  }): Promise<{ user: any }> => {
+  }): Promise<{ user: any; celebrityVerification?: any; message?: string }> => {
     const response = await axios.put(`${API_URL}/me`, updates, { headers: getAuthHeaders() });
     return response.data;
   },

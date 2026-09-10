@@ -291,6 +291,9 @@ export const searchUsersByUsername = async (req: Request, res: Response) => {
     if (!q) {
       return res.json({ users: [] });
     }
+    void import('../services/celebrityVerification.js').then(({ recordProfileSearchQuery }) => {
+      recordProfileSearchQuery(q);
+    });
     const currentUser = await getUserById(userId);
     if (!currentUser) {
       return res.status(404).json({ error: 'User not found' });

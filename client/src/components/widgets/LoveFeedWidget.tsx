@@ -323,6 +323,10 @@ export default function LoveFeedWidget({ onShareToFriends }: { onShareToFriends?
 
   useEffect(() => {
     loadFeed(feedMode);
+    const poll = window.setInterval(() => {
+      void loadFeed(feedMode, true);
+    }, 20_000);
+    return () => window.clearInterval(poll);
   }, [feedMode]);
 
   const loadFeed = async (mode: FeedMode = feedMode, quiet = false) => {

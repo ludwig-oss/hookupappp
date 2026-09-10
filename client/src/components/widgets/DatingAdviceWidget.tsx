@@ -22,8 +22,8 @@ export default function DatingAdviceWidget() {
   const [submittingId, setSubmittingId] = useState<string | null>(null);
   const [replySubmittingKey, setReplySubmittingKey] = useState<string | null>(null);
 
-  const loadFeed = useCallback(async (q?: string) => {
-    setLoading(true);
+  const loadFeed = useCallback(async (q?: string, quiet = false) => {
+    if (!quiet) setLoading(true);
     setError('');
     try {
       const data = await adviceAPI.getFeed(q);
@@ -33,13 +33,17 @@ export default function DatingAdviceWidget() {
     } catch (e) {
       setError(formatAxiosError(e, 'Could not load advice feed'));
     } finally {
-      setLoading(false);
+      if (!quiet) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
     loadFeed();
-  }, [loadFeed]);
+    const poll = window.setInterval(() => {
+      void loadFeed(feedQuery || undefined, true);
+    }, 12_000);
+    return () => window.clearInterval(poll);
+  }, [loadFeed, feedQuery]);
 
   const handleSearch = async (e?: React.FormEvent) => {
     e?.preventDefault();
@@ -50,10 +54,17 @@ export default function DatingAdviceWidget() {
     setSuccess('');
     try {
       const res = await adviceAPI.search(q);
-      setSuccess(res.message);
+      setSuccess(res.message + ' Waiting for answers…');
       setSearchQuery('');
       setExpandedId(res.question.id);
       await loadFeed();
+      // Poll while mocks answer (simulator)
+      let ticks = 0;
+      const poll = window.setInterval(() => {
+        ticks += 1;
+        void loadFeed(feedQuery || undefined, true);
+        if (ticks >= 8) window.clearInterval(poll);
+      }, 1500);
     } catch (err) {
       setError(formatAxiosError(err, 'Could not post your question'));
     } finally {

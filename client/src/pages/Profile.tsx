@@ -1137,26 +1137,50 @@ const Profile = () => {
                       setError('You must agree to the terms and conditions before submitting.');
                       return;
                     }
-                    if (!confirm('Submit your application for public figure verification? We will review your proof and notify you once verified.')) return;
+                    if (!confirm('Submit for automated celebrity checks? The app scores impersonation risk, search volume, web credibility, and cross-platform presence — then matches your selfie + ID.')) return;
                     setCelebSaving(true);
                     setError('');
                     try {
-                      await profileAPI.updateProfile({
+                      const res = await profileAPI.updateProfile({
                         publicFigureLevel: (publicFigureLevel === 'world' || publicFigureLevel === 'community' || publicFigureLevel === 'country' ? publicFigureLevel : null),
                         publicFigureProof: publicFigureProofType === 'social' ? publicFigureProof.trim() : null,
                         publicFigureIdImage: publicFigureIdImage || null,
                         publicFigureUniqueImage: publicFigureProofType === 'unique' ? publicFigureUniqueImage : null,
-                        publicFigureVerified: true
+                        publicFigureVerified: true,
                       });
+                      const v = res.celebrityVerification;
+                      if (v) {
+                        const lines = [
+                          v.message,
+                          '',
+                          `Average notability: ${v.averageScore}/100`,
+                          `1. Impersonation: ${v.scores.impersonationThreshold.score} — ${v.scores.impersonationThreshold.detail}`,
+                          `2. Search volume: ${v.scores.searchVolume.score} — ${v.scores.searchVolume.detail}`,
+                          `3. Web credibility: ${v.scores.webCredibility.score} — ${v.scores.webCredibility.detail}`,
+                          `4. Cross-platform: ${v.scores.crossPlatform.score} — ${v.scores.crossPlatform.detail}`,
+                          '',
+                          ...(v.reasons || []),
+                        ];
+                        alert(lines.join('\n'));
+                      } else {
+                        alert(res.message || 'Application submitted.');
+                      }
                       await loadProfile();
+                      if (v?.approved) setShowPublicFigureApplyForm(false);
                     } catch (e) {
                       setError('Failed to submit application.');
                     } finally {
                       setCelebSaving(false);
                     }
                   }} disabled={celebSaving}>
-                    {celebSaving ? 'Submitting...' : 'Submit application'}
+                    {celebSaving ? 'Running checks...' : 'Submit application'}
                   </button>
+                  <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.65)', marginTop: 10, lineHeight: 1.45 }}>
+                    How verification works: the algorithm (not a manual guess) checks (1) impersonation / copycat spikes,
+                    (2) search velocity for your name, (3) credible web sources (news / Wikipedia — paid PR ignored),
+                    (4) cross-platform presence. Selfie + ID must match. Pass → blurred profile, gold star, NDA controls.
+                    Simulator tip: paste Instagram + YouTube + Wikipedia-style links, or apply as a mock celeb name after selfie + ID.
+                  </p>
                 </>
                 )
               ) : (

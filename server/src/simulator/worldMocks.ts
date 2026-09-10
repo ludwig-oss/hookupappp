@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs';
 import type { User } from '../models/user.js';
 import type { UserPreference, LookingForOption } from '../models/discover.js';
+import { MOCK_CELEBRITY_NAMES } from './celebNames.js';
 
 /** Prefix so mock IDs never collide with real accounts and are easy to strip on write. */
 export const SIM_ID_PREFIX = 'sim_';
@@ -112,6 +113,8 @@ export function buildWorldMocks(count = 50): WorldMockBundle {
     const lat = jitter(place.lat);
     const lon = jitter(place.lon);
     const name = `${FIRST[i % FIRST.length]} ${LAST[i % LAST.length]}`;
+    const isCeleb = i < MOCK_CELEBRITY_NAMES.length;
+    const celebName = isCeleb ? MOCK_CELEBRITY_NAMES[i] : null;
 
     const pic = `https://i.pravatar.cc/400?u=${id}`;
     const nowIso = new Date(now - (i % 8) * 3_600_000).toISOString();
@@ -166,8 +169,8 @@ export function buildWorldMocks(count = 50): WorldMockBundle {
       id,
       email: `mock${i + 1}@simulator.local`,
       password: passwordHash,
-      name,
-      username,
+      name: isCeleb ? celebName! : name,
+      username: isCeleb ? `celeb_${i + 1}` : username,
       phoneNumber: null,
       profilePicture: pic,
       highlights,
@@ -192,7 +195,9 @@ export function buildWorldMocks(count = 50): WorldMockBundle {
       mutedUsers: [],
       unmatchedUsers: [],
       profiles: [],
-      bio: `Simulator mock in ${place.city}. Open to chats, games, meetups, and safety tests. (Not a real person.)`,
+      bio: isCeleb
+        ? `Verified public figure (simulator). Profile is blurred until NDA + reveal. Gold star demo account.`
+        : `Simulator mock in ${place.city}. Open to chats, games, meetups, and safety tests. (Not a real person.)`,
       age: 22 + (i % 18),
       gender,
       country: place.country,
@@ -210,6 +215,20 @@ export function buildWorldMocks(count = 50): WorldMockBundle {
         : lookingFor.includes('serious')
           ? ['serious_relationship']
           : ['see_where_it_goes'],
+      ...(isCeleb
+        ? {
+            publicFigureVerified: true,
+            publicFigureVerifiedAt: new Date(now - 86_400_000).toISOString(),
+            publicFigureLevel: (i % 3 === 0 ? 'world' : i % 3 === 1 ? 'country' : 'community') as
+              | 'world'
+              | 'country'
+              | 'community',
+            publicFigureProof: `https://instagram.com/${celebName!.replace(/\s+/g, '').toLowerCase()}\nhttps://youtube.com/@${celebName!.replace(/\s+/g, '')}\nhttps://en.wikipedia.org/wiki/${celebName!.replace(/\s+/g, '_')}`,
+            photoVerifiedAt: new Date(now - 172_800_000).toISOString(),
+            revealToUserIds: [] as string[],
+            celebChatDisappearMode: 'none' as const,
+          }
+        : {}),
     });
 
     preferences.push({

@@ -164,8 +164,12 @@ export function startSimulatorInteractions(): void {
   if (timer) return;
   console.log('🧪 Simulator interactions ON — mocks will send interest, messages, buzzes to real accounts.');
   void interactOnce();
+  void import('./contentSeed.js').then(async ({ seedSimulatorSocialContent, mockEngageLoveFeedOnce }) => {
+    await seedSimulatorSocialContent();
+  });
   timer = setInterval(() => {
     void interactOnce();
+    void import('./contentSeed.js').then(({ mockEngageLoveFeedOnce }) => mockEngageLoveFeedOnce());
   }, 55_000);
 }
 

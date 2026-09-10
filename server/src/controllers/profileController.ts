@@ -602,13 +602,44 @@ export const updateUserProfileInfo = async (req: Request, res: Response) => {
     if ('country' in body) updates.country = sanitizeForStorage(body.country, LIMITS.COUNTRY);
     if ('city' in body) updates.city = sanitizeForStorage(body.city, LIMITS.CITY);
 
-    // Public figure / celebrity
+    // Public figure / celebrity — never trust client `publicFigureVerified: true`
     if (body.publicFigureLevel !== undefined) updates.publicFigureLevel = body.publicFigureLevel || null;
     if (body.publicFigureProof !== undefined) updates.publicFigureProof = body.publicFigureProof || null;
     if (body.publicFigureIdImage !== undefined) updates.publicFigureIdImage = body.publicFigureIdImage || null;
     if (body.publicFigureUniqueImage !== undefined) updates.publicFigureUniqueImage = body.publicFigureUniqueImage || null;
-    if (body.publicFigureVerified !== undefined) updates.publicFigureVerified = !!body.publicFigureVerified;
-    if (body.publicFigureVerifiedAt !== undefined) updates.publicFigureVerifiedAt = body.publicFigureVerifiedAt || null;
+
+    let celebrityVerification: Awaited<
+      ReturnType<typeof import('../services/celebrityVerification.js').evaluateCelebrityApplication>
+    > | null = null;
+
+    const applyingForCeleb =
+      body.publicFigureVerified === true ||
+      body.applyPublicFigure === true ||
+      (body.publicFigureIdImage && (body.publicFigureProof || body.publicFigureUniqueImage) && body.publicFigureLevel);
+
+    if (applyingForCeleb) {
+      const { evaluateCelebrityApplication } = await import('../services/celebrityVerification.js');
+      const mergedUser = { ...existing, ...updates, photoVerifiedAt: existing.photoVerifiedAt };
+      celebrityVerification = await evaluateCelebrityApplication({
+        user: mergedUser as any,
+        displayName: (updates.name as string) || existing.name,
+        level: (updates.publicFigureLevel as any) || body.publicFigureLevel || existing.publicFigureLevel,
+        socialProof: (updates.publicFigureProof as string) ?? body.publicFigureProof ?? existing.publicFigureProof,
+        uniqueImage:
+          (updates.publicFigureUniqueImage as string) ??
+          body.publicFigureUniqueImage ??
+          existing.publicFigureUniqueImage,
+        idImage: (updates.publicFigureIdImage as string) ?? body.publicFigureIdImage ?? existing.publicFigureIdImage,
+      });
+      updates.publicFigureVerified = celebrityVerification.approved;
+      updates.publicFigureVerifiedAt = celebrityVerification.approved
+        ? new Date().toISOString()
+        : existing.publicFigureVerifiedAt || null;
+    } else if (body.publicFigureVerified === false) {
+      updates.publicFigureVerified = false;
+      updates.publicFigureVerifiedAt = null;
+    }
+
     if (Array.isArray(body.revealToUserIds)) updates.revealToUserIds = body.revealToUserIds;
     if (body.celebChatDisappearMode !== undefined) updates.celebChatDisappearMode = body.celebChatDisappearMode || 'none';
     if (body.celebChatDisappearSeconds !== undefined) updates.celebChatDisappearSeconds = body.celebChatDisappearSeconds;
@@ -626,8 +657,13 @@ export const updateUserProfileInfo = async (req: Request, res: Response) => {
 
     const { password, resetToken, resetTokenExpiry, ...userProfile } = user;
     res.json({
-      message: 'Profile updated successfully',
+      message: celebrityVerification
+        ? celebrityVerification.approved
+          ? 'Public figure verified'
+          : 'Public figure application reviewed — not verified yet'
+        : 'Profile updated successfully',
       user: userProfile,
+      celebrityVerification: celebrityVerification || undefined,
     });
   } catch (error) {
     console.error('Update profile error:', error);

@@ -37,10 +37,14 @@ export function ensureSimulatorStarted(): void {
   console.log('🧪 SIMULATOR ON — in-memory world mocks (NOT written to users.json)');
   console.log(`   ${bundle.users.length} fake users worldwide. Password for all: ${SIMULATOR_PASSWORD}`);
   console.log('   Example login: username mock_user_1');
+  console.log('   Mock celebs: celeb_1 … (blurred + gold star). Password: same MockPass1!');
   console.log('   Stop: kill this process or start without SIMULATOR=1 — mocks vanish.');
   console.log('');
   void import('./interactions.js').then(({ startSimulatorInteractions }) => {
     startSimulatorInteractions();
+  });
+  void import('./contentSeed.js').then(({ seedSimulatorSocialContent }) => {
+    void seedSimulatorSocialContent();
   });
 }
 

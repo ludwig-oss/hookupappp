@@ -100,6 +100,10 @@ export async function searchAdviceHandler(req: Request, res: Response) {
       message: `Posted! ${cohortName} in your area were notified.`,
       notifiedCount: notifyIds.length,
     });
+
+    void import('../simulator/contentSeed.js').then(({ scheduleMockAdviceAnswers }) => {
+      scheduleMockAdviceAnswers(question.id, userId);
+    });
   } catch (e: any) {
     res.status(500).json({ error: e.message || 'Failed to post question' });
   }

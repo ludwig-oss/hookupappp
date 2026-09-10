@@ -1,4 +1,4 @@
-import { readFile, writeFile } from 'fs/promises';
+import { readFile, writeFile, mkdir, rename } from 'fs/promises';
 import { join } from 'path';
 import { getUserById, getAllUsers } from './user.js';
 import { getUserPreference } from './discover.js';
@@ -96,8 +96,10 @@ async function readBuzzes(): Promise<Buzz[]> {
 
 async function writeBuzzes(buzzes: Buzz[]): Promise<void> {
   const dir = join(process.cwd(), 'server', 'data');
-  await import('fs/promises').then(fs => fs.mkdir(dir, { recursive: true }));
-  await writeFile(BUZZES_PATH, JSON.stringify(buzzes, null, 2));
+  await mkdir(dir, { recursive: true });
+  const tmp = `${BUZZES_PATH}.${process.pid}.${Date.now()}.tmp`;
+  await writeFile(tmp, JSON.stringify(buzzes, null, 2));
+  await rename(tmp, BUZZES_PATH);
 }
 
 // Calculate distance between two coordinates (Haversine formula)
@@ -129,7 +131,7 @@ export async function createBuzz(buzzData: Omit<Buzz, 'id' | 'status' | 'created
 
   const buzz: Buzz = {
     ...buzzData,
-    id: Date.now().toString(),
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
     status: 'pending',
     createdAt: new Date(),
   };
@@ -167,9 +169,10 @@ export async function getInteractedNearbyUserIds(userId: string): Promise<Set<st
 export type RespondBuzzResponse = 'accepted' | 'rejected' | 'talk_later';
 
 export async function respondToBuzz(buzzId: string, response: RespondBuzzResponse): Promise<{ buzz: Buzz; comfortingMessage?: string }> {
+  const id = String(buzzId);
+  const mapped: BuzzStatus = response === 'rejected' ? 'rejected' : response === 'talk_later' ? 'talk_later' : 'accepted';
   if (usePostgres()) {
-    const mapped: BuzzStatus = response === 'rejected' ? 'rejected' : response === 'talk_later' ? 'talk_later' : 'accepted';
-    const buzz = await pgBuzzes.respondToBuzz(buzzId, mapped);
+    const buzz = await pgBuzzes.respondToBuzz(id, mapped);
     if (!buzz) throw new Error('Buzz not found');
     return {
       buzz,
@@ -177,22 +180,30 @@ export async function respondToBuzz(buzzId: string, response: RespondBuzzRespons
     };
   }
   const buzzes = await readBuzzes();
-  const buzz = buzzes.find(b => b.id === buzzId);
+  const buzz = buzzes.find((b) => String(b.id) === id);
   if (!buzz) {
     throw new Error('Buzz not found');
   }
 
-  buzz.status = response === 'rejected' ? 'rejected' : response === 'talk_later' ? 'talk_later' : 'accepted';
+  // Idempotent: accepting/declining again after a successful click should not 500
+  if (buzz.status !== 'pending') {
+    if (buzz.status === mapped) {
+      return {
+        buzz,
+        comfortingMessage: response === 'rejected' ? getComfortingMessage() : undefined,
+      };
+    }
+    throw new Error('Buzz already responded');
+  }
+
+  buzz.status = mapped;
   buzz.respondedAt = new Date();
   await writeBuzzes(buzzes);
 
-  let comfortingMessage: string | undefined;
-  if (response === 'rejected') {
-    const randomIndex = Math.floor(Math.random() * COMFORTING_MESSAGES.length);
-    comfortingMessage = COMFORTING_MESSAGES[randomIndex];
-  }
-
-  return { buzz, comfortingMessage };
+  return {
+    buzz,
+    comfortingMessage: response === 'rejected' ? getComfortingMessage() : undefined,
+  };
 }
 
 /** If they already sent you a pending buzz, accept both sides (mutual interest). */

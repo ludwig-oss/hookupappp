@@ -37,10 +37,14 @@ import {
 import { sendPushToUser } from '../realtime/push.js';
 import { notifyConfessionRequest, notifyConfessionMessage } from '../realtime/notifications.js';
 import { sanitizeMessageContent, LIMITS } from '../utils/sanitize.js';
+import { getUserById } from '../models/user.js';
+import { isSimulatorEnabled } from '../simulator/runtime.js';
 
 function paymentsStatus() {
   return {
     stripeConfigured: isStripeConfigured(),
+    /** Local `npm run dev:sim` only — confession booth is free; no Stripe. */
+    simulatorFree: isSimulatorEnabled(),
   };
 }
 
@@ -102,9 +106,11 @@ export async function listConfessionGuidesHandler(req: Request, res: Response) {
 export async function createSessionHandler(req: Request, res: Response) {
   try {
     const userId = (req as any).userId as string;
-    const { amountEur, safetySignature, guideId, appointmentAt, guideScope, kind, aiGuideId } = req.body as {
+    const { amountEur, safetySignature, agreeToTerms, guideId, appointmentAt, guideScope, kind, aiGuideId } = req.body as {
       amountEur?: number;
       safetySignature?: string;
+      /** Client checked “I agree” — server stamps the logged-in account name (no re-type). */
+      agreeToTerms?: boolean;
       guideId?: string;
       appointmentAt?: string;
       guideScope?: string;
@@ -114,22 +120,37 @@ export async function createSessionHandler(req: Request, res: Response) {
     if (amountEur !== 5 && amountEur !== 10) {
       return res.status(400).json({ error: 'Choose €5 or €10 for your confession session' });
     }
-    if (!safetySignature?.trim()) {
-      return res.status(400).json({ error: 'Sign the safety agreement before continuing' });
+
+    const account = await getUserById(userId);
+    const accountName = (account?.name || account?.username || '').trim();
+    let signature = (safetySignature || '').trim();
+    if (agreeToTerms) {
+      if (!accountName) {
+        return res.status(400).json({ error: 'Your account needs a name before you can agree to the terms' });
+      }
+      signature = accountName;
+    }
+    if (!signature) {
+      return res.status(400).json({ error: 'Agree to the safety terms before continuing' });
     }
 
     if (kind === 'ai' || aiGuideId) {
       if (!aiGuideId) return res.status(400).json({ error: 'Choose an AI confession helper' });
-      const session = await createAiConfessionSession({
+      let session = await createAiConfessionSession({
         seekerUserId: userId,
         amountEur,
-        safetySignature: safetySignature.trim(),
+        safetySignature: signature,
         aiGuideId,
       });
+      // Simulator only: skip Stripe — activate immediately so you can test the booth.
+      if (isSimulatorEnabled()) {
+        session = await markSessionPaid(session.id, 'simulator:free');
+      }
       return res.json({
         session: sanitizeSessionForClient(session, userId),
         seekerSafetyAgreement: SEEKER_SAFETY_AGREEMENT,
         aiSeekerTerms: AI_SEEKER_TERMS,
+        simulatorFree: isSimulatorEnabled(),
       });
     }
 
@@ -143,10 +164,10 @@ export async function createSessionHandler(req: Request, res: Response) {
       return res.status(400).json({ error: 'Choose local or international guides' });
     }
 
-    const session = await createConfessionSession({
+    let session = await createConfessionSession({
       seekerUserId: userId,
       amountEur: amountEur,
-      safetySignature: safetySignature.trim(),
+      safetySignature: signature,
       guideId,
       appointmentAt,
       guideScope,
@@ -161,9 +182,15 @@ export async function createSessionHandler(req: Request, res: Response) {
       }).catch(() => {});
     }
 
+    // Simulator: if already awaiting payment (guide auto-accepted paths), skip Stripe.
+    if (isSimulatorEnabled() && session.status === 'awaiting_payment') {
+      session = await markSessionPaid(session.id, 'simulator:free');
+    }
+
     res.json({
       session: sanitizeSessionForClient(session, userId),
       seekerSafetyAgreement: SEEKER_SAFETY_AGREEMENT,
+      simulatorFree: isSimulatorEnabled(),
     });
   } catch (e: any) {
     res.status(400).json({ error: e.message || 'Failed' });
@@ -209,6 +236,12 @@ export async function getSessionHandler(req: Request, res: Response) {
 
 export async function createConfessionStripeCheckoutHandler(req: Request, res: Response) {
   try {
+    if (isSimulatorEnabled()) {
+      return res.status(400).json({
+        error: 'Simulator mode — confession is free. Re-open the booth; no Stripe checkout.',
+        simulatorFree: true,
+      });
+    }
     if (!isStripeConfigured()) {
       return res.status(503).json({ error: 'Stripe is not configured', ...paymentsStatus() });
     }
@@ -294,18 +327,26 @@ export async function guideRespondAppointmentHandler(req: Request, res: Response
   try {
     const userId = (req as any).userId as string;
     const { accept } = req.body as { accept?: boolean };
-    const session = await guideRespondAppointment(req.params.sessionId, userId, accept !== false);
+    let session = await guideRespondAppointment(req.params.sessionId, userId, accept !== false);
 
     if (accept !== false && session.status === 'awaiting_payment') {
-      notifyConfessionMessage(session.seekerUserId, {
-        sessionId: session.id,
-        preview: 'Your guide accepted the appointment — pay to open the booth.',
-      });
-      sendPushToUser(session.seekerUserId, {
-        title: 'Confession appointment accepted',
-        body: `Pay €${session.amountEur} to open your anonymous session.`,
-        data: { type: 'confession_payment', sessionId: session.id },
-      }).catch(() => {});
+      if (isSimulatorEnabled()) {
+        session = await markSessionPaid(session.id, 'simulator:free');
+        notifyConfessionMessage(session.seekerUserId, {
+          sessionId: session.id,
+          preview: 'Your guide accepted — booth open (simulator, no payment).',
+        });
+      } else {
+        notifyConfessionMessage(session.seekerUserId, {
+          sessionId: session.id,
+          preview: 'Your guide accepted the appointment — pay to open the booth.',
+        });
+        sendPushToUser(session.seekerUserId, {
+          title: 'Confession appointment accepted',
+          body: `Pay €${session.amountEur} to open your anonymous session.`,
+          data: { type: 'confession_payment', sessionId: session.id },
+        }).catch(() => {});
+      }
     } else if (accept === false) {
       notifyConfessionMessage(session.seekerUserId, {
         sessionId: session.id,

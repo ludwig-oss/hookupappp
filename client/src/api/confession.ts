@@ -76,6 +76,8 @@ export const confessionAPI = {
       aiSplit: { guidePercent: number; platformPercent: number };
       aiGuides: ConfessionAiGuide[];
       stripeConfigured?: boolean;
+      /** Local simulator only — booth opens without Stripe. */
+      simulatorFree?: boolean;
     };
   },
 
@@ -106,7 +108,8 @@ export const confessionAPI = {
 
   createSession: async (data: {
     amountEur: 5 | 10;
-    safetySignature: string;
+    safetySignature?: string;
+    agreeToTerms?: boolean;
     guideId?: string;
     appointmentAt?: string;
     guideScope?: 'local' | 'international';
@@ -114,7 +117,7 @@ export const confessionAPI = {
     aiGuideId?: string;
   }) => {
     const res = await axios.post(`${API_URL}/sessions`, data);
-    return res.data as { session: ConfessionSessionView };
+    return res.data as { session: ConfessionSessionView; simulatorFree?: boolean };
   },
 
   getSession: async (sessionId: string) => {

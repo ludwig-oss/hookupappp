@@ -1,4 +1,4 @@
-import { readFile, writeFile } from 'fs/promises';
+import { readFile, writeFile, mkdir, rename } from 'fs/promises';
 import { join } from 'path';
 import { usePostgres } from '../db/index.js';
 import * as pgChat from '../db/pg-chat.js';
@@ -29,8 +29,10 @@ async function readMessages(): Promise<Message[]> {
 
 async function writeMessages(messages: Message[]): Promise<void> {
   const dir = join(process.cwd(), 'server', 'data');
-  await import('fs/promises').then(fs => fs.mkdir(dir, { recursive: true }));
-  await writeFile(DB_PATH, JSON.stringify(messages, null, 2));
+  await mkdir(dir, { recursive: true });
+  const tmp = `${DB_PATH}.${process.pid}.${Date.now()}.tmp`;
+  await writeFile(tmp, JSON.stringify(messages, null, 2));
+  await rename(tmp, DB_PATH);
 }
 
 export async function createMessage(messageData: Omit<Message, 'id' | 'createdAt' | 'read'>): Promise<Message> {

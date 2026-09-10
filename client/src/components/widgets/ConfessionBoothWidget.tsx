@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useContext } from 'react';
 import {
   confessionAPI,
   ConfessionSessionView,
@@ -7,6 +7,7 @@ import {
 } from '../../api/confession';
 import { formatAxiosError } from '../../lib/apiError';
 import ConfessionMaskedCall from '../ConfessionMaskedCall';
+import { AuthContext } from '../../context/AuthContext';
 import './Widget.css';
 
 type Step =
@@ -57,6 +58,7 @@ function speakVeiled(text: string) {
 }
 
 export default function ConfessionBoothWidget() {
+  const { user } = useContext(AuthContext);
   const [step, setStep] = useState<Step>('intro');
   const [info, setInfo] = useState<Awaited<ReturnType<typeof confessionAPI.getInfo>> | null>(null);
   const [guideInfo, setGuideInfo] = useState<Awaited<ReturnType<typeof confessionAPI.getGuidePrefs>> | null>(null);
@@ -68,7 +70,7 @@ export default function ConfessionBoothWidget() {
   const [selectedAi, setSelectedAi] = useState<ConfessionAiGuide | null>(null);
   const [amountEur, setAmountEur] = useState<5 | 10>(5);
   const [appointmentAt, setAppointmentAt] = useState(defaultAppointmentValue());
-  const [safetySignature, setSafetySignature] = useState('');
+  const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [guideNdaSignature, setGuideNdaSignature] = useState('');
   const [guideEnabled, setGuideEnabled] = useState(false);
   const [message, setMessage] = useState('');
@@ -77,6 +79,9 @@ export default function ConfessionBoothWidget() {
   const [success, setSuccess] = useState('');
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastAiSpoke = useRef('');
+
+  const accountLabel = (user?.name || user?.username || '').trim();
+  const simulatorFree = !!info?.simulatorFree;
 
   const refreshSession = useCallback(async (sessionId: string) => {
     const { session: s } = await confessionAPI.getSession(sessionId);
@@ -160,22 +165,31 @@ export default function ConfessionBoothWidget() {
 
   const handleBookAiSession = async () => {
     if (!selectedAi) return;
-    if (!safetySignature.trim()) {
-      setError('Sign your name to agree to the AI Terms and safety rules');
+    if (!agreedToTerms) {
+      setError('Tick the box to agree to the AI Terms and safety rules');
+      return;
+    }
+    if (!accountLabel) {
+      setError('Your account needs a name before you can continue');
       return;
     }
     setLoading(true);
     setError('');
     try {
-      const { session: s } = await confessionAPI.createSession({
+      const { session: s, simulatorFree: free } = await confessionAPI.createSession({
         amountEur,
-        safetySignature: safetySignature.trim(),
+        agreeToTerms: true,
         kind: 'ai',
         aiGuideId: selectedAi.id,
       });
       setSession(s);
-      setStep('pay');
-      setSuccess('Terms signed. Pay to open your private AI booth — 100% goes to the app.');
+      if (free || info?.simulatorFree || s.status === 'active') {
+        setStep(stepForSession(s));
+        setSuccess('Terms agreed (simulator) — booth open, no payment.');
+      } else {
+        setStep('pay');
+        setSuccess('Terms agreed with your account name. Pay to open your private AI booth — 100% goes to the app.');
+      }
     } catch (e) {
       setError(formatAxiosError(e, 'Could not start AI confession'));
     } finally {
@@ -185,24 +199,33 @@ export default function ConfessionBoothWidget() {
 
   const handleBookSession = async () => {
     if (!selectedGuide || !guideScope) return;
-    if (!safetySignature.trim()) {
-      setError('Type your full name to sign the safety agreement');
+    if (!agreedToTerms) {
+      setError('Tick the box to agree to the safety rules');
+      return;
+    }
+    if (!accountLabel) {
+      setError('Your account needs a name before you can continue');
       return;
     }
     setLoading(true);
     setError('');
     try {
-      const { session: s } = await confessionAPI.createSession({
+      const { session: s, simulatorFree: free } = await confessionAPI.createSession({
         amountEur,
-        safetySignature: safetySignature.trim(),
+        agreeToTerms: true,
         guideId: selectedGuide.id,
         appointmentAt: new Date(appointmentAt).toISOString(),
         guideScope,
         kind: 'human',
       });
       setSession(s);
-      setStep('waiting_accept');
-      setSuccess('Appointment requested — your guide must accept before you pay.');
+      if (free || info?.simulatorFree) {
+        setStep(stepForSession(s));
+        setSuccess('Appointment requested (simulator — no payment when the guide accepts).');
+      } else {
+        setStep('waiting_accept');
+        setSuccess('Appointment requested — your guide must accept before you pay.');
+      }
     } catch (e) {
       setError(formatAxiosError(e, 'Could not book appointment'));
     } finally {
@@ -307,7 +330,7 @@ export default function ConfessionBoothWidget() {
     setSelectedAi(null);
     setGuideScope(null);
     setGuides([]);
-    setSafetySignature('');
+    setAgreedToTerms(false);
     setStep('intro');
     setSuccess('');
     setError('');
@@ -366,7 +389,9 @@ export default function ConfessionBoothWidget() {
           <button type="button" className="confession-path-card" onClick={() => setStep('ai_guides')}>
             <strong>AI guide helpers — start here</strong>
             <span>
-              Private AI support for things too personal to say out loud elsewhere. Agree to Terms, pay €5 or €10 (100% to the app), then confess anonymously with a veiled voice reply.
+              {simulatorFree
+                ? 'Private AI support. Agree to Terms (simulator — free, no Stripe), then confess anonymously with a veiled voice reply.'
+                : 'Private AI support for things too personal to say out loud elsewhere. Agree to Terms, pay €5 or €10 (100% to the app), then confess anonymously with a veiled voice reply.'}
             </span>
           </button>
           <button type="button" className="confession-path-card human" onClick={() => setStep('scope')}>
@@ -394,6 +419,7 @@ export default function ConfessionBoothWidget() {
                 className={`confession-guide-card${selectedAi?.id === g.id ? ' selected' : ''}`}
                 onClick={() => {
                   setSelectedAi(g);
+                  setAgreedToTerms(false);
                   setStep('ai_book');
                 }}
               >
@@ -439,38 +465,67 @@ export default function ConfessionBoothWidget() {
             {info.aiSeekerTerms || info.seekerSafetyAgreement}
           </div>
           <p style={{ fontSize: 13, marginBottom: 8 }}>
-            Session fee — <strong>100% to the app</strong> (not a human guide):
+            {simulatorFree ? (
+              <>Session fee — <strong>waived in simulator</strong> (real app still charges €5 / €10 to the app):</>
+            ) : (
+              <>Session fee — <strong>100% to the app</strong> (not a human guide):</>
+            )}
           </p>
-          <div style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
-            {([5, 10] as const).map((p) => (
-              <button
-                key={p}
-                type="button"
-                onClick={() => setAmountEur(p)}
-                style={{
-                  flex: 1,
-                  padding: 12,
-                  borderRadius: 8,
-                  border: amountEur === p ? '2px solid #fbbf24' : '1px solid #4b5563',
-                  background: amountEur === p ? 'rgba(251,191,36,0.15)' : 'transparent',
-                  color: '#fff',
-                  cursor: 'pointer',
-                }}
-              >
-                €{p}
-              </button>
-            ))}
-          </div>
-          <label style={{ fontSize: 13, display: 'block', marginBottom: 6 }}>Sign full name — agree to Terms &amp; no crime / no harm</label>
-          <input
-            type="text"
-            value={safetySignature}
-            onChange={(e) => setSafetySignature(e.target.value)}
-            placeholder="Your full name"
-            style={{ width: '100%', padding: 12, borderRadius: 8, border: '1px solid #374151', background: '#111827', color: '#fff', marginBottom: 12, boxSizing: 'border-box' }}
-          />
+          {!simulatorFree && (
+            <div style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
+              {([5, 10] as const).map((p) => (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => setAmountEur(p)}
+                  style={{
+                    flex: 1,
+                    padding: 12,
+                    borderRadius: 8,
+                    border: amountEur === p ? '2px solid #fbbf24' : '1px solid #4b5563',
+                    background: amountEur === p ? 'rgba(251,191,36,0.15)' : 'transparent',
+                    color: '#fff',
+                    cursor: 'pointer',
+                  }}
+                >
+                  €{p}
+                </button>
+              ))}
+            </div>
+          )}
+          <label
+            style={{
+              fontSize: 13,
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: 10,
+              marginBottom: 12,
+              color: '#e5e7eb',
+              cursor: 'pointer',
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={agreedToTerms}
+              onChange={(e) => setAgreedToTerms(e.target.checked)}
+              style={{ marginTop: 3, width: 18, height: 18, flexShrink: 0 }}
+            />
+            <span>
+              I agree to the Terms &amp; no crime / no harm
+              {accountLabel ? (
+                <>
+                  {' '}
+                  — signed as <strong>{accountLabel}</strong> (your account)
+                </>
+              ) : null}
+            </span>
+          </label>
           <button type="button" className="select-user-btn" style={{ width: '100%' }} disabled={loading} onClick={handleBookAiSession}>
-            {loading ? 'Opening…' : 'Agree & continue to pay'}
+            {loading
+              ? 'Opening…'
+              : simulatorFree
+                ? 'Agree & open booth (free in simulator)'
+                : 'Agree & continue to pay'}
           </button>
           <button type="button" className="chat-back-btn" style={{ width: '100%', marginTop: 8 }} onClick={() => setStep('ai_guides')}>
             Choose another AI helper
@@ -570,35 +625,60 @@ export default function ConfessionBoothWidget() {
             onChange={(e) => setAppointmentAt(e.target.value)}
             style={{ width: '100%', padding: 12, borderRadius: 8, border: '1px solid #374151', background: '#111827', color: '#fff', marginBottom: 12, boxSizing: 'border-box' }}
           />
-          <p style={{ fontSize: 13, marginBottom: 8 }}>Session fee (paid only after the guide accepts — guide keeps 80%):</p>
-          <div style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
-            {([5, 10] as const).map((p) => (
-              <button
-                key={p}
-                type="button"
-                onClick={() => setAmountEur(p)}
-                style={{
-                  flex: 1,
-                  padding: 12,
-                  borderRadius: 8,
-                  border: amountEur === p ? '2px solid #fbbf24' : '1px solid #4b5563',
-                  background: amountEur === p ? 'rgba(251,191,36,0.15)' : 'transparent',
-                  color: '#fff',
-                  cursor: 'pointer',
-                }}
-              >
-                €{p}
-              </button>
-            ))}
-          </div>
-          <label style={{ fontSize: 13, display: 'block', marginBottom: 6 }}>Sign with your full name</label>
-          <input
-            type="text"
-            value={safetySignature}
-            onChange={(e) => setSafetySignature(e.target.value)}
-            placeholder="Your full name"
-            style={{ width: '100%', padding: 12, borderRadius: 8, border: '1px solid #374151', background: '#111827', color: '#fff', marginBottom: 12, boxSizing: 'border-box' }}
-          />
+          <p style={{ fontSize: 13, marginBottom: 8 }}>
+            {simulatorFree
+              ? 'Session fee — waived in simulator (real app: paid only after the guide accepts — guide keeps 80%):'
+              : 'Session fee (paid only after the guide accepts — guide keeps 80%):'}
+          </p>
+          {!simulatorFree && (
+            <div style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
+              {([5, 10] as const).map((p) => (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => setAmountEur(p)}
+                  style={{
+                    flex: 1,
+                    padding: 12,
+                    borderRadius: 8,
+                    border: amountEur === p ? '2px solid #fbbf24' : '1px solid #4b5563',
+                    background: amountEur === p ? 'rgba(251,191,36,0.15)' : 'transparent',
+                    color: '#fff',
+                    cursor: 'pointer',
+                  }}
+                >
+                  €{p}
+                </button>
+              ))}
+            </div>
+          )}
+          <label
+            style={{
+              fontSize: 13,
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: 10,
+              marginBottom: 12,
+              color: '#e5e7eb',
+              cursor: 'pointer',
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={agreedToTerms}
+              onChange={(e) => setAgreedToTerms(e.target.checked)}
+              style={{ marginTop: 3, width: 18, height: 18, flexShrink: 0 }}
+            />
+            <span>
+              I agree to the safety rules
+              {accountLabel ? (
+                <>
+                  {' '}
+                  — signed as <strong>{accountLabel}</strong> (your account)
+                </>
+              ) : null}
+            </span>
+          </label>
           <button type="button" className="select-user-btn" style={{ width: '100%' }} disabled={loading} onClick={handleBookSession}>
             {loading ? 'Booking…' : 'Request appointment'}
           </button>

@@ -104,25 +104,42 @@ export const getMyBuzzes = async (req: Request, res: Response) => {
 export const respondBuzz = async (req: Request, res: Response) => {
   try {
     const { buzzId, response } = req.body;
+    const userId = (req as any).userId as string | undefined;
     const validResponses = ['accepted', 'rejected', 'talk_later'];
     if (!buzzId || !validResponses.includes(response)) {
       return res.status(400).json({ error: 'Buzz ID and response (accepted, rejected, or talk_later) are required' });
     }
+    if (!userId) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
 
-    const result = await runWithSystem(() => respondToBuzz(buzzId, response));
-    const userId = (req as any).userId;
-    const otherId =
-      result.buzz.fromUserId === userId ? result.buzz.toUserId : result.buzz.fromUserId;
+    const result = await runWithSystem(() => respondToBuzz(String(buzzId), response));
+    const buzz = result.buzz;
+    if (buzz.toUserId !== userId && buzz.fromUserId !== userId) {
+      return res.status(403).json({ error: 'Not your buzz' });
+    }
+    const otherId = buzz.fromUserId === userId ? buzz.toUserId : buzz.fromUserId;
 
-    if ((response === 'accepted' || response === 'talk_later') && result.buzz && userId && otherId) {
-      await ensureMatchConversation(userId, otherId);
+    if ((response === 'accepted' || response === 'talk_later') && otherId) {
+      try {
+        await ensureMatchConversation(userId, otherId);
+      } catch (chatErr) {
+        // Accept must still succeed even if the opener message fails (common with mocks / racey JSON writes)
+        console.error('ensureMatchConversation after buzz accept:', chatErr);
+      }
       sendPushToUser(otherId, {
         title: 'They accepted your interest',
         body: 'You can talk in Communications now.',
         data: { type: 'buzz_accepted', vibrate: '1' },
       }, 'matches').catch(() => {});
       return res.json({
-        ...result,
+        buzz: {
+          ...buzz,
+          createdAt: buzz.createdAt instanceof Date ? buzz.createdAt.toISOString() : buzz.createdAt,
+          respondedAt:
+            buzz.respondedAt instanceof Date ? buzz.respondedAt.toISOString() : buzz.respondedAt ?? null,
+        },
+        comfortingMessage: result.comfortingMessage,
         openChat: true,
         chatUserId: otherId,
       });
@@ -134,10 +151,20 @@ export const respondBuzz = async (req: Request, res: Response) => {
         data: { type: 'buzz_rejected', vibrate: '1' },
       }).catch(() => {});
     }
-    res.json(result);
+    res.json({
+      buzz: {
+        ...buzz,
+        createdAt: buzz.createdAt instanceof Date ? buzz.createdAt.toISOString() : buzz.createdAt,
+        respondedAt:
+          buzz.respondedAt instanceof Date ? buzz.respondedAt.toISOString() : buzz.respondedAt ?? null,
+      },
+      comfortingMessage: result.comfortingMessage,
+    });
   } catch (error: any) {
     console.error('Respond to buzz error:', error);
-    res.status(500).json({ error: error.message || 'Internal server error' });
+    const msg = String(error?.message || 'Internal server error');
+    const status = /not found|already responded/i.test(msg) ? 400 : 500;
+    res.status(status).json({ error: msg });
   }
 };
 

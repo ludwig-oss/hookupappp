@@ -194,7 +194,7 @@ const ConnectionsWidget = () => {
     }
   }, [user?.id]);
 
-  const refreshNearby = useCallback(async (coords?: { lat: number; lon: number; accuracy?: number }) => {
+  const refreshNearby = useCallback(async (coords?: { lat: number; lon: number; accuracy?: number }, opts?: { silent?: boolean }) => {
     if (!user?.id) return;
     const loc = coords || location;
     if (!loc) return;
@@ -207,8 +207,12 @@ const ConnectionsWidget = () => {
         userId: user.id,
       });
       setNearbyUsers(response.users);
+      if (!opts?.silent) setError('');
     } catch (err: unknown) {
-      setError(formatAxiosError(err, 'Could not refresh nearby'));
+      // Background polls must not yank the Search places screen with a red banner
+      if (!opts?.silent) {
+        setError(formatAxiosError(err, 'Could not refresh nearby'));
+      }
     }
   }, [user?.id, location]);
 
@@ -299,11 +303,12 @@ const ConnectionsWidget = () => {
     refreshNearby(location);
     loadBuzzes();
     const nearbyPoll = setInterval(() => {
-      refreshNearby(location);
+      // Silent while searching places so errors don't flash the form back to "failed"
+      refreshNearby(location, { silent: view === 'search_places' || view === 'venues' });
       loadBuzzes();
     }, 15000);
     return () => clearInterval(nearbyPoll);
-  }, [location, user?.id, refreshNearby, loadBuzzes]);
+  }, [location, user?.id, refreshNearby, loadBuzzes, view]);
 
   const refreshNearbyList = async () => {
     if (!user?.id) return;
@@ -348,17 +353,14 @@ const ConnectionsWidget = () => {
     if (!q || !user?.id) return;
     setSearchPlacesLoading(true);
     setError('');
-    setSearchPlaceResults([]);
-    setSearchPlaceLocationName(null);
-    setSearchPlaceMostConcentrated(null);
     try {
       const response = await connectionsAPI.searchPlaces({ q, type: searchPlaceType });
       setSearchPlaceResults(response.places || []);
       setSearchPlaceLocationName(response.locationName || null);
       setSearchPlaceMostConcentrated(response.mostConcentrated ?? null);
       if (response.message) setError(response.message);
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Search failed');
+    } catch (err: unknown) {
+      setError(formatAxiosError(err, 'Search failed'));
     } finally {
       setSearchPlacesLoading(false);
     }

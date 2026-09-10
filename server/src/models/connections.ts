@@ -1,4 +1,4 @@
-import { readFile, writeFile, mkdir, rename } from 'fs/promises';
+import { readFile } from 'fs/promises';
 import { join } from 'path';
 import { getUserById, getAllUsers } from './user.js';
 import { getUserPreference } from './discover.js';
@@ -6,6 +6,7 @@ import { usersMatchPreferences } from '../utils/preferenceMatch.js';
 import { fetchNearbyVenues, fetchVenuesByType, OsmVenue } from '../utils/overpass.js';
 import { usePostgres } from '../db/index.js';
 import * as pgBuzzes from '../db/pg-buzzes.js';
+import { writeJsonFile } from '../utils/writeJsonFile.js';
 
 export type BuzzStatus = 'pending' | 'accepted' | 'rejected' | 'talk_later';
 
@@ -95,11 +96,7 @@ async function readBuzzes(): Promise<Buzz[]> {
 }
 
 async function writeBuzzes(buzzes: Buzz[]): Promise<void> {
-  const dir = join(process.cwd(), 'server', 'data');
-  await mkdir(dir, { recursive: true });
-  const tmp = `${BUZZES_PATH}.${process.pid}.${Date.now()}.tmp`;
-  await writeFile(tmp, JSON.stringify(buzzes, null, 2));
-  await rename(tmp, BUZZES_PATH);
+  await writeJsonFile(BUZZES_PATH, buzzes);
 }
 
 // Calculate distance between two coordinates (Haversine formula)
@@ -242,42 +239,52 @@ export async function getNearbyUsers(
   if (!user) return [];
 
   const userPref = await getUserPreference(userId);
-  const interactedIds = await getInteractedNearbyUserIds(userId);
+  let interactedIds = new Set<string>();
+  try {
+    interactedIds = await getInteractedNearbyUserIds(userId);
+  } catch (err) {
+    console.error('getInteractedNearbyUserIds failed:', err);
+  }
   const nearby: NearbyUser[] = [];
 
   for (const otherUser of users) {
-    if (otherUser.id === userId) continue;
-    if (interactedIds.has(otherUser.id)) continue;
-    if (!isConnectionsVisible(otherUser)) continue;
-    if (user.blockedUsers?.includes(otherUser.id)) continue;
-    if (user.unmatchedUsers?.includes(otherUser.id)) continue;
-    if (!otherUser.location) continue;
+    try {
+      if (otherUser.id === userId) continue;
+      if (interactedIds.has(otherUser.id)) continue;
+      if (!isConnectionsVisible(otherUser)) continue;
+      if (user.blockedUsers?.includes(otherUser.id)) continue;
+      if (user.unmatchedUsers?.includes(otherUser.id)) continue;
+      if (!otherUser.location) continue;
+      if (!Number.isFinite(otherUser.location.lat) || !Number.isFinite(otherUser.location.lon)) continue;
 
-    const updatedAt = otherUser.location.updatedAt
-      ? new Date(otherUser.location.updatedAt).getTime()
-      : 0;
-    if (updatedAt && Date.now() - updatedAt > 24 * 60 * 60 * 1000) continue;
-
-    const distance = calculateDistance(
-      lat, lon,
-      otherUser.location.lat, otherUser.location.lon
-    );
-
-    if (distance <= radius) {
-      const otherPref = await getUserPreference(otherUser.id);
-      if (!usersMatchPreferences(user, otherUser, userPref, otherPref)) continue;
-
-      const lastActive = otherUser.location.updatedAt 
+      const updatedAt = otherUser.location.updatedAt
         ? new Date(otherUser.location.updatedAt).getTime()
         : 0;
-      const isOnline = Date.now() - lastActive < 8 * 60 * 1000;
+      if (updatedAt && Date.now() - updatedAt > 24 * 60 * 60 * 1000) continue;
 
-      nearby.push({
-        id: otherUser.id,
-        name: otherUser.name,
-        profilePicture: otherUser.profilePicture,
-        isOnline,
-      });
+      const distance = calculateDistance(
+        lat, lon,
+        otherUser.location.lat, otherUser.location.lon
+      );
+
+      if (distance <= radius) {
+        const otherPref = await getUserPreference(otherUser.id);
+        if (!usersMatchPreferences(user, otherUser, userPref, otherPref)) continue;
+
+        const lastActive = otherUser.location.updatedAt
+          ? new Date(otherUser.location.updatedAt).getTime()
+          : 0;
+        const isOnline = Date.now() - lastActive < 8 * 60 * 1000;
+
+        nearby.push({
+          id: otherUser.id,
+          name: otherUser.name,
+          profilePicture: otherUser.profilePicture,
+          isOnline,
+        });
+      }
+    } catch (err) {
+      console.error('Skip nearby candidate', otherUser?.id, err);
     }
   }
 
@@ -366,22 +373,25 @@ export async function getCountsForOsmVenues(
   const user = await getUserById(userId);
   if (!user) return [];
   const userPref = await getUserPreference(userId);
-  if (!userPref) return [];
   const allUsers = await getAllUsers();
   const result: VenueCountOnly[] = [];
 
   for (const poi of osmVenues) {
     let count = 0;
     for (const otherUser of allUsers) {
-      if (otherUser.id === userId) continue;
-      if (user.blockedUsers?.includes(otherUser.id)) continue;
-      if (!otherUser.location) continue;
-      const distance = calculateDistance(poi.lat, poi.lon, otherUser.location.lat, otherUser.location.lon);
-      if (distance > VENUE_USER_RADIUS_M) continue;
-      const otherPref = await getUserPreference(otherUser.id);
-      if (!otherPref) continue;
-      if (!matchesOrientationForVenue(user, otherUser, userPref, otherPref)) continue;
-      count++;
+      try {
+        if (otherUser.id === userId) continue;
+        if (user.blockedUsers?.includes(otherUser.id)) continue;
+        if (!otherUser.location) continue;
+        if (!Number.isFinite(otherUser.location.lat) || !Number.isFinite(otherUser.location.lon)) continue;
+        const distance = calculateDistance(poi.lat, poi.lon, otherUser.location.lat, otherUser.location.lon);
+        if (distance > VENUE_USER_RADIUS_M) continue;
+        const otherPref = await getUserPreference(otherUser.id);
+        if (!matchesOrientationForVenue(user, otherUser, userPref, otherPref)) continue;
+        count++;
+      } catch {
+        /* skip bad user row */
+      }
     }
     result.push({
       venue: poi.name,

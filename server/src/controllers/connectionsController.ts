@@ -273,7 +273,8 @@ export const getNearby = async (req: Request, res: Response) => {
     res.json({ users: nearby });
   } catch (error) {
     console.error('Get nearby users error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    const msg = error instanceof Error ? error.message : 'Internal server error';
+    res.status(500).json({ error: msg || 'Internal server error' });
   }
 };
 
@@ -349,12 +350,26 @@ export const searchPlaces = async (req: Request, res: Response) => {
 
     const geoLimit = placeType ? 1 : 15;
     const geoUrl = `${NOMINATIM_URL}/search?q=${encodeURIComponent(q)}&format=json&limit=${geoLimit}&addressdetails=0`;
-    const geoRes = await fetch(geoUrl, {
-      headers: {
-        'User-Agent': USER_AGENT,
-        Accept: 'application/json',
-      },
-    });
+    let geoRes: Awaited<ReturnType<typeof fetch>>;
+    try {
+      geoRes = await fetch(geoUrl, {
+        headers: {
+          'User-Agent': USER_AGENT,
+          Accept: 'application/json',
+        },
+        signal: AbortSignal.timeout(15_000),
+      });
+    } catch (fetchErr: unknown) {
+      const msg = String((fetchErr as Error)?.message || fetchErr);
+      console.error('Nominatim search fetch failed:', msg);
+      if (/certificate|UNABLE_TO_VERIFY|SSL|TLS/i.test(msg)) {
+        return res.status(502).json({
+          error:
+            'Map lookup blocked by TLS on this machine. Restart with NODE_OPTIONS=--use-system-ca (npm run dev:sim already sets this).',
+        });
+      }
+      return res.status(502).json({ error: 'Could not reach map geocoder. Try again in a moment.' });
+    }
     if (!geoRes.ok) return res.status(502).json({ error: 'Geocoding unavailable' });
     const geoData = await geoRes.json();
     const hits = Array.isArray(geoData) ? geoData : [];
@@ -368,6 +383,18 @@ export const searchPlaces = async (req: Request, res: Response) => {
     let osmVenues: OsmVenue[];
     if (placeType) {
       osmVenues = await fetchVenuesByType(lat, lon, SEARCH_PLACES_RADIUS_M, placeType);
+      if (!osmVenues.length) {
+        // Still return the geocoded pin so preference counts can show for that spot
+        osmVenues = [
+          {
+            id: Number(first.osm_id) || -1,
+            name: String(first.display_name || q).split(',')[0]?.trim() || q,
+            venueType: placeType,
+            lat,
+            lon,
+          },
+        ];
+      }
     } else {
       // Any place: the searched spots themselves + OSM name matches + nearby named shops/POIs (live map)
       const fromNominatim: OsmVenue[] = hits
@@ -387,8 +414,8 @@ export const searchPlaces = async (req: Request, res: Response) => {
         .filter(Boolean) as OsmVenue[];
 
       const [byName, nearbyAny] = await Promise.all([
-        fetchVenuesByName(lat, lon, SEARCH_ANY_RADIUS_M, q),
-        fetchAnyNamedVenues(lat, lon, SEARCH_PLACES_RADIUS_M, 60),
+        fetchVenuesByName(lat, lon, SEARCH_ANY_RADIUS_M, q).catch(() => [] as OsmVenue[]),
+        fetchAnyNamedVenues(lat, lon, SEARCH_PLACES_RADIUS_M, 60).catch(() => [] as OsmVenue[]),
       ]);
 
       const qLower = q.toLowerCase();
@@ -406,7 +433,8 @@ export const searchPlaces = async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error('Search places error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    const msg = error instanceof Error ? error.message : 'Search failed';
+    res.status(500).json({ error: msg || 'Search failed' });
   }
 };
 

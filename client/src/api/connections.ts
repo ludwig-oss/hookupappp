@@ -164,7 +164,10 @@ export const connectionsAPI = {
     liveMap?: boolean;
   }> => {
     const type = !params.type || params.type === 'none' || params.type === 'any' ? 'none' : params.type;
-    const response = await axios.get(`${API_URL}/search-places`, { params: { q: params.q.trim(), type } });
+    const response = await axios.get(`${API_URL}/search-places`, {
+      params: { q: params.q.trim(), type },
+      timeout: 90_000,
+    });
     return response.data;
   },
 };

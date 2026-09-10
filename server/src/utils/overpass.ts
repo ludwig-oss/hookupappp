@@ -69,9 +69,10 @@ async function postOverpass(query: string): Promise<OsmVenue[]> {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain' },
       body: query,
+      signal: AbortSignal.timeout(22_000),
     });
     if (!res.ok) {
-      console.error('Overpass API error:', res.status, await res.text());
+      console.error('Overpass API error:', res.status, await res.text().catch(() => ''));
       return [];
     }
     const data = (await res.json()) as { elements?: unknown[] };
@@ -134,6 +135,7 @@ out center body;
       method: 'POST',
       headers: { 'Content-Type': 'text/plain' },
       body: query,
+      signal: AbortSignal.timeout(22_000),
     });
     if (!res.ok) return [];
     const data = (await res.json()) as { elements?: unknown[] };
@@ -174,6 +176,7 @@ out center body;
       method: 'POST',
       headers: { 'Content-Type': 'text/plain' },
       body: query,
+      signal: AbortSignal.timeout(22_000),
     });
     if (!res.ok) return [];
     const data = (await res.json()) as { elements?: unknown[] };

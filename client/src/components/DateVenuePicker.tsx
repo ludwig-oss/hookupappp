@@ -1,30 +1,47 @@
 import { useEffect, useState } from 'react';
 import { safetyAPI, DateVenueProposal } from '../api/safety';
+import { readStoredCoords } from '../lib/locationSession';
 
 interface DateVenuePickerProps {
   otherUserId: string;
   userId: string;
   onAgreed: (venueName: string) => void;
+  meetCity?: string;
+  meetCountry?: string;
 }
 
-const DateVenuePicker = ({ otherUserId, userId, onAgreed }: DateVenuePickerProps) => {
+const DateVenuePicker = ({ otherUserId, userId, onAgreed, meetCity, meetCountry }: DateVenuePickerProps) => {
   const [proposal, setProposal] = useState<DateVenueProposal | null>(null);
   const [rules, setRules] = useState('');
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('');
   const [voting, setVoting] = useState(false);
+  const [shuffleNote, setShuffleNote] = useState('');
 
   const load = async (refresh = false) => {
     setLoading(true);
+    setShuffleNote('');
     try {
-      const data = await safetyAPI.getDateVenueProposal(otherUserId, refresh);
+      const stored = readStoredCoords();
+      const data = await safetyAPI.getDateVenueProposal(otherUserId, refresh, {
+        city: meetCity,
+        country: meetCountry,
+        lat: stored?.lat,
+        lon: stored?.lon,
+      });
       setProposal(data.proposal);
       setRules(data.rules);
       if (data.proposal.agreedVenue) {
         onAgreed(data.proposal.agreedVenue.name);
+      } else if (refresh && data.autoPicked) {
+        onAgreed(data.autoPicked.name);
+        setShuffleNote(
+          `Shuffled near ${data.proposal.meetLabel || meetCity || 'your area'} — your pick: ${data.autoPicked.name}. They still need to pick the same spot to lock it.`
+        );
       }
     } catch {
       setProposal(null);
+      setShuffleNote('Could not shuffle places. Try again.');
     } finally {
       setLoading(false);
     }
@@ -40,6 +57,11 @@ const DateVenuePicker = ({ otherUserId, userId, onAgreed }: DateVenuePickerProps
       const { proposal: next } = await safetyAPI.voteDateVenue(otherUserId, venueId);
       setProposal(next);
       if (next.agreedVenue) onAgreed(next.agreedVenue.name);
+      else {
+        const mine = userId === next.userA ? next.userAChoiceId : next.userBChoiceId;
+        const picked = next.venues.find((v) => v.id === mine);
+        if (picked) onAgreed(picked.name);
+      }
     } finally {
       setVoting(false);
     }
@@ -57,7 +79,7 @@ const DateVenuePicker = ({ otherUserId, userId, onAgreed }: DateVenuePickerProps
       v.type.toLowerCase().includes(filter.toLowerCase())
   );
 
-  if (loading) return <p className="date-venue-loading">Loading 50 public date spots…</p>;
+  if (loading) return <p className="date-venue-loading">Loading public date spots…</p>;
 
   if (proposal?.status === 'agreed' && proposal.agreedVenue) {
     return (
@@ -77,6 +99,9 @@ const DateVenuePicker = ({ otherUserId, userId, onAgreed }: DateVenuePickerProps
       </p>
       {myChoiceId && <p className="date-venue-your-vote">Your pick submitted — waiting for match.</p>}
       {theirChoiceId && !myChoiceId && <p className="date-venue-their-vote">They picked a spot — choose yours too.</p>}
+      {shuffleNote && (
+        <p className="date-venue-your-vote" style={{ color: '#00d4ff' }}>{shuffleNote}</p>
+      )}
       <input
         type="search"
         className="chat-meetup-input"
@@ -84,10 +109,10 @@ const DateVenuePicker = ({ otherUserId, userId, onAgreed }: DateVenuePickerProps
         value={filter}
         onChange={(e) => setFilter(e.target.value)}
       />
-      <button type="button" className="chat-back-btn" onClick={() => load(true)} disabled={loading}>
-        Shuffle 50 new places
+      <button type="button" className="chat-send-btn" style={{ width: '100%', marginBottom: 8, color: '#fff' }} onClick={() => load(true)} disabled={loading || voting}>
+        {loading ? 'Shuffling…' : 'Shuffle & pick a place for us'}
       </button>
-      <p className="date-venue-scroll-hint">Scroll the list to see more spots</p>
+      <p className="date-venue-scroll-hint">Uses real places near your city when available. Scroll for more options.</p>
       <div
         className="date-venue-list"
         onWheel={(e) => e.stopPropagation()}

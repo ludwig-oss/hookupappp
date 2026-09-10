@@ -59,8 +59,10 @@ export const aiGuidesAPI = {
     const response = await axios.post(`${API_URL}/interpret`, { query });
     return response.data;
   },
-  lesson: async (topicId: string): Promise<{ lesson: AiLesson; guides: AiGuideCharacter[] }> => {
-    const response = await axios.get(`${API_URL}/lesson/${topicId}`);
+  lesson: async (topicId: string, guideId?: string): Promise<{ lesson: AiLesson; guides: AiGuideCharacter[] }> => {
+    const response = await axios.get(`${API_URL}/lesson/${topicId}`, {
+      params: guideId ? { guideId } : undefined,
+    });
     return response.data;
   },
   assign: async (

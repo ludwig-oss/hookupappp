@@ -1145,7 +1145,16 @@ const ChatWidget = ({
   };
 
   const handleBoundariesContinue = () => {
-    if (!allBoundariesChecked || boundariesConsent === null) return;
+    if (!allBoundariesChecked) {
+      setError('Tick all four safety boxes first, then choose Yes or No.');
+      setTimeout(() => setError(''), 5000);
+      return;
+    }
+    if (boundariesConsent === null) {
+      setError('Tap Yes, I consent or No, I don’t consent before continuing.');
+      setTimeout(() => setError(''), 5000);
+      return;
+    }
     setBoundariesDismissedForChat(selectedUserId ?? null);
     setShowBoundariesModal(false);
     setBoundariesConsent(null);
@@ -1155,11 +1164,16 @@ const ChatWidget = ({
 
   const handleBoundariesNoConsent = async () => {
     if (!selectedUserId || !user?.id) return;
+    if (!allBoundariesChecked) {
+      setError('Tick all four safety boxes before you answer.');
+      setTimeout(() => setError(''), 5000);
+      return;
+    }
     setBoundariesConsent(false);
     setBoundariesSending(true);
     try {
       await sendContent(SAFETY_BOUNDARIES_MESSAGE);
-      setSuccess(`${selectedName} will see your boundaries. We suggest staying in public and adding an emergency contact below.`);
+      setSuccess(`${selectedName} will see your boundaries. We suggest staying in public and adding an emergency contact next.`);
       setTimeout(() => setSuccess(''), 6000);
     } catch (_) {
       setError('Failed to send safety message');
@@ -1173,7 +1187,13 @@ const ChatWidget = ({
   };
 
   const handleBoundariesYesConsent = () => {
+    if (!allBoundariesChecked) {
+      setError('Tick all four safety boxes, then tap Yes, I consent.');
+      setTimeout(() => setError(''), 5000);
+      return;
+    }
     setBoundariesConsent(true);
+    setError('');
   };
 
   const toggleCompare = (userId: string) => {
@@ -2599,11 +2619,15 @@ const ChatWidget = ({
       )}
 
       {showBoundariesModal && selectedUserId && (
-        <div className="chat-meetup-overlay" onClick={() => setShowBoundariesModal(false)}>
+        <div className="chat-meetup-overlay">
           <div className="chat-meetup-modal chat-boundaries-modal" onClick={(e) => e.stopPropagation()}>
             <div className="chat-boundaries-banner">Boundaries</div>
             <div className="chat-boundaries-body">
               <h3>Safety &amp; Consent Checklist</h3>
+              {error && <p className="chat-boundaries-hint">{error}</p>}
+              {!allBoundariesChecked && (
+                <p className="chat-boundaries-hint">Tick all four boxes below, then choose Yes or No.</p>
+              )}
               <div className="chat-boundaries-check">
                 <label>
                   <input type="checkbox" checked={boundariesChecklist.over18} onChange={(e) => setBoundariesChecklist((c) => ({ ...c, over18: e.target.checked }))} />
@@ -2625,10 +2649,10 @@ const ChatWidget = ({
               <h4>Consent verification</h4>
               <p className="chat-boundaries-q">Do you explicitly consent to potentially intimate or sexual activity during or after the meetup?</p>
               <div className="chat-boundaries-yesno">
-                <button type="button" className="chat-send-btn" style={{ flex: 1, background: boundariesConsent === true ? 'rgba(34,197,94,0.4)' : 'rgba(34,197,94,0.2)', border: '2px solid #22c55e' }} onClick={handleBoundariesYesConsent}>
+                <button type="button" className="chat-send-btn" style={{ flex: 1, background: boundariesConsent === true ? 'rgba(34,197,94,0.4)' : 'rgba(34,197,94,0.2)', border: '2px solid #22c55e', color: '#fff' }} onClick={handleBoundariesYesConsent}>
                   Yes, I consent
                 </button>
-                <button type="button" className="chat-back-btn" style={{ flex: 1, background: boundariesConsent === false ? 'rgba(239,68,68,0.3)' : 'rgba(239,68,68,0.15)', border: '2px solid #ef4444', color: '#fecaca' }} onClick={handleBoundariesNoConsent} disabled={boundariesSending || !allBoundariesChecked}>
+                <button type="button" className="chat-back-btn" style={{ flex: 1, background: boundariesConsent === false ? 'rgba(239,68,68,0.3)' : 'rgba(239,68,68,0.15)', border: '2px solid #ef4444', color: '#fecaca' }} onClick={handleBoundariesNoConsent} disabled={boundariesSending}>
                   {boundariesSending ? 'Sending…' : "No, I don't consent"}
                 </button>
               </div>
@@ -2642,12 +2666,33 @@ const ChatWidget = ({
                 </ul>
               </div>
               <div className="chat-boundaries-foot">
-                <span>📞 Emergency contacts</span>
-                <span>🛡️ Add them in the next step</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!allBoundariesChecked || boundariesConsent === null) {
+                      setError('Finish the checklist and Yes/No first — then you can add an emergency contact.');
+                      setTimeout(() => setError(''), 5000);
+                      return;
+                    }
+                    handleBoundariesContinue();
+                  }}
+                >
+                  📞 Emergency contacts — continue to add one
+                </button>
               </div>
               <div className="chat-meetup-actions">
-                <button type="button" className="chat-send-btn" onClick={handleBoundariesContinue} disabled={!allBoundariesChecked || boundariesConsent === null}>
-                  Continue to plan meetup
+                <button
+                  type="button"
+                  className="chat-send-btn"
+                  onClick={handleBoundariesContinue}
+                  disabled={!allBoundariesChecked || boundariesConsent === null}
+                  style={{ color: '#fff' }}
+                >
+                  {!allBoundariesChecked
+                    ? 'Tick all boxes to continue'
+                    : boundariesConsent === null
+                      ? 'Choose Yes or No to continue'
+                      : 'Continue to plan meetup'}
                 </button>
                 <button type="button" className="chat-back-btn" onClick={() => { setShowBoundariesModal(false); setBoundariesDismissedForChat(selectedUserId); offerDateGuideTips(false); }}>
                   Skip
@@ -2755,6 +2800,8 @@ const ChatWidget = ({
                 <DateVenuePicker
                   otherUserId={selectedUserId}
                   userId={user.id}
+                  meetCity={(user as { city?: string }).city || meetupLocation || undefined}
+                  meetCountry={(user as { country?: string }).country || undefined}
                   onAgreed={(name) => {
                     setAgreedVenueName(name);
                     setMeetupLocation(name);

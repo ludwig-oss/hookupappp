@@ -69,6 +69,7 @@ export interface DateVenueProposal {
   status: 'voting' | 'agreed';
   createdAt: string;
   updatedAt: string;
+  meetLabel?: string | null;
 }
 
 export interface DateShare {
@@ -159,8 +160,25 @@ export const safetyAPI = {
     return response.data;
   },
 
-  getDateVenueProposal: async (otherUserId: string, refresh = false): Promise<{ proposal: DateVenueProposal; rules: string }> => {
-    const response = await axios.get(`${API_URL}/date-venues/${otherUserId}`, { params: { refresh: refresh ? 'true' : 'false' } });
+  getDateVenueProposal: async (
+    otherUserId: string,
+    refresh = false,
+    geo?: { city?: string; country?: string; lat?: number; lon?: number }
+  ): Promise<{
+    proposal: DateVenueProposal;
+    rules: string;
+    autoPicked?: { id: string; name: string; type: string; description: string } | null;
+  }> => {
+    const response = await axios.get(`${API_URL}/date-venues/${otherUserId}`, {
+      params: {
+        refresh: refresh ? 'true' : 'false',
+        city: geo?.city || undefined,
+        country: geo?.country || undefined,
+        lat: geo?.lat,
+        lon: geo?.lon,
+      },
+      timeout: 90_000,
+    });
     return response.data;
   },
 

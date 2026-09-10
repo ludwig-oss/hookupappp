@@ -29,7 +29,8 @@ export const interpretAiQueryHandler = async (req: Request, res: Response) => {
 
 export const getAiLessonHandler = async (req: Request, res: Response) => {
   try {
-    const data = await lessonWithGuides(String(req.params.topicId || ''));
+    const guideId = req.query.guideId ? String(req.query.guideId) : undefined;
+    const data = await lessonWithGuides(String(req.params.topicId || ''), guideId);
     if (!data) return res.status(404).json({ error: 'Topic not found' });
     res.json(data);
   } catch (error) {

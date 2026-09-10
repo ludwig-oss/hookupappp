@@ -75,12 +75,16 @@ export async function getActiveUsersByRegion(country: string, city?: string) {
   const users = await getAllUsers();
   const norm = (s: string) => (s || '').toLowerCase().trim();
   const c = norm(country);
-  return users.filter(u => {
+  return users.filter((u) => {
     if (!u.country) return false;
-    if (norm(u.country) !== c) return false;
+    const uc = norm(u.country);
+    // Exact or loose match so "canada" finds "Canada"
+    if (uc !== c && !uc.includes(c) && !c.includes(uc)) return false;
     if (city !== undefined && city !== null && city !== '') {
       if (!u.city) return false;
-      return norm(u.city) === norm(city);
+      const ci = norm(city);
+      const uci = norm(u.city);
+      return uci === ci || uci.includes(ci) || ci.includes(uci);
     }
     return true;
   });

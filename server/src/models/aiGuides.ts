@@ -6,6 +6,7 @@ import {
   getLesson,
   guidesForLesson,
   interpretQuery,
+  resolveLessonForGuide,
 } from '../data/aiGuideCatalog.js';
 
 export async function listAiGuides() {
@@ -31,12 +32,15 @@ export async function interpretAiQuery(query: string) {
   };
 }
 
-export async function lessonWithGuides(topicId: string) {
+export async function lessonWithGuides(topicId: string, guideId?: string) {
   const lesson = getLesson(topicId);
   if (!lesson) return null;
+  const guides = guidesForLesson(lesson);
+  const forGuide = guideId ? resolveLessonForGuide(lesson, guideId) : lesson;
   return {
-    lesson,
-    guides: guidesForLesson(lesson),
+    lesson: forGuide,
+    baseLesson: lesson,
+    guides,
   };
 }
 

@@ -3618,7 +3618,8 @@ img.celeb-blur-img {
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 100;
+  /* Above Ask Amara / texting help layers so consent & meetup controls receive taps */
+  z-index: 13050;
   padding: 28px 16px;
   box-sizing: border-box;
 }
@@ -3728,6 +3729,37 @@ html.theme-day .chat-meetup-modal {
   margin-top: 2px;
   flex-shrink: 0;
   accent-color: #00d4ff;
+  pointer-events: auto;
+  position: relative;
+  z-index: 2;
+}
+.chat-boundaries-hint {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(251, 191, 36, 0.15);
+  border: 1px solid rgba(251, 191, 36, 0.5);
+  color: #fde68a;
+  font-size: 13px;
+  line-height: 1.4;
+}
+.chat-boundaries-foot button {
+  background: transparent;
+  border: 1px dashed rgba(255, 255, 255, 0.35);
+  color: #e5e7eb;
+  border-radius: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.chat-boundaries-foot button:hover {
+  border-color: #00d4ff;
+  color: #00d4ff;
+}
+.chat-send-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  color: rgba(255, 255, 255, 0.85) !important;
 }
 .chat-boundaries-q {
   margin: 0 0 14px;

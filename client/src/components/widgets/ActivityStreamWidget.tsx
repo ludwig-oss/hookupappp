@@ -46,9 +46,21 @@ export default function ActivityStreamWidget({ onOpenChat }: { onOpenChat?: (use
   }, []);
 
   useEffect(() => {
-    if (country) fetchCities(country).then(setCities).catch(() => setCities([]));
-    else setCities([]);
-  }, [country]);
+    const typed = (country || countrySearch).trim();
+    if (!typed) {
+      setCities([]);
+      return;
+    }
+    const match =
+      countries.find((c) => c.country.toLowerCase() === typed.toLowerCase()) ||
+      countries.find((c) => c.country.toLowerCase().includes(typed.toLowerCase()));
+    const name = country || match?.country;
+    if (!name) {
+      setCities([]);
+      return;
+    }
+    fetchCities(name).then(setCities).catch(() => setCities([]));
+  }, [country, countrySearch, countries]);
 
   useEffect(() => {
     if (user?.id) loadInterests();
@@ -64,14 +76,25 @@ export default function ActivityStreamWidget({ onOpenChat }: { onOpenChat?: (use
   };
 
   const loadRegion = async () => {
-    const countryVal = (country || countrySearch).trim();
+    let countryVal = (country || countrySearch).trim();
     if (!countryVal) { setError('Enter or select a country'); return; }
+    // Fuzzy-match typed country to the official list (e.g. "canada" → "Canada")
+    const match = countries.find((c) => c.country.toLowerCase() === countryVal.toLowerCase())
+      || countries.find((c) => c.country.toLowerCase().includes(countryVal.toLowerCase()))
+      || countries.find((c) => countryVal.toLowerCase().includes(c.country.toLowerCase()));
+    if (match) {
+      countryVal = match.country;
+      setCountry(match.country);
+      setCountrySearch('');
+    } else if (!country) {
+      setCountry(countryVal);
+    }
+    const cityVal = (city || citySearch).trim() || undefined;
     setLoading(true);
     setError('');
     try {
-      const { users } = await activityAPI.getRegionUsers(countryVal, (city || citySearch).trim() || undefined);
+      const { users } = await activityAPI.getRegionUsers(countryVal, cityVal);
       setRegionUsers(users);
-      if (!country) setCountry(countryVal);
       setView('list');
     } catch (e: any) {
       setError(e.response?.data?.error || 'Failed to load region');
@@ -347,11 +370,15 @@ export default function ActivityStreamWidget({ onOpenChat }: { onOpenChat?: (use
               onChange={e => { setCitySearch(e.target.value); setCity(e.target.value); setCityDropdownOpen(true); }}
               onFocus={() => setCityDropdownOpen(true)}
               onBlur={() => setTimeout(() => setCityDropdownOpen(false), 200)}
-              placeholder={country ? 'Any city in this country (e.g. Berlin)…' : 'Select a country first'}
-              disabled={!country}
-              style={{ ...inputStyle, opacity: country ? 1 : 0.6 }}
+              placeholder={
+                (country || countrySearch).trim()
+                  ? 'Any city in this country (optional)…'
+                  : 'Type a country above first (city stays optional)'
+              }
+              disabled={!(country || countrySearch).trim()}
+              style={{ ...inputStyle, opacity: (country || countrySearch).trim() ? 1 : 0.6 }}
             />
-            {cityDropdownOpen && country && cityFiltered.length > 0 && (
+            {cityDropdownOpen && (country || countrySearch).trim() && cityFiltered.length > 0 && (
               <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, maxHeight: '220px', overflowY: 'auto', background: 'rgba(0,0,0,0.95)', border: '2px solid rgba(0, 212, 255, 0.5)', borderRadius: '8px', zIndex: 10, marginTop: '4px', boxShadow: '0 8px 20px rgba(0,0,0,0.5)' }}>
                 {cityFiltered.map(cityName => (
                   <div
@@ -367,7 +394,7 @@ export default function ActivityStreamWidget({ onOpenChat }: { onOpenChat?: (use
           </div>
           <button
             onClick={() => void loadRegion()}
-            disabled={!country.trim() || loading}
+            disabled={!(country || countrySearch).trim() || loading}
             style={{
               ...style.btn(true),
               width: '100%',
@@ -412,6 +439,11 @@ export default function ActivityStreamWidget({ onOpenChat }: { onOpenChat?: (use
                         <div style={{ fontWeight: 'bold', color: '#00d4ff', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                           {(u as any).goldStar && '⭐ '}{u.name}
                           {(u as any).photoVerifiedAt && <span style={{ fontSize: '10px', color: '#22c55e', fontWeight: '600' }} title="Photo verified">✓</span>}
+                          {(u as any).international && (
+                            <span style={{ fontSize: '10px', color: '#fbbf24', fontWeight: 700, border: '1px solid rgba(251,191,36,0.5)', borderRadius: 999, padding: '1px 8px' }}>
+                              International
+                            </span>
+                          )}
                         </div>
                         <div style={{ fontSize: '11px', color: '#9ca3af' }}>{u.country}{u.city ? `, ${u.city}` : ''}</div>
                       </div>

@@ -36,6 +36,8 @@ export interface AiLesson {
   prevention: string;
   unknown: string;
   demo: string;
+  /** Per-guide voice — each helper has their own take, not a shared script. */
+  guideTakes?: Record<string, { cause: string; solution: string; prevention: string; unknown: string }>;
 }
 
 export const AI_GUIDES: AiGuideCharacter[] = [
@@ -500,6 +502,56 @@ export const AI_LESSONS: AiLesson[] = [
     prevention: 'Tell someone where you are. Do not get in their car on date one.',
     unknown: 'Politeness is not a safety plan. Chemistry can wait. Your exit cannot.',
     demo: 'boundary',
+    guideTakes: {
+      amara: {
+        cause: 'You stayed because leaving felt rude — and your worth got tied to being “nice.”',
+        solution: 'Text a friend the pin before you sit. Cap it at one hour. “I’m heading out” needs no apology.',
+        prevention: 'Choose venues with an easy exit. Share your live location with someone you trust.',
+        unknown: 'Being liked is not safer than being free to leave. Soft hearts need hard exits.',
+      },
+      kenji: {
+        cause: 'No plan for time, ride, or exit — so the date ran you instead of you running it.',
+        solution: 'Book a 60-minute public walk or coffee-to-go. Arrive in your own transport. Leave on the clock.',
+        prevention: 'Confirm the spot and end time in chat before you go. No last-minute venue changes.',
+        unknown: 'Strategy is safety: one place, one hour, one ride home that you control.',
+      },
+      sofia: {
+        cause: 'You chased spark and ignored the vibe shift when your body said “off.”',
+        solution: 'If the energy drops, stand up kindly and leave. Chemistry that needs isolation is not chemistry.',
+        prevention: 'Daylight, public, people around. Flirting works better when you feel safe enough to play.',
+        unknown: 'Attraction dies the second you ignore your gut. Trust the first “no” in your chest.',
+      },
+      marcus: {
+        cause: 'You kept negotiating with someone who already crossed a line in small ways.',
+        solution: 'Exit now. Public place. Own ride. Tell a friend. Do not explain yourself into staying.',
+        prevention: 'Watch for pushy venue changes, isolation, or “just one more place.” Those are red flags, not romance.',
+        unknown: 'Confusion is information. If you feel stuck, you are already in the wrong date.',
+      },
+      priya: {
+        cause: 'Old attachment habits made you freeze — freeze looks like politeness under stress.',
+        solution: 'Name the feeling out loud to yourself, then leave. Safety first; processing later with someone safe.',
+        prevention: 'Practice leaving early on low-stakes hangs so your nervous system knows the move.',
+        unknown: 'Your body keeps score. If you feel trapped, that is data — not drama.',
+      },
+      mei: {
+        cause: 'You stayed past your comfort to avoid conflict — conflict avoidance is not consent.',
+        solution: 'Short, clear exit: “I’m done for tonight.” Walk to a lit area. Call someone while you move.',
+        prevention: 'Set a hard end time before the date. Share it with a friend who will check in.',
+        unknown: 'You do not owe them a soft landing. You owe yourself a hard boundary.',
+      },
+      elena: {
+        cause: 'You dressed for the vibe and forgot the logistics — looks without an exit plan.',
+        solution: 'Pick a public spot you already know. Comfortable shoes. Own ride. Leave looking composed, not stuck.',
+        prevention: 'Screenshot the meeting point and send it to a friend with your end time.',
+        unknown: 'Presence includes knowing how you leave. Style means nothing if you feel trapped.',
+      },
+      diego: {
+        cause: 'You kept texting through discomfort instead of ending the night in real life.',
+        solution: 'Send one check-in to a friend, then leave. No debate thread with the date.',
+        prevention: 'Agree the meet length in chat: “Let’s do an hour.” That message is your contract.',
+        unknown: 'A dry reply in person is still a reply — stand up and go. Silence is not your job to fix.',
+      },
+    },
   },
 ]
 
@@ -538,6 +590,25 @@ export function getGuide(id: string) {
 
 export function getLesson(id: string) {
   return AI_LESSONS.find((l) => l.id === id) || null;
+}
+
+/** Each guide speaks in their own mind — never a shared script when a take exists. */
+export function resolveLessonForGuide(lesson: AiLesson, guideId: string): AiLesson {
+  const take = lesson.guideTakes?.[guideId];
+  if (take) {
+    return { ...lesson, cause: take.cause, solution: take.solution, prevention: take.prevention, unknown: take.unknown };
+  }
+  const guide = getGuide(guideId);
+  if (!guide) return lesson;
+  const first = guide.name.split(' ')[0];
+  const specialty = guide.specialty.toLowerCase();
+  return {
+    ...lesson,
+    cause: `${lesson.cause} (${first}'s read: this usually shows up around ${specialty}.)`,
+    solution: `${first}'s move: ${lesson.solution}`,
+    prevention: `${first} would lock this in early: ${lesson.prevention}`,
+    unknown: `${first}'s edge: ${lesson.unknown}`,
+  };
 }
 
 export function guidesForLesson(lesson: AiLesson) {

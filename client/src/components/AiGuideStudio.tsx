@@ -212,11 +212,11 @@ export default function AiGuideStudio({
     }
     setBusy(true);
     try {
-      const r = await aiGuidesAPI.lesson(topicId);
+      const r = await aiGuidesAPI.lesson(topicId, selected?.id);
       await tryHelp('lesson', () => {
         setLesson(r.lesson);
         setRanked(r.guides);
-        setSelected(r.guides[0] || null);
+        setSelected(r.guides.find((g) => g.id === selected?.id) || r.guides[0] || null);
         setGuess({ id: r.lesson.id, title: r.lesson.title });
         setMiss(false);
       });
@@ -224,6 +224,18 @@ export default function AiGuideStudio({
       setError('Could not open that topic.');
     } finally {
       setBusy(false);
+    }
+  };
+
+  const switchGuideOnLesson = async (g: AiGuideCharacter) => {
+    setSelected(g);
+    if (!lesson?.id) return;
+    try {
+      const r = await aiGuidesAPI.lesson(lesson.id, g.id);
+      setLesson(r.lesson);
+      setRanked(r.guides);
+    } catch {
+      /* keep prior lesson text */
     }
   };
 
@@ -470,6 +482,11 @@ export default function AiGuideStudio({
                 <div className="ai-block"><b>Prevent it</b><p>{(lessonLocal || lesson).prevention}</p></div>
                 <div className="ai-block"><b>Most people miss</b><p>{(lessonLocal || lesson).unknown}</p></div>
               </div>
+              {featured && (
+                <p style={{ fontSize: 12, color: '#f59e0b', margin: '0 0 10px' }}>
+                  Hearing {featured.name.split(' ')[0]}’s take — switch avatars for a different mind.
+                </p>
+              )}
               <div className="ai-switch" aria-label="Switch guide">
                 {crew.map((g) => (
                   <button
@@ -477,7 +494,7 @@ export default function AiGuideStudio({
                     type="button"
                     className={featured?.id === g.id ? 'is-on' : ''}
                     title={`${g.name} — ${g.specialty}`}
-                    onClick={() => setSelected(g)}
+                    onClick={() => void switchGuideOnLesson(g)}
                   >
                     <img src={g.portrait} alt="" />
                   </button>

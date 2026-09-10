@@ -261,13 +261,48 @@ export const getDateVenueProposalHandler = async (req: Request, res: Response) =
     const userId = (req as any).userId;
     const { otherUserId } = req.params;
     const refresh = req.query.refresh === 'true';
+    const city = typeof req.query.city === 'string' ? req.query.city.trim() : '';
+    const country = typeof req.query.country === 'string' ? req.query.country.trim() : '';
+    const lat = parseFloat(String(req.query.lat || ''));
+    const lon = parseFloat(String(req.query.lon || ''));
+
+    // Prefer asker's city/GPS from profile when query omits them
+    let meetCity = city;
+    let meetCountry = country;
+    let meetLat = Number.isFinite(lat) ? lat : undefined;
+    let meetLon = Number.isFinite(lon) ? lon : undefined;
+    if (!meetCity || meetLat == null) {
+      const me = await getUserById(userId);
+      const other = await getUserById(otherUserId);
+      meetCity = meetCity || me?.city || other?.city || '';
+      meetCountry = meetCountry || me?.country || other?.country || '';
+      if (meetLat == null && me?.location?.lat != null) {
+        meetLat = me.location.lat;
+        meetLon = me.location.lon;
+      }
+    }
+
     const proposal = refresh
-      ? await refreshVenueOptions(userId, otherUserId)
+      ? await refreshVenueOptions(userId, otherUserId, {
+          city: meetCity || undefined,
+          country: meetCountry || undefined,
+          lat: meetLat,
+          lon: meetLon,
+          autoPickForUserId: userId,
+        })
       : await getOrCreateProposal(userId, otherUserId);
+
+    const myChoiceId =
+      userId === proposal.userA ? proposal.userAChoiceId : proposal.userBChoiceId;
+    const autoPicked = refresh && myChoiceId
+      ? proposal.venues.find((v) => v.id === myChoiceId) || null
+      : null;
+
     res.json({
       proposal,
+      autoPicked,
       rules:
-        'Pick a public talk-friendly spot (parks, coffee to-go, plazas). No sit-down restaurants, cinemas, or movies. Each pays your own.',
+        'Pick a public talk-friendly spot (parks, coffee to-go, plazas). No sit-down restaurants, cinemas, or movies. Each pays your own. Shuffle uses real places near your city when possible — the person who shuffles gets the first pick; you both lock it when you pick the same spot.',
     });
   } catch (error) {
     console.error('Get venue proposal error:', error);

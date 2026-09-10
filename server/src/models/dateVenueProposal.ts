@@ -1,6 +1,7 @@
 import { readFile, writeFile, mkdir } from 'fs/promises';
 import { join } from 'path';
 import { pickRandomVenues, type DateVenueOption } from '../constants/dateVenues.js';
+import { resolveMeetupVenues } from '../utils/dateMeetupVenues.js';
 
 export interface DateVenueProposal {
   id: string;
@@ -13,7 +14,17 @@ export interface DateVenueProposal {
   status: 'voting' | 'agreed';
   createdAt: string;
   updatedAt: string;
+  meetLabel?: string | null;
 }
+
+export type VenueRefreshOpts = {
+  city?: string;
+  country?: string;
+  lat?: number;
+  lon?: number;
+  /** User who clicked Shuffle — auto-pick a spot for them (asker first) */
+  autoPickForUserId?: string;
+};
 
 const PATH = join(process.cwd(), 'server', 'data', 'date-venue-proposals.json');
 
@@ -100,19 +111,43 @@ export async function voteVenue(
   return proposal;
 }
 
-export async function refreshVenueOptions(userA: string, userB: string): Promise<DateVenueProposal> {
+export async function refreshVenueOptions(
+  userA: string,
+  userB: string,
+  opts: VenueRefreshOpts = {}
+): Promise<DateVenueProposal> {
   const items = await readAll();
   const key = pairKey(userA, userB);
-  const i = items.findIndex((p) => pairKey(p.userA, p.userB) === key);
+  let i = items.findIndex((p) => pairKey(p.userA, p.userB) === key);
   const now = new Date().toISOString();
-  if (i === -1) return getOrCreateProposal(userA, userB);
+  if (i === -1) {
+    await getOrCreateProposal(userA, userB);
+    return refreshVenueOptions(userA, userB, opts);
+  }
 
-  items[i].venues = pickRandomVenues(50);
+  const resolved = await resolveMeetupVenues({
+    city: opts.city,
+    country: opts.country,
+    lat: opts.lat,
+    lon: opts.lon,
+    count: 40,
+  });
+
+  items[i].venues = resolved.venues;
   items[i].userAChoiceId = null;
   items[i].userBChoiceId = null;
   items[i].agreedVenue = null;
   items[i].status = 'voting';
+  items[i].meetLabel = resolved.label || opts.city || null;
   items[i].updatedAt = now;
+
+  const picker = opts.autoPickForUserId;
+  const pick = resolved.venues[0];
+  if (picker && pick) {
+    if (picker === items[i].userA) items[i].userAChoiceId = pick.id;
+    else if (picker === items[i].userB) items[i].userBChoiceId = pick.id;
+  }
+
   await writeAll(items);
   return items[i];
 }

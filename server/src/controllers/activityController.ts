@@ -60,6 +60,9 @@ export async function getRegionUsers(req: Request, res: Response) {
         publicFigureVerified: !!(u.publicFigureVerified),
         revealToUserIds: u.revealToUserIds || [],
         photoVerifiedAt: u.photoVerifiedAt || null,
+        international:
+          !!(me?.country && u.country) &&
+          String(me.country).toLowerCase().trim() !== String(u.country).toLowerCase().trim(),
       };
       return maskUserForViewer(base, userId);
     });

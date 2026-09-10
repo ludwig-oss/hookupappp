@@ -628,26 +628,71 @@ export async function addConfessionMessage(
 async function craftAiConfessionReply(session: ConfessionSession, seekerText: string): Promise<string> {
   const ai = session.aiGuideId ? getGuide(session.aiGuideId) : null;
   const first = ai?.name.split(' ')[0] || 'Helper';
-  const q = seekerText.toLowerCase();
+  const specialty = ai?.specialty || 'emotional support';
+  const personality = ai?.personality || 'Warm, honest, and practical.';
+  const thinking = ai?.thinking || 'One clear step at a time.';
+  const q = seekerText.toLowerCase().trim();
+  const history = (session.messages || []).slice(-12);
+  const priorGuide = history.filter((m) => m.fromRole === 'guide').map((m) => m.content);
+  const turn = history.filter((m) => m.fromRole === 'seeker').length;
 
-  let line =
-    `I hear you. Thank you for trusting this private booth. ${ai?.thinking || 'We will take this one step at a time.'} What feels heaviest right now — and what would "a little better" look like tonight?`;
+  const avoidRepeat = (candidate: string): string => {
+    const compact = candidate.replace(/\s+/g, ' ').trim().toLowerCase();
+    const last = (priorGuide[priorGuide.length - 1] || '').replace(/\s+/g, ' ').trim().toLowerCase();
+    if (last && (compact === last || (compact.length > 40 && last.includes(compact.slice(0, 40))))) {
+      return `${first} here — different angle: ${candidate.split('.').slice(1).join('.').trim() || 'Tell me one concrete detail I can work with.'}`;
+    }
+    return candidate;
+  };
 
-  if (/\b(guilt|ashamed|shame)\b/.test(q)) {
-    line = `Guilt is heavy, but it is not the same as being unforgivable. Name one thing you can repair today without punishing yourself. I am listening.`;
+  // Character-style local brain (works without OpenAI): never reuse the opener once the chat has started
+  const suggestPool = [
+    `Try this tonight: write three lines — what hurt, what you need, and one kind thing you can do for yourself before sleep. Then tell me which line felt hardest.`,
+    `A small experiment: send one honest check-in to someone safe (“thinking of you”), or if that feels too big, sit outside for ten quiet minutes. Which feels more doable?`,
+    `Let’s shrink it: pick one decision you can make in the next hour that reduces stress by 10%. Name it here and I’ll help you refine it.`,
+    `Reframe with me: if a friend confessed what you just said, what would you advise them? Say that advice out loud — then we test if it fits you.`,
+  ];
+
+  let line = '';
+
+  if (/\b(idk|i don'?t know|suggest|what should|help me|tell me what|give me|advice)\b/.test(q)) {
+    line = `${suggestPool[turn % suggestPool.length]} (${first}'s take for ${specialty.toLowerCase()}: ${thinking})`;
+  } else if (/\b(guilt|ashamed|shame)\b/.test(q)) {
+    line = `Guilt is heavy, but it is not the same as being unforgivable. Name one thing you can repair today without punishing yourself — I’ll stay with you on it.`;
   } else if (/\b(lonely|alone|nobody)\b/.test(q)) {
     line = `Loneliness is real. You do not have to fix your whole life tonight. Who is one safe person or place you could reach this week — even with a short message?`;
   } else if (/\b(jealous|cheat|betray)\b/.test(q)) {
     line = `Betrayal and jealousy need clarity, not spiral. What do you know for sure, and what are you only afraid of? We can separate those.`;
-  } else if (/\b(break.?up|left me|dumped)\b/.test(q)) {
+  } else if (/\b(break.?up|left me|dumped|ex)\b/.test(q)) {
     line = `Loss hurts. Grief is not weakness. What is one boundary that protects your healing for the next 48 hours?`;
-  } else if (/\b(anxious|panic|overthink)\b/.test(q)) {
+  } else if (/\b(anxious|panic|overthink|stress)\b/.test(q)) {
     line = `When the mind races, shrink the window: breathe, then one true sentence about what is happening — not what might happen. Say that sentence here.`;
+  } else if (/\b(thank|thanks|better|helps)\b/.test(q)) {
+    line = `Good. Keep that thread. What’s the next 1% move — something tiny you can finish before midnight?`;
+  } else if (/\b(yes|yeah|ok|okay|sure|fine)\b/.test(q) && q.length < 24) {
+    line = `Okay — let’s make it concrete. In one sentence: what do you want to feel different by tomorrow morning?`;
+  } else if (turn <= 1) {
+    line = `I hear you. Thank you for trusting this private booth. ${thinking} What feels heaviest right now — and what would “a little better” look like tonight?`;
+  } else {
+    const snippets = [
+      `I’m with you. ${personality.split('.')[0]}. Reflecting your words: you said “${seekerText.slice(0, 90)}${seekerText.length > 90 ? '…' : ''}”. What’s the part that still feels unfinished?`,
+      `That lands. From a ${specialty.toLowerCase()} lens: don’t solve everything — pick the emotion under this (fear, anger, grief, hope) and name it. Then we’ll choose one next step.`,
+      `Stay with me in the booth. No identity questions — only honesty. What would support look like in the next 20 minutes if it had to be simple?`,
+      `I won’t recycle the same speech. Based on what you shared, try this: write the unsent message you’d never send, then tell me one line from it that feels true.`,
+    ];
+    line = snippets[turn % snippets.length];
   }
+
+  line = avoidRepeat(line);
 
   const key = process.env.OPENAI_API_KEY;
   if (key) {
     try {
+      const transcript = history
+        .map((m) => `${m.fromRole === 'seeker' ? 'Seeker' : first}: ${m.content}`)
+        .concat([`Seeker: ${seekerText}`])
+        .join('\n')
+        .slice(-3500);
       const res = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
@@ -656,23 +701,25 @@ async function craftAiConfessionReply(session: ConfessionSession, seekerText: st
         },
         body: JSON.stringify({
           model: process.env.OPENAI_CONFESSION_MODEL || 'gpt-4o-mini',
-          temperature: 0.5,
+          temperature: 0.85,
           messages: [
             {
               role: 'system',
-              content: `You are ${first}, an anonymous AI confession helper in a dating app booth. Personality: ${ai?.personality || 'warm and direct'}. Rules: never ask for identity; never help with crimes or harm; redirect crisis to emergency services; keep replies under 90 words; private emotional support only.`,
+              content: `You are ${first}, an anonymous AI confession helper in a dating-app booth. Specialty: ${specialty}. Personality: ${personality}. Thinking style: ${thinking}.
+Rules: never ask for identity; never help with crimes or harm; redirect crisis to emergency services; keep replies under 110 words; private emotional support only.
+Stay in character like a continuous Character.AI chat — respond to THIS message in context of the transcript. Never repeat your previous reply. If they ask for a suggestion, give a concrete one.`,
             },
-            { role: 'user', content: seekerText.slice(0, 1200) },
+            { role: 'user', content: transcript },
           ],
         }),
       });
       if (res.ok) {
         const data = (await res.json()) as { choices?: { message?: { content?: string } }[] };
         const text = data.choices?.[0]?.message?.content?.trim();
-        if (text) line = text;
+        if (text) line = avoidRepeat(text);
       }
     } catch {
-      /* keep rule reply */
+      /* keep local reply */
     }
   }
   return line;

@@ -3384,11 +3384,24 @@ img.celeb-blur-img {
   border-radius: 12px;
   text-align: center;
 }
+.chat-xo-board-done {
+  border-color: #fbbf24;
+  box-shadow: 0 0 18px rgba(251, 191, 36, 0.25);
+}
 .chat-xo-board h4 {
   margin: 0 0 8px;
   color: #00d4ff;
   font-size: 14px;
 }
+.chat-xo-winner {
+  margin: 0 0 10px;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+.chat-xo-winner-win { color: #4ade80; }
+.chat-xo-winner-lose { color: #f472b6; }
+.chat-xo-winner-draw { color: #fbbf24; }
 .chat-xo-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);

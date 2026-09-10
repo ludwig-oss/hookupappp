@@ -66,8 +66,10 @@ const Dashboard = () => {
   const [selectedHighlightId, setSelectedHighlightId] = useState<string | null>(null);
   const [viewingHighlight, setViewingHighlight] = useState<any | null>(null);
   type WidgetId = 'activity' | 'compatibility' | 'connections' | 'highlights' | 'lovefeed' | 'advice' | 'confession' | 'chat' | 'events' | 'help' | 'safety' | 'datematch' | null;
-  const [openWidget, setOpenWidget] = useState<WidgetId>(null);
+  const bootState = (location.state || {}) as { openWidget?: WidgetId; openChatWithUserId?: string } | null;
+  const [openWidget, setOpenWidget] = useState<WidgetId>(bootState?.openWidget || null);
   const [returnToWidget, setReturnToWidget] = useState<'help' | null>(null);
+  const [openChatWithUserId, setOpenChatWithUserId] = useState<string | null>(bootState?.openChatWithUserId || null);
 
   const [mustPickGuide, setMustPickGuide] = useState(false);
 
@@ -106,7 +108,6 @@ const Dashboard = () => {
     setReturnToWidget('help');
     setOpenWidget(target);
   };
-  const [openChatWithUserId, setOpenChatWithUserId] = useState<string | null>(null);
   const [openDisinterestUserId, setOpenDisinterestUserId] = useState<string | null>(null);
   const [resumeTextingHelpId, setResumeTextingHelpId] = useState<string | null>(null);
   const [watchOutToast, setWatchOutToast] = useState<{ otherUserId: string; score: number; report?: DisinterestReport | null } | null>(null);

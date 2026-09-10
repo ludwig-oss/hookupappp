@@ -142,13 +142,30 @@ const Profile = () => {
     setHealthViewStatus(null);
     setExpandedPostComments(null);
     if (!isOwnProfile) {
-      setProfile(null);
+      // Keep preview visible while loading so chat → profile does not flash blank
+      setProfile((prev) => {
+        if (prev && String(prev.id) === String(viewingUserId)) return prev;
+        if (previewName || previewAvatar) {
+          return {
+            id: String(viewingUserId || ''),
+            email: '',
+            name: previewName || '…',
+            username: '',
+            profilePicture: previewAvatar ?? null,
+            profileSetupComplete: true,
+            highlights: [],
+            stories: [],
+            disappearingPhotos: [],
+          };
+        }
+        return prev;
+      });
       setReviews([]);
       setOverallRating(null);
       setMyReview(null);
       setShowReviewModal(false);
       setProfilePosts([]);
-      setLoading(true);
+      setLoading(!(previewName || previewAvatar));
       loadProfileFromServer();
       return;
     }
@@ -501,7 +518,8 @@ const Profile = () => {
       navigate('/home');
       return;
     }
-    navigate('/home', { state: { openWidget: 'chat', openChatWithUserId: id } });
+    // Replace so Home mounts already on chat (no home-grid flash)
+    navigate('/home', { replace: true, state: { openWidget: 'chat', openChatWithUserId: id } });
   };
 
   const handleLikeProfilePost = async (postId: string) => {

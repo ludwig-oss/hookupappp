@@ -253,6 +253,97 @@ export const updateChallengeState = async (req: Request, res: Response) => {
     }
 
     const challenge = await updateChallenge(challengeId, updates);
+
+    // Simulator: if opponent is a mock and it's XO, play a reply move after a short delay
+    try {
+      const { isSimulatorEnabled, isSimulatorUserId } = await import('../simulator/runtime.js');
+      if (
+        isSimulatorEnabled() &&
+        challenge.challengeType === 'xo' &&
+        challenge.status === 'active' &&
+        Array.isArray(challenge.gameState?.board)
+      ) {
+        const userId = (req as any).userId as string;
+        const otherId =
+          challenge.userId1 === userId ? challenge.userId2 : challenge.userId1;
+        if (isSimulatorUserId(otherId) && challenge.gameState?.turn === otherId) {
+          setTimeout(() => {
+            void (async () => {
+              try {
+                const board: string[] = [...(challenge.gameState.board as string[])];
+                const empty = board.map((c, i) => (!c ? i : -1)).filter((i) => i >= 0);
+                if (!empty.length) return;
+                // Prefer center, then corners, then sides
+                const prefer = [4, 0, 2, 6, 8, 1, 3, 5, 7].filter((i) => empty.includes(i));
+                const pick = prefer[0] ?? empty[0];
+                const symbols = challenge.gameState.symbols || {};
+                const mockSym = symbols[otherId] || 'O';
+                board[pick] = mockSym;
+                const lines = [
+                  [0, 1, 2],
+                  [3, 4, 5],
+                  [6, 7, 8],
+                  [0, 3, 6],
+                  [1, 4, 7],
+                  [2, 5, 8],
+                  [0, 4, 8],
+                  [2, 4, 6],
+                ];
+                let winSym: string | null = null;
+                for (const [a, b, c] of lines) {
+                  if (board[a] && board[a] === board[b] && board[a] === board[c]) {
+                    winSym = board[a];
+                    break;
+                  }
+                }
+                const full = board.every(Boolean);
+                await updateChallenge(challengeId, {
+                  gameState: {
+                    ...challenge.gameState,
+                    board,
+                    turn: winSym || full ? null : userId,
+                  },
+                  status: winSym || full ? 'completed' : 'active',
+                  winner: winSym === mockSym ? otherId : winSym ? userId : undefined,
+                  completedAt: winSym || full ? new Date() : undefined,
+                } as any);
+                const { createMessage } = await import('../models/chat.js');
+                if (winSym === mockSym) {
+                  await createMessage({
+                    fromUserId: otherId,
+                    toUserId: userId,
+                    content: '🏆 Winner: me! (simulator). Rematch?',
+                  });
+                } else if (winSym) {
+                  await createMessage({
+                    fromUserId: otherId,
+                    toUserId: userId,
+                    content: '🏆 Winner: you! Nice one — rematch anytime.',
+                  });
+                } else if (full) {
+                  await createMessage({
+                    fromUserId: otherId,
+                    toUserId: userId,
+                    content: '🤝 Draw — good game.',
+                  });
+                } else {
+                  await createMessage({
+                    fromUserId: otherId,
+                    toUserId: userId,
+                    content: 'Your move ⭕',
+                  });
+                }
+              } catch {
+                /* ignore sim move errors */
+              }
+            })();
+          }, 900);
+        }
+      }
+    } catch {
+      /* optional */
+    }
+
     res.json({ message: 'Challenge updated', challenge });
   } catch (error: any) {
     console.error('Update challenge error:', error);

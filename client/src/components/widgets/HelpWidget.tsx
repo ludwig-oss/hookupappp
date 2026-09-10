@@ -62,11 +62,15 @@ function HelpAnswerRich({
 }
 
 function matchFromFaq(item: HelpFaqItem, asked?: string): HelpMatch {
+  const base = getHelpMatch(asked || item.q);
   return {
+    ...base,
     userQuestion: asked || item.q,
     matchedQuestion: item.q,
     answer: item.a,
-    targets: targetsFromText(`${item.q} ${item.a}`),
+    targets: targetsFromText(`${item.q} ${item.a}`).length
+      ? targetsFromText(`${item.q} ${item.a}`)
+      : base.targets,
     related: [],
     confidence: 'high',
   };
@@ -123,6 +127,16 @@ export default function HelpWidget({ onOpenChat, onOpenLoveFeed, onNavigate }: H
     setInputValue('');
   };
 
+  // Live intent as they type (debounced feel via length threshold)
+  useEffect(() => {
+    const q = inputValue.trim();
+    if (q.length < 8) return;
+    const t = window.setTimeout(() => {
+      setMatch(getHelpMatch(q));
+    }, 420);
+    return () => clearTimeout(t);
+  }, [inputValue]);
+
   const handleNav = (target: HelpNavTarget) => {
     if (target === 'chat') onOpenChat?.();
     else if (target === 'lovefeed') onOpenLoveFeed?.();
@@ -138,7 +152,7 @@ export default function HelpWidget({ onOpenChat, onOpenLoveFeed, onNavigate }: H
           <div className="help-avatar">💬</div>
           <div>
             <h1 className="help-title">Help</h1>
-            <p className="help-subtitle">Ask anything — highlighted words take you there</p>
+            <p className="help-subtitle">Ask anything — I answer in baby steps, and shortcuts light up</p>
           </div>
         </div>
       </div>
@@ -148,7 +162,8 @@ export default function HelpWidget({ onOpenChat, onOpenLoveFeed, onNavigate }: H
           <div className="help-banner">
             <span className="help-banner-icon">🧭</span>
             <span className="help-banner-text">
-              Type a question at the bottom. Words like <strong>Communication</strong> and <strong>Settings</strong> light up — tap them to jump there.
+              Type what you are trying to do. I figure out the intent, show baby steps, and highlight words like{' '}
+              <strong>Communication</strong> and <strong>Settings</strong> you can tap to jump there.
             </span>
             <button type="button" className="help-banner-dismiss" onClick={() => setBannerDismissed(true)} aria-label="Dismiss">
               ×
@@ -157,8 +172,16 @@ export default function HelpWidget({ onOpenChat, onOpenLoveFeed, onNavigate }: H
         )}
 
         <section className="help-nav-section">
+          <h2 className="help-section-title">How Hook Up works (baby steps)</h2>
+          <ol className="help-baby-steps help-baby-steps-static">
+            <li>Finish Profile (photo + city) so people can find you.</li>
+            <li>Pick an AI guide in Compatibility — they coach texting &amp; dates.</li>
+            <li>Use Activity Stream / Connections / Date Arena to meet people.</li>
+            <li>Chat in Communication — games, SOS texting help, meetup safety.</li>
+            <li>Arm Personal safety shield when you go out; shout your word if you need help.</li>
+          </ol>
           <h2 className="help-section-title">Go where you need</h2>
-          <p className="help-section-hint">Tap a card to open that part of the app.</p>
+          <p className="help-section-hint">Tap a card to open that part of the app — or ask the search bar below.</p>
           <div className="help-nav-grid">
             {HELP_NAV_LINKS.map((link) => (
               <button
@@ -243,6 +266,13 @@ export default function HelpWidget({ onOpenChat, onOpenLoveFeed, onNavigate }: H
               <p className="help-answer-matched">Matched: {match.matchedQuestion}</p>
             )}
             <HelpAnswerRich text={match.answer} onNavigate={handleNav} />
+            {match.steps?.length > 0 && (
+              <ol className="help-baby-steps">
+                {match.steps.map((step) => (
+                  <li key={step}>{step}</li>
+                ))}
+              </ol>
+            )}
             {match.targets.length > 0 && (
               <div className="help-shortcut-row">
                 {match.targets.map((t) => {

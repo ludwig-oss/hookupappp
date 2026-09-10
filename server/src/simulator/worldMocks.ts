@@ -113,6 +113,55 @@ export function buildWorldMocks(count = 50): WorldMockBundle {
     const lon = jitter(place.lon);
     const name = `${FIRST[i % FIRST.length]} ${LAST[i % LAST.length]}`;
 
+    const pic = `https://i.pravatar.cc/400?u=${id}`;
+    const nowIso = new Date(now - (i % 8) * 3_600_000).toISOString();
+    const expires = new Date(now + 20 * 3_600_000).toISOString();
+    const storyCount = 1 + (i % 3);
+    const stories = Array.from({ length: storyCount }, (_, s) => ({
+      id: `${id}-story-${s + 1}`,
+      mediaUrl: `https://picsum.photos/seed/${id}-s${s}/720/1280`,
+      mediaType: 'image' as const,
+      createdAt: nowIso,
+      expiresAt: expires,
+      audience: 'all' as const,
+    }));
+    const highlights = [
+      {
+        id: `${id}-hl-1`,
+        title: i % 2 === 0 ? 'Weekends' : 'City vibes',
+        coverImage: `https://picsum.photos/seed/${id}-h0/400/400`,
+        createdAt: nowIso,
+        items: [
+          {
+            id: `${id}-hi-1`,
+            imageUrl: `https://picsum.photos/seed/${id}-h1/600/800`,
+            mediaType: 'image' as const,
+            createdAt: nowIso,
+          },
+          {
+            id: `${id}-hi-2`,
+            imageUrl: `https://picsum.photos/seed/${id}-h2/600/800`,
+            mediaType: 'image' as const,
+            createdAt: nowIso,
+          },
+        ],
+      },
+      {
+        id: `${id}-hl-2`,
+        title: 'Favorites',
+        coverImage: `https://picsum.photos/seed/${id}-h3/400/400`,
+        createdAt: nowIso,
+        items: [
+          {
+            id: `${id}-hi-3`,
+            imageUrl: `https://picsum.photos/seed/${id}-h3/600/800`,
+            mediaType: 'image' as const,
+            createdAt: nowIso,
+          },
+        ],
+      },
+    ];
+
     users.push({
       id,
       email: `mock${i + 1}@simulator.local`,
@@ -120,13 +169,13 @@ export function buildWorldMocks(count = 50): WorldMockBundle {
       name,
       username,
       phoneNumber: null,
-      profilePicture: `https://i.pravatar.cc/150?u=${id}`,
-      highlights: [],
-      stories: [],
+      profilePicture: pic,
+      highlights,
+      stories,
       closeFriendIds: [],
       disappearingPhotos: [],
       profileSetupComplete: true,
-      improvementCategories: ['dating-apps', 'texting'],
+      improvementCategories: ['dating-apps', 'texting', 'first-date'],
       location: {
         lat,
         lon,
@@ -143,7 +192,7 @@ export function buildWorldMocks(count = 50): WorldMockBundle {
       mutedUsers: [],
       unmatchedUsers: [],
       profiles: [],
-      bio: `Simulator mock in ${place.city}. Testing only.`,
+      bio: `Simulator mock in ${place.city}. Open to chats, games, meetups, and safety tests. (Not a real person.)`,
       age: 22 + (i % 18),
       gender,
       country: place.country,

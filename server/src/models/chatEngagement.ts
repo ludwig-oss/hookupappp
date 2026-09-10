@@ -338,11 +338,18 @@ export async function createChatChallenge(challengeData: Omit<ChatChallenge, 'id
 
 export async function getActiveChallenges(userId1: string, userId2: string): Promise<ChatChallenge[]> {
   const challenges = await readChallenges();
-  return challenges.filter(
-    c => ((c.userId1 === userId1 && c.userId2 === userId2) || 
-          (c.userId1 === userId2 && c.userId2 === userId1)) &&
-    c.status === 'active'
+  const pair = challenges.filter(
+    (c) =>
+      (c.userId1 === userId1 && c.userId2 === userId2) || (c.userId1 === userId2 && c.userId2 === userId1)
   );
+  const active = pair.filter((c) => c.status === 'active');
+  // Include freshly completed XO so clients can show the winner banner after a mock move
+  const recentDone = pair.filter((c) => {
+    if (c.status !== 'completed' || c.challengeType !== 'xo') return false;
+    const t = c.completedAt ? new Date(c.completedAt).getTime() : 0;
+    return Date.now() - t < 120_000;
+  });
+  return [...active, ...recentDone];
 }
 
 export async function updateChallenge(challengeId: string, updates: Partial<ChatChallenge>): Promise<ChatChallenge> {

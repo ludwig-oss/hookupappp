@@ -351,6 +351,8 @@ export interface HelpMatch {
   userQuestion: string;
   matchedQuestion: string | null;
   answer: string;
+  /** Numbered how-to steps when we can infer intent */
+  steps: string[];
   targets: HelpNavTarget[];
   related: HelpFaqItem[];
   confidence: 'high' | 'medium' | 'low';
@@ -430,13 +432,137 @@ function scoreFaq(userQ: string, faq: HelpFaqItem): number {
   return score;
 }
 
+function babyStepsFor(target: HelpNavTarget | null, userQ: string): string[] {
+  const u = userQ.toLowerCase();
+  if (/\bunmatch\b/.test(u) || /\bblock\b/.test(u)) {
+    return [
+      'Open Communication (chat list).',
+      'Open the conversation with that person.',
+      'Use the menu / actions → Unmatch (or Block if you need safety).',
+      'Confirm — you will not see each other in chat after that.',
+    ];
+  }
+  if (/\b(24\s*h|reply deadline|must reply)\b/.test(u)) {
+    return [
+      'Open the chat with that match.',
+      'Look for the yellow reply-deadline banner near the top.',
+      'Send any real message before the timer hits zero.',
+      'If you miss it, the match can unmatch automatically — reply sooner next time.',
+    ];
+  }
+  if (/\b(sos|texting help|ask amara|guide)\b/.test(u)) {
+    return [
+      'In a chat, tap SOS (or Ask Amara on Home).',
+      'Choose AI guide (5 free helps) or Human guide (pay upfront).',
+      'AI: pick a guide mind, get reply suggestions from your thread.',
+      'Human: pay, spin/pick a live guide, optionally share screen.',
+    ];
+  }
+  if (/\b(safety|activation word|shield|mic)\b/.test(u)) {
+    return [
+      'Open Personal safety shield from Home.',
+      'Set an activation word (3+ letters) and allow the microphone.',
+      'Tap “I’m going out — arm shield” when you leave.',
+      'Shout your word, tap Help, or use taps/volume — nearby people get your pin.',
+    ];
+  }
+  if (/\b(confession|booth)\b/.test(u)) {
+    return [
+      'From Home open Confession Booth.',
+      'Agree to the terms (simulator skips payment).',
+      'Pick an AI helper or human guide.',
+      'Talk privately — AI stays in character turn by turn; End session when done.',
+    ];
+  }
+  const map: Record<HelpNavTarget, string[]> = {
+    profile: [
+      'Tap PROFILE (bottom) or the Profile card on Home.',
+      'Add photo, age, country, and city so matches work.',
+      'Add Stories / Highlights so others see your vibe.',
+      'Save — then explore Activity Stream or Communication.',
+    ],
+    settings: [
+      'Open Profile → tap ⚙️ Settings (top).',
+      'Set privacy, language, and emergency contacts.',
+      'Review safety / notifications tabs.',
+      'Come back to Help anytime if you get stuck.',
+    ],
+    activity: [
+      'From Home tap Activity Stream.',
+      'Confirm your region (country; city optional).',
+      'Browse people online in that area.',
+      'Send interest / open a profile when someone fits.',
+    ],
+    chat: [
+      'From Home tap Communication.',
+      'Open a conversation (or start from a match).',
+      'Use GIF / games / SOS tools in the toolbar.',
+      'Plan meetups carefully — use safety features when you go out.',
+    ],
+    lovefeed: [
+      'From Home tap Love Life Feed.',
+      'Scroll posts from the community.',
+      'Like / comment, or create your own post.',
+      'Use it to warm up chats with shared topics.',
+    ],
+    connections: [
+      'From Home tap Connections.',
+      'Allow location for Nearby.',
+      'Buzz someone close, or search a venue.',
+      'Accept buzzes and move the chat forward.',
+    ],
+    highlights: [
+      'From Home tap Highlights.',
+      'Spin the wheel for icebreaker games.',
+      'Follow the prompt with your match in chat.',
+      'Come back for a new spin anytime.',
+    ],
+    compatibility: [
+      'From Home tap Compatibility.',
+      'Pick or keep your AI guide (Amara & crew).',
+      'Ask about texting, dates, boundaries, style…',
+      'Use free helps first; premium unlocks unlimited AI help.',
+    ],
+    events: [
+      'From Home tap Events.',
+      'Browse meetups or create one.',
+      'Join and chat with attendees.',
+      'Show up safely — share plans with a contact.',
+    ],
+    datematch: [
+      'From Home tap Date Arena.',
+      'Set what you are looking for.',
+      'Accept / pitch / roll fun date ideas.',
+      'Move good matches into Communication to plan.',
+    ],
+  };
+  if (target && map[target]) return map[target];
+  return [
+    'Type what you want in the search bar (example: “how do I unmatch”).',
+    'Read the answer — highlighted words are tappable shortcuts.',
+    'Tap a Go where you need card if you already know the section.',
+    'Repeat with a clearer question if the first answer is not enough.',
+  ];
+}
+
+function stepsFromAnswer(answer: string): string[] {
+  const parts = answer
+    .split(/(?<=\.)\s+/)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 20)
+    .slice(0, 4);
+  return parts.length >= 2 ? parts : [];
+}
+
 export function getHelpMatch(input: string): HelpMatch {
   const userQuestion = input.trim();
   if (!userQuestion) {
     return {
       userQuestion: '',
       matchedQuestion: null,
-      answer: 'Type what you need help with — for example “how do I unmatch”, “24 hour reply”, or “where is Settings”. Highlighted words are shortcuts you can tap.',
+      answer:
+        'Type what you need — for example “how do I unmatch”, “24 hour reply”, “safety word”, or “where is Settings”. I will answer in baby steps and light up shortcuts you can tap.',
+      steps: babyStepsFor(null, ''),
       targets: ['settings', 'chat', 'activity'],
       related: HELP_FAQ.slice(0, 3),
       confidence: 'low',
@@ -450,15 +576,17 @@ export function getHelpMatch(input: string): HelpMatch {
   const best = ranked[0];
   const related = ranked.slice(1, 4).filter((r) => r.score >= 10).map((r) => r.faq);
 
-  if (best && best.score >= 18) {
-    const targets = Array.from(new Set([
-      ...targetsFromText(best.faq.a + ' ' + best.faq.q),
-      ...(section ? [section] : []),
-    ]));
+  if (best && best.score >= 14) {
+    const targets = Array.from(
+      new Set([...targetsFromText(best.faq.a + ' ' + best.faq.q), ...(section ? [section] : [])])
+    );
+    const steps = babyStepsFor(section || targets[0] || null, userQuestion);
+    const fromAns = stepsFromAnswer(best.faq.a);
     return {
       userQuestion,
       matchedQuestion: best.faq.q,
       answer: best.faq.a,
+      steps: steps.length ? steps : fromAns,
       targets: targets.length ? targets : section ? [section] : ['chat'],
       related,
       confidence: best.score >= 28 ? 'high' : 'medium',
@@ -471,7 +599,8 @@ export function getHelpMatch(input: string): HelpMatch {
     return {
       userQuestion,
       matchedQuestion: `Open ${name}`,
-      answer: `Tap the highlighted shortcut to open ${name}. ${link ? `(${link.hint})` : ''} You can also use Go where you need at the top of Help.`,
+      answer: `Here’s the path to ${name}. ${link ? link.hint + '.' : ''} Tap the shortcut below when you’re ready — or follow the baby steps.`,
+      steps: babyStepsFor(section, userQuestion),
       targets: [section],
       related: ranked.filter((r) => r.score > 0).slice(0, 3).map((r) => r.faq),
       confidence: 'medium',
@@ -482,7 +611,8 @@ export function getHelpMatch(input: string): HelpMatch {
     userQuestion,
     matchedQuestion: null,
     answer:
-      'I am not sure yet. Tap a highlighted shortcut below to jump there, or try asking with a place name — Communication, Activity Stream, Settings, Profile, Love Life Feed, Events.',
+      'I am not totally sure yet — try naming the place or the action (unmatch, SOS, safety shield, Activity Stream, Settings). Below are starter steps; tap a shortcut to jump.',
+    steps: babyStepsFor(null, userQuestion),
     targets: ['chat', 'activity', 'settings', 'profile'],
     related: ranked.filter((r) => r.score > 0).slice(0, 3).map((r) => r.faq),
     confidence: 'low',

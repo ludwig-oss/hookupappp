@@ -49,6 +49,10 @@ function xoWinner(board: string[]): string | null {
   return null;
 }
 
+function xoBoardFull(board: string[]): boolean {
+  return board.every((c) => Boolean(c));
+}
+
 const formatMessageTime = (createdAt: string | Date) => {
   const d = typeof createdAt === 'string' ? new Date(createdAt) : createdAt;
   const now = new Date();
@@ -294,6 +298,7 @@ const ChatWidget = ({
   const [showGamesPicker, setShowGamesPicker] = useState(false);
   const [activeChallenge, setActiveChallenge] = useState<ChatChallenge | null>(null);
   const [xoBoard, setXoBoard] = useState<string[]>(EMPTY_XO);
+  const [xoResult, setXoResult] = useState<'win' | 'lose' | 'draw' | null>(null);
   const [guideFirstName, setGuideFirstName] = useState('your guide');
 
   const CONVO_PROMPTS = [
@@ -518,20 +523,47 @@ const ChatWidget = ({
   useEffect(() => {
     if (!selectedUserId || !user?.id) {
       setActiveChallenge(null);
+      setXoResult(null);
       return;
     }
-    chatEngagementAPI
-      .getChallenges({ userId: user.id, otherUserId: selectedUserId })
-      .then((r) => {
-        const xo = r.challenges.find((c) => c.challengeType === 'xo' && c.status === 'active');
-        if (xo) {
-          setActiveChallenge(xo);
-          setXoBoard(xo.gameState?.board || EMPTY_XO);
-        } else {
-          setActiveChallenge(null);
-        }
-      })
-      .catch(() => {});
+    let cancelled = false;
+    const pull = () => {
+      chatEngagementAPI
+        .getChallenges({ userId: user.id, otherUserId: selectedUserId })
+        .then((r) => {
+          if (cancelled) return;
+          const xo = r.challenges.find((c) => c.challengeType === 'xo' && c.status === 'active');
+          if (xo) {
+            setActiveChallenge(xo);
+            setXoBoard(xo.gameState?.board || EMPTY_XO);
+            setXoResult(null);
+            return;
+          }
+          // Catch simulator mock win/draw that completed the challenge
+          const done = r.challenges.find(
+            (c) => c.challengeType === 'xo' && c.status === 'completed' && c.gameState?.board
+          );
+          if (done && !xoResult) {
+            const board = done.gameState?.board || EMPTY_XO;
+            setXoBoard(board);
+            setActiveChallenge(done);
+            const winSym = xoWinner(board);
+            if (winSym) {
+              const mySym = done.gameState?.symbols?.[user.id] || 'X';
+              setXoResult(winSym === mySym ? 'win' : 'lose');
+            } else if (xoBoardFull(board)) {
+              setXoResult('draw');
+            }
+          }
+        })
+        .catch(() => {});
+    };
+    pull();
+    const t = setInterval(pull, 2000);
+    return () => {
+      cancelled = true;
+      clearInterval(t);
+    };
   }, [selectedUserId, user?.id]);
 
   useEffect(() => {
@@ -1080,7 +1112,10 @@ const ChatWidget = ({
       gameState,
     });
     setActiveChallenge(challenge);
-    if (challengeType === 'xo') setXoBoard(EMPTY_XO);
+    if (challengeType === 'xo') {
+      setXoBoard(EMPTY_XO);
+      setXoResult(null);
+    }
     setShowGamesPicker(false);
     const catalogLine = PLAY_TOGETHER_GAMES.find((g) => g.type === challengeType)?.prompt;
     const line =
@@ -1095,24 +1130,41 @@ const ChatWidget = ({
   };
 
   const playXoCell = async (idx: number) => {
-    if (!activeChallenge || !user?.id || xoBoard[idx]) return;
+    if (!activeChallenge || !user?.id || xoBoard[idx] || xoResult) return;
     if (activeChallenge.gameState?.turn && activeChallenge.gameState.turn !== user.id) return;
     const symbol = activeChallenge.gameState?.symbols?.[user.id] || 'X';
     const next = [...xoBoard];
     next[idx] = symbol;
-    const winner = xoWinner(next);
+    const winnerSym = xoWinner(next);
+    const draw = !winnerSym && xoBoardFull(next);
+    const iWon = winnerSym === symbol;
+    const theyWon = Boolean(winnerSym) && !iWon;
     const { challenge } = await chatEngagementAPI.updateChallenge({
       challengeId: activeChallenge.id,
       gameState: {
         ...activeChallenge.gameState,
         board: next,
-        turn: winner ? null : selectedUserId,
+        turn: winnerSym || draw ? null : selectedUserId,
       },
-      status: winner ? 'completed' : 'active',
-      winner: winner === symbol ? user.id : winner ? selectedUserId : undefined,
+      status: winnerSym || draw ? 'completed' : 'active',
+      winner: iWon ? user.id : theyWon ? selectedUserId : undefined,
     });
-    setActiveChallenge(winner ? null : challenge);
     setXoBoard(next);
+    if (iWon) {
+      setXoResult('win');
+      setActiveChallenge({ ...challenge, status: 'completed' });
+      await sendContent(`🏆 Winner: you! Tic-tac-toe — ${symbol}s take it.`);
+    } else if (theyWon) {
+      setXoResult('lose');
+      setActiveChallenge({ ...challenge, status: 'completed' });
+      await sendContent(`🏆 Winner: ${selectedName || 'them'}! Nice game.`);
+    } else if (draw) {
+      setXoResult('draw');
+      setActiveChallenge({ ...challenge, status: 'completed' });
+      await sendContent('🤝 Draw — rematch anytime.');
+    } else {
+      setActiveChallenge(challenge);
+    }
   };
 
   const handleHostPlay = async () => {
@@ -2963,12 +3015,22 @@ const ChatWidget = ({
           </div>
         </div>
       )}
-      {activeChallenge?.challengeType === 'xo' && activeChallenge.status === 'active' && (
-        <div className="chat-xo-board">
+      {activeChallenge?.challengeType === 'xo' && (activeChallenge.status === 'active' || xoResult) && (
+        <div className={`chat-xo-board ${xoResult ? 'chat-xo-board-done' : ''}`}>
           <h4>Tic-tac-toe</h4>
+          {xoResult === 'win' && <p className="chat-xo-winner chat-xo-winner-win">🏆 Winner: you!</p>}
+          {xoResult === 'lose' && (
+            <p className="chat-xo-winner chat-xo-winner-lose">🏆 Winner: {selectedName || 'them'}!</p>
+          )}
+          {xoResult === 'draw' && <p className="chat-xo-winner chat-xo-winner-draw">🤝 Draw</p>}
           <div className="chat-xo-grid">
             {xoBoard.map((cell, idx) => (
-              <button key={idx} type="button" onClick={() => void playXoCell(idx)} disabled={Boolean(cell)}>
+              <button
+                key={idx}
+                type="button"
+                onClick={() => void playXoCell(idx)}
+                disabled={Boolean(cell) || Boolean(xoResult) || activeChallenge.status !== 'active'}
+              >
                 {cell || ''}
               </button>
             ))}
@@ -2977,13 +3039,15 @@ const ChatWidget = ({
             type="button"
             className="chat-games-picker-close"
             onClick={async () => {
-              if (activeChallenge) {
+              if (activeChallenge?.status === 'active') {
                 await chatEngagementAPI.updateChallenge({ challengeId: activeChallenge.id, status: 'completed' }).catch(() => {});
               }
               setActiveChallenge(null);
+              setXoResult(null);
+              setXoBoard(EMPTY_XO);
             }}
           >
-            End game
+            {xoResult ? 'Close' : 'End game'}
           </button>
         </div>
       )}

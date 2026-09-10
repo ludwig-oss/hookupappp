@@ -222,7 +222,7 @@ async function readUsers(): Promise<User[]> {
     const data = await readFile(DB_PATH, 'utf-8');
     const users = parseUsersJson(data);
     // Convert dates back to Date objects
-    return users.map((user: User) => ({
+    const mapped = users.map((user: User) => ({
       ...user,
       resetTokenExpiry: user.resetTokenExpiry ? new Date(user.resetTokenExpiry) : null,
       emailVerified: user.emailVerified !== undefined ? user.emailVerified : true, // Default to true for existing users
@@ -310,16 +310,24 @@ async function readUsers(): Promise<User[]> {
       aiGuideId: (user as any).aiGuideId ?? null,
       dateLookingFor: Array.isArray((user as any).dateLookingFor) ? (user as any).dateLookingFor : [],
     }));
+    const { mergeUsersWithSimulator } = await import('../simulator/runtime.js');
+    return mergeUsersWithSimulator(mapped);
   } catch (error) {
-    return [];
+    const { mergeUsersWithSimulator } = await import('../simulator/runtime.js');
+    return mergeUsersWithSimulator([]);
   }
 }
 
 async function writeUsers(users: User[]): Promise<void> {
+  const { splitUsersForWrite, isSimulatorEnabled } = await import('../simulator/runtime.js');
+  const { disk, mockTouched } = splitUsersForWrite(users);
+  if (isSimulatorEnabled() && mockTouched > 0) {
+    // Mock rows stay in RAM only — never touch users.json for them.
+  }
   const dir = join(__dirname, '..', 'data');
   const { mkdir } = await import('fs/promises');
   await mkdir(dir, { recursive: true });
-  await writeFile(DB_PATH, `${JSON.stringify(users, null, 2)}\n`, 'utf-8');
+  await writeFile(DB_PATH, `${JSON.stringify(disk, null, 2)}\n`, 'utf-8');
 }
 
 export async function createUser(userData: Omit<User, 'id' | 'resetToken' | 'resetTokenExpiry' | 'profilePicture' | 'highlights' | 'disappearingPhotos' | 'profileSetupComplete' | 'improvementCategories' | 'blockedUsers' | 'mutedUsers' | 'unmatchedUsers' | 'profiles' | 'activeProfileId' | 'emailVerified' | 'emailVerificationToken' | 'emailVerificationTokenExpiry' | 'emailVerificationCode' | 'emailVerificationCodeExpiry' | 'phoneNumber'> & { improvementCategories?: string[]; passwordHint1?: string; passwordHint2?: string; passwordHint3?: string }): Promise<User> {

@@ -168,8 +168,10 @@ export async function seedRegistryFromUsers(
 ): Promise<number> {
   await purgeOrphanUsernameClaims();
   let added = 0;
+  const { isSimulatorUserId } = await import('../simulator/runtime.js');
   for (const u of users) {
     if (!u.username || !isRealUserId(u.id)) continue;
+    if (isSimulatorUserId(u.id)) continue; // never lock ephemeral mock names
     const key = normalizeUsernameKey(u.username);
     if (!key) continue;
     await reserveUsername(key, u.id);

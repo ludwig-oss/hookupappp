@@ -26,6 +26,10 @@ for (const envPath of envPaths) {
 if (loaded.error) {
   console.warn('⚠ .env not found. Tried:', envPaths.join(' | '));
 }
+// Local-only: `npm run dev:sim` injects worldwide in-memory mocks (never written to disk).
+if (process.env.npm_lifecycle_event === 'dev:sim' || process.env.npm_lifecycle_event === 'dev:server:sim') {
+  process.env.SIMULATOR = '1';
+}
 import profileRoutes from './routes/profile.js';
 import chatRoutes from './routes/chat.js';
 import improvementRoutes from './routes/improvement.js';
@@ -240,6 +244,12 @@ async function start() {
       const n = await seedRegistryFromUsers(users);
       if (n > 0) console.log(`✓ Locked ${n} existing usernames (never re-used)`);
     });
+  } catch {
+    /* non-fatal */
+  }
+  try {
+    const { ensureSimulatorStarted, isSimulatorEnabled } = await import('./simulator/runtime.js');
+    if (isSimulatorEnabled()) ensureSimulatorStarted();
   } catch {
     /* non-fatal */
   }

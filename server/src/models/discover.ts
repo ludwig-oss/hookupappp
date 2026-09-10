@@ -73,10 +73,11 @@ async function writePlaces(places: Place[]): Promise<void> {
 }
 
 export async function readPreferences(): Promise<UserPreference[]> {
+  let mapped: UserPreference[] = [];
   try {
     const data = await readFile(PREFERENCES_PATH, 'utf-8');
     const prefs = JSON.parse(data);
-    return prefs.map((p: UserPreference & { lookingFor?: string[] | string }) => {
+    mapped = prefs.map((p: UserPreference & { lookingFor?: string[] | string }) => {
       const lookingFor = Array.isArray(p.lookingFor)
         ? p.lookingFor.filter((v): v is LookingForOption => LOOKING_FOR_OPTIONS.includes(v as any))
         : typeof p.lookingFor === 'string' && LOOKING_FOR_OPTIONS.includes(p.lookingFor as any)
@@ -89,12 +90,16 @@ export async function readPreferences(): Promise<UserPreference[]> {
       };
     });
   } catch {
-    return [];
+    mapped = [];
   }
+  const { mergePreferencesWithSimulator } = await import('../simulator/runtime.js');
+  return mergePreferencesWithSimulator(mapped);
 }
 
 async function writePreferences(prefs: UserPreference[]): Promise<void> {
-  await writeFile(PREFERENCES_PATH, JSON.stringify(prefs, null, 2));
+  const { splitPreferencesForWrite } = await import('../simulator/runtime.js');
+  const { disk } = splitPreferencesForWrite(prefs);
+  await writeFile(PREFERENCES_PATH, JSON.stringify(disk, null, 2));
 }
 
 export async function createInterest(interest: Omit<Interest, 'id' | 'createdAt' | 'expiresAt' | 'status'>): Promise<Interest> {

@@ -85,6 +85,9 @@ export default function HighlightSpinWheel({ onOutcome }: HighlightSpinWheelProp
         <div className="highlight-spin-wheel-center" />
       </button>
       <p className="highlight-spin-wheel-hint">{spinning ? 'Spinning...' : 'Click the wheel to spin'}</p>
+      <p className="highlight-spin-wheel-how" style={{ maxWidth: 320, margin: '0.5rem auto', fontSize: '0.85rem', opacity: 0.9, lineHeight: 1.4 }}>
+        How it works: spin lands on a mini-game (Blind Date = text icebreakers with a hidden face; Picture Pick = choose a photo; Compatibility Rush = quick vibe questions). You are matched with someone nearby when the spin finishes.
+      </p>
       <div className="highlight-spin-wheel-legend" aria-label="Games on this wheel">
         <p>Games on this wheel:</p>
         <ul>

@@ -270,15 +270,17 @@ const Profile = () => {
       }
       const [improvement, revData, postsResult, mine] = await Promise.all([
         improvementAPI.getUserImprovement(String(targetId)).catch(() => ({ improvementPercentage: 0 })),
-        reviewsAPI.getReviews(String(targetId)).catch(() => ({ reviews: [] as Review[], overall: null })),
+        reviewsAPI.getReviews(String(targetId)).catch(() => null as { reviews: Review[]; overall: OverallStarRating | null } | null),
         postsAPI.getPostsByUser(String(targetId)).catch(() => ({ posts: [] as DatingPost[] })),
         own
           ? Promise.resolve({ review: null as Review | null })
           : reviewsAPI.getMyReviewFor(String(targetId)).catch(() => ({ review: null as Review | null })),
       ]);
       setMatchScore(improvement.improvementPercentage ?? 0);
-      setReviews(revData.reviews);
-      setOverallRating(revData.overall ?? null);
+      if (revData) {
+        setReviews(revData.reviews || []);
+        setOverallRating(revData.overall ?? null);
+      }
       setMyReview(mine.review);
       setProfilePosts(postsResult.posts);
       if (!own) {
@@ -1724,18 +1726,40 @@ const Profile = () => {
           initialOverallStars={myReview?.overallStars}
           initialReviewText={myReview?.reviewText}
           onClose={() => setShowReviewModal(false)}
-          onComplete={async () => {
+          onComplete={async (saved) => {
             setShowReviewModal(false);
+            if (saved) {
+              setMyReview(saved);
+              setReviews((prev) => {
+                const rest = prev.filter((r) => r.id !== saved.id && r.fromUserId !== saved.fromUserId);
+                return [{ ...saved, fromUserName: user?.name || 'You' }, ...rest];
+              });
+              setOverallRating((prev) => {
+                const total = (prev?.totalReviews || 0) + (myReview ? 0 : 1);
+                const sum =
+                  (prev ? prev.averageStars * (prev.totalReviews || 0) : 0) -
+                  (myReview?.overallStars || 0) +
+                  (saved.overallStars || 0);
+                const avg = total > 0 ? Math.round((sum / total) * 10) / 10 : saved.overallStars;
+                return {
+                  averageStars: avg,
+                  totalReviews: Math.max(total, 1),
+                  distribution: prev?.distribution || { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 },
+                };
+              });
+            }
             try {
               const [revData, mine] = await Promise.all([
-                reviewsAPI.getReviews(String(viewingUserId)).catch(() => ({ reviews: [] as Review[], overall: null })),
+                reviewsAPI.getReviews(String(viewingUserId)),
                 reviewsAPI.getMyReviewFor(String(viewingUserId)).catch(() => ({ review: null as Review | null })),
               ]);
-              setReviews(revData.reviews);
+              if (Array.isArray(revData.reviews) && revData.reviews.length > 0) {
+                setReviews(revData.reviews);
+              }
               setOverallRating(revData.overall ?? null);
-              setMyReview(mine.review);
+              if (mine.review) setMyReview(mine.review);
             } catch {
-              /* keep current list if refresh fails */
+              /* keep optimistic list if refresh fails */
             }
           }}
         />,

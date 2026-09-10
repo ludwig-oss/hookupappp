@@ -79,8 +79,22 @@ export default function WheelOutcomeFlow({ segment, country, city, onClose, onOp
     setError(null);
     activityAPI
       .getRegionUsers(effectiveCountry || '', effectiveCity || undefined)
-      .then((r) => setRegionUsers(shuffle(filterWheelUsers(r.users))))
-      .catch(() => setError('Could not load users. Try again later.'))
+      .then((r) => {
+        const list = shuffle(filterWheelUsers(r.users || []));
+        setRegionUsers(list);
+        if (!list.length) {
+          setError(
+            effectiveCountry
+              ? `No one available in ${effectiveCity || effectiveCountry} for this game yet. Set Profile city, or try again — simulator mocks should appear when the sim is running.`
+              : 'Set your country in Profile (or use location) so we can find people for this game.'
+          );
+        }
+      })
+      .catch((e) =>
+        setError(
+          formatAxiosError(e, 'Could not load users. Check you are signed in, then try again.')
+        )
+      )
       .finally(() => setLoading(false));
   }, [effectiveCountry, effectiveCity]);
 
@@ -124,7 +138,7 @@ export default function WheelOutcomeFlow({ segment, country, city, onClose, onOp
     );
   }
 
-  if (error) {
+  if (error && regionUsers.length === 0) {
     const isNoCountry = error.includes('Set your country in Profile');
     return createPortal(
       <div className="wheel-outcome-overlay" onClick={onClose}>
@@ -169,11 +183,11 @@ export default function WheelOutcomeFlow({ segment, country, city, onClose, onOp
 }
 
 const BLIND_DATE_PROMPTS = [
-  "They said: I'm really into hiking and terrible puns 😄",
-  "They asked: Coffee or tea? (I'm judging silently)",
-  "They said: I once traveled 3 hours for a good taco. No regrets.",
-  "They said: My superpower is falling asleep in 2 minutes flat",
-  "They asked: What's the last thing that made you laugh really hard?",
+  "Icebreaker: I'm really into hiking and terrible puns 😄 — what about you?",
+  "Question for you: Coffee or tea? (I'm judging silently)",
+  "Icebreaker: I once traveled 3 hours for a good taco. No regrets. Your turn — share a food adventure.",
+  "Icebreaker: My superpower is falling asleep in 2 minutes flat. What's yours?",
+  "Question for you: What's the last thing that made you laugh really hard?",
 ];
 
 function BlindDateFlow({ users, onClose, onOpenChat }: { users: UserInfo[]; onClose: () => void; onOpenChat: (id: string) => void }) {
@@ -255,17 +269,19 @@ function BlindDateFlow({ users, onClose, onOpenChat }: { users: UserInfo[]; onCl
         {step === 'matched' && (
           <>
             <h3 className="wheel-outcome-title">Blind Date</h3>
-            <p className="wheel-outcome-msg">You’re matched! You’ve got a short “call” with faces hidden — read the vibes and decide if they’re your match.</p>
+            <p className="wheel-outcome-msg">
+              Faces stay hidden. You get a short round of icebreaker questions (text — not a phone call). Read the vibes, then vote if you think they’re a match.
+            </p>
           </>
         )}
         {step === 'timer' && (
           <>
-            <h3 className="wheel-outcome-title">🎧 Call in progress…</h3>
+            <h3 className="wheel-outcome-title">💬 Icebreaker questions</h3>
             <p className="wheel-outcome-timer">{Math.floor(timerSec / 60)}:{(timerSec % 60).toString().padStart(2, '0')}</p>
             <div className="wheel-outcome-chat-bubble">
               {BLIND_DATE_PROMPTS[promptIndex]}
             </div>
-            <p className="wheel-outcome-msg">When time’s up we’ll ask: Do you think they’re a match?</p>
+            <p className="wheel-outcome-msg">These are written prompts to vibe-check — not a live call. When time’s up we’ll ask: Do you think they’re a match?</p>
           </>
         )}
         {step === 'vote' && (

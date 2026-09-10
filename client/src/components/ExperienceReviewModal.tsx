@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { reviewsAPI } from '../api/reviews';
+import { reviewsAPI, type Review } from '../api/reviews';
 import './ExperienceReviewModal.css';
 
 interface ExperienceReviewModalProps {
@@ -10,7 +10,7 @@ interface ExperienceReviewModalProps {
   initialOverallStars?: number;
   initialReviewText?: string;
   onClose: () => void;
-  onComplete: () => void;
+  onComplete: (review?: Review) => void;
 }
 
 const ExperienceReviewModal = ({
@@ -32,6 +32,7 @@ const ExperienceReviewModal = ({
   const [error, setError] = useState('');
   const [step, setStep] = useState<'review' | 'court'>('review');
   const [courtReviewId, setCourtReviewId] = useState<string | null>(null);
+  const [savedReview, setSavedReview] = useState<Review | null>(null);
   const [courtSummary, setCourtSummary] = useState('');
   const [courtNote, setCourtNote] = useState('');
   const [courtConfirm, setCourtConfirm] = useState(false);
@@ -46,6 +47,7 @@ const ExperienceReviewModal = ({
     setSeriousPreview(false);
     setStep('review');
     setCourtReviewId(null);
+    setSavedReview(null);
     setCourtSummary('');
     setCourtNote('');
     setCourtConfirm(false);
@@ -78,13 +80,15 @@ const ExperienceReviewModal = ({
         documentNote: courtNote.trim() || undefined,
         confirmOfficial: true,
       });
-      onComplete();
+      onComplete(savedReview || undefined);
     } catch (e: any) {
       setError(e.response?.data?.error || 'Failed to submit evidence');
     } finally {
       setSubmitting(false);
     }
   };
+
+  const finishWithSavedReview = () => onComplete(savedReview || undefined);
 
   const handleSubmit = async () => {
     if (!disclaimerAccepted) {
@@ -106,11 +110,12 @@ const ExperienceReviewModal = ({
         source,
       });
       if (res.seriousClaimNotice && res.review?.id) {
+        setSavedReview(res.review);
         setCourtReviewId(res.review.id);
         setStep('court');
         return;
       }
-      onComplete();
+      onComplete(res.review);
     } catch (e: any) {
       setError(e.response?.data?.error || 'Failed to submit review');
     } finally {
@@ -120,7 +125,7 @@ const ExperienceReviewModal = ({
 
   if (step === 'court' && courtReviewId) {
     return (
-      <div className="exp-review-overlay" onClick={onComplete}>
+      <div className="exp-review-overlay" onClick={finishWithSavedReview}>
         <div className="exp-review-modal" onClick={(e) => e.stopPropagation()}>
           <h2>Official court evidence (optional)</h2>
           <p className="exp-review-sub">
@@ -150,7 +155,7 @@ const ExperienceReviewModal = ({
           </label>
           {error && <div className="exp-review-error">{error}</div>}
           <div className="exp-review-actions">
-            <button type="button" className="exp-review-skip" onClick={onComplete} disabled={submitting}>
+            <button type="button" className="exp-review-skip" onClick={finishWithSavedReview} disabled={submitting}>
               Skip for now
             </button>
             <button type="button" className="exp-review-submit" onClick={handleCourtSubmit} disabled={submitting}>

@@ -432,7 +432,7 @@ function scoreFaq(userQ: string, faq: HelpFaqItem): number {
   return score;
 }
 
-function babyStepsFor(target: HelpNavTarget | null, userQ: string): string[] {
+export function babyStepsFor(target: HelpNavTarget | null, userQ: string): string[] {
   const u = userQ.toLowerCase();
   if (/\bunmatch\b/.test(u) || /\bblock\b/.test(u)) {
     return [
@@ -543,6 +543,43 @@ function babyStepsFor(target: HelpNavTarget | null, userQ: string): string[] {
     'Tap a Go where you need card if you already know the section.',
     'Repeat with a clearer question if the first answer is not enough.',
   ];
+}
+
+/** Word descriptions for Help cards — explain first, open later. */
+export function explainHelpSection(target: HelpNavTarget): HelpMatch {
+  const link = HELP_NAV_LINKS.find((l) => l.target === target);
+  const name = link?.label || target;
+  const blurb: Record<HelpNavTarget, string> = {
+    profile:
+      'Profile is your public page: photo, age, city, stories, highlights, health, and reviews. Finish it so people can find and trust you. Reviews you receive stay forever.',
+    settings:
+      'Settings controls privacy, language, notifications, emergency contacts, and account security. Open it from your Profile gear icon.',
+    activity:
+      'Activity Stream lists people by country/city. Browse freely, send interest, and when they accept you both land in Communication.',
+    chat:
+      'Communication is your inbox: chats, games, meetup safety, SOS texting help, and unmatch. Reply in time or the match can end.',
+    lovefeed:
+      'Love Life Feed is the community wall — posts, likes, and comments so you can warm up chats with shared topics.',
+    highlights:
+      'Highlights is the spin wheel of mini-games (Blind Date, Picture Pick, and more) with people in your region. Spin to play — it is a game launcher, not a phone dialer.',
+    compatibility:
+      'Compatibility is where you pick an AI guide (Amara & crew). They coach texting, dates, style, and boundaries. First helps are free, then premium.',
+    connections:
+      'Connections shows nearby people and venues. Buzz someone close, search places, and move good vibes into chat.',
+    events:
+      'Events lets you create or join meetups. Chat with attendees and share plans safely with a contact.',
+    datematch:
+      'Date Arena searches for a date match: vs screen → both Accept → roll “?” for a plan → you are scheduled. Simulator mocks appear when the sim is running.',
+  };
+  return {
+    userQuestion: `How does ${name} work?`,
+    matchedQuestion: `How ${name} works`,
+    answer: blurb[target] || `${name}: ${link?.hint || ''}`,
+    steps: babyStepsFor(target, name),
+    targets: [target],
+    related: HELP_FAQ.filter((f) => targetsFromText(f.a + f.q).includes(target)).slice(0, 3),
+    confidence: 'high',
+  };
 }
 
 function stepsFromAnswer(answer: string): string[] {

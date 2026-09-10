@@ -30,9 +30,27 @@ export async function getRegionUsers(req: Request, res: Response) {
     const city = (req.query.city as string)?.trim();
     // Activity Stream: free to browse any country/city worldwide (e.g. Frankfurt → Berlin,
     // or another country). Sending/accepting interests is capped at 3 free accepted, then premium.
-    const users = country
+    let users = country
       ? await getActiveUsersByRegion(country, city || undefined)
       : await getAllUsers();
+
+    // Simulator: if region is empty/mismatched, still return mocks so Highlights wheel works locally
+    try {
+      const { isSimulatorEnabled, getSimulatorUsers } = await import('../simulator/runtime.js');
+      if (isSimulatorEnabled() && users.filter((u: any) => u.id !== userId).length < 3) {
+        const mocks = getSimulatorUsers().map((m) => ({
+          ...m,
+          country: country || m.country || 'Germany',
+          city: city || m.city || 'Berlin',
+        }));
+        const byId = new Map<string, any>();
+        for (const u of [...users, ...mocks]) byId.set(u.id, u);
+        users = Array.from(byId.values());
+      }
+    } catch {
+      /* optional */
+    }
+
     const me = await getUserById(userId);
     const blocked = new Set(me?.blockedUsers || []);
     const filtered = users.filter((u: any) => u.id !== userId && !blocked.has(u.id));

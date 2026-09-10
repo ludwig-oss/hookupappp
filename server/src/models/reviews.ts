@@ -1,5 +1,5 @@
-import { readFile, writeFile } from 'fs/promises';
-import { join } from 'path';
+import { readFile, writeFile, access } from 'fs/promises';
+import { dirname, join } from 'path';
 import { detectSeriousClaim } from '../utils/seriousClaim.js';
 
 export const REVIEW_ATTRIBUTES = [
@@ -70,7 +70,58 @@ export interface Review {
   disclaimerAcceptedAt?: string | null;
 }
 
-const REVIEWS_PATH = join(process.cwd(), 'server', 'data', 'reviews.json');
+const REVIEWS_PATH_CANDIDATES = [
+  join(process.cwd(), 'server', 'data', 'reviews.json'),
+  join(process.cwd(), 'data', 'reviews.json'),
+];
+
+async function pathExists(p: string): Promise<boolean> {
+  try {
+    await access(p);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Prefer an existing file; otherwise use server/data when cwd is repo root, else data/. */
+async function resolveReviewsWritePaths(): Promise<string[]> {
+  const existing: string[] = [];
+  for (const p of REVIEWS_PATH_CANDIDATES) {
+    if (await pathExists(p)) existing.push(p);
+  }
+  if (existing.length > 0) return existing;
+  // New write: pick based on cwd layout
+  const cwd = process.cwd().replace(/\\/g, '/');
+  if (cwd.endsWith('/server')) return [REVIEWS_PATH_CANDIDATES[1]];
+  return [REVIEWS_PATH_CANDIDATES[0]];
+}
+
+async function readReviews(): Promise<Review[]> {
+  const byId = new Map<string, Review>();
+  for (const p of REVIEWS_PATH_CANDIDATES) {
+    try {
+      const data = await readFile(p, 'utf-8');
+      const list = JSON.parse(data) as Review[];
+      if (!Array.isArray(list)) continue;
+      for (const r of list) {
+        if (r?.id) byId.set(r.id, r);
+      }
+    } catch {
+      /* try next */
+    }
+  }
+  return Array.from(byId.values());
+}
+
+async function writeReviews(reviews: Review[]): Promise<void> {
+  const paths = await resolveReviewsWritePaths();
+  const body = JSON.stringify(reviews, null, 2);
+  for (const filePath of paths) {
+    await import('fs/promises').then((fs) => fs.mkdir(dirname(filePath), { recursive: true }));
+    await writeFile(filePath, body);
+  }
+}
 
 const defaultAttributes: ReviewAttributes = {
   personality: 5,
@@ -94,21 +145,6 @@ const defaultAttributes: ReviewAttributes = {
 
 function clamp(n: number): number {
   return Math.max(1, Math.min(10, Math.round(n)));
-}
-
-async function readReviews(): Promise<Review[]> {
-  try {
-    const data = await readFile(REVIEWS_PATH, 'utf-8');
-    return JSON.parse(data);
-  } catch {
-    return [];
-  }
-}
-
-async function writeReviews(reviews: Review[]): Promise<void> {
-  const dir = join(process.cwd(), 'server', 'data');
-  await import('fs/promises').then(fs => fs.mkdir(dir, { recursive: true }));
-  await writeFile(REVIEWS_PATH, JSON.stringify(reviews, null, 2));
 }
 
 export function normalizeAttributes(attrs: Partial<ReviewAttributes>): ReviewAttributes {

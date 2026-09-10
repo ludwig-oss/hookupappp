@@ -5,6 +5,7 @@ import {
   HELP_NAV_LINKS,
   HELP_SHORTCUTS,
   getHelpMatch,
+  explainHelpSection,
   targetsFromText,
   type HelpFaqItem,
   type HelpMatch,
@@ -143,6 +144,12 @@ export default function HelpWidget({ onOpenChat, onOpenLoveFeed, onNavigate }: H
     else onNavigate?.(target);
   };
 
+  /** Cards explain first — they do not jump into the feature until you ask. */
+  const explainCard = (target: HelpNavTarget) => {
+    applyMatch(explainHelpSection(target));
+    listRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   const navLabel = (target: HelpNavTarget) => HELP_NAV_LINKS.find((l) => l.target === target);
 
   return (
@@ -162,8 +169,8 @@ export default function HelpWidget({ onOpenChat, onOpenLoveFeed, onNavigate }: H
           <div className="help-banner">
             <span className="help-banner-icon">🧭</span>
             <span className="help-banner-text">
-              Type what you are trying to do. I figure out the intent, show baby steps, and highlight words like{' '}
-              <strong>Communication</strong> and <strong>Settings</strong> you can tap to jump there.
+              Tap a feature card to get a word description and baby steps. Use <strong>Take me there</strong> only when
+              you are ready to open it. The search bar also figures out what you mean.
             </span>
             <button type="button" className="help-banner-dismiss" onClick={() => setBannerDismissed(true)} aria-label="Dismiss">
               ×
@@ -180,15 +187,17 @@ export default function HelpWidget({ onOpenChat, onOpenLoveFeed, onNavigate }: H
             <li>Chat in Communication — games, SOS texting help, meetup safety.</li>
             <li>Arm Personal safety shield when you go out; shout your word if you need help.</li>
           </ol>
-          <h2 className="help-section-title">Go where you need</h2>
-          <p className="help-section-hint">Tap a card to open that part of the app — or ask the search bar below.</p>
+          <h2 className="help-section-title">Learn each part (word descriptions)</h2>
+          <p className="help-section-hint">
+            Tap a card to read how it works in baby steps — it will not open the feature until you choose “Take me there”.
+          </p>
           <div className="help-nav-grid">
             {HELP_NAV_LINKS.map((link) => (
               <button
                 key={link.target}
                 type="button"
                 className="help-nav-card"
-                onClick={() => handleNav(link.target)}
+                onClick={() => explainCard(link.target)}
               >
                 <span className="help-nav-icon">{link.icon}</span>
                 <span className="help-nav-label">{link.label}</span>
@@ -280,7 +289,7 @@ export default function HelpWidget({ onOpenChat, onOpenLoveFeed, onNavigate }: H
                   return (
                     <button key={t} type="button" className="help-shortcut-chip" onClick={() => handleNav(t)}>
                       <span>{link?.icon}</span>
-                      {link?.label || t}
+                      Take me there: {link?.label || t}
                     </button>
                   );
                 })}

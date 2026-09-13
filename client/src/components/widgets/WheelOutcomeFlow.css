@@ -1,13 +1,21 @@
-.wheel-outcome-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.75);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 10000;
-  padding: 16px;
+.wheel-name-blurred {
+  filter: blur(6px);
+  user-select: none;
+  pointer-events: none;
+}
+
+.wheel-outcome-textarea {
+  width: 100%;
   box-sizing: border-box;
+  border-radius: 10px;
+  border: 1px solid rgba(0, 212, 255, 0.45);
+  background: rgba(0, 0, 0, 0.35);
+  color: #e8e0e8;
+  padding: 10px 12px;
+  font-size: 14px;
+  font-family: inherit;
+  resize: vertical;
+  min-height: 88px;
 }
 
 .wheel-outcome-modal {

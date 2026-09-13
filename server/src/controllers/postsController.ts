@@ -28,10 +28,9 @@ import { rankFeedPosts, getRecommendedPosts, type FeedMode } from '../models/fee
 import { attachViewCounts } from '../models/feedEngagement.js';
 import type { AuthRequest } from '../middleware/auth.js';
 
-function parseFeedMode(raw: unknown): FeedMode {
+function parseFeedMode(raw: unknown): FeedMode | 'saved' {
   const m = typeof raw === 'string' ? raw : 'for_you';
-  if (m === 'trending' || m === 'videos' || m === 'for_you') return m;
-  // following removed from UI — treat as for_you
+  if (m === 'trending' || m === 'videos' || m === 'for_you' || m === 'saved') return m;
   return 'for_you';
 }
 
@@ -180,7 +179,7 @@ export const getFeed = async (req: AuthRequest, res: Response) => {
       const { isSimulatorEnabled } = await import('../simulator/runtime.js');
       if (isSimulatorEnabled()) {
         const existing = await getAllPosts();
-        if (existing.length < 8) {
+        if (existing.length < 8 || existing.filter((p) => p.contentType === 'video').length < 2) {
           const { seedSimulatorSocialContent } = await import('../simulator/contentSeed.js');
           await Promise.race([
             seedSimulatorSocialContent(),
@@ -190,6 +189,32 @@ export const getFeed = async (req: AuthRequest, res: Response) => {
       }
     } catch {
       /* optional */
+    }
+
+    if (mode === 'saved') {
+      if (!userId) {
+        return res.json({
+          posts: [],
+          feedMeta: { mode: 'saved', personalized: false, trendingTags: [], description: 'Sign in to see saved posts.' },
+        });
+      }
+      const { getSavedPostIds } = await import('../models/savedPosts.js');
+      const ids = await getSavedPostIds(userId);
+      const all = await getAllPosts();
+      const byId = new Map(all.map((p) => [p.id, p]));
+      const saved = ids.map((id) => byId.get(id)).filter(Boolean) as typeof all;
+      const { attachToPosts } = await import('../models/singleAgain.js');
+      const withSingle = await attachToPosts(saved, userId);
+      const enrichedPosts = await enrichPostsWithUser(withSingle);
+      return res.json({
+        posts: enrichedPosts,
+        feedMeta: {
+          mode: 'saved',
+          personalized: true,
+          trendingTags: [],
+          description: 'Posts you saved — reopen anytime.',
+        },
+      });
     }
 
     const posts = await getFeedPosts({ userId, mode });
@@ -229,6 +254,47 @@ export const getFeed = async (req: AuthRequest, res: Response) => {
   } catch (error) {
     console.error('Get feed error:', error);
     res.json({ posts: [], feedMeta: { mode: 'for_you', personalized: false, trendingTags: [] } });
+  }
+};
+
+export const saveDatingPost = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).userId as string;
+    const { postId } = req.params;
+    if (!userId) return res.status(401).json({ error: 'Sign in required' });
+    const post = await getPostById(postId);
+    if (!post) return res.status(404).json({ error: 'Post not found' });
+    const { savePostForUser } = await import('../models/savedPosts.js');
+    const ids = await savePostForUser(userId, postId);
+    res.json({ saved: true, savedIds: ids });
+  } catch (error) {
+    console.error('Save post error:', error);
+    res.status(500).json({ error: 'Could not save post' });
+  }
+};
+
+export const unsaveDatingPost = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).userId as string;
+    const { postId } = req.params;
+    if (!userId) return res.status(401).json({ error: 'Sign in required' });
+    const { unsavePostForUser } = await import('../models/savedPosts.js');
+    const ids = await unsavePostForUser(userId, postId);
+    res.json({ saved: false, savedIds: ids });
+  } catch (error) {
+    console.error('Unsave post error:', error);
+    res.status(500).json({ error: 'Could not unsave post' });
+  }
+};
+
+export const getSavedPostIdsHandler = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).userId as string;
+    if (!userId) return res.status(401).json({ error: 'Sign in required' });
+    const { getSavedPostIds } = await import('../models/savedPosts.js');
+    res.json({ savedIds: await getSavedPostIds(userId) });
+  } catch (error) {
+    res.status(500).json({ error: 'Could not load saved posts' });
   }
 };
 

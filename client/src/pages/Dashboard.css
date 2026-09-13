@@ -1396,12 +1396,23 @@ html.theme-night .dashboard-container {
   background: none;
   border: 0;
   padding: 0;
-  cursor: pointer;
+  cursor: default;
   font-family: inherit;
   text-align: left;
 }
+.love-feed-author-name.love-feed-author-blurred {
+  filter: blur(5px);
+  user-select: none;
+  pointer-events: none;
+}
+.love-feed-avatar.love-feed-author-blurred,
+.love-feed-avatar-placeholder.love-feed-author-blurred {
+  filter: blur(8px);
+  user-select: none;
+  pointer-events: none;
+}
 .love-feed-author-name:hover {
-  text-decoration: underline;
+  text-decoration: none;
 }
 
 .love-feed-verified {

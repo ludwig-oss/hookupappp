@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef, useContext, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { useNavigate } from 'react-router-dom';
 import { AuthContext } from '../../context/AuthContext';
 import { postsAPI, DatingPost, FeedMode } from '../../api/posts';
 import { singleAgainAPI } from '../../api/singleAgain';
@@ -263,13 +262,13 @@ function VideoPostPlayer({ dataUrl, onOpenFullScreen }: { dataUrl: string; onOpe
 
 export default function LoveFeedWidget({ onShareToFriends }: { onShareToFriends?: (post: DatingPost) => void }) {
   const { user } = useContext(AuthContext);
-  const navigate = useNavigate();
   const [posts, setPosts] = useState<DatingPost[]>([]);
   const [recommendations, setRecommendations] = useState<DatingPost[]>([]);
   const [interestBusy, setInterestBusy] = useState<string | null>(null);
   const [trendingTags, setTrendingTags] = useState<string[]>([]);
   const [feedMode, setFeedMode] = useState<FeedMode>('for_you');
   const [feedDescription, setFeedDescription] = useState('');
+  const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [feedError, setFeedError] = useState<string | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -328,6 +327,14 @@ export default function LoveFeedWidget({ onShareToFriends }: { onShareToFriends?
     }, 20_000);
     return () => window.clearInterval(poll);
   }, [feedMode]);
+
+  useEffect(() => {
+    if (!user?.id) {
+      setSavedIds(new Set());
+      return;
+    }
+    postsAPI.getSavedIds().then((ids) => setSavedIds(new Set(ids))).catch(() => {});
+  }, [user?.id]);
 
   const loadFeed = async (mode: FeedMode = feedMode, quiet = false) => {
     setFeedError(null);
@@ -520,15 +527,18 @@ export default function LoveFeedWidget({ onShareToFriends }: { onShareToFriends?
     return fromPost === uid || fromNested === uid;
   };
 
-  const openAuthorProfile = (post: DatingPost) => {
-    if (post.singleAgain && !post.singleAgain.isOwner) return;
-    const id = (post.userId && String(post.userId)) || (post.user?.id && String(post.user.id)) || '';
-    if (!id) return;
-    if (user?.id && id === String(user.id)) {
-      navigate('/profile');
-      return;
+  const handleSaveToggle = async (postId: string) => {
+    if (!requireSignedIn('save posts')) return;
+    const isSaved = savedIds.has(postId);
+    try {
+      const res = isSaved ? await postsAPI.unsavePost(postId) : await postsAPI.savePost(postId);
+      setSavedIds(new Set(res.savedIds || []));
+      if (feedMode === 'saved' && isSaved) {
+        setPosts((prev) => prev.filter((p) => p.id !== postId));
+      }
+    } catch (err: unknown) {
+      alert(formatAxiosError(err, 'Could not update saved posts.'));
     }
-    navigate(`/profile/${id}`);
   };
 
   const formatCount = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(n));
@@ -620,15 +630,15 @@ export default function LoveFeedWidget({ onShareToFriends }: { onShareToFriends?
       <div className="love-feed-card-meta">
         <div className="love-feed-card-author">
           {post.user?.profilePicture ? (
-            <img src={post.user.profilePicture} alt="" className="love-feed-avatar" />
+            <img src={post.user.profilePicture} alt="" className="love-feed-avatar love-feed-author-blurred" />
           ) : (
-            <div className="love-feed-avatar-placeholder">{post.user?.name?.[0] || '?'}</div>
+            <div className="love-feed-avatar-placeholder love-feed-author-blurred">{post.user?.name?.[0] || '?'}</div>
           )}
           <div className="love-feed-card-author-info">
-            <button type="button" className="love-feed-author-name" onClick={() => openAuthorProfile(post)}>
+            <span className="love-feed-author-name love-feed-author-blurred" aria-hidden>
               {post.singleAgain ? `Someone in ${post.singleAgain.city}` : post.user?.name || 'Anonymous'}
-              <span className="love-feed-verified" aria-hidden>✓</span>
-            </button>
+              <span className="love-feed-verified">✓</span>
+            </span>
             <span className="love-feed-card-date">{formatDate(post.createdAt)}</span>
             {post.feedReason && !opts?.compact && (
               <span style={{ display: 'block', fontSize: 11, color: '#f472b6', marginTop: 2 }}>✦ {post.feedReason}</span>
@@ -674,6 +684,15 @@ export default function LoveFeedWidget({ onShareToFriends }: { onShareToFriends?
           <button type="button" className="love-feed-action love-feed-share" onClick={() => handleShare(post)} title="Share in app">
             <span className="love-feed-icon">↗</span>
             <span>Share</span>
+          </button>
+          <button
+            type="button"
+            className="love-feed-action"
+            onClick={() => void handleSaveToggle(post.id)}
+            title={savedIds.has(post.id) ? 'Unsave' : 'Save'}
+          >
+            <span className="love-feed-icon">{savedIds.has(post.id) ? '★' : '☆'}</span>
+            <span>{savedIds.has(post.id) ? 'Saved' : 'Save'}</span>
           </button>
           {post.singleAgain && !post.singleAgain.isOwner && (
             <button
@@ -796,6 +815,7 @@ export default function LoveFeedWidget({ onShareToFriends }: { onShareToFriends?
           ['for_you', 'For You'],
           ['trending', 'Trending'],
           ['videos', 'Videos'],
+          ['saved', 'Saved posts'],
         ] as const).map(([mode, label]) => (
           <button
             key={mode}

@@ -14,7 +14,7 @@ function getAuthHeaders(): Record<string, string> {
   return {};
 }
 
-export type FeedMode = 'for_you' | 'trending' | 'videos';
+export type FeedMode = 'for_you' | 'trending' | 'videos' | 'saved';
 
 export interface DatingPost {
   id: string;
@@ -135,6 +135,21 @@ export const postsAPI = {
 
   sharePost: async (postId: string): Promise<void> => {
     await axios.post(`${WRITE_API_URL}/${postId}/share`, {}, { headers: getAuthHeaders() });
+  },
+
+  savePost: async (postId: string): Promise<{ saved: boolean; savedIds: string[] }> => {
+    const response = await axios.post(`${WRITE_API_URL}/${postId}/save`, {}, { headers: getAuthHeaders() });
+    return response.data;
+  },
+
+  unsavePost: async (postId: string): Promise<{ saved: boolean; savedIds: string[] }> => {
+    const response = await axios.delete(`${WRITE_API_URL}/${postId}/save`, { headers: getAuthHeaders() });
+    return response.data;
+  },
+
+  getSavedIds: async (): Promise<string[]> => {
+    const response = await axios.get(`${API_URL}/saved/ids`, { headers: getAuthHeaders() });
+    return response.data.savedIds || [];
   },
 
   deletePost: async (postId: string): Promise<void> => {

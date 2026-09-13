@@ -12,6 +12,9 @@ import {
   commentOnPost,
   shareDatingPost,
   deleteDatingPost,
+  saveDatingPost,
+  unsaveDatingPost,
+  getSavedPostIdsHandler,
 } from '../controllers/postsController.js';
 import { authenticateToken, optionalAuthenticateToken } from '../middleware/auth.js';
 import { requirePhotoUnlocked } from '../middleware/requirePhotoUnlocked.js';
@@ -41,6 +44,7 @@ router.post('/', authenticateToken, requirePhotoUnlocked, createDatingPost);
 
 router.use(authenticateToken);
 
+router.get('/saved/ids', getSavedPostIdsHandler);
 router.get('/single-again/mine', getMyRoulette);
 router.get('/:postId/single-again', getSingleAgain);
 router.post('/:postId/interest', postInterest);
@@ -51,6 +55,8 @@ router.post('/:postId/view', recordPostView);
 router.post('/:postId/like', likeDatingPost);
 router.post('/:postId/comment', commentOnPost);
 router.post('/:postId/share', shareDatingPost);
+router.post('/:postId/save', saveDatingPost);
+router.delete('/:postId/save', unsaveDatingPost);
 router.delete('/:postId', deleteDatingPost);
 
 export default router;

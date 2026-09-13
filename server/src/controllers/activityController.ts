@@ -26,26 +26,34 @@ export async function getRegionUsers(req: Request, res: Response) {
   try {
     const userId = (req as any).userId;
     if (!userId) return res.status(401).json({ error: 'Unauthorized' });
-    const country = (req.query.country as string)?.trim();
-    const city = (req.query.city as string)?.trim();
-    // Activity Stream: free to browse any country/city worldwide (e.g. Frankfurt → Berlin,
-    // or another country). Sending/accepting interests is capped at 3 free accepted, then premium.
-    let users = country
-      ? await getActiveUsersByRegion(country, city || undefined)
-      : await getAllUsers();
+    const country = (req.query.country as string)?.trim() || '';
+    const city = (req.query.city as string)?.trim() || '';
 
-    // Simulator: if region is empty/mismatched, still return mocks so Highlights wheel works locally
+    let users: any[] = [];
+    try {
+      users = country
+        ? await getActiveUsersByRegion(country, city || undefined)
+        : await getAllUsers();
+    } catch (err) {
+      console.warn('getActiveUsersByRegion failed, falling back:', err);
+      users = await getAllUsers().catch(() => []);
+    }
+
+    // Simulator: always top up with mocks so Highlights wheel never 500s / empty-hangs
     try {
       const { isSimulatorEnabled, getSimulatorUsers } = await import('../simulator/runtime.js');
-      if (isSimulatorEnabled() && users.filter((u: any) => u.id !== userId).length < 3) {
-        const mocks = getSimulatorUsers().map((m) => ({
-          ...m,
-          country: country || m.country || 'Germany',
-          city: city || m.city || 'Berlin',
-        }));
-        const byId = new Map<string, any>();
-        for (const u of [...users, ...mocks]) byId.set(u.id, u);
-        users = Array.from(byId.values());
+      if (isSimulatorEnabled()) {
+        const others = users.filter((u: any) => u.id !== userId);
+        if (others.length < 5 || !country) {
+          const mocks = getSimulatorUsers().map((m) => ({
+            ...m,
+            country: country || m.country || 'Germany',
+            city: city || m.city || 'Berlin',
+          }));
+          const byId = new Map<string, any>();
+          for (const u of [...users, ...mocks]) byId.set(u.id, u);
+          users = Array.from(byId.values());
+        }
       }
     } catch {
       /* optional */
@@ -53,9 +61,33 @@ export async function getRegionUsers(req: Request, res: Response) {
 
     const me = await getUserById(userId);
     const blocked = new Set(me?.blockedUsers || []);
-    const filtered = users.filter((u: any) => u.id !== userId && !blocked.has(u.id));
+    let filtered = users.filter((u: any) => u && u.id && u.id !== userId && !blocked.has(u.id));
 
-    // Visibility penalty: users who skip required improvement repeatedly appear less often.
+    // Orientation + gender filter (straight men don't get men, etc.)
+    try {
+      const { getUserPreference } = await import('../models/discover.js');
+      const { areOrientationCompatible } = await import('../utils/orientationMatch.js');
+      const myPref = await getUserPreference(userId);
+      const oriented: any[] = [];
+      for (const u of filtered) {
+        const theirPref = await getUserPreference(u.id);
+        if (
+          areOrientationCompatible({
+            aOrientation: myPref?.orientation || 'straight',
+            aGender: me?.gender,
+            bOrientation: theirPref?.orientation || 'straight',
+            bGender: u.gender,
+          })
+        ) {
+          oriented.push(u);
+        }
+      }
+      // Keep a playable pool for the wheel even if prefs are sparse
+      if (oriented.length >= 3) filtered = oriented;
+    } catch {
+      /* keep unfiltered if prefs fail */
+    }
+
     const shouldShowCandidate = (viewerId: string, candidate: any): boolean => {
       const until = candidate?.visibilityReducedUntil ? new Date(candidate.visibilityReducedUntil).getTime() : 0;
       if (!until || until <= Date.now()) return true;
@@ -63,7 +95,7 @@ export async function getRegionUsers(req: Request, res: Response) {
       let h = 0;
       for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) | 0;
       const pct = Math.abs(h) % 100;
-      return pct < 35; // ~35% visibility while reduced
+      return pct < 35;
     };
 
     const discoveryFiltered = filtered.filter((u: any) => shouldShowCandidate(userId, u));
@@ -82,12 +114,17 @@ export async function getRegionUsers(req: Request, res: Response) {
           !!(me?.country && u.country) &&
           String(me.country).toLowerCase().trim() !== String(u.country).toLowerCase().trim(),
       };
-      return maskUserForViewer(base, userId);
+      try {
+        return maskUserForViewer(base, userId);
+      } catch {
+        return base;
+      }
     });
     res.json({ users: finalList });
   } catch (e: any) {
     console.error('Get region users error:', e);
-    res.status(500).json({ error: e.message || 'Internal server error' });
+    // Never hard-fail the Highlights wheel — return empty list with message
+    res.status(200).json({ users: [], error: e?.message || 'Could not load users' });
   }
 }
 

@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { activityAPI } from '../../api/activity';
 import { openChatWithUser } from '../../lib/openChat';
 import { filterWheelUsers, markWheelUserActed } from '../../lib/wheelEncounter';
 import { formatAxiosError } from '../../lib/apiError';
+import { getWheelGameById } from '../../data/wheelGames';
 import './WheelOutcomeFlow.css';
 
 const MATCH_24H_RULE =
@@ -55,7 +56,7 @@ function shuffle<T>(arr: T[]): T[] {
 }
 
 interface WheelOutcomeFlowProps {
-  segment: number;
+  gameId: string;
   country: string;
   city: string;
   onClose: () => void;
@@ -63,7 +64,7 @@ interface WheelOutcomeFlowProps {
   onLocationDetected?: (country: string, city: string) => void;
 }
 
-export default function WheelOutcomeFlow({ segment, country, city, onClose, onOpenChat, onLocationDetected }: WheelOutcomeFlowProps) {
+export default function WheelOutcomeFlow({ gameId, country, city, onClose, onOpenChat, onLocationDetected }: WheelOutcomeFlowProps) {
   const [regionUsers, setRegionUsers] = useState<UserInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -172,12 +173,16 @@ export default function WheelOutcomeFlow({ segment, country, city, onClose, onOp
     );
   }
 
-  if (segment === 1) return <BlindDateFlow users={regionUsers} onClose={onClose} onOpenChat={onOpenChat} />;
-  if (segment === 2) return <PicturePickFlow users={regionUsers} onClose={onClose} onOpenChat={onOpenChat} />;
-  if (segment === 3) return <CompatibilityRushFlow users={regionUsers} onClose={onClose} onOpenChat={onOpenChat} />;
-  if (segment === 4) return <LuckyLikeFlow users={regionUsers} onClose={onClose} onOpenChat={onOpenChat} />;
-  if (segment === 5) return <SpeedPickFlow users={regionUsers} onClose={onClose} onOpenChat={onOpenChat} />;
-  if (segment === 6) return <MysteryMessageFlow users={regionUsers} onClose={onClose} onOpenChat={onOpenChat} />;
+  const game = getWheelGameById(gameId);
+  const mechanic = game?.mechanic || 'blind_date';
+  const gameTitle = game?.name || 'Mini-game';
+
+  if (mechanic === 'blind_date') return <BlindDateFlow users={regionUsers} title={gameTitle} onClose={onClose} onOpenChat={onOpenChat} />;
+  if (mechanic === 'picture_pick') return <PicturePickFlow users={regionUsers} title={gameTitle} onClose={onClose} onOpenChat={onOpenChat} />;
+  if (mechanic === 'compatibility_rush') return <CompatibilityRushFlow users={regionUsers} title={gameTitle} onClose={onClose} onOpenChat={onOpenChat} />;
+  if (mechanic === 'lucky_like') return <LuckyLikeFlow users={regionUsers} title={gameTitle} onClose={onClose} onOpenChat={onOpenChat} />;
+  if (mechanic === 'speed_pick') return <SpeedPickFlow users={regionUsers} title={gameTitle} onClose={onClose} onOpenChat={onOpenChat} />;
+  if (mechanic === 'mystery_message') return <MysteryMessageFlow users={regionUsers} title={gameTitle} onClose={onClose} onOpenChat={onOpenChat} />;
 
   return null;
 }
@@ -190,14 +195,26 @@ const BLIND_DATE_PROMPTS = [
   "Question for you: What's the last thing that made you laugh really hard?",
 ];
 
-function BlindDateFlow({ users, onClose, onOpenChat }: { users: UserInfo[]; onClose: () => void; onOpenChat: (id: string) => void }) {
+function BlindDateFlow({
+  users,
+  title = 'Blind Date',
+  onClose,
+  onOpenChat,
+}: {
+  users: UserInfo[];
+  title?: string;
+  onClose: () => void;
+  onOpenChat: (id: string) => void;
+}) {
   const [step, setStep] = useState<'intro' | 'matched' | 'timer' | 'vote' | 'reveal' | 'add' | 'done'>('intro');
   const [match] = useState<UserInfo | null>(() => users[0] || null);
-  const CALL_SEC = 30;
+  const CALL_SEC = 45;
   const [timerSec, setTimerSec] = useState(CALL_SEC);
   const [promptIndex, setPromptIndex] = useState(0);
-  const [myVote, setMyVote] = useState<'yes' | 'no' | null>(null);
   const [otherSaidYes, setOtherSaidYes] = useState(false);
+  const [micError, setMicError] = useState<string | null>(null);
+  const [micLive, setMicLive] = useState(false);
+  const streamRef = useRef<MediaStream | null>(null);
 
   useEffect(() => {
     if (step === 'intro') {
@@ -205,9 +222,35 @@ function BlindDateFlow({ users, onClose, onOpenChat }: { users: UserInfo[]; onCl
       return () => clearTimeout(t);
     }
     if (step === 'matched') {
-      const t = setTimeout(() => setStep('timer'), 2200);
+      const t = setTimeout(() => setStep('timer'), 1800);
       return () => clearTimeout(t);
     }
+  }, [step]);
+
+  useEffect(() => {
+    if (step !== 'timer') return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+        if (cancelled) {
+          stream.getTracks().forEach((t) => t.stop());
+          return;
+        }
+        streamRef.current = stream;
+        setMicLive(true);
+        setMicError(null);
+      } catch {
+        setMicError('Mic permission needed for the voice round — enable it, or continue with prompts only.');
+        setMicLive(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+      streamRef.current?.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+      setMicLive(false);
+    };
   }, [step]);
 
   useEffect(() => {
@@ -216,6 +259,9 @@ function BlindDateFlow({ users, onClose, onOpenChat }: { users: UserInfo[]; onCl
       setTimerSec((s) => {
         if (s <= 1) {
           clearInterval(interval);
+          streamRef.current?.getTracks().forEach((t) => t.stop());
+          streamRef.current = null;
+          setMicLive(false);
           setStep('vote');
           return 0;
         }
@@ -227,12 +273,11 @@ function BlindDateFlow({ users, onClose, onOpenChat }: { users: UserInfo[]; onCl
 
   useEffect(() => {
     if (step !== 'timer') return;
-    const rot = setInterval(() => setPromptIndex((i) => (i + 1) % BLIND_DATE_PROMPTS.length), 6000);
+    const rot = setInterval(() => setPromptIndex((i) => (i + 1) % BLIND_DATE_PROMPTS.length), 8000);
     return () => clearInterval(rot);
   }, [step]);
 
   const handleVote = (vote: 'yes' | 'no') => {
-    setMyVote(vote);
     setTimeout(() => {
       setOtherSaidYes(vote === 'yes' && Math.random() > 0.3);
       setStep('reveal');
@@ -261,32 +306,47 @@ function BlindDateFlow({ users, onClose, onOpenChat }: { users: UserInfo[]; onCl
     );
   }
 
+  const blurredLabel = 'Someone nearby';
+
   const content = (
     <div className="wheel-outcome-overlay" onClick={onClose}>
       <div className="wheel-outcome-modal blind-date" onClick={(e) => e.stopPropagation()}>
         <button type="button" className="wheel-outcome-close" onClick={onClose}>×</button>
-        {step === 'intro' && <p className="wheel-outcome-msg">Finding your blind date...</p>}
+        {step === 'intro' && <p className="wheel-outcome-msg">Finding your match...</p>}
         {step === 'matched' && (
           <>
-            <h3 className="wheel-outcome-title">Blind Date</h3>
+            <h3 className="wheel-outcome-title">{title}</h3>
+            <div className="wheel-outcome-reveal">
+              <div className="wheel-outcome-avatar placeholder wheel-name-blurred">?</div>
+              <p className="wheel-name-blurred">{blurredLabel}</p>
+            </div>
             <p className="wheel-outcome-msg">
-              Faces stay hidden. You get a short round of icebreaker questions (text — not a phone call). Read the vibes, then vote if you think they’re a match.
+              Names stay blurred. You get a timed voice round — talk only until the clock hits zero, then vote if you think they’re a match.
             </p>
           </>
         )}
         {step === 'timer' && (
           <>
-            <h3 className="wheel-outcome-title">💬 Icebreaker questions</h3>
+            <h3 className="wheel-outcome-title">🎙 Voice round · {title}</h3>
             <p className="wheel-outcome-timer">{Math.floor(timerSec / 60)}:{(timerSec % 60).toString().padStart(2, '0')}</p>
+            <div className="wheel-outcome-reveal">
+              <div className="wheel-outcome-avatar placeholder wheel-name-blurred">?</div>
+              <p className="wheel-name-blurred">{blurredLabel}</p>
+              <p style={{ fontSize: 12, color: micLive ? '#86efac' : '#fca5a5' }}>
+                {micLive ? 'Mic live — talk now' : micError || 'Connecting mic…'}
+              </p>
+            </div>
             <div className="wheel-outcome-chat-bubble">
               {BLIND_DATE_PROMPTS[promptIndex]}
             </div>
-            <p className="wheel-outcome-msg">These are written prompts to vibe-check — not a live call. When time’s up we’ll ask: Do you think they’re a match?</p>
+            <p className="wheel-outcome-msg">
+              Voice only for this countdown. When time’s up the call ends and we ask: Do you think they’re a match?
+            </p>
           </>
         )}
         {step === 'vote' && (
           <>
-            <h3 className="wheel-outcome-title">Time’s up!</h3>
+            <h3 className="wheel-outcome-title">Time’s up — call ended</h3>
             <p className="wheel-outcome-msg">Do you think they’re a match?</p>
             <div className="wheel-outcome-actions">
               <button type="button" className="wheel-outcome-btn" onClick={() => handleVote('yes')}>Yes</button>
@@ -301,7 +361,7 @@ function BlindDateFlow({ users, onClose, onOpenChat }: { users: UserInfo[]; onCl
               <>
                 <div className="wheel-outcome-reveal">
                   {match.profilePicture ? (
-                    <img src={match.profilePicture} alt={match.name} className="wheel-outcome-avatar" />
+                    <img src={match.profilePicture} alt="" className="wheel-outcome-avatar" />
                   ) : (
                     <div className="wheel-outcome-avatar placeholder">{match.name.charAt(0)}</div>
                   )}
@@ -321,7 +381,7 @@ function BlindDateFlow({ users, onClose, onOpenChat }: { users: UserInfo[]; onCl
         )}
         {step === 'add' && (
           <>
-            <p className="wheel-outcome-msg">Send a connection request to {match.name}?</p>
+            <p className="wheel-outcome-msg">Send a connection request?</p>
             <div className="wheel-outcome-actions">
               <button type="button" className="wheel-outcome-btn" onClick={handleAddToComm}>Send request</button>
               <button type="button" className="wheel-outcome-btn secondary" onClick={onClose}>Cancel</button>
@@ -342,7 +402,7 @@ function BlindDateFlow({ users, onClose, onOpenChat }: { users: UserInfo[]; onCl
 
 const PICTURE_PICK_HINTS = ['🌙 Night owl', '✈️ Loves travel', '🎵 Music lover', '🐕 Dog person', '🍕 Foodie', '📚 Book nerd', '☕ Coffee addict', '🎬 Movie buff', '🌿 Outdoorsy', '🎨 Creative soul'];
 
-function PicturePickFlow({ users, onClose, onOpenChat }: { users: UserInfo[]; onClose: () => void; onOpenChat: (id: string) => void }) {
+function PicturePickFlow({ users, title = 'Picture Pick', onClose, onOpenChat }: { users: UserInfo[]; title?: string; onClose: () => void; onOpenChat: (id: string) => void }) {
   const pickFive = users.slice(0, 5);
   const [hints] = useState(() => {
     const pool = [...PICTURE_PICK_HINTS];
@@ -388,7 +448,7 @@ function PicturePickFlow({ users, onClose, onOpenChat }: { users: UserInfo[]; on
     <div className="wheel-outcome-overlay" onClick={onClose}>
       <div className="wheel-outcome-modal picture-pick" onClick={(e) => e.stopPropagation()}>
         <button type="button" className="wheel-outcome-close" onClick={onClose}>×</button>
-        <h3 className="wheel-outcome-title">Picture Pick — pick by vibe</h3>
+        <h3 className="wheel-outcome-title">{title}</h3>
         <p className="wheel-outcome-msg">Each card hides someone from your area. Pick the vibe that calls to you — we’ll reveal who’s behind it.</p>
         {!revealed ? (
           <div className="wheel-outcome-cards">
@@ -446,7 +506,7 @@ function PicturePickFlow({ users, onClose, onOpenChat }: { users: UserInfo[]; on
   return createPortal(content, document.body);
 }
 
-function CompatibilityRushFlow({ users, onClose, onOpenChat }: { users: UserInfo[]; onClose: () => void; onOpenChat: (id: string) => void }) {
+function CompatibilityRushFlow({ users, title = 'Compatibility Rush', onClose, onOpenChat }: { users: UserInfo[]; title?: string; onClose: () => void; onOpenChat: (id: string) => void }) {
   const [target] = useState<UserInfo | null>(() => users[0] || null);
   const [step, setStep] = useState<'calculating' | 'reveal'>('calculating');
   const [compatPercent, setCompatPercent] = useState(0);
@@ -513,7 +573,7 @@ function CompatibilityRushFlow({ users, onClose, onOpenChat }: { users: UserInfo
     <div className="wheel-outcome-overlay" onClick={onClose}>
       <div className="wheel-outcome-modal" onClick={(e) => e.stopPropagation()}>
         <button type="button" className="wheel-outcome-close" onClick={onClose}>×</button>
-        <h3 className="wheel-outcome-title">Compatibility Rush</h3>
+        <h3 className="wheel-outcome-title">{title}</h3>
         {step === 'calculating' && (
           <>
             <p className="wheel-outcome-msg">Calculating chemistry…</p>
@@ -556,7 +616,7 @@ function CompatibilityRushFlow({ users, onClose, onOpenChat }: { users: UserInfo
 
 const LUCKY_PEEK_HINTS = ['They have a dog 🐕', 'Total coffee addict ☕', 'Early bird, not night owl 🌅', 'Loves spontaneous road trips 🚗', 'Music is their love language 🎵', 'Thinks the best dates are low-key 🍕', 'Always has a book recommendation 📚'];
 
-function LuckyLikeFlow({ users, onClose, onOpenChat }: { users: UserInfo[]; onClose: () => void; onOpenChat: (id: string) => void }) {
+function LuckyLikeFlow({ users, title = 'Lucky Like', onClose, onOpenChat }: { users: UserInfo[]; title?: string; onClose: () => void; onOpenChat: (id: string) => void }) {
   const [target] = useState<UserInfo | null>(() => users[0] || null);
   const [peeked, setPeeked] = useState(false);
   const [peekHint] = useState(() => LUCKY_PEEK_HINTS[Math.floor(Math.random() * LUCKY_PEEK_HINTS.length)]);
@@ -602,7 +662,7 @@ function LuckyLikeFlow({ users, onClose, onOpenChat }: { users: UserInfo[]; onCl
     <div className="wheel-outcome-overlay" onClick={onClose}>
       <div className="wheel-outcome-modal" onClick={(e) => e.stopPropagation()}>
         <button type="button" className="wheel-outcome-close" onClick={onClose}>×</button>
-        <h3 className="wheel-outcome-title">Lucky Like</h3>
+        <h3 className="wheel-outcome-title">{title}</h3>
         <p className="wheel-outcome-msg">One random profile — blurred. You get <strong>one peek</strong> at a hint, then Like or Pass.</p>
         <div className="wheel-outcome-reveal blurred">
           {target.profilePicture ? (
@@ -643,7 +703,7 @@ function LuckyLikeFlow({ users, onClose, onOpenChat }: { users: UserInfo[]; onCl
   return createPortal(content, document.body);
 }
 
-function SpeedPickFlow({ users, onClose, onOpenChat }: { users: UserInfo[]; onClose: () => void; onOpenChat: (id: string) => void }) {
+function SpeedPickFlow({ users, title = 'Speed Pick', onClose, onOpenChat }: { users: UserInfo[]; title?: string; onClose: () => void; onOpenChat: (id: string) => void }) {
   const three = users.slice(0, 3);
   const [countdown, setCountdown] = useState(5);
   const [picked, setPicked] = useState<UserInfo | null>(null);
@@ -697,7 +757,7 @@ function SpeedPickFlow({ users, onClose, onOpenChat }: { users: UserInfo[]; onCl
     <div className="wheel-outcome-overlay" onClick={onClose}>
       <div className="wheel-outcome-modal" onClick={(e) => e.stopPropagation()}>
         <button type="button" className="wheel-outcome-close" onClick={onClose}>×</button>
-        <h3 className="wheel-outcome-title">Speed Pick</h3>
+        <h3 className="wheel-outcome-title">{title}</h3>
         <p className="wheel-outcome-msg">They disappear in <strong>5 seconds</strong>! Pick one before time runs out — or we’ll pick for you.</p>
         {countdown > 0 && <p className="wheel-outcome-speed-timer">{countdown}</p>}
         {timeUp && !picked && <p className="wheel-outcome-msg">Picking for you…</p>}
@@ -748,10 +808,21 @@ const MYSTERY_ONELINERS = [
   'Sending good vibes your way 🌟',
 ];
 
-function MysteryMessageFlow({ users, onClose, onOpenChat }: { users: UserInfo[]; onClose: () => void; onOpenChat: (id: string) => void }) {
+function MysteryMessageFlow({
+  users,
+  title = 'Mystery Message',
+  onClose,
+  onOpenChat,
+}: {
+  users: UserInfo[];
+  title?: string;
+  onClose: () => void;
+  onOpenChat: (id: string) => void;
+}) {
   const [target] = useState<UserInfo | null>(() => users[0] || null);
-  const [selectedLine, setSelectedLine] = useState<string | null>(null);
+  const [customMessage, setCustomMessage] = useState('');
   const [sent, setSent] = useState(false);
+  const [sending, setSending] = useState(false);
 
   if (!target) {
     return createPortal(
@@ -766,38 +837,67 @@ function MysteryMessageFlow({ users, onClose, onOpenChat }: { users: UserInfo[];
     );
   }
 
-  const handleSend = () => {
-    sendInterestOpenChat(target.id, onOpenChat).then(() => setSent(true)).catch(() => setSent(true));
+  const handleSend = async () => {
+    const text = customMessage.trim();
+    if (!text || sending) return;
+    setSending(true);
+    try {
+      await sendInterestOpenChat(target.id, onOpenChat);
+      try {
+        localStorage.setItem(`mystery:msg:${target.id}`, text);
+      } catch {
+        /* ignore */
+      }
+      setSent(true);
+    } catch {
+      setSent(true);
+    } finally {
+      setSending(false);
+    }
   };
 
   const content = (
     <div className="wheel-outcome-overlay" onClick={onClose}>
       <div className="wheel-outcome-modal" onClick={(e) => e.stopPropagation()}>
         <button type="button" className="wheel-outcome-close" onClick={onClose}>×</button>
-        <h3 className="wheel-outcome-title">Mystery Message</h3>
-        <p className="wheel-outcome-msg">A random person in your area will get your request. Pick a one-liner to send with it — they'll see it when you connect!</p>
+        <h3 className="wheel-outcome-title">{title}</h3>
+        <p className="wheel-outcome-msg">
+          A random person in your area will get your request. Type the question or message you want answered — they’ll see it when you connect.
+        </p>
         {!sent ? (
           <>
             <div className="wheel-outcome-reveal">
               <div className="wheel-outcome-avatar placeholder">?</div>
               <p>Someone in your area</p>
             </div>
-            <p className="wheel-outcome-msg" style={{ marginBottom: 8 }}>Choose your message:</p>
+            <label className="wheel-outcome-msg" style={{ display: 'block', textAlign: 'left', marginBottom: 6 }}>
+              Your question / message
+            </label>
+            <textarea
+              className="wheel-outcome-textarea"
+              rows={4}
+              maxLength={400}
+              placeholder="e.g. What’s your ideal low-key first date — and why?"
+              value={customMessage}
+              onChange={(e) => setCustomMessage(e.target.value)}
+            />
+            <p style={{ fontSize: 11, opacity: 0.7, marginTop: 4 }}>{customMessage.length}/400</p>
+            <p className="wheel-outcome-msg" style={{ marginTop: 10, marginBottom: 6 }}>Or tap a starter:</p>
             <div className="wheel-outcome-oneliner-list">
               {MYSTERY_ONELINERS.map((line) => (
                 <button
                   key={line}
                   type="button"
-                  className={`wheel-outcome-oneliner-btn ${selectedLine === line ? 'selected' : ''}`}
-                  onClick={() => setSelectedLine(line)}
+                  className={`wheel-outcome-oneliner-btn ${customMessage === line ? 'selected' : ''}`}
+                  onClick={() => setCustomMessage(line)}
                 >
                   {line}
                 </button>
               ))}
             </div>
             <div className="wheel-outcome-actions">
-              <button type="button" className="wheel-outcome-btn" onClick={handleSend} disabled={!selectedLine}>
-                Send request {selectedLine ? `with "${selectedLine.slice(0, 20)}…"` : ''}
+              <button type="button" className="wheel-outcome-btn" onClick={() => void handleSend()} disabled={!customMessage.trim() || sending}>
+                {sending ? 'Sending…' : 'Send request'}
               </button>
               <button type="button" className="wheel-outcome-btn secondary" onClick={onClose}>Cancel</button>
             </div>

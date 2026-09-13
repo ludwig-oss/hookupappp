@@ -112,7 +112,7 @@ const Dashboard = () => {
   const [resumeTextingHelpId, setResumeTextingHelpId] = useState<string | null>(null);
   const [watchOutToast, setWatchOutToast] = useState<{ otherUserId: string; score: number; report?: DisinterestReport | null } | null>(null);
   const [loveFeedBlowingUpCount, setLoveFeedBlowingUpCount] = useState(0);
-  const [wheelOutcomeSegment, setWheelOutcomeSegment] = useState<number | null>(null);
+  const [wheelOutcomeGameId, setWheelOutcomeGameId] = useState<string | null>(null);
   const [showPhotoVerification, setShowPhotoVerification] = useState(false);
   const [inRelationship, setInRelationship] = useState(false);
 
@@ -536,15 +536,15 @@ const Dashboard = () => {
             {openWidget === 'connections' && <ConnectionsWidget />}
             {openWidget === 'highlights' && (
               <>
-                <HighlightSpinWheel onOutcome={(segment) => setWheelOutcomeSegment(segment)} />
-                {wheelOutcomeSegment != null && (
+                <HighlightSpinWheel onOutcome={(gameId) => setWheelOutcomeGameId(gameId)} />
+                {wheelOutcomeGameId != null && (
                   <WheelOutcomeFlow
-                    segment={wheelOutcomeSegment}
+                    gameId={wheelOutcomeGameId}
                     country={country}
                     city={city}
-                    onClose={() => setWheelOutcomeSegment(null)}
+                    onClose={() => setWheelOutcomeGameId(null)}
                     onOpenChat={(userId) => {
-                      setWheelOutcomeSegment(null);
+                      setWheelOutcomeGameId(null);
                       setOpenChatWithUserId(userId);
                       setOpenWidget('chat');
                     }}

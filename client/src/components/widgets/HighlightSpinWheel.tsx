@@ -1,31 +1,33 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
+import {
+  getActiveWheelGames,
+  minutesUntilWheelRotate,
+  type WheelGame,
+} from '../../data/wheelGames';
 
 const SECTIONS = 6;
 const SLICE_ANGLE = 360 / SECTIONS;
 
-/** Short labels on wheel segments (fit in small circle); full names in WHEEL_GAME_LABELS */
-const WHEEL_SEGMENT_LABELS: string[] = ['Blind', 'Pick', 'Rush', 'Lucky', 'Speed', 'Mystery'];
-
-export const WHEEL_GAME_LABELS: Record<number, string> = {
-  1: 'Blind Date',
-  2: 'Picture Pick',
-  3: 'Compatibility Rush',
-  4: 'Lucky Like',
-  5: 'Speed Pick',
-  6: 'Mystery Message',
-};
-
 interface HighlightSpinWheelProps {
-  onOutcome?: (segment: number) => void;
+  onOutcome?: (gameId: string) => void;
 }
 
 export default function HighlightSpinWheel({ onOutcome }: HighlightSpinWheelProps) {
+  const [games, setGames] = useState<WheelGame[]>(() => getActiveWheelGames());
   const [rotation, setRotation] = useState(0);
   const [spinning, setSpinning] = useState(false);
   const rotationRef = useRef(0);
+  const rotateIn = minutesUntilWheelRotate();
+
+  useEffect(() => {
+    const tick = () => setGames(getActiveWheelGames());
+    tick();
+    const id = window.setInterval(tick, 60_000);
+    return () => window.clearInterval(id);
+  }, []);
 
   const handleSpin = () => {
-    if (spinning) return;
+    if (spinning || games.length < 6) return;
     setSpinning(true);
     const fullSpins = 4 + Math.floor(Math.random() * 4);
     const finalSlice = Math.floor(Math.random() * SECTIONS);
@@ -35,7 +37,7 @@ export default function HighlightSpinWheel({ onOutcome }: HighlightSpinWheelProp
     rotationRef.current = totalDegrees;
     setTimeout(() => {
       setSpinning(false);
-      onOutcome?.(finalSlice + 1);
+      onOutcome?.(games[finalSlice]?.id || games[0].id);
     }, 4000);
   };
 
@@ -65,18 +67,18 @@ export default function HighlightSpinWheel({ onOutcome }: HighlightSpinWheelProp
         aria-label="Spin the wheel"
       >
         <div className="highlight-spin-wheel-labels">
-          {Array.from({ length: SECTIONS }, (_, i) => {
+          {games.slice(0, SECTIONS).map((g, i) => {
             const angle = 30 + i * SLICE_ANGLE;
             return (
               <div
-                key={i}
+                key={g.id}
                 className="highlight-spin-wheel-label-pos"
                 style={{
                   transform: `rotate(${angle}deg) translateY(-58px)`,
                 }}
               >
-                <span className="highlight-spin-wheel-label" style={{ transform: `rotate(${-angle}deg)` }} title={WHEEL_GAME_LABELS[i + 1]}>
-                  {WHEEL_SEGMENT_LABELS[i] ?? i + 1}
+                <span className="highlight-spin-wheel-label" style={{ transform: `rotate(${-angle}deg)` }} title={g.name}>
+                  {g.short}
                 </span>
               </div>
             );
@@ -86,13 +88,13 @@ export default function HighlightSpinWheel({ onOutcome }: HighlightSpinWheelProp
       </button>
       <p className="highlight-spin-wheel-hint">{spinning ? 'Spinning...' : 'Click the wheel to spin'}</p>
       <p className="highlight-spin-wheel-how" style={{ maxWidth: 320, margin: '0.5rem auto', fontSize: '0.85rem', opacity: 0.9, lineHeight: 1.4 }}>
-        How it works: spin lands on a mini-game (Blind Date = text icebreakers with a hidden face; Picture Pick = choose a photo; Compatibility Rush = quick vibe questions). You are matched with someone nearby when the spin finishes.
+        How it works: spin lands on a mini-game. Faces stay blurred on voice rounds. The 6 games on this wheel remix every ~{rotateIn} min from a pool of 24 crazy dating games.
       </p>
       <div className="highlight-spin-wheel-legend" aria-label="Games on this wheel">
-        <p>Games on this wheel:</p>
+        <p>Games on this wheel right now:</p>
         <ul>
-          {(Object.entries(WHEEL_GAME_LABELS) as [string, string][]).map(([num, name]) => (
-            <li key={num}>{num}. {name}</li>
+          {games.slice(0, SECTIONS).map((g, i) => (
+            <li key={g.id}>{i + 1}. {g.name}</li>
           ))}
         </ul>
       </div>

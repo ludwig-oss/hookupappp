@@ -114,7 +114,8 @@ export async function seedSimulatorSocialContent(): Promise<void> {
     try {
       await seedAdviceFeed();
       await answerUnansweredAdvice();
-      await seedLoveFeed();
+  await seedLoveFeed();
+      await seedLoveFeedVideos();
       console.log('🧪 Simulator social seed: Dating Advice answers + Love Life Feed posts ready.');
     } catch (e: any) {
       console.warn('🧪 Simulator social seed skipped:', e?.message || e);
@@ -124,6 +125,7 @@ export async function seedSimulatorSocialContent(): Promise<void> {
   // Always top-up profile reviews + city events (safe if already present)
   await seedMockReviews().catch(() => {});
   await seedMockCityEvents().catch(() => {});
+  await seedLoveFeedVideos().catch(() => {});
 }
 
 const REVIEW_TEXTS = [
@@ -331,6 +333,59 @@ async function seedLoveFeed(): Promise<void> {
         userName: c.name,
         content: FEED_COMMENTS[(i + cIdx) % FEED_COMMENTS.length],
       })),
+    });
+  }
+}
+
+/** Short public sample clips so Videos tab / feed can be tested (never inline base64). */
+const FEED_VIDEO_SAMPLES: { title: string; url: string; tags: string[] }[] = [
+  {
+    title: 'First-date walk energy',
+    url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4',
+    tags: ['first-date', 'video', 'dating'],
+  },
+  {
+    title: 'Date-night vibes (mock clip)',
+    url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4',
+    tags: ['date-night', 'video', 'relationship'],
+  },
+  {
+    title: 'Soft-launch moment',
+    url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerMeltdowns.mp4',
+    tags: ['soft-launch', 'video', 'love-life'],
+  },
+];
+
+async function seedLoveFeedVideos(): Promise<void> {
+  const mocks = getSimulatorUsers();
+  if (mocks.length < 2) return;
+  const posts = await getAllPosts();
+  const videoCount = posts.filter((p) => p.contentType === 'video' && isSimulatorUserId(p.userId)).length;
+  if (videoCount >= 3) return;
+
+  for (let i = 0; i < FEED_VIDEO_SAMPLES.length; i++) {
+    if (videoCount + i >= 3) break;
+    const spec = FEED_VIDEO_SAMPLES[i];
+    const author = mocks[(i + 3) % mocks.length];
+    await delay(2);
+    const post = await createPost({
+      userId: author.id,
+      type: 'positive',
+      contentType: 'video',
+      content: spec.url,
+      title: spec.title,
+      tags: spec.tags,
+    });
+    await patchPostEngagement(post.id, {
+      likes: 12 + i * 5,
+      shares: 2 + i,
+      comments: [
+        {
+          userId: mocks[(i + 1) % mocks.length].id,
+          userName: mocks[(i + 1) % mocks.length].name,
+          content: 'This video tip hits different.',
+        },
+      ],
     });
   }
 }

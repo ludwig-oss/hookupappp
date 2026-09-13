@@ -40,6 +40,7 @@ export default function SchoolScheduleModal({ onDone, onDismiss }: Props) {
         <h2>When are you usually home?</h2>
         <p className="school-sub">
           We&apos;ll send a daily class reminder around this time. One topic per day until you level up.
+          Men also get a mandatory ~10-minute financial literacy lesson with quiz questions; women can opt in anytime from the daily card.
         </p>
         {error && <div className="school-error">{error}</div>}
         <div className="school-time-row">

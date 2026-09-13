@@ -6,10 +6,11 @@ import { APPEARANCE_FACE_GUIDES } from './aiAppearanceGuides.js';
 import { HAIR_STYLE_GUIDES } from './aiHairGuides.js';
 import { TEXTING_COACH_GUIDES } from './aiTextingGuides.js';
 import { RELATIONSHIP_COUNSELOR_GUIDES } from './aiRelationshipCounselors.js';
+import { FINANCE_LITERACY_GUIDES } from './aiFinanceGuides.js';
 
 export type AiVoiceHint = 'female' | 'male';
 export type AiGuideLens = 'feminine' | 'masculine' | 'neutral';
-export type AiGuideDesk = 'fashion' | 'appearance' | 'intimacy' | 'dating' | 'texting' | 'hair' | 'relationship';
+export type AiGuideDesk = 'fashion' | 'appearance' | 'intimacy' | 'dating' | 'texting' | 'hair' | 'relationship' | 'finance';
 
 export interface AiGuideRatings {
   directness: number;
@@ -238,6 +239,7 @@ export const AI_GUIDES: AiGuideCharacter[] = [
   ...HAIR_STYLE_GUIDES,
   ...TEXTING_COACH_GUIDES,
   ...RELATIONSHIP_COUNSELOR_GUIDES,
+  ...FINANCE_LITERACY_GUIDES,
 ];
 
 export const AI_LESSONS: AiLesson[] = [
@@ -596,6 +598,41 @@ export const AI_LESSONS: AiLesson[] = [
     demo: 'mirror',
   },
   {
+    id: 'financial-literacy',
+    title: 'Money, investing & wealth habits',
+    aliases: [
+      'money',
+      'finance',
+      '401k',
+      'roth',
+      'ira',
+      'investing',
+      'budget',
+      'savings',
+      'fire',
+      'index fund',
+      'debt',
+      'financial literacy',
+      'wealth',
+      'compound interest',
+    ],
+    categoryIds: ['financial-literacy'],
+    bestGuideIds: [
+      'george-clason',
+      'john-bogle',
+      'finance-401k-match',
+      'finance-roth-ira',
+      'finance-fire',
+      'finance-zero-based',
+      'kenji',
+    ],
+    cause: 'Most money stress in dating comes from no system — lifestyle creep, skipped matches, and FOMO bets.',
+    solution: 'Ten minutes a day: pay yourself first, grab any employer match, automate a boring index, keep an emergency fund.',
+    prevention: 'Separate bill money, invest money, and play money. Never flex with rent cash.',
+    unknown: 'Being high-value with money is calm solvency — not loud spending.',
+    demo: 'mirror',
+  },
+  {
     id: 'flirting',
     title: 'I do not know how to flirt',
     aliases: ['flirt', 'awkward', 'signals', 'attraction', 'chemistry'],
@@ -903,6 +940,10 @@ export function interpretQuery(query: string): { topic: AiLesson; score: number 
     /\b(women|woman|girls?|feminine|high.?value woman|hypergam|sprinkle|lean back|what (do )?women want|what (do )?girls want|understand (women|girls)|female perspective|dating as a (woman|girl)|for (girls|women))\b/.test(
       q
     );
+  const financeCue =
+    /\b(money|finance|401k|roth|ira|invest|budget|saving|fire|index fund|debt|wealth|compound|financial literacy)\b/.test(
+      q
+    );
   const scored = AI_LESSONS.map((lesson) => {
     const hay = norm([lesson.title, ...lesson.aliases].join(' '));
     let score = 0;
@@ -921,6 +962,7 @@ export function interpretQuery(query: string): { topic: AiLesson; score: number 
       score += 10;
     }
     if (feminineCue && lesson.id === 'feminine-lens') score += 18;
+    if (financeCue && lesson.id === 'financial-literacy') score += 16;
     return { topic: lesson, score };
   }).filter((x) => x.score > 0);
   scored.sort((a, b) => b.score - a.score);
@@ -983,6 +1025,11 @@ export function guidesForLesson(lesson: AiLesson) {
     const other = rest.filter((g) => g.desk !== 'relationship');
     return [...preferred, ...rel, ...other];
   }
+  if (lesson.id === 'financial-literacy' || lesson.categoryIds.includes('financial-literacy')) {
+    const fin = rest.filter((g) => g.desk === 'finance');
+    const other = rest.filter((g) => g.desk !== 'finance');
+    return [...preferred, ...fin, ...other];
+  }
   if (
     lesson.categoryIds.includes('texting') ||
     ['ghosted', 'overthinking-texts', 'text-to-date', 'low-effort-openers'].includes(lesson.id)
@@ -1008,6 +1055,10 @@ export function hairGuides(): AiGuideCharacter[] {
 
 export function relationshipGuides(): AiGuideCharacter[] {
   return AI_GUIDES.filter((g) => g.desk === 'relationship' || g.id === 'priya');
+}
+
+export function financeGuides(): AiGuideCharacter[] {
+  return AI_GUIDES.filter((g) => g.desk === 'finance' || g.id === 'kenji');
 }
 
 export function textingGuides(): AiGuideCharacter[] {

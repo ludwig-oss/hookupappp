@@ -20,6 +20,35 @@ export interface SchoolTopic {
   }>;
 }
 
+export interface FinanceLessonClient {
+  id: string;
+  day: number;
+  title: string;
+  minutes: number;
+  guideId: string;
+  guideName: string | null;
+  summary: string;
+  teach: string[];
+  workout: string;
+  quiz: Array<{
+    id: string;
+    question: string;
+    options: string[];
+  }>;
+}
+
+export interface FinanceTrack {
+  required: boolean;
+  optionalAvailable: boolean;
+  optIn: boolean;
+  alreadyCompletedToday: boolean;
+  completedLessonIdToday: string | null;
+  lesson: FinanceLessonClient;
+  dayNumber: number;
+  totalLessons: number;
+  policyText: string | null;
+}
+
 export interface TodayLesson {
   setupComplete: boolean;
   homeTime: { hour: number; minute: number };
@@ -41,6 +70,7 @@ export interface TodayLesson {
     visibilityReducedUntil: string | null;
     policyText?: string;
   } | null;
+  finance?: FinanceTrack | null;
 }
 
 export const schoolAPI = {
@@ -88,5 +118,21 @@ export const schoolAPI = {
   jumpTopic: async (topicId: string) => {
     const res = await axios.post(`${API_URL}/jump-topic`, { topicId });
     return res.data;
+  },
+
+  setFinanceOptIn: async (optIn: boolean) => {
+    const res = await axios.post(`${API_URL}/finance/opt-in`, { optIn });
+    return res.data as { finance: FinanceTrack };
+  },
+
+  submitFinanceQuiz: async (lessonId: string, answers: Record<string, number>) => {
+    const res = await axios.post(`${API_URL}/finance/quiz`, { lessonId, answers });
+    return res.data as {
+      pass: boolean;
+      score: number;
+      total: number;
+      message: string;
+      finance: FinanceTrack;
+    };
   },
 };

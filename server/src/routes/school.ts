@@ -8,6 +8,8 @@ import {
   postComplete,
   postQuiz,
   postJumpTopic,
+  postFinanceOptIn,
+  postFinanceQuiz,
 } from '../controllers/schoolController.js';
 import { authenticateToken } from '../middleware/auth.js';
 
@@ -21,5 +23,7 @@ router.post('/exception', authenticateToken, postException);
 router.post('/complete', authenticateToken, postComplete);
 router.post('/quiz', authenticateToken, postQuiz);
 router.post('/jump-topic', authenticateToken, postJumpTopic);
+router.post('/finance/opt-in', authenticateToken, postFinanceOptIn);
+router.post('/finance/quiz', authenticateToken, postFinanceQuiz);
 
 export default router;

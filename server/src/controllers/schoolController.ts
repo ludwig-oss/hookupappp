@@ -8,6 +8,8 @@ import {
   submitSkipQuiz,
   jumpToTopic,
   getCurriculumForUser,
+  setFinanceOptIn,
+  submitFinanceQuiz,
 } from '../models/school.js';
 
 export const getToday = async (req: Request, res: Response) => {
@@ -108,5 +110,32 @@ export const postJumpTopic = async (req: Request, res: Response) => {
     res.json({ topic });
   } catch (e: any) {
     res.status(400).json({ error: e.message || 'Not found' });
+  }
+};
+
+export const postFinanceOptIn = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).userId;
+    if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+    const optIn = Boolean(req.body?.optIn);
+    const finance = await setFinanceOptIn(userId, optIn);
+    res.json({ finance });
+  } catch (e: any) {
+    res.status(400).json({ error: e.message || 'Could not update finance opt-in' });
+  }
+};
+
+export const postFinanceQuiz = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).userId;
+    if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+    const { lessonId, answers } = req.body;
+    if (!lessonId || !answers || typeof answers !== 'object') {
+      return res.status(400).json({ error: 'lessonId and answers required' });
+    }
+    const result = await submitFinanceQuiz(userId, String(lessonId), answers);
+    res.json(result);
+  } catch (e: any) {
+    res.status(400).json({ error: e.message || 'Finance quiz failed' });
   }
 };

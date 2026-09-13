@@ -41,6 +41,7 @@ export const DEFAULT_IMPROVEMENT_CATEGORIES: Array<{
   { id: 'dating-apps', name: 'Dating Apps & Profiles', description: 'Create a great profile and chat effectively on apps', icon: '📲' },
   { id: 'red-flags', name: 'Spotting Red Flags', description: 'Recognize unhealthy patterns and when to walk away', icon: '🚩' },
   { id: 'self-worth', name: 'Self-Worth in Dating', description: 'Value yourself and avoid settling or people-pleasing', icon: '💎' },
+  { id: 'financial-literacy', name: 'Financial Literacy', description: 'Daily money skills — saving, investing, debt, and long-term wealth (mandatory track for men; optional for women)', icon: '💰' },
 ];
 
 export const COUPLE_GUIDE_CATEGORY_IDS: string[] = [

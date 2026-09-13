@@ -1,6 +1,8 @@
 import { readFile, writeFile } from 'fs/promises';
 import { join } from 'path';
-import { getFullCurriculum, SCHOOL_TOPICS, type SchoolTopic } from './schoolCurriculum.js';
+import { getFullCurriculum, type SchoolTopic } from './schoolCurriculum.js';
+import { FINANCE_LESSONS, type FinanceLesson } from '../data/financeCurriculum.js';
+import { getGuide } from '../data/aiGuideCatalog.js';
 import { IMPROVEMENT_CATEGORIES } from './improvement.js';
 import { getUserById, updateUserProfile } from './user.js';
 
@@ -15,6 +17,12 @@ export interface UserSchoolState {
   completedByDate: Record<string, string>;
   lastDismissedDate: string | null;
   setupComplete: boolean;
+  /** Rotating finance literacy index (cycles through FINANCE_LESSONS). */
+  financeTopicIndex: number;
+  /** ISO date -> finance lesson id completed that day */
+  financeCompletedByDate: Record<string, string>;
+  /** Women opt-in; men always required regardless of this flag. */
+  financeOptIn: boolean;
 }
 
 const PROGRESS_PATH = join(process.cwd(), 'server', 'data', 'school-progress.json');
@@ -80,9 +88,18 @@ async function getState(userId: string): Promise<UserSchoolState> {
       completedByDate: {},
       lastDismissedDate: null,
       setupComplete: false,
+      financeTopicIndex: 0,
+      financeCompletedByDate: {},
+      financeOptIn: false,
     };
     rows.push(row);
     await writeAll(rows);
+  } else {
+    if (typeof row.financeTopicIndex !== 'number') row.financeTopicIndex = 0;
+    if (!row.financeCompletedByDate || typeof row.financeCompletedByDate !== 'object') {
+      row.financeCompletedByDate = {};
+    }
+    if (typeof row.financeOptIn !== 'boolean') row.financeOptIn = false;
   }
   return syncSetupFromUserProfile(row);
 }
@@ -145,10 +162,8 @@ export async function getTodayLesson(userId: string) {
   const showNotification = canNudge && isInHomeWindow(state);
   const showOnLogin = canNudge;
 
-  const notificationTitle = alreadyDone ? 'Class complete for today' : "Today's workout";
-  const notificationBody = alreadyDone
-    ? `You finished ${curriculum.find((t) => t.id === alreadyDone)?.title || 'your lesson'}. Rest up — next class tomorrow.`
-    : `Hey! Time for class: ${topic.title}. ${topic.dailyWorkout}`;
+  const male = user ? isMale(user.gender) : false;
+  const finance = buildFinanceBlock(state, male);
 
   const compliance = await (async () => {
     const u = await getUserById(userId);
@@ -159,9 +174,14 @@ export async function getTodayLesson(userId: string) {
       warning: null,
       visibilityReducedUntil: (u as any).visibilityReducedUntil ?? null,
       policyText:
-        'For men: daily self-improvement is mandatory. Warnings start at 3 skips in a row. If you skip 5 times in a row, your visibility is reduced automatically (you can mark busy/emergency, and completing a class clears the penalty).',
+        'For men: daily self-improvement and the 10-minute financial literacy lesson are mandatory. Warnings start at 3 skips in a row. If you skip 5 times in a row, your visibility is reduced automatically (you can mark busy/emergency, and completing a class or finance quiz clears the penalty).',
     };
   })();
+
+  const financeNeedsNudge = Boolean(finance.required && !finance.alreadyCompletedToday);
+  const showNotificationFinance =
+    state.setupComplete && state.notifyEnabled && financeNeedsNudge && state.lastDismissedDate !== today && isInHomeWindow(state);
+  const showOnLoginFinance = state.setupComplete && state.notifyEnabled && financeNeedsNudge && state.lastDismissedDate !== today;
 
   return {
     setupComplete: state.setupComplete,
@@ -169,8 +189,8 @@ export async function getTodayLesson(userId: string) {
     today,
     alreadyCompletedToday: Boolean(alreadyDone),
     completedTopicIdToday: alreadyDone || null,
-    showNotification,
-    showOnLogin,
+    showNotification: showNotification || showNotificationFinance,
+    showOnLogin: showOnLogin || showOnLoginFinance,
     currentTopic: topic,
     topicIndex,
     dayNumber,
@@ -179,6 +199,120 @@ export async function getTodayLesson(userId: string) {
     progressPercent: Math.round((state.completedTopicIds.length / totalClasses) * 100),
     completedCount: state.completedTopicIds.length,
     compliance,
+    finance,
+  };
+}
+
+function isMale(gender?: string | null): boolean {
+  if (!gender) return false;
+  const g = String(gender).toLowerCase().trim();
+  return g === 'male' || g === 'm' || g === 'man';
+}
+
+function financeLessonAt(index: number): FinanceLesson {
+  const n = FINANCE_LESSONS.length;
+  const i = ((index % n) + n) % n;
+  return FINANCE_LESSONS[i];
+}
+
+function buildFinanceBlock(state: UserSchoolState, male: boolean) {
+  const today = todayKey();
+  const lesson = financeLessonAt(state.financeTopicIndex);
+  const doneId = state.financeCompletedByDate[today] || null;
+  const guide = getGuide(lesson.guideId);
+  const required = male || (!male && state.financeOptIn);
+  return {
+    required,
+    optionalAvailable: !male,
+    optIn: state.financeOptIn,
+    alreadyCompletedToday: Boolean(doneId),
+    completedLessonIdToday: doneId,
+    lesson: {
+      id: lesson.id,
+      day: lesson.day,
+      title: lesson.title,
+      minutes: lesson.minutes,
+      guideId: lesson.guideId,
+      guideName: guide?.name || null,
+      summary: lesson.summary,
+      teach: lesson.teach,
+      workout: lesson.workout,
+      quiz: lesson.quiz.map((q) => ({
+        id: q.id,
+        question: q.question,
+        options: q.options,
+      })),
+    },
+    dayNumber: lesson.day,
+    totalLessons: FINANCE_LESSONS.length,
+    policyText: male
+      ? 'Mandatory for men: ~10 minutes of financial literacy every day, then pass the check questions.'
+      : 'Optional: opt in anytime for a daily ~10-minute money lesson with a short quiz.',
+  };
+}
+
+export async function setFinanceOptIn(userId: string, optIn: boolean) {
+  const state = await getState(userId);
+  const user = await getUserById(userId);
+  const male = Boolean(user && isMale(user.gender));
+  if (male) {
+    state.financeOptIn = true;
+  } else {
+    state.financeOptIn = Boolean(optIn);
+  }
+  await saveState(state);
+  return buildFinanceBlock(state, male);
+}
+
+/** Pass = at least 2 of 3 correct. Advances the finance curriculum on success. */
+export async function submitFinanceQuiz(userId: string, lessonId: string, answers: Record<string, number>) {
+  const state = await getState(userId);
+  const user = await getUserById(userId);
+  const male = Boolean(user && isMale(user.gender));
+  const finance = buildFinanceBlock(state, male);
+  if (!finance.required) {
+    throw new Error('Finance track is not enabled for your account. Women can opt in first.');
+  }
+
+  const lesson = FINANCE_LESSONS.find((l) => l.id === lessonId) || financeLessonAt(state.financeTopicIndex);
+  if (lesson.id !== lessonId && lessonId) {
+    const found = FINANCE_LESSONS.find((l) => l.id === lessonId);
+    if (!found) throw new Error('Finance lesson not found');
+  }
+  const active = FINANCE_LESSONS.find((l) => l.id === lessonId) || lesson;
+
+  let correct = 0;
+  for (const q of active.quiz) {
+    if (answers[q.id] === q.correctIndex) correct += 1;
+  }
+  const total = active.quiz.length;
+  const pass = correct >= Math.max(2, Math.ceil(total * 0.66));
+
+  if (!pass) {
+    return {
+      pass: false,
+      score: correct,
+      total,
+      message: `Not yet — you got ${correct}/${total}. Re-read the ${active.minutes}-minute lesson and try again.`,
+      finance: buildFinanceBlock(state, male),
+    };
+  }
+
+  const today = todayKey();
+  state.financeCompletedByDate[today] = active.id;
+  // Advance only once per day when completing the current index lesson.
+  if (active.id === financeLessonAt(state.financeTopicIndex).id) {
+    state.financeTopicIndex = (state.financeTopicIndex + 1) % FINANCE_LESSONS.length;
+  }
+  await saveState(state);
+  await recordMaleCompletion(userId);
+
+  return {
+    pass: true,
+    score: correct,
+    total,
+    message: `Solid. ${correct}/${total} — money lesson locked for today.`,
+    finance: buildFinanceBlock(state, male),
   };
 }
 
@@ -219,12 +353,6 @@ export async function dismissWithException(userId: string, reason: 'work' | 'bus
         : 'Busy exception recorded. Your improvement streak is not counted as skipped today.',
     compliance,
   };
-}
-
-function isMale(gender?: string | null): boolean {
-  if (!gender) return false;
-  const g = String(gender).toLowerCase().trim();
-  return g === 'male' || g === 'm' || g === 'man';
 }
 
 export interface ImprovementComplianceStatus {

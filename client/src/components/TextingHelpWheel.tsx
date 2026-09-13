@@ -113,6 +113,11 @@ export default function TextingHelpWheel({
   const [helpStatus, setHelpStatus] = useState<GuideHelpStatus | null>(null);
   const [paywall, setPaywall] = useState<GuideHelpStatus | null>(null);
 
+  const textingCrew = useMemo(() => {
+    const core = new Set(['diego', 'sofia', 'amara', 'marcus', 'kenji', 'priya']);
+    return aiGuides.filter((g) => g.desk === 'texting' || core.has(g.id));
+  }, [aiGuides]);
+
   const loadGuides = async (sess: TextingHelpSession, nextOffset = 0) => {
     const page = await textingHelpAPI.listGuides(sess.id, nextOffset);
     setGuides(page.guides);
@@ -124,11 +129,15 @@ export default function TextingHelpWheel({
   useEffect(() => {
     guideHelpAPI.status().then(setHelpStatus).catch(() => {});
     aiGuidesAPI.list().then((r) => {
+      const core = new Set(['diego', 'sofia', 'amara', 'marcus', 'kenji', 'priya']);
+      const crew = r.guides.filter((g) => g.desk === 'texting' || core.has(g.id));
       setAiGuides(r.guides);
-      setAiGuideId((prev) => prev || r.guides.find((g) => g.id === 'diego')?.id || r.guides[0]?.id || '');
+      setAiGuideId((prev) => prev || crew.find((g) => g.id === 'diego')?.id || crew[0]?.id || '');
     }).catch(() => {});
     aiGuidesAPI.me().then((r) => {
-      if (r.guide?.id) setAiGuideId(r.guide.id);
+      if (!r.guide?.id) return;
+      const core = new Set(['diego', 'sofia', 'amara', 'marcus', 'kenji', 'priya']);
+      if (r.guide.desk === 'texting' || core.has(r.guide.id)) setAiGuideId(r.guide.id);
     }).catch(() => {});
   }, []);
 
@@ -350,9 +359,23 @@ export default function TextingHelpWheel({
               Each guide has their own mind. They read the thread, your gender context, and give a real next move — not
               generic tips.
             </p>
-            <label className="th-muted">Guide</label>
+            <label className="th-muted">Texting guide</label>
+            <div className="th-stylist-row" aria-label="Texting coaches">
+              {textingCrew.map((g) => (
+                <button
+                  key={g.id}
+                  type="button"
+                  className={`th-stylist${g.id === aiGuideId ? ' is-on' : ''}`}
+                  title={`${g.name} — ${g.specialty}`}
+                  onClick={() => setAiGuideId(g.id)}
+                >
+                  <img src={g.portrait} alt="" />
+                  <span>{g.name.split(' ')[0]}</span>
+                </button>
+              ))}
+            </div>
             <select className="th-select" value={aiGuideId} onChange={(e) => setAiGuideId(e.target.value)}>
-              {aiGuides.map((g) => (
+              {textingCrew.map((g) => (
                 <option key={g.id} value={g.id}>
                   {g.name} — {g.specialty}
                 </option>
@@ -383,9 +406,14 @@ export default function TextingHelpWheel({
                 <p>
                   <strong>Read:</strong> {aiAdvice.situation}
                 </p>
-                <p>
-                  <strong>Opinion:</strong> {aiAdvice.opinion}
-                </p>
+                <div className="th-opinion">
+                  <strong>Opinion:</strong>
+                  {aiAdvice.opinion.split('\n').map((line, i) => (
+                    <p key={i} className={/\*[^*]+\*/.test(line) ? 'th-thought' : undefined}>
+                      {line}
+                    </p>
+                  ))}
+                </div>
                 <p>
                   <strong>Why:</strong> {aiAdvice.whyItWorks}
                 </p>

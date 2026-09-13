@@ -264,6 +264,11 @@
   border-color: rgba(147, 197, 253, 0.5);
 }
 
+.ai-lens-text {
+  color: #86efac;
+  border-color: rgba(134, 239, 172, 0.5);
+}
+
 .ai-blocks {
   display: grid;
   grid-template-columns: 1fr 1fr;

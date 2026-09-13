@@ -179,6 +179,14 @@ export function buildTextingCoachAdvice(params: {
     mei: `Text can warm things up, but chemistry needs embodied pace. Do not rush intimacy in the chat. ${lens}`,
   };
 
+  const style = guide.charStyle;
+  const opinionBase =
+    opinionByGuide[guide.id] ||
+    (style
+      ? `${style.catchphrases[0] || guide.tagline}. ${style.mindset} ${lens}`
+      : `${guide.thinking} ${lens}`);
+  const opinion = style?.actionCue ? `${style.actionCue}\n${opinionBase}` : opinionBase;
+
   const why: Record<string, string> = {
     dry: 'Short replies mean low investment or low bandwidth — change the frame or invite IRL before the thread dies.',
     flirty: 'They left an opening. Convert spark into a plan before it cools into banter forever.',
@@ -202,7 +210,7 @@ export function buildTextingCoachAdvice(params: {
     guideName: guide.name,
     specialty: guide.specialty,
     situation: situationBits.join(' '),
-    opinion: opinionByGuide[guide.id] || `${guide.thinking} ${lens}`,
+    opinion: opinion,
     whyItWorks: why[v],
     replies: repliesFor(guide, v, viewer, partnerName, lastT),
     nextMove,

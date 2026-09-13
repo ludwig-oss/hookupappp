@@ -225,6 +225,55 @@
 .chat-texting-help-fab:hover { background: rgba(0, 212, 255, 0.2); }
 
 .th-ai h2 { margin: 0 0 8px; font-size: 20px; }
+
+.th-stylist-row {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 8px 2px 4px;
+  margin-bottom: 4px;
+  scrollbar-width: thin;
+}
+
+.th-stylist {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  width: 64px;
+  border: 1px solid rgba(0, 212, 255, 0.3);
+  background: rgba(0, 0, 0, 0.3);
+  color: #a5f3fc;
+  border-radius: 12px;
+  padding: 6px 4px;
+  cursor: pointer;
+  font-size: 10px;
+}
+
+.th-stylist img {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.th-stylist.is-on {
+  border-color: #22d3ee;
+  box-shadow: 0 0 0 1px rgba(34, 211, 238, 0.45);
+  color: #fff;
+}
+
+.th-opinion p {
+  margin: 4px 0 0;
+  white-space: pre-wrap;
+}
+
+.th-thought {
+  color: #fcd34d;
+  font-style: italic;
+}
+
 .th-select,
 .th-textarea {
   display: block;

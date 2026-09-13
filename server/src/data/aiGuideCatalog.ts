@@ -2,10 +2,11 @@ import { DATING_COACH_GUIDES } from './aiDatingCoaches.js';
 import { FEMININE_DATING_COACH_GUIDES } from './aiFeminineDatingCoaches.js';
 import { FASHION_STYLE_GUIDES } from './aiFashionGuides.js';
 import { APPEARANCE_FACE_GUIDES } from './aiAppearanceGuides.js';
+import { TEXTING_COACH_GUIDES } from './aiTextingGuides.js';
 
 export type AiVoiceHint = 'female' | 'male';
 export type AiGuideLens = 'feminine' | 'masculine' | 'neutral';
-export type AiGuideDesk = 'fashion' | 'appearance' | 'intimacy' | 'dating';
+export type AiGuideDesk = 'fashion' | 'appearance' | 'intimacy' | 'dating' | 'texting';
 
 export interface AiGuideRatings {
   directness: number;
@@ -188,6 +189,7 @@ export const AI_GUIDES: AiGuideCharacter[] = [
     expertise: ['texting anxiety', 'ghosting', 'dry replies', 'moving to a date'],
     categoryIds: ['texting', 'communication', 'asking-out', 'first-date', 'conversation-dating'],
     lens: 'masculine',
+    desk: 'texting',
     charStyle: {
       actionCue: '*Glances at an imaginary timer, then grins.*',
       catchphrases: ['Send it', 'One ask', 'No essays', 'Then live your life'],
@@ -217,6 +219,7 @@ export const AI_GUIDES: AiGuideCharacter[] = [
   ...FEMININE_DATING_COACH_GUIDES,
   ...FASHION_STYLE_GUIDES,
   ...APPEARANCE_FACE_GUIDES,
+  ...TEXTING_COACH_GUIDES,
 ];
 
 export const AI_LESSONS: AiLesson[] = [
@@ -237,7 +240,7 @@ export const AI_LESSONS: AiLesson[] = [
     title: 'Low-effort openers / I cannot stand out',
     aliases: ['hey', 'opener', 'stand out', 'first message', 'dry opener'],
     categoryIds: ['dating-apps', 'texting'],
-    bestGuideIds: ['diego', 'sofia'],
+    bestGuideIds: ['diego', 'alex-pwf', 'textgod-louis', 'ice-white'],
     cause: '“Hey” asks them to do the work. Busy people skip it.',
     solution: 'One line about a specific photo or line in their bio, plus a question they can answer in 5 seconds.',
     prevention: 'Never send a message you would not answer yourself.',
@@ -247,9 +250,9 @@ export const AI_LESSONS: AiLesson[] = [
   {
     id: 'ghosted',
     title: 'Ghosted or dry one-word replies',
-    aliases: ['ghosted', 'ignored', 'dry', 'one word', 'left on read', 'texting anxiety'],
+    aliases: ['ghosted', 'ignored', 'dry', 'one word', 'left on read', 'texting anxiety', 'breadcrumbing', 'double text'],
     categoryIds: ['texting', 'communication'],
-    bestGuideIds: ['diego', 'amara'],
+    bestGuideIds: ['diego', 'ghosting-timeout', 'dry-texter', 'double-text-bug', 'left-on-read', 'breadcrumbing'],
     cause: 'They are low-interest or overwhelmed. Your follow-ups raise the cost of answering.',
     solution: 'One clear ping: “Want to grab coffee Thursday?” If they stay dry, close it and move.',
     prevention: 'Ask for a time within 5 messages. Chat that never books a date is a hobby, not a match.',
@@ -261,7 +264,7 @@ export const AI_LESSONS: AiLesson[] = [
     title: 'Overthinking every text',
     aliases: ['overthink', 'overthinking', 'waiting to reply', 'reply games', 'texting anxiety'],
     categoryIds: ['texting'],
-    bestGuideIds: ['diego', 'priya'],
+    bestGuideIds: ['diego', 'double-text-bug', 'alex-pwf', 'based-zeus', 'priya'],
     cause: 'You are trying to control their feeling of you. That is not possible over text.',
     solution: 'Write it once. Wait 10 minutes. Send. Put the phone in another room.',
     prevention: 'If a message needs a paragraph, it needs a call.',
@@ -273,7 +276,7 @@ export const AI_LESSONS: AiLesson[] = [
     title: 'Stuck in chat, never a real date',
     aliases: ['never meet', 'move off app', 'phone call', 'ask out', 'getting dates'],
     categoryIds: ['asking-out', 'texting', 'first-date'],
-    bestGuideIds: ['diego', 'kenji'],
+    bestGuideIds: ['diego', 'todd-v', 'kezia-noble', 'kenji'],
     cause: 'Chat feels safe. A date can reject you in 3D.',
     solution: 'After two good exchanges, offer a specific plan: place + day + time.',
     prevention: 'Rule: if they will not pick a day in a week, they are entertainment, not a date.',
@@ -767,6 +770,8 @@ export function interpretQuery(query: string): { topic: AiLesson; score: number 
     /\b(position|last longer|lasting|premature|finish too fast|during sex|bedroom flow|lotus|how to last|termact|foreplay|boy to girl|girl to boy)\b/.test(q);
   const talkCue =
     /\b(talk about|what to say|conversation|topics?|awkward silence|during (the )?date|date chat|keep (the )?conversation)\b/.test(q);
+  const textingCue =
+    /\b(texting|double text|ghost(ed|ing)?|left on read|dry text|opener|breadcrumb|breadcrumbing|wyd|reply)\b/.test(q);
   const feminineCue =
     /\b(women|woman|girls?|feminine|high.?value woman|hypergam|sprinkle|lean back|what (do )?women want|what (do )?girls want|understand (women|girls)|female perspective|dating as a (woman|girl)|for (girls|women))\b/.test(
       q
@@ -783,6 +788,9 @@ export function interpretQuery(query: string): { topic: AiLesson; score: number 
     if (appearanceCue && lesson.id === 'appearance') score += 12;
     if (intimacyCue && lesson.id === 'intimacy-flow') score += 14;
     if (talkCue && lesson.id === 'date-talk') score += 16;
+    if (textingCue && ['ghosted', 'overthinking-texts', 'low-effort-openers', 'text-to-date'].includes(lesson.id)) {
+      score += 10;
+    }
     if (feminineCue && lesson.id === 'feminine-lens') score += 18;
     return { topic: lesson, score };
   }).filter((x) => x.score > 0);
@@ -832,6 +840,14 @@ export function guidesForLesson(lesson: AiLesson) {
     const other = rest.filter((g) => g.desk !== 'appearance');
     return [...preferred, ...face, ...other];
   }
+  if (
+    lesson.categoryIds.includes('texting') ||
+    ['ghosted', 'overthinking-texts', 'text-to-date', 'low-effort-openers'].includes(lesson.id)
+  ) {
+    const texting = rest.filter((g) => g.desk === 'texting');
+    const other = rest.filter((g) => g.desk !== 'texting');
+    return [...preferred, ...texting, ...other];
+  }
   return [...preferred, ...rest];
 }
 
@@ -841,4 +857,9 @@ export function fashionGuides(): AiGuideCharacter[] {
 
 export function appearanceGuides(): AiGuideCharacter[] {
   return AI_GUIDES.filter((g) => g.desk === 'appearance' || g.id === 'elena');
+}
+
+export function textingGuides(): AiGuideCharacter[] {
+  const core = ['diego', 'sofia', 'amara', 'marcus', 'kenji', 'priya'];
+  return AI_GUIDES.filter((g) => g.desk === 'texting' || core.includes(g.id));
 }

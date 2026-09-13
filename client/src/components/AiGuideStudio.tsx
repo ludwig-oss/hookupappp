@@ -603,6 +603,7 @@ export default function AiGuideStudio({
                       {g.lens === 'feminine' && <span className="ai-lens-tag">Feminine lens</span>}
                       {g.desk === 'fashion' && <span className="ai-lens-tag ai-lens-fashion">Fashion desk</span>}
                       {g.desk === 'appearance' && <span className="ai-lens-tag ai-lens-face">Face desk</span>}
+                      {g.desk === 'texting' && <span className="ai-lens-tag ai-lens-text">Texting desk</span>}
                     </div>
                     <img src={g.portrait} alt="" />
                   </div>

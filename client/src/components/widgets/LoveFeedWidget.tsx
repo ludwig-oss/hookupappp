@@ -788,7 +788,7 @@ export default function LoveFeedWidget({ onShareToFriends }: { onShareToFriends?
       </div>
 
       <p className="love-feed-hint">
-        Post photos, videos and updates — the feed learns from what you watch, like and comment on. Tags and views shape what you see next.
+        Post photos, videos and updates — dating, relationships &amp; marriage only. Harmful or off-topic posts are suppressed. Tags and views shape what you see next.
       </p>
 
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
@@ -898,7 +898,9 @@ export default function LoveFeedWidget({ onShareToFriends }: { onShareToFriends?
               <h3>New post</h3>
               <button type="button" className="love-feed-modal-close" onClick={closeCreateModal} aria-label="Close">×</button>
             </div>
-            <p className="love-feed-modal-note">Text thoughts, photos, or videos — dating, relationship & marriage only.</p>
+            <p className="love-feed-modal-note">
+              Strict dating, love life &amp; relationship content only. Off-topic or harmful language is blocked automatically (TikTok-style safety + niche gate).
+            </p>
             <div className="love-feed-modal-form">
               <label>
                 Type

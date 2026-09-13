@@ -796,7 +796,6 @@ export default function LoveFeedWidget({ onShareToFriends }: { onShareToFriends?
           ['for_you', 'For You'],
           ['trending', 'Trending'],
           ['videos', 'Videos'],
-          ['following', 'Following'],
         ] as const).map(([mode, label]) => (
           <button
             key={mode}

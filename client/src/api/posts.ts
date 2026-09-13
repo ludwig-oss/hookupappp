@@ -14,7 +14,7 @@ function getAuthHeaders(): Record<string, string> {
   return {};
 }
 
-export type FeedMode = 'for_you' | 'trending' | 'videos' | 'following';
+export type FeedMode = 'for_you' | 'trending' | 'videos';
 
 export interface DatingPost {
   id: string;

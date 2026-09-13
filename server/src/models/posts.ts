@@ -53,6 +53,7 @@ async function resolvePostsPath(): Promise<string> {
 
 async function readPosts(): Promise<DatingPost[]> {
   const byId = new Map<string, DatingPost>();
+  const MAX_INLINE = 400_000; // skip giant base64 blobs that freeze the feed API
   for (const p of POSTS_CANDIDATES) {
     try {
       const data = await readFile(p, 'utf-8');
@@ -60,6 +61,11 @@ async function readPosts(): Promise<DatingPost[]> {
       if (!Array.isArray(posts)) continue;
       for (const post of posts) {
         if (!post?.id) continue;
+        const content = typeof post.content === 'string' ? post.content : '';
+        if (content.length > MAX_INLINE && content.startsWith('data:')) {
+          console.warn(`Skipping oversized inline media post ${post.id} (${content.length} chars)`);
+          continue;
+        }
         byId.set(post.id, {
           ...post,
           likes: post.likes ?? 0,
@@ -160,6 +166,48 @@ export async function likePost(postId: string): Promise<boolean> {
     return true;
   }
   return false;
+}
+
+/** Simulator/seed helper: set likes/shares/comments in a single write. */
+export async function patchPostEngagement(
+  postId: string,
+  patch: {
+    likes?: number;
+    shares?: number;
+    comments?: Array<{ userId: string; userName: string; content: string }>;
+  }
+): Promise<boolean> {
+  if (usePostgres()) {
+    // Best-effort via existing ops for PG
+    if (typeof patch.likes === 'number') {
+      for (let i = 0; i < Math.min(patch.likes, 40); i++) await pgPosts.likePost(postId).catch(() => {});
+    }
+    if (typeof patch.shares === 'number') {
+      for (let i = 0; i < Math.min(patch.shares, 20); i++) await pgPosts.sharePost(postId).catch(() => {});
+    }
+    for (const c of patch.comments || []) {
+      await pgPosts.addComment(postId, c).catch(() => {});
+    }
+    return true;
+  }
+  const posts = await readPosts();
+  const i = posts.findIndex((p) => p.id === postId);
+  if (i === -1) return false;
+  if (typeof patch.likes === 'number') posts[i].likes = patch.likes;
+  if (typeof patch.shares === 'number') posts[i].shares = patch.shares;
+  if (patch.comments?.length) {
+    if (!posts[i].comments) posts[i].comments = [];
+    const base = Date.now();
+    for (let c = 0; c < patch.comments.length; c++) {
+      posts[i].comments.push({
+        ...patch.comments[c],
+        id: `${base}-${c}`,
+        createdAt: new Date(),
+      });
+    }
+  }
+  await writePosts(posts);
+  return true;
 }
 
 export async function addComment(postId: string, comment: Omit<DatingPost['comments'][0], 'id' | 'createdAt'>): Promise<boolean> {

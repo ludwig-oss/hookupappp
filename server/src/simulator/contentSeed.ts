@@ -11,7 +11,7 @@ import {
   getQuestionById,
   type AdviceAnswerCohort,
 } from '../models/datingAdvice.js';
-import { createPost, getAllPosts, addComment, likePost } from '../models/posts.js';
+import { createPost, getAllPosts, addComment, likePost, patchPostEngagement } from '../models/posts.js';
 import { getUserPreference } from '../models/discover.js';
 import { notifyNewAdviceAnswer } from '../realtime/notifications.js';
 import { createReview, getReviewsForUser } from '../models/reviews.js';
@@ -307,11 +307,11 @@ async function seedLoveFeed(): Promise<void> {
   const simPosts = posts.filter((p) => isSimulatorUserId(p.userId));
   if (simPosts.length >= 8) return;
 
-  const { sharePost } = await import('../models/posts.js');
-
   for (let i = 0; i < FEED_POSTS.length; i++) {
     const author = mocks[i % mocks.length];
     const spec = FEED_POSTS[i];
+    // Stagger ids — createPost uses Date.now()
+    await delay(2);
     const post = await createPost({
       userId: author.id,
       type: spec.type,
@@ -320,23 +320,18 @@ async function seedLoveFeed(): Promise<void> {
       title: spec.title,
       tags: spec.tags,
     });
-    // Boost likes past blowing-up threshold for a couple posts
     const likeTimes = i % 3 === 0 ? 28 : 8 + (i % 10);
-    for (let L = 0; L < likeTimes; L++) {
-      await likePost(post.id).catch(() => {});
-    }
     const shareTimes = i % 2 === 0 ? 5 + (i % 4) : 1 + (i % 3);
-    for (let S = 0; S < shareTimes; S++) {
-      await sharePost(post.id).catch(() => {});
-    }
     const commenters = mocks.filter((m) => m.id !== author.id).slice(0, 2 + (i % 2));
-    for (let c = 0; c < commenters.length; c++) {
-      await addComment(post.id, {
-        userId: commenters[c].id,
-        userName: commenters[c].name,
-        content: FEED_COMMENTS[(i + c) % FEED_COMMENTS.length],
-      }).catch(() => {});
-    }
+    await patchPostEngagement(post.id, {
+      likes: likeTimes,
+      shares: shareTimes,
+      comments: commenters.map((c, cIdx) => ({
+        userId: c.id,
+        userName: c.name,
+        content: FEED_COMMENTS[(i + cIdx) % FEED_COMMENTS.length],
+      })),
+    });
   }
 }
 

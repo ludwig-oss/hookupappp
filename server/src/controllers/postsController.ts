@@ -30,7 +30,8 @@ import type { AuthRequest } from '../middleware/auth.js';
 
 function parseFeedMode(raw: unknown): FeedMode {
   const m = typeof raw === 'string' ? raw : 'for_you';
-  if (m === 'trending' || m === 'videos' || m === 'following' || m === 'for_you') return m;
+  if (m === 'trending' || m === 'videos' || m === 'for_you') return m;
+  // following removed from UI — treat as for_you
   return 'for_you';
 }
 
@@ -189,8 +190,8 @@ export const getFeed = async (req: AuthRequest, res: Response) => {
 
     const posts = await getFeedPosts({ userId, mode });
     try {
-      const { drawAllDue, attachToPosts } = await import('../models/singleAgain.js');
-      await Promise.race([drawAllDue(), new Promise((r) => setTimeout(r, 1500))]);
+      const { attachToPosts } = await import('../models/singleAgain.js');
+      // Skip drawAllDue on the hot feed path — it can block under load
       const withSingle = await attachToPosts(posts, userId);
       const enrichedPosts = await enrichPostsWithUser(withSingle);
       const trendingTags = posts.length

@@ -67,7 +67,14 @@ export const scanAppearanceHandler = async (req: Request, res: Response) => {
     const guideId = String(req.body?.guideId || (user as { aiGuideId?: string })?.aiGuideId || 'elena');
     const guide = getGuide(guideId) || getGuide('elena');
     const first = (guide?.name || 'Elena').split(' ')[0];
-    const critic = await critiqueCompleteLooks(session.optionA, session.optionB, session.occasion, first);
+    const critic = await critiqueCompleteLooks(
+      session.optionA,
+      session.optionB,
+      session.occasion,
+      first,
+      undefined,
+      guide
+    );
 
     res.json({
       verifiedAngles: {
@@ -109,8 +116,16 @@ export const styleAppearanceHandler = async (req: Request, res: Response) => {
     const occasion = String(req.body?.occasion || req.body?.prompt || 'first date');
     const session = await autoChooseLooks(occasion, user?.gender);
     const guideId = String(req.body?.guideId || 'elena');
-    const first = ((getGuide(guideId) || getGuide('elena'))?.name || 'Elena').split(' ')[0];
-    const critic = await critiqueCompleteLooks(session.optionA, session.optionB, session.occasion, first);
+    const guide = getGuide(guideId) || getGuide('elena');
+    const first = (guide?.name || 'Elena').split(' ')[0];
+    const critic = await critiqueCompleteLooks(
+      session.optionA,
+      session.optionB,
+      session.occasion,
+      first,
+      undefined,
+      guide
+    );
     res.json({ ...session, critic, autoChosen: true, askLike: critic.askLike });
   } catch (error) {
     console.error('Appearance style error:', error);

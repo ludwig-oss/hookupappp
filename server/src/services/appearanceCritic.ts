@@ -5,6 +5,7 @@
  */
 
 import type { CompleteLook } from './appearanceStyling.js';
+import type { AiGuideCharacter } from '../data/aiGuideCatalog.js';
 
 export interface AppearanceCriticResult {
   winner: 'A' | 'B';
@@ -63,7 +64,8 @@ export async function critiqueCompleteLooks(
   optionB: CompleteLook,
   occasion: string,
   guideFirstName: string,
-  imageUrls?: { a?: string | null; b?: string | null }
+  imageUrls?: { a?: string | null; b?: string | null },
+  guide?: AiGuideCharacter | null
 ): Promise<AppearanceCriticResult> {
   const A = pack(optionA, occasion);
   const B = pack(optionB, occasion);
@@ -76,7 +78,12 @@ export async function critiqueCompleteLooks(
     `Color: ${win.outfit.palette.join(', ')} holds. ${win.outfit.trendNotes}`,
   ];
   const skip = `One signature. Do not add extra jewelry on ${win.outfit.title}.`;
-  let line = `${guideFirstName} here. Wear ${win.outfit.title} with ${win.hair.title}. ${reasons[0]} Do you like this look?`;
+  const cue = guide?.charStyle?.actionCue;
+  const hook = guide?.charStyle?.catchphrases?.[0];
+  let line = cue
+    ? `${cue}\n${hook ? `${hook}. ` : ''}Wear ${win.outfit.title} with ${win.hair.title}. ${reasons[0]} Do you like this look?`
+    : `${guideFirstName} here. Wear ${win.outfit.title} with ${win.hair.title}. ${reasons[0]} Do you like this look?`;
+  let askLike = 'Do you like this look?';
 
   const key = process.env.OPENAI_API_KEY;
   if (key) {
@@ -116,8 +123,9 @@ export async function critiqueCompleteLooks(
           messages: [
             {
               role: 'system',
-              content:
-                'You are Elena, a dating-app appearance critic. Pick A or B. Be specific about color, hair proportion, event, and trend. No brand essays. Always ask: Do you like this look?',
+              content: guide?.charStyle
+                ? `You are ${guide.name}, a dating-app face & look coach. Personality: ${guide.personality} Mindset: ${guide.charStyle.mindset} Catchphrases: ${guide.charStyle.catchphrases.join('; ')}. Start with a short *action* in asterisks, then advice. Pick A or B. Be specific about color, hair proportion, event, and trend. No brand essays. Never say you are an AI. Always ask: Do you like this look?`
+                : 'You are Elena, a dating-app appearance critic. Pick A or B. Be specific about color, hair proportion, event, and trend. No brand essays. Always ask: Do you like this look?',
             },
             { role: 'user', content },
           ],

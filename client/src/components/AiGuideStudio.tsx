@@ -147,6 +147,10 @@ export default function AiGuideStudio({
     () => guides.filter((g) => g.desk === 'fashion' || g.id === 'elena'),
     [guides]
   );
+  const appearanceCrew = useMemo(
+    () => guides.filter((g) => g.desk === 'appearance' || g.id === 'elena'),
+    [guides]
+  );
 
   const runSearch = async (raw?: string) => {
     const q = (raw ?? query).trim();
@@ -373,6 +377,11 @@ export default function AiGuideStudio({
                 setShowAppearance(true);
                 setShowFashion(false);
                 setShowIntimacy(false);
+                setSelected((prev) =>
+                  prev && (prev.desk === 'appearance' || prev.id === 'elena')
+                    ? prev
+                    : guides.find((g) => g.id === 'elena') || appearanceCrew[0] || prev
+                );
               })
             }
           >
@@ -461,7 +470,17 @@ export default function AiGuideStudio({
               startOnTermAct={startOnTermAct}
             />
           ) : showAppearance && featured ? (
-            <AppearanceDesk guide={featured} onClose={() => setShowAppearance(false)} onSpeaking={setSpeaking} />
+            <AppearanceDesk
+              guide={
+                featured.desk === 'appearance' || featured.id === 'elena'
+                  ? featured
+                  : appearanceCrew[0] || featured
+              }
+              stylists={appearanceCrew}
+              onPickStylist={(g) => setSelected(g)}
+              onClose={() => setShowAppearance(false)}
+              onSpeaking={setSpeaking}
+            />
           ) : showFashion && featured ? (
             <FashionDesk
               guide={featured.desk === 'fashion' || featured.id === 'elena' ? featured : fashionCrew[0] || featured}
@@ -583,6 +602,7 @@ export default function AiGuideStudio({
                       <em>{g.specialty}</em>
                       {g.lens === 'feminine' && <span className="ai-lens-tag">Feminine lens</span>}
                       {g.desk === 'fashion' && <span className="ai-lens-tag ai-lens-fashion">Fashion desk</span>}
+                      {g.desk === 'appearance' && <span className="ai-lens-tag ai-lens-face">Face desk</span>}
                     </div>
                     <img src={g.portrait} alt="" />
                   </div>

@@ -1,6 +1,7 @@
 import { DATING_COACH_GUIDES } from './aiDatingCoaches.js';
 import { FEMININE_DATING_COACH_GUIDES } from './aiFeminineDatingCoaches.js';
 import { FASHION_STYLE_GUIDES } from './aiFashionGuides.js';
+import { APPEARANCE_FACE_GUIDES } from './aiAppearanceGuides.js';
 
 export type AiVoiceHint = 'female' | 'male';
 export type AiGuideLens = 'feminine' | 'masculine' | 'neutral';
@@ -215,6 +216,7 @@ export const AI_GUIDES: AiGuideCharacter[] = [
   ...DATING_COACH_GUIDES.map((g) => ({ ...g, lens: g.lens || ('masculine' as const) })),
   ...FEMININE_DATING_COACH_GUIDES,
   ...FASHION_STYLE_GUIDES,
+  ...APPEARANCE_FACE_GUIDES,
 ];
 
 export const AI_LESSONS: AiLesson[] = [
@@ -407,6 +409,7 @@ export const AI_LESSONS: AiLesson[] = [
       'acne',
       'jaw',
       'mewing',
+      'mew',
       'glow up',
       'glowup',
       'hair',
@@ -414,9 +417,27 @@ export const AI_LESSONS: AiLesson[] = [
       'dark circles',
       'profile photo',
       'after results',
+      'looksmax',
+      'looksmaxxing',
+      'canthal',
+      'hunter eyes',
+      'softmaxxing',
+      'hardmaxxing',
+      'facial symmetry',
+      'improve my face',
+      'face rating',
     ],
     categoryIds: ['style-fashion', 'confidence-dating'],
-    bestGuideIds: ['elena', 'sofia'],
+    bestGuideIds: [
+      'elena',
+      'mike-mew',
+      'brett-maverick',
+      'chico-lachowski',
+      'looksmax-bot',
+      'glow-up-academy',
+      'alex-eubank',
+      'paul-nassif',
+    ],
     cause: 'One selfie from above hides the jaw, the skin, and the haircut.',
     solution: 'Three photos: frontal, left, right. Then a 50-step habit plan and a look Elena picks for the night.',
     prevention: 'Same light, same angles, once a month. Do not chase a different face.',
@@ -738,7 +759,10 @@ export function interpretQuery(query: string): { topic: AiLesson; score: number 
   if (!q) return [];
   const words = q.split(' ');
   const fashionCue = /\b(wear|outfit|dress|clothes|fashion|wardrobe|look)\b/.test(q);
-  const appearanceCue = /\b(face|skin|acne|jaw|mew|glow|hair|blemish|circle|profile)\b/.test(q);
+  const appearanceCue =
+    /\b(face|skin|acne|jaw|mew|glow|hair|blemish|circle|profile|looksmax|canthal|hunter eyes|softmax|hardmax|symmetry|improve my face|face rating)\b/.test(
+      q
+    );
   const intimacyCue =
     /\b(position|last longer|lasting|premature|finish too fast|during sex|bedroom flow|lotus|how to last|termact|foreplay|boy to girl|girl to boy)\b/.test(q);
   const talkCue =
@@ -799,13 +823,22 @@ export function guidesForLesson(lesson: AiLesson) {
     return [...preferred, ...fem, ...other];
   }
   if (lesson.id === 'fashion') {
-    const fashion = rest.filter((g) => g.desk === 'fashion' || g.categoryIds.includes('style-fashion'));
-    const other = rest.filter((g) => !(g.desk === 'fashion' || g.categoryIds.includes('style-fashion')));
+    const fashion = rest.filter((g) => g.desk === 'fashion');
+    const other = rest.filter((g) => g.desk !== 'fashion');
     return [...preferred, ...fashion, ...other];
+  }
+  if (lesson.id === 'appearance') {
+    const face = rest.filter((g) => g.desk === 'appearance');
+    const other = rest.filter((g) => g.desk !== 'appearance');
+    return [...preferred, ...face, ...other];
   }
   return [...preferred, ...rest];
 }
 
 export function fashionGuides(): AiGuideCharacter[] {
   return AI_GUIDES.filter((g) => g.desk === 'fashion' || g.id === 'elena');
+}
+
+export function appearanceGuides(): AiGuideCharacter[] {
+  return AI_GUIDES.filter((g) => g.desk === 'appearance' || g.id === 'elena');
 }

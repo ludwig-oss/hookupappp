@@ -17,8 +17,12 @@ import { speakGuideLine } from '../../lib/aiGuideSpeech';
 import { prepareAndUploadFile } from '../../lib/uploadMedia';
 import './AppearanceDesk.css';
 
+function stripRoleplay(text: string) {
+  return text.replace(/\*[^*]+\*/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
 function speakLine(guide: AiGuideCharacter, text: string, onStart: () => void, onEnd: () => void) {
-  void speakGuideLine(guide.voice, text, onStart, onEnd);
+  void speakGuideLine(guide.voice, stripRoleplay(text), onStart, onEnd);
 }
 
 type Tab = 'scan' | 'after' | 'look' | 'hair' | 'compare' | 'wardrobe';
@@ -96,17 +100,23 @@ function HairPreview({
 
 export default function AppearanceDesk({
   guide,
+  stylists,
+  onPickStylist,
   onClose,
   onSpeaking,
 }: {
   guide: AiGuideCharacter;
+  stylists?: AiGuideCharacter[];
+  onPickStylist?: (g: AiGuideCharacter) => void;
   onClose: () => void;
   onSpeaking: (on: boolean) => void;
 }) {
   const { user } = useContext(AuthContext);
   const first = guide.name.split(' ')[0];
   const opener =
-    'Three photos: face the camera, then left, then right. Daylight. I will read skin and bone, then pick a full look. You tell me if you like it.';
+    guide.charStyle?.catchphrases?.[0]
+      ? `${guide.charStyle.catchphrases[0]}. Three photos: face the camera, then left, then right. Daylight. I will read skin and bone, then pick a full look. You tell me if you like it.`
+      : 'Three photos: face the camera, then left, then right. Daylight. I will read skin and bone, then pick a full look. You tell me if you like it.';
   const [tab, setTab] = useState<Tab>('scan');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -126,14 +136,14 @@ export default function AppearanceDesk({
   const [hairRefUrl, setHairRefUrl] = useState<string | null>(null);
   const [hairDesign, setHairDesign] = useState('');
   const [hairChat, setHairChat] = useState<{ role: 'guide' | 'you'; text: string }[]>([]);
-  const asked = useRef(false);
+  const lastSpokenGuide = useRef<string | null>(null);
   const compareRef = useRef<HTMLDivElement>(null);
   const hairRefInput = useRef<HTMLInputElement>(null);
   const [compareW, setCompareW] = useState(0);
 
   useEffect(() => {
-    if (asked.current) return;
-    asked.current = true;
+    if (lastSpokenGuide.current === guide.id) return;
+    lastSpokenGuide.current = guide.id;
     speakLine(guide, opener, () => onSpeaking(true), () => onSpeaking(false));
   }, [guide, opener, onSpeaking]);
 
@@ -317,6 +327,23 @@ export default function AppearanceDesk({
           </button>
         </div>
       </div>
+
+      {stylists && stylists.length > 1 && onPickStylist && (
+        <div className="appear-stylist-row" aria-label="Face coaches">
+          {stylists.map((g) => (
+            <button
+              key={g.id}
+              type="button"
+              className={`appear-stylist${g.id === guide.id ? ' is-on' : ''}`}
+              title={`${g.name} — ${g.specialty}`}
+              onClick={() => onPickStylist(g)}
+            >
+              <img src={g.portrait} alt="" />
+              <span>{g.name.split(' ')[0]}</span>
+            </button>
+          ))}
+        </div>
+      )}
 
       {error && <p className="appear-error">{error}</p>}
 

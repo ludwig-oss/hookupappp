@@ -625,6 +625,11 @@ export default function AiGuideStudio({
                     {lesson.id === 'hair' ? 'Open hair desk' : 'Open face desk'}
                   </button>
                 )}
+                {lesson.id === 'couples-counseling' && featured && (
+                  <button type="button" className="ai-pill ai-pill-primary" onClick={() => void pickGuide(featured)} disabled={busy}>
+                    Work with {featured.name.split(' ')[0]}
+                  </button>
+                )}
                 {(lesson.id === 'intimacy-flow' || lesson.id === 'sex-mismatch') && (
                   <button type="button" className="ai-pill ai-pill-primary" onClick={() => void tryHelp('intimacy', () => { setStartOnTermAct(false); setShowIntimacy(true); })}>
                     Open bedroom flow
@@ -663,6 +668,7 @@ export default function AiGuideStudio({
                       {g.desk === 'fashion' && <span className="ai-lens-tag ai-lens-fashion">Fashion desk</span>}
                       {g.desk === 'appearance' && <span className="ai-lens-tag ai-lens-face">Face desk</span>}
                       {g.desk === 'hair' && <span className="ai-lens-tag ai-lens-hair">Hair desk</span>}
+                      {g.desk === 'relationship' && <span className="ai-lens-tag ai-lens-couple">Couples desk</span>}
                       {g.desk === 'texting' && <span className="ai-lens-tag ai-lens-text">Texting desk</span>}
                     </div>
                     <img src={g.portrait} alt="" />

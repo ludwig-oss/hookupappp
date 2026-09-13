@@ -276,8 +276,18 @@ export default function RelationshipCouplePanel({
             <div style={{ padding: 8, background: 'rgba(59,130,246,0.15)', borderRadius: 8, fontSize: 11 }}>
               📚 {hub.guideMessage}
               {onOpenGuides && (
-                <button type="button" className="chat-convo-use" style={{ marginLeft: 8 }} onClick={onOpenGuides}>
-                  Find a guide
+                <button
+                  type="button"
+                  className="chat-convo-use"
+                  style={{ marginLeft: 8 }}
+                  onClick={() => {
+                    window.dispatchEvent(
+                      new CustomEvent('ai-guide:open', { detail: { query: 'couples conflict repair' } })
+                    );
+                    onOpenGuides();
+                  }}
+                >
+                  Couples AI desk
                 </button>
               )}
             </div>

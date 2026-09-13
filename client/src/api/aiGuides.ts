@@ -28,7 +28,7 @@ export interface AiGuideCharacter {
   expertise: string[];
   categoryIds: string[];
   lens?: 'feminine' | 'masculine' | 'neutral';
-  desk?: 'fashion' | 'appearance' | 'intimacy' | 'dating' | 'texting' | 'hair';
+  desk?: 'fashion' | 'appearance' | 'intimacy' | 'dating' | 'texting' | 'hair' | 'relationship';
   charStyle?: {
     actionCue: string;
     catchphrases: string[];

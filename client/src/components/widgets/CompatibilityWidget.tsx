@@ -239,6 +239,12 @@ export default function CompatibilityWidget() {
   };
 
   const aiGuidesForCategory = (catId: string) => {
+    if (catId === 'couples-relationship') {
+      const couples = aiGuides.filter(
+        (g) => g.desk === 'relationship' || g.categoryIds.includes('couples-relationship')
+      );
+      if (couples.length) return couples;
+    }
     const matched = aiGuides.filter((g) => g.categoryIds.includes(catId));
     return matched.length ? matched : aiGuides;
   };

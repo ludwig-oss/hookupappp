@@ -269,6 +269,11 @@
   border-color: rgba(196, 181, 253, 0.5);
 }
 
+.ai-lens-couple {
+  color: #f9a8d4;
+  border-color: rgba(249, 168, 212, 0.55);
+}
+
 .ai-lens-text {
   color: #86efac;
   border-color: rgba(134, 239, 172, 0.5);

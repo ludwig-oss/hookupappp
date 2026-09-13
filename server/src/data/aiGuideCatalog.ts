@@ -4,10 +4,11 @@ import { FASHION_STYLE_GUIDES } from './aiFashionGuides.js';
 import { APPEARANCE_FACE_GUIDES } from './aiAppearanceGuides.js';
 import { HAIR_STYLE_GUIDES } from './aiHairGuides.js';
 import { TEXTING_COACH_GUIDES } from './aiTextingGuides.js';
+import { RELATIONSHIP_COUNSELOR_GUIDES } from './aiRelationshipCounselors.js';
 
 export type AiVoiceHint = 'female' | 'male';
 export type AiGuideLens = 'feminine' | 'masculine' | 'neutral';
-export type AiGuideDesk = 'fashion' | 'appearance' | 'intimacy' | 'dating' | 'texting' | 'hair';
+export type AiGuideDesk = 'fashion' | 'appearance' | 'intimacy' | 'dating' | 'texting' | 'hair' | 'relationship';
 
 export interface AiGuideRatings {
   directness: number;
@@ -60,6 +61,14 @@ export interface AiLesson {
   /** Character.AI-style full reply when resolved for a specific guide. */
   reply?: string;
 }
+
+/** Couples counselors supersede same-id entries from dating/feminine packs. */
+const MOVED_TO_RELATIONSHIP = new Set([
+  'john-gottman',
+  'esther-perel',
+  'jillian-turecki',
+  'nicole-lepera',
+]);
 
 export const AI_GUIDES: AiGuideCharacter[] = [
   {
@@ -149,8 +158,9 @@ export const AI_GUIDES: AiGuideCharacter[] = [
     voice: { hint: 'female', pitch: 1.0, rate: 0.9 },
     ratings: { directness: 6, warmth: 9, datingIq: 7, texting: 5, style: 4, boundaries: 8, healing: 10, attraction: 4 },
     expertise: ['past relationships', 'attachment', 'fear of vulnerability', 'readiness'],
-    categoryIds: ['moving-on', 'emotional-intimacy', 'getting-back', 'trust'],
+    categoryIds: ['moving-on', 'emotional-intimacy', 'getting-back', 'trust', 'couples-relationship'],
     lens: 'feminine',
+    desk: 'relationship',
     charStyle: {
       actionCue: '*Slows her breath, then meets your eyes.*',
       catchphrases: ['Ready beats rushing', 'One safe experiment', 'Old wound first'],
@@ -216,12 +226,16 @@ export const AI_GUIDES: AiGuideCharacter[] = [
       mindset: 'Direct about sex and pace without shame. Clear boundaries, warm delivery.',
     },
   },
-  ...DATING_COACH_GUIDES.map((g) => ({ ...g, lens: g.lens || ('masculine' as const) })),
-  ...FEMININE_DATING_COACH_GUIDES,
+  ...DATING_COACH_GUIDES.filter((g) => !MOVED_TO_RELATIONSHIP.has(g.id)).map((g) => ({
+    ...g,
+    lens: g.lens || ('masculine' as const),
+  })),
+  ...FEMININE_DATING_COACH_GUIDES.filter((g) => !MOVED_TO_RELATIONSHIP.has(g.id)),
   ...FASHION_STYLE_GUIDES,
   ...APPEARANCE_FACE_GUIDES,
   ...HAIR_STYLE_GUIDES,
   ...TEXTING_COACH_GUIDES,
+  ...RELATIONSHIP_COUNSELOR_GUIDES,
 ];
 
 export const AI_LESSONS: AiLesson[] = [
@@ -398,11 +412,55 @@ export const AI_LESSONS: AiLesson[] = [
     title: 'Attachment styles clashing',
     aliases: ['anxious', 'avoidant', 'attachment', 'clingy', 'hot and cold'],
     categoryIds: ['emotional-intimacy', 'communication', 'trust'],
-    bestGuideIds: ['priya', 'marcus'],
+    bestGuideIds: ['priya', 'sue-johnson', 'marcus'],
     cause: 'Anxious chase + avoidant space = a loop that feels like chemistry.',
     solution: 'Name your pattern. Ask for a simple rhythm (goodnight text, one date a week). If they refuse any rhythm, leave.',
     prevention: 'Do not soothe panic with more texting. Do something with your body first, then reply.',
     unknown: 'You cannot anxiously-attach someone into feeling safe. Safety is their work too.',
+    demo: 'heart-split',
+  },
+  {
+    id: 'couples-counseling',
+    title: 'Couples conflict, repair & family planning',
+    aliases: [
+      'couples',
+      'couple',
+      'marriage',
+      'counseling',
+      'counselling',
+      'therapy',
+      'gottman',
+      'four horsemen',
+      'contempt',
+      'stonewalling',
+      'repair',
+      'love languages',
+      'boundaries in relationship',
+      'family planning',
+      'kids',
+      'we fight',
+      'arguing with partner',
+      'relationship problems',
+      'codependent',
+      'secure bubble',
+    ],
+    categoryIds: ['couples-relationship', 'communication', 'emotional-intimacy', 'trust', 'exclusivity'],
+    bestGuideIds: [
+      'priya',
+      'john-gottman',
+      'esther-perel',
+      'sue-johnson',
+      'nedra-tawwab',
+      'gary-chapman',
+      'four-horsemen-detector',
+      'family-planning-blueprint',
+    ],
+    cause: 'Small unrepaired bids pile up until contempt or silence becomes the house style.',
+    solution:
+      'Name the horseman, attempt a repair within 24 hours, speak their love language once on purpose, and set one clear boundary for the week.',
+    prevention: 'Weekly 15-minute check-in. Soft start-ups. No contempt in public or private.',
+    unknown:
+      'Chemistry does not replace repair skill. Family planning needs shared capacity — not pressure or silence.',
     demo: 'heart-split',
   },
   {
@@ -814,6 +872,10 @@ export function interpretQuery(query: string): { topic: AiLesson; score: number 
     /\b(hair|braid|braids|barber|silk press|parting|edge control|cornrow|blowout|bun|fade|locs|big chop|hairstyle|haircut|weave)\b/.test(
       q
     );
+  const couplesCue =
+    /\b(couples?|marriage|counsel(l)?ing|gottman|four horsemen|contempt|stonewall(ing)?|love languages?|family planning|we fight|arguing with (my )?partner|relationship problems?|codependen|secure bubble|repair attempt)\b/.test(
+      q
+    );
   const intimacyCue =
     /\b(position|last longer|lasting|premature|finish too fast|during sex|bedroom flow|lotus|how to last|termact|foreplay|boy to girl|girl to boy)\b/.test(q);
   const talkCue =
@@ -835,6 +897,7 @@ export function interpretQuery(query: string): { topic: AiLesson; score: number 
     if (fashionCue && lesson.id === 'fashion') score += 10;
     if (appearanceCue && lesson.id === 'appearance') score += 12;
     if (hairCue && lesson.id === 'hair') score += 14;
+    if (couplesCue && lesson.id === 'couples-counseling') score += 16;
     if (intimacyCue && lesson.id === 'intimacy-flow') score += 14;
     if (talkCue && lesson.id === 'date-talk') score += 16;
     if (textingCue && ['ghosted', 'overthinking-texts', 'low-effort-openers', 'text-to-date'].includes(lesson.id)) {
@@ -895,6 +958,15 @@ export function guidesForLesson(lesson: AiLesson) {
     return [...preferred, ...hair, ...other];
   }
   if (
+    lesson.id === 'couples-counseling' ||
+    lesson.id === 'attachment' ||
+    lesson.categoryIds.includes('couples-relationship')
+  ) {
+    const rel = rest.filter((g) => g.desk === 'relationship');
+    const other = rest.filter((g) => g.desk !== 'relationship');
+    return [...preferred, ...rel, ...other];
+  }
+  if (
     lesson.categoryIds.includes('texting') ||
     ['ghosted', 'overthinking-texts', 'text-to-date', 'low-effort-openers'].includes(lesson.id)
   ) {
@@ -915,6 +987,10 @@ export function appearanceGuides(): AiGuideCharacter[] {
 
 export function hairGuides(): AiGuideCharacter[] {
   return AI_GUIDES.filter((g) => g.desk === 'hair' || g.id === 'elena');
+}
+
+export function relationshipGuides(): AiGuideCharacter[] {
+  return AI_GUIDES.filter((g) => g.desk === 'relationship' || g.id === 'priya');
 }
 
 export function textingGuides(): AiGuideCharacter[] {

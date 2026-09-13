@@ -474,7 +474,7 @@ export default function AiGuideStudio({
           )}
           {miss && !lesson && (
             <div className="ai-confirm">
-              <p>I did not catch that. Try a short line like ghosting, friendzone, what to talk about on a date, or what to wear.</p>
+              <p>I did not catch that. Try a short line like ghosting, what women want, what to talk about on a date, or what to wear.</p>
             </div>
           )}
           {lesson && (
@@ -566,6 +566,7 @@ export default function AiGuideStudio({
                     <div>
                       <b>{g.name.toUpperCase()}</b>
                       <em>{g.specialty}</em>
+                      {g.lens === 'feminine' && <span className="ai-lens-tag">Feminine lens</span>}
                     </div>
                     <img src={g.portrait} alt="" />
                   </div>

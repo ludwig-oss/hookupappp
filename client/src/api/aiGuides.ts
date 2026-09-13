@@ -27,6 +27,7 @@ export interface AiGuideCharacter {
   ratings: AiGuideRatings;
   expertise: string[];
   categoryIds: string[];
+  lens?: 'feminine' | 'masculine' | 'neutral';
   charStyle?: {
     actionCue: string;
     catchphrases: string[];

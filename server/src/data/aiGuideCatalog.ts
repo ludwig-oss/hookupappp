@@ -1,6 +1,7 @@
 import { DATING_COACH_GUIDES } from './aiDatingCoaches.js';
 import { FEMININE_DATING_COACH_GUIDES } from './aiFeminineDatingCoaches.js';
 import { FASHION_STYLE_GUIDES } from './aiFashionGuides.js';
+import { FOOTWEAR_STYLE_GUIDES } from './aiFootwearGuides.js';
 import { APPEARANCE_FACE_GUIDES } from './aiAppearanceGuides.js';
 import { HAIR_STYLE_GUIDES } from './aiHairGuides.js';
 import { TEXTING_COACH_GUIDES } from './aiTextingGuides.js';
@@ -232,6 +233,7 @@ export const AI_GUIDES: AiGuideCharacter[] = [
   })),
   ...FEMININE_DATING_COACH_GUIDES.filter((g) => !MOVED_TO_RELATIONSHIP.has(g.id)),
   ...FASHION_STYLE_GUIDES,
+  ...FOOTWEAR_STYLE_GUIDES,
   ...APPEARANCE_FACE_GUIDES,
   ...HAIR_STYLE_GUIDES,
   ...TEXTING_COACH_GUIDES,
@@ -563,6 +565,16 @@ export const AI_LESSONS: AiLesson[] = [
       'what should i wear',
       'dress',
       'wardrobe',
+      'sneakers',
+      'shoes',
+      'kicks',
+      'heels',
+      'boots',
+      'jordan',
+      'yeezy',
+      'nike',
+      'louboutin',
+      'footwear',
     ],
     categoryIds: ['style-fashion', 'confidence-dating'],
     bestGuideIds: [
@@ -570,15 +582,17 @@ export const AI_LESSONS: AiLesson[] = [
       'wisdom-kaye',
       'tom-ford',
       'virgil-abloh',
+      'tinker-hatfield',
+      'christian-louboutin',
+      'air-jordan-1',
+      'hiroshi-fujiwara',
       'tan-france',
       'tim-gunn',
-      'rachel-zoe',
-      'miuccia-prada',
     ],
     cause: 'Ill-fitting clothes read as “I did not try,” even if you did.',
-    solution: 'One well-fitting base (dark jeans or clean trousers + fitted top) and one signature (watch, jacket, color).',
+    solution: 'One well-fitting base (dark jeans or clean trousers + fitted top) and one signature (watch, jacket, color, shoes).',
     prevention: 'Take a mirror photo in daylight. If the fit pulls or bags, change it before the date.',
-    unknown: 'Grooming and fit beat logos. People remember posture and smell more than the brand.',
+    unknown: 'Grooming and fit beat logos. People remember posture, shoes, and smell more than the brand.',
     demo: 'mirror',
   },
   {
@@ -863,7 +877,10 @@ export function interpretQuery(query: string): { topic: AiLesson; score: number 
   const q = norm(query);
   if (!q) return [];
   const words = q.split(' ');
-  const fashionCue = /\b(wear|outfit|dress|clothes|fashion|wardrobe|look)\b/.test(q);
+  const fashionCue =
+    /\b(wear|outfit|dress|clothes|fashion|wardrobe|look|sneakers?|shoes?|kicks|heels?|boots?|jordan|yeezy|nike|footwear)\b/.test(
+      q
+    );
   const appearanceCue =
     /\b(face|skin|acne|jaw|mew|glow|blemish|circle|profile|looksmax|canthal|hunter eyes|softmax|hardmax|symmetry|improve my face|face rating)\b/.test(
       q

@@ -282,7 +282,11 @@ export function scheduleMockAdviceAnswers(questionId: string, askerUserId: strin
           content: pick(ADVICE_ANSWERS),
         });
         if (result) {
-          void notifyNewAdviceAnswer(askerUserId, questionId, result.answer.content).catch(() => {});
+          notifyNewAdviceAnswer(askerUserId, {
+            questionId,
+            fromUserId: r.id,
+            preview: String(result.answer.content || '').slice(0, 100),
+          });
           // A couple likes from other mocks
           for (const liker of responders.slice(i + 1, i + 3)) {
             await likeAdviceAnswer(questionId, result.answer.id, liker.id).catch(() => {});

@@ -9,6 +9,7 @@ import {
   getMine,
   postAvailability,
   postRespond,
+  postTravelOk,
   postSpin,
   postSelectIdea,
   postCancelDate,
@@ -38,6 +39,7 @@ router.post('/search', postStartSearch);
 router.post('/search/cancel', postCancelSearch);
 router.post('/availability', postAvailability);
 router.post('/respond', postRespond);
+router.post('/travel-ok', postTravelOk);
 router.post('/spin', postSpin);
 router.post('/select-idea', postSelectIdea);
 router.post('/cancel', postCancelDate);

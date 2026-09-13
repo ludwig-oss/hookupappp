@@ -1,11 +1,12 @@
 import { Request, Response } from 'express';
 import {
-  catalog,
+  catalogForUser,
   startSearch,
   cancelSearch,
   pollSearch,
   setAvailability,
   respondMatch,
+  setTravelOk,
   spinDateIdea,
   selectDateIdea,
   cancelScheduledDate,
@@ -72,7 +73,7 @@ export async function getCatalog(req: Request, res: Response) {
         canStartMoreArenaDates(userId),
       ]);
     res.json({
-      ...catalog(),
+      ...(await catalogForUser(userId)),
       savedLookingFor,
       quota,
       dateQuota: { ...dateQuota, freeLimit: FREE_ARENA_DATES },
@@ -169,6 +170,19 @@ export async function postRespond(req: Request, res: Response) {
     const { matchId, accept } = req.body || {};
     if (!matchId) return res.status(400).json({ error: 'matchId is required' });
     const match = await respondMatch(uid(req), matchId, Boolean(accept));
+    const other = match.userId1 === uid(req) ? match.userId2 : match.userId1;
+    notifyDateMatch(other, { matchId: match.id, fromUserId: uid(req), status: match.status });
+    res.json({ match });
+  } catch (e: any) {
+    res.status(400).json({ error: e.message });
+  }
+}
+
+export async function postTravelOk(req: Request, res: Response) {
+  try {
+    const { matchId, canMakeIt } = req.body || {};
+    if (!matchId) return res.status(400).json({ error: 'matchId is required' });
+    const match = await setTravelOk(uid(req), matchId, canMakeIt !== false);
     const other = match.userId1 === uid(req) ? match.userId2 : match.userId1;
     notifyDateMatch(other, { matchId: match.id, fromUserId: uid(req), status: match.status });
     res.json({ match });

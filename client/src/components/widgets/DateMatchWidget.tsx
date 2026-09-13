@@ -53,6 +53,10 @@ function mySlots(m: DateMatch, userId: string) {
   return m.userId1 === userId ? m.user1FreeSlots : m.user2FreeSlots;
 }
 
+function myTravelOk(m: DateMatch, userId: string) {
+  return m.userId1 === userId ? m.user1TravelOk : m.user2TravelOk;
+}
+
 export default function DateMatchWidget({
   onOpenChat,
   onOpenGuides,
@@ -190,6 +194,25 @@ export default function DateMatchWidget({
       if (next.status === 'picking_idea') setView('arena');
     } catch (e: any) {
       setError(e.response?.data?.error || 'Could not respond');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const confirmTravel = async (canMakeIt: boolean) => {
+    if (!match) return;
+    setLoading(true);
+    setError('');
+    try {
+      const { match: next } = await dateMatchAPI.travelOk(match.id, canMakeIt);
+      setMatch(next);
+      if (!canMakeIt || next.status === 'declined') {
+        setView('home');
+        await loadAll();
+        return;
+      }
+    } catch (e: any) {
+      setError(e.response?.data?.error || 'Could not save travel answer');
     } finally {
       setLoading(false);
     }
@@ -333,9 +356,10 @@ export default function DateMatchWidget({
             </button>
           </div>
           <p style={{ fontSize: 11, color: '#9ca3af', margin: '6px 0 14px' }}>
+            Date Arena never matches other countries — only people in your country.
             {cityScope === 'city'
-              ? 'Pairs you with people in your city. Set country + city on Profile (simulator fills Berlin if blank).'
-              : 'Pairs you with people anywhere in your country.'}
+              ? ' Right now: your city only. Set country + city on Profile.'
+              : ' Right now: any city in your country. If they are far, you both must say you can make it.'}
             {catalog?.quota.unlimited
               ? ' You have unlimited searches with Plus / Gold / Platinum.'
               : ' Free: 3 searches / month — upgrade for unlimited.'}
@@ -445,8 +469,36 @@ export default function DateMatchWidget({
             </div>
           </div>
           {match.status === 'pending' && <p className="da-sub">This stays on your pending list until you are both online. Then you both Accept.</p>}
+          {(me?.city || other?.city) && (
+            <p className="da-sub">
+              You: {me?.city || 'city unset'}{me?.country ? `, ${me.country}` : ''} · Them: {other?.city || 'city unset'}
+              {other?.country ? `, ${other.country}` : ''}
+              {typeof match.distanceKm === 'number' ? ` · ~${match.distanceKm} km apart` : ''}
+            </p>
+          )}
+          {match.travelFar && myTravelOk(match, user?.id || '') !== true && (
+            <div className="da-warn">
+              <strong>Same country, but far</strong>
+              <p>
+                {other?.name || 'They'} {other?.city ? `are in ${other.city}` : 'live in another city'}
+                {typeof match.distanceKm === 'number' ? ` (~${match.distanceKm} km)` : ''}.
+                Can you make it to meet{match.meetingCity ? ` around ${match.meetingCity}` : ''}?
+              </p>
+              <div className="da-row" style={{ marginTop: 8 }}>
+                <button type="button" className="da-btn da-btn-primary" disabled={loading} onClick={() => void confirmTravel(true)}>
+                  I can make it
+                </button>
+                <button type="button" className="da-btn da-btn-ghost" disabled={loading} onClick={() => void confirmTravel(false)}>
+                  Too far for me
+                </button>
+              </div>
+            </div>
+          )}
+          {match.travelFar && myTravelOk(match, user?.id || '') === true && (
+            <p className="da-ok">You said you can make the trip. Waiting on them if they also need to confirm.</p>
+          )}
           {theyAccepted(match, user?.id || '') && !iAccepted(match, user?.id || '') && (
-            <p className="da-ok">They already accepted — pick your free times, then tap Accept date. Next you roll “?” for the actual date plan.</p>
+            <p className="da-ok">They already accepted — pick your free times, then tap Accept date. Next you pick a crazy fun local plan.</p>
           )}
           <h3 style={{ fontSize: 14, marginTop: 16 }}>When are you free?</h3>
           <p className="da-sub">Both of you pick times. If one overlaps, that becomes the date window.</p>
@@ -466,7 +518,18 @@ export default function DateMatchWidget({
           {match.agreedSlot && <p className="da-ok">Overlap found: {new Date(match.agreedSlot).toLocaleString()}</p>}
           <p className="da-sub">You accepted: {iAccepted(match, user?.id || '') ? 'yes' : 'not yet'} · They accepted: {theyAccepted(match, user?.id || '') ? 'yes' : 'not yet'}</p>
           <div className="da-row">
-            <button type="button" className="da-btn da-btn-primary" disabled={loading || mySlots(match, user?.id || '').length + pickedSlots.length === 0} onClick={() => accept(true)}>Accept date</button>
+            <button
+              type="button"
+              className="da-btn da-btn-primary"
+              disabled={
+                loading ||
+                mySlots(match, user?.id || '').length + pickedSlots.length === 0 ||
+                (Boolean(match.travelFar) && myTravelOk(match, user?.id || '') !== true)
+              }
+              onClick={() => accept(true)}
+            >
+              Accept date
+            </button>
             <button type="button" className="da-btn da-btn-ghost" onClick={() => accept(false)}>Decline</button>
           </div>
         </>
@@ -485,7 +548,7 @@ export default function DateMatchWidget({
             </div>
           </div>
           <p className="da-sub">
-            Tap any idea to lock it in, or tap ? for a random one neither of you has done. Same idea will not repeat for you.
+            Crazy fun things near {match.meetingCity || me?.city || catalog?.city || 'your city'}. Tap one to lock it in, or tap ? for a random one neither of you has done. Same idea will not repeat for you.
             {allIdeas.length ? ` ${allIdeas.length} ideas ready.` : ''}
           </p>
           <div className="da-grid da-grid-scroll">
@@ -501,7 +564,8 @@ export default function DateMatchWidget({
                 title={idea.detail}
                 onClick={() => void pickIdea(idea.id)}
               >
-                {idea.title}
+                <span className="da-tile-title">{idea.title}</span>
+                <span className="da-tile-detail">{idea.detail}</span>
               </button>
             ))}
           </div>

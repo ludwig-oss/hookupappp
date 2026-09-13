@@ -1,6 +1,14 @@
 import { mkdir, readFile, writeFile } from 'fs/promises';
 import { join } from 'path';
 import { DATE_IDEAS, LOOKING_FOR_OPTIONS, getIdeaById, validLookingFor, toDiscoverLookingFor, fromDiscoverLookingFor, type DateIdea } from '../data/dateMatchCatalog.js';
+import {
+  computeTravelGap,
+  DATE_ARENA_FAR_KM,
+  localizeIdea,
+  localizeIdeaCatalog,
+  allDateIdeaBases,
+  getAnyIdeaById,
+} from '../data/dateMatchLocalize.js';
 import { getAllUsers, getUserById, updateUserProfile, unmatchUser } from './user.js';
 import { getUserPreference, setUserPreference } from './discover.js';
 import { isSseConnected } from '../realtime/notifications.js';
@@ -65,6 +73,13 @@ export interface DateMatch {
   cancelProofUrl: string | null;
   finePaidTo: string | null;
   fineEur: number;
+  /** Same-country distance between the pair (km), when known. */
+  distanceKm?: number | null;
+  sameCity?: boolean;
+  travelFar?: boolean;
+  meetingCity?: string | null;
+  user1TravelOk?: boolean | null;
+  user2TravelOk?: boolean | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -215,16 +230,29 @@ async function writeLawyer(list: LawyerSession[]): Promise<void> {
   await writeJson(LAWYER_PATH, list);
 }
 
-export function catalog() {
+export function catalog(city?: string | null, country?: string | null) {
+  const ideas = localizeIdeaCatalog(DATE_IDEAS, city, country);
   return {
     lookingFor: LOOKING_FOR_OPTIONS,
-    ideas: DATE_IDEAS,
-    hobbyCount: DATE_IDEAS.filter((d) => d.category === 'hobby').length,
-    goodDeedCount: DATE_IDEAS.filter((d) => d.category === 'good_deed').length,
-    dateCount: DATE_IDEAS.filter((d) => d.category === 'date').length,
+    ideas,
+    hobbyCount: ideas.filter((d) => d.category === 'hobby').length,
+    goodDeedCount: ideas.filter((d) => d.category === 'good_deed').length,
+    dateCount: ideas.filter((d) => d.category === 'date').length,
     freeSearchesPerMonth: FREE_SEARCHES_PER_MONTH,
     cancellationFineEur: CANCELLATION_FINE_EUR,
+    farKm: DATE_ARENA_FAR_KM,
+    city: city || null,
+    country: country || null,
   };
+}
+
+export async function catalogForUser(userId: string) {
+  const u = await getUserById(userId);
+  return catalog(u?.city, u?.country);
+}
+
+function ideaPool(): DateIdea[] {
+  return allDateIdeaBases(DATE_IDEAS);
 }
 
 export async function getSavedLookingFor(userId: string): Promise<string[]> {
@@ -588,6 +616,11 @@ export async function startSearch(
     pickIsSim = false;
   }
   const bothOnline = (isSseConnected(userId) && isSseConnected(pick.entry.userId)) || pickIsSim;
+  const otherUser = await getUserById(pick.entry.userId);
+  const travel = computeTravelGap(meUser, otherUser || {});
+  if (!travel.sameCountry) {
+    throw new Error('Date Arena only matches people in your country.');
+  }
   const now = new Date().toISOString();
   const match: DateMatch = {
     id: nid(),
@@ -617,6 +650,12 @@ export async function startSearch(
     cancelProofUrl: null,
     finePaidTo: null,
     fineEur: 0,
+    distanceKm: travel.distanceKm,
+    sameCity: travel.sameCity,
+    travelFar: travel.travelFar,
+    meetingCity: travel.meetingCity,
+    user1TravelOk: travel.travelFar ? null : true,
+    user2TravelOk: travel.travelFar ? null : true,
     createdAt: now,
     updatedAt: now,
   };
@@ -718,6 +757,13 @@ export async function respondMatch(userId: string, matchId: string, accept: bool
     return m;
   }
 
+  if (m.travelFar) {
+    const ok = m.userId1 === userId ? m.user1TravelOk : m.user2TravelOk;
+    if (ok !== true) {
+      throw new Error('They are far in your country — tap “I can make it” first, or say it is too far.');
+    }
+  }
+
   if (m.userId1 === userId) m.user1Accepted = true;
   else m.user2Accepted = true;
   m.updatedAt = new Date().toISOString();
@@ -729,12 +775,44 @@ export async function respondMatch(userId: string, matchId: string, accept: bool
   return m;
 }
 
+/** Same-country but far: each person confirms they can travel, or declines as too far. */
+export async function setTravelOk(userId: string, matchId: string, canMakeIt: boolean): Promise<DateMatch> {
+  const matches = await readMatches();
+  const m = matches.find((x) => x.id === matchId);
+  if (!m || (m.userId1 !== userId && m.userId2 !== userId)) throw new Error('Match not found');
+  if (!['pending', 'awaiting_accept', 'proposed'].includes(m.status)) {
+    throw new Error('This match is no longer waiting');
+  }
+  if (!canMakeIt) {
+    m.status = 'declined';
+    m.cancelReason = 'Too far to make the date';
+    m.cancelledBy = userId;
+    m.updatedAt = new Date().toISOString();
+    await writeMatches(matches);
+    return m;
+  }
+  if (m.userId1 === userId) m.user1TravelOk = true;
+  else m.user2TravelOk = true;
+  m.updatedAt = new Date().toISOString();
+  await writeMatches(matches);
+  return m;
+}
+
 function unusedIdeasForPair(used: UsedIdea[], userId1: string, userId2: string): DateIdea[] {
   const usedIds = new Set(
     used.filter((u) => u.userId === userId1 || u.userId === userId2).map((u) => u.ideaId)
   );
-  const pool = DATE_IDEAS.filter((d) => !usedIds.has(d.id));
-  return pool.length ? pool : DATE_IDEAS;
+  const pool = ideaPool().filter((d) => !usedIds.has(d.id));
+  return pool.length ? pool : ideaPool();
+}
+
+async function localizeForMatch(m: DateMatch, idea: DateIdea): Promise<DateIdea> {
+  const u1 = await getUserById(m.userId1);
+  const u2 = await getUserById(m.userId2);
+  const city = m.meetingCity || u1?.city || u2?.city || null;
+  const country = u1?.country || u2?.country || null;
+  const alt = u1?.city && u2?.city && normPlace(u1.city) !== normPlace(u2.city) ? u2.city : null;
+  return localizeIdea(idea, city, country, alt);
 }
 
 async function applyIdeaToMatch(m: DateMatch, idea: DateIdea): Promise<DateMatch> {
@@ -743,11 +821,12 @@ async function applyIdeaToMatch(m: DateMatch, idea: DateIdea): Promise<DateMatch
   if (!row) throw new Error('Match not found');
   if (row.ideaId) return row;
 
+  const localized = await localizeForMatch(row, idea);
   const used = await readUsed();
-  row.ideaId = idea.id;
-  row.ideaTitle = idea.title;
-  row.ideaDetail = idea.detail;
-  row.ideaCategory = idea.category;
+  row.ideaId = localized.id;
+  row.ideaTitle = localized.title;
+  row.ideaDetail = localized.detail;
+  row.ideaCategory = localized.category;
   row.status = 'scheduled';
   const slot = row.agreedSlot || row.user1FreeSlots[0] || row.user2FreeSlots[0];
   const when = slot ? new Date(slot) : new Date(Date.now() + 48 * 60 * 60 * 1000);
@@ -757,8 +836,8 @@ async function applyIdeaToMatch(m: DateMatch, idea: DateIdea): Promise<DateMatch
     row.scheduledAt = when.toISOString();
   }
   row.updatedAt = new Date().toISOString();
-  used.push({ userId: row.userId1, ideaId: idea.id, usedAt: row.updatedAt });
-  used.push({ userId: row.userId2, ideaId: idea.id, usedAt: row.updatedAt });
+  used.push({ userId: row.userId1, ideaId: localized.id, usedAt: row.updatedAt });
+  used.push({ userId: row.userId2, ideaId: localized.id, usedAt: row.updatedAt });
   await writeUsed(used);
   await writeMatches(matches);
 
@@ -770,7 +849,7 @@ async function applyIdeaToMatch(m: DateMatch, idea: DateIdea): Promise<DateMatch
   await ensureMatchConversation(
     row.userId1,
     row.userId2,
-    `Date Arena: you're set up for “${idea.title}” on ${dateLabel}. Chat unlocks that day — show up.`
+    `Date Arena: you're set up for “${localized.title}” on ${dateLabel}. Chat unlocks that day — show up.`
   );
   return row;
 }
@@ -795,12 +874,12 @@ export async function selectDateIdea(userId: string, matchId: string, ideaId: st
   if (m.status !== 'picking_idea' && m.status !== 'scheduled') throw new Error('Accept the match first');
   if (m.ideaId) return m;
 
-  const idea = getIdeaById(ideaId);
+  const idea = getAnyIdeaById(ideaId, ideaPool()) || getIdeaById(ideaId);
   if (!idea) throw new Error('Unknown date idea');
 
   const used = await readUsed();
   const pool = unusedIdeasForPair(used, m.userId1, m.userId2);
-  const allowed = pool.some((d) => d.id === idea.id) || pool.length === DATE_IDEAS.length;
+  const allowed = pool.some((d) => d.id === idea.id) || pool.length === ideaPool().length;
   if (!allowed) throw new Error('That idea was already used — pick another or tap ?');
 
   return applyIdeaToMatch(m, idea);
@@ -1298,10 +1377,13 @@ export async function maybeAutoArenaDateForBuildingMan(userId: string): Promise<
     if (!young && !mature) return false;
     if (u.relationshipStatus === 'In a relationship') return false;
     if ((u.blockedUsers || []).includes(userId)) return false;
+    // Date Arena: never auto-pair across countries
+    if (!locationFitsDateSearch('country', me, u)) return false;
     return true;
   });
   if (!band.length) return null;
   const other = band[Math.floor(Math.random() * band.length)];
+  const travel = computeTravelGap(me, other);
 
   const m: DateMatch = {
     id: nid(),
@@ -1331,6 +1413,12 @@ export async function maybeAutoArenaDateForBuildingMan(userId: string): Promise<
     cancelProofUrl: null,
     finePaidTo: null,
     fineEur: 0,
+    distanceKm: travel.distanceKm,
+    sameCity: travel.sameCity,
+    travelFar: travel.travelFar,
+    meetingCity: travel.meetingCity,
+    user1TravelOk: travel.travelFar ? null : true,
+    user2TravelOk: travel.travelFar ? null : true,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };

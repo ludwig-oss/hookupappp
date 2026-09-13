@@ -271,37 +271,60 @@
 }
 
 .da-grid {
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  gap: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
 .da-grid-scroll {
-  max-height: min(52vh, 420px);
+  max-height: min(62vh, 560px);
   overflow-y: auto;
-  padding-right: 4px;
+  overflow-x: hidden;
+  padding-right: 6px;
   scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
 }
 
 .da-tile {
-  aspect-ratio: 1;
-  border-radius: 6px;
+  aspect-ratio: auto;
+  min-height: 0;
+  border-radius: 12px;
   background: #1f2430;
-  overflow: hidden;
+  overflow: visible;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 9px;
-  color: #d1d5db;
-  text-align: center;
-  padding: 3px;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
+  font-size: 14px;
+  color: #e5e7eb;
+  text-align: left;
+  padding: 12px 14px;
   border: 1px solid #2a3140;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .da-tile-pick {
   cursor: pointer;
   font: inherit;
-  line-height: 1.15;
+  line-height: 1.35;
+  gap: 6px;
+}
+
+.da-tile-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: 0.02em;
+}
+
+.da-tile-detail {
+  font-size: 12px;
+  color: #c4b8c8;
+  line-height: 1.45;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .da-tile-pick:hover:not(:disabled) {
@@ -323,6 +346,10 @@
   cursor: pointer;
   border: 2px solid #facc15;
   animation: da-pulse 1.4s ease-in-out infinite;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  min-height: 64px;
 }
 
 @keyframes da-pulse {
@@ -385,6 +412,6 @@
 @media (max-width: 700px) {
   .da-vs { grid-template-columns: 1fr; }
   .da-mid { flex-direction: row; min-height: auto; padding: 8px 0; }
-  .da-grid { grid-template-columns: repeat(4, 1fr); }
+  .da-grid { flex-direction: column; }
   .da-vs::before { font-size: 140px; }
 }

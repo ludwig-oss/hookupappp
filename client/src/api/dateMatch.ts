@@ -67,6 +67,12 @@ export interface DateMatch {
   cancelProofUrl: string | null;
   finePaidTo: string | null;
   fineEur: number;
+  distanceKm?: number | null;
+  sameCity?: boolean;
+  travelFar?: boolean;
+  meetingCity?: string | null;
+  user1TravelOk?: boolean | null;
+  user2TravelOk?: boolean | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -119,6 +125,9 @@ export interface DateMatchCatalog {
   dateCount: number;
   freeSearchesPerMonth: number;
   cancellationFineEur: number;
+  farKm?: number;
+  city?: string | null;
+  country?: string | null;
   savedLookingFor?: string[];
   quota: {
     used: number;
@@ -186,6 +195,10 @@ export const dateMatchAPI = {
   },
   respond: async (matchId: string, accept: boolean) => {
     const { data } = await axios.post(`${API_URL}/respond`, { matchId, accept });
+    return data as { match: DateMatch };
+  },
+  travelOk: async (matchId: string, canMakeIt: boolean) => {
+    const { data } = await axios.post(`${API_URL}/travel-ok`, { matchId, canMakeIt });
     return data as { match: DateMatch };
   },
   spin: async (matchId: string) => {

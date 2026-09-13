@@ -169,32 +169,58 @@ export const getFeed = async (req: AuthRequest, res: Response) => {
   try {
     const mode = parseFeedMode(req.query.mode);
     const userId = req.userId || null;
-    const posts = await getFeedPosts({ userId, mode });
-    const { attachToPosts, drawAllDue } = await import('../models/singleAgain.js');
-    await drawAllDue();
-    const withSingle = await attachToPosts(posts, userId);
-    const enrichedPosts = await enrichPostsWithUser(withSingle);
-    const trendingTags = posts.length ? (await import('../models/feedAlgorithm.js')).extractTrendingTags(
-      await getAllPosts()
-    ) : [];
 
-    res.json({
-      posts: enrichedPosts,
-      feedMeta: {
-        mode,
-        algorithm: 'youtube-twitter-tiktok-hybrid',
-        personalized: !!userId,
-        trendingTags,
-        description:
-          mode === 'for_you'
-            ? 'Personalized mix of trending, fresh posts, and videos you might like'
-            : mode === 'trending'
-              ? 'Twitter-style — what is rising right now'
-              : mode === 'videos'
-                ? 'TikTok-style — short videos ranked by engagement velocity'
-                : 'Creators you like, comment on, or share',
-      },
-    });
+    // Simulator: ensure Love Feed has posts before ranking (avoids empty/timeout feel)
+    try {
+      const { isSimulatorEnabled } = await import('../simulator/runtime.js');
+      if (isSimulatorEnabled()) {
+        const existing = await getAllPosts();
+        if (existing.length < 8) {
+          const { seedSimulatorSocialContent } = await import('../simulator/contentSeed.js');
+          await Promise.race([
+            seedSimulatorSocialContent(),
+            new Promise((r) => setTimeout(r, 4000)),
+          ]);
+        }
+      }
+    } catch {
+      /* optional */
+    }
+
+    const posts = await getFeedPosts({ userId, mode });
+    try {
+      const { drawAllDue, attachToPosts } = await import('../models/singleAgain.js');
+      await Promise.race([drawAllDue(), new Promise((r) => setTimeout(r, 1500))]);
+      const withSingle = await attachToPosts(posts, userId);
+      const enrichedPosts = await enrichPostsWithUser(withSingle);
+      const trendingTags = posts.length
+        ? (await import('../models/feedAlgorithm.js')).extractTrendingTags(posts)
+        : [];
+      return res.json({
+        posts: enrichedPosts,
+        feedMeta: {
+          mode,
+          algorithm: 'youtube-twitter-tiktok-hybrid',
+          personalized: !!userId,
+          trendingTags,
+          description:
+            mode === 'for_you'
+              ? 'Personalized mix of trending, fresh posts, and videos you might like'
+              : mode === 'trending'
+                ? 'Twitter-style — what is rising right now'
+                : mode === 'videos'
+                  ? 'TikTok-style — short videos ranked by engagement velocity'
+                  : 'Creators you like, comment on, or share',
+        },
+      });
+    } catch (inner) {
+      console.warn('Feed enrich fallback:', inner);
+      const enrichedPosts = await enrichPostsWithUser(posts);
+      return res.json({
+        posts: enrichedPosts,
+        feedMeta: { mode, personalized: !!userId, trendingTags: [] },
+      });
+    }
   } catch (error) {
     console.error('Get feed error:', error);
     res.json({ posts: [], feedMeta: { mode: 'for_you', personalized: false, trendingTags: [] } });
@@ -248,6 +274,12 @@ export const shareDatingPost = async (req: Request, res: Response) => {
     await sharePost(postId);
     const post = await getPostById(postId);
     if (post && userId) await recordFeedShare(userId, post);
+    try {
+      const { scheduleMockFeedReaction } = await import('../simulator/contentSeed.js');
+      scheduleMockFeedReaction(postId, 'share', userId);
+    } catch {
+      /* optional */
+    }
     res.json({ message: 'Post shared' });
   } catch (error) {
     console.error('Share post error:', error);
@@ -306,6 +338,12 @@ export const likeDatingPost = async (req: Request, res: Response) => {
         data: { type: 'new_like', postId, fromUserId: userId },
       }, 'likes').catch(() => {});
     }
+    try {
+      const { scheduleMockFeedReaction } = await import('../simulator/contentSeed.js');
+      scheduleMockFeedReaction(postId, 'like', userId);
+    } catch {
+      /* optional */
+    }
     res.json({ message: 'Post liked' });
   } catch (error) {
     console.error('Like post error:', error);
@@ -356,6 +394,17 @@ export const commentOnPost = async (req: Request, res: Response) => {
         body: `${userName} commented on your post`,
         data: { type: 'new_comment', postId, fromUserId: userId },
       }, 'likes').catch(() => {});
+    }
+
+    const newest = post?.comments?.[post.comments.length - 1];
+    try {
+      const { scheduleMockFeedReaction } = await import('../simulator/contentSeed.js');
+      scheduleMockFeedReaction(postId, 'comment', userId, {
+        commentId: newest?.id,
+        commenterName: userName,
+      });
+    } catch {
+      /* optional */
     }
 
     res.json({ message: 'Comment added' });

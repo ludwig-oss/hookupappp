@@ -6,7 +6,7 @@ const API_URL = API_BASE + '/api/posts';
 const WRITE_API_URL = `${MEDIA_API_BASE || API_BASE}/api/posts`;
 
 /** Feed can wait on cold Render wake-up; avoid infinite "Loading feed…" */
-const FEED_TIMEOUT_MS = 25_000;
+const FEED_TIMEOUT_MS = 45_000;
 
 function getAuthHeaders(): Record<string, string> {
   const token = getAuthToken();

@@ -334,8 +334,25 @@ export default function LoveFeedWidget({ onShareToFriends }: { onShareToFriends?
     if (!quiet) setLoading(true);
     try {
       const [feedRes, recRes] = await Promise.all([
-        postsAPI.getFeed(mode),
-        mode === 'for_you' ? postsAPI.getRecommendations().catch(() => ({ recommendations: [], trendingTags: [] })) : Promise.resolve({ recommendations: [], trendingTags: [] }),
+        postsAPI.getFeed(mode).catch(async (err) => {
+          // Fallback: plain posts list if ranked feed times out
+          const plain = await postsAPI.getPosts().catch(() => ({ posts: [] as DatingPost[] }));
+          if (plain.posts?.length) {
+            return {
+              posts: plain.posts,
+              feedMeta: {
+                mode,
+                personalized: false,
+                trendingTags: [] as string[],
+                description: 'Showing latest posts (feed ranked view timed out).',
+              },
+            };
+          }
+          throw err;
+        }),
+        mode === 'for_you'
+          ? postsAPI.getRecommendations().catch(() => ({ recommendations: [], trendingTags: [] }))
+          : Promise.resolve({ recommendations: [], trendingTags: [] }),
       ]);
       setPosts(Array.isArray(feedRes.posts) ? feedRes.posts : []);
       setRecommendations(recRes.recommendations || []);
@@ -348,6 +365,12 @@ export default function LoveFeedWidget({ onShareToFriends }: { onShareToFriends?
     } finally {
       if (!quiet) setLoading(false);
     }
+  };
+
+  /** Mocks reply a beat later — refresh so likes / replies / shares show up. */
+  const refreshAfterMockEngage = () => {
+    window.setTimeout(() => void loadFeed(feedMode, true), 1800);
+    window.setTimeout(() => void loadFeed(feedMode, true), 4200);
   };
 
   const trackPostView = useCallback((postId: string) => {
@@ -439,6 +462,7 @@ export default function LoveFeedWidget({ onShareToFriends }: { onShareToFriends?
     setRecommendations((prev) => prev.map((p) => (p.id === postId ? { ...p, likes: (p.likes || 0) + 1 } : p)));
     try {
       await postsAPI.likePost(postId);
+      refreshAfterMockEngage();
     } catch (err: unknown) {
       setPosts((prev) => prev.map((p) => (p.id === postId ? { ...p, likes: Math.max(0, (p.likes || 0) - 1) } : p)));
       setRecommendations((prev) => prev.map((p) => (p.id === postId ? { ...p, likes: Math.max(0, (p.likes || 0) - 1) } : p)));
@@ -457,6 +481,7 @@ export default function LoveFeedWidget({ onShareToFriends }: { onShareToFriends?
       setReplyTarget((prev) => ({ ...prev, [postId]: null }));
       setExpandedComments(postId);
       await loadFeed(feedMode, true);
+      refreshAfterMockEngage();
     } catch (err: unknown) {
       alert(formatAxiosError(err, 'Could not post your comment.'));
     }
@@ -467,6 +492,7 @@ export default function LoveFeedWidget({ onShareToFriends }: { onShareToFriends?
     try {
       await postsAPI.sharePost(post.id);
       await loadFeed(feedMode, true);
+      refreshAfterMockEngage();
       onShareToFriends?.(post);
     } catch (err: unknown) {
       alert(formatAxiosError(err, 'Could not share this post.'));

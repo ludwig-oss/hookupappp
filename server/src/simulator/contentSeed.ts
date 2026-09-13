@@ -305,7 +305,9 @@ async function seedLoveFeed(): Promise<void> {
 
   const posts = await getAllPosts();
   const simPosts = posts.filter((p) => isSimulatorUserId(p.userId));
-  if (simPosts.length >= 6) return;
+  if (simPosts.length >= 8) return;
+
+  const { sharePost } = await import('../models/posts.js');
 
   for (let i = 0; i < FEED_POSTS.length; i++) {
     const author = mocks[i % mocks.length];
@@ -322,6 +324,10 @@ async function seedLoveFeed(): Promise<void> {
     const likeTimes = i % 3 === 0 ? 28 : 8 + (i % 10);
     for (let L = 0; L < likeTimes; L++) {
       await likePost(post.id).catch(() => {});
+    }
+    const shareTimes = i % 2 === 0 ? 5 + (i % 4) : 1 + (i % 3);
+    for (let S = 0; S < shareTimes; S++) {
+      await sharePost(post.id).catch(() => {});
     }
     const commenters = mocks.filter((m) => m.id !== author.id).slice(0, 2 + (i % 2));
     for (let c = 0; c < commenters.length; c++) {
@@ -401,7 +407,11 @@ export async function mockEngageLoveFeedOnce(): Promise<void> {
     const post = pick(posts.slice(0, 12));
     const actor = pick(mocks);
     if (Math.random() < 0.6) await likePost(post.id).catch(() => {});
-    if (Math.random() < 0.35) {
+    if (Math.random() < 0.45) {
+      const { sharePost } = await import('../models/posts.js');
+      await sharePost(post.id).catch(() => {});
+    }
+    if (Math.random() < 0.4) {
       await addComment(post.id, {
         userId: actor.id,
         userName: actor.name,
@@ -411,4 +421,86 @@ export async function mockEngageLoveFeedOnce(): Promise<void> {
   } catch {
     /* ignore */
   }
+}
+
+const COMMENT_REPLIES = [
+  'This. Hard agree.',
+  'Needed this reminder today.',
+  'Facts — say it louder.',
+  'Been there. Glad someone posted it.',
+  'Bookmarking this for later.',
+  'Real talk. Appreciate you sharing.',
+];
+
+/**
+ * When a real user likes / comments / shares, mocks react so engagement is visible in simulator.
+ */
+export function scheduleMockFeedReaction(
+  postId: string,
+  kind: 'like' | 'comment' | 'share',
+  fromUserId: string,
+  opts?: { commentId?: string; commenterName?: string }
+): void {
+  if (!isSimulatorEnabled()) return;
+  if (isSimulatorUserId(fromUserId)) return;
+
+  void (async () => {
+    try {
+      await delay(500 + Math.random() * 1200);
+      const mocks = getSimulatorUsers().filter((m) => m.id !== fromUserId);
+      if (!mocks.length) return;
+      const { sharePost } = await import('../models/posts.js');
+
+      if (kind === 'like') {
+        const likeCount = 2 + Math.floor(Math.random() * 3);
+        for (let i = 0; i < likeCount; i++) {
+          await likePost(postId).catch(() => {});
+          await delay(120);
+        }
+        if (Math.random() < 0.5) {
+          const c = pick(mocks);
+          await addComment(postId, {
+            userId: c.id,
+            userName: c.name,
+            content: pick(FEED_COMMENTS),
+          }).catch(() => {});
+        }
+        return;
+      }
+
+      if (kind === 'share') {
+        for (const m of mocks.slice(0, 3)) {
+          await sharePost(postId).catch(() => {});
+          await likePost(postId).catch(() => {});
+          await delay(80);
+        }
+        const c = pick(mocks);
+        await addComment(postId, {
+          userId: c.id,
+          userName: c.name,
+          content: 'Sharing this — more people need to see it.',
+        }).catch(() => {});
+        return;
+      }
+
+      // comment: mocks like the post + reply under the user's comment
+      await likePost(postId).catch(() => {});
+      const repliers = mocks.slice(0, 2 + Math.floor(Math.random() * 2));
+      for (let i = 0; i < repliers.length; i++) {
+        await delay(400 + i * 500);
+        const m = repliers[i];
+        await addComment(postId, {
+          userId: m.id,
+          userName: m.name,
+          content: pick(COMMENT_REPLIES),
+          replyToId: opts?.commentId || null,
+          replyToUserName: opts?.commenterName || null,
+        }).catch(() => {});
+        if (Math.random() < 0.6) await likePost(postId).catch(() => {});
+        if (Math.random() < 0.35) await sharePost(postId).catch(() => {});
+      }
+    } catch {
+      /* ignore */
+    }
+  })();
 }

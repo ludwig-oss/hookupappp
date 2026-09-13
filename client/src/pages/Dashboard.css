@@ -2725,20 +2725,22 @@ img.celeb-blur-img {
 
 .chat-texting-help-fab {
   position: absolute;
-  right: 10px;
-  bottom: 86px;
+  right: 12px;
+  bottom: 92px;
   z-index: 6;
   width: 38px;
   height: 38px;
   border-radius: 50%;
   border: 1px solid rgba(0, 212, 255, 0.7);
-  background: rgba(8, 16, 32, 0.9);
+  background: rgba(8, 16, 32, 0.95);
   color: #7dd3fc;
   cursor: pointer;
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.04em;
   box-shadow: 0 0 14px rgba(0, 212, 255, 0.35);
+  /* Keep clear of the Host card / message list */
+  pointer-events: auto;
 }
 .chat-texting-help-fab:hover { background: rgba(0, 212, 255, 0.2); }
 
@@ -3086,6 +3088,8 @@ img.celeb-blur-img {
 .chat-connection-journey-wrap {
   margin-top: 12px;
   padding: 0 4px;
+  overflow: hidden;
+  max-width: 100%;
 }
 .chat-connection-journey-loading {
   padding: 12px;
@@ -3100,6 +3104,28 @@ img.celeb-blur-img {
   border: 1px solid rgba(167, 139, 250, 0.4);
   border-radius: 12px;
   text-align: center;
+  overflow: hidden;
+  position: relative;
+  isolation: isolate;
+}
+/* Accent via inset shadow so it never paints outside the card (old border-left leaked) */
+.chat-connection-journey-host[data-step='challenge'] {
+  box-shadow: inset 4px 0 0 #f59e0b;
+}
+.chat-connection-journey-host[data-step='game'] {
+  box-shadow: inset 4px 0 0 #10b981;
+}
+.chat-connection-journey-host[data-step='quiz'] {
+  box-shadow: inset 4px 0 0 #3b82f6;
+}
+.chat-connection-journey-host[data-step='gift'] {
+  box-shadow: inset 4px 0 0 #ec4899;
+}
+.chat-connection-journey-host[data-step='surprise'] {
+  box-shadow: inset 4px 0 0 #a78bfa;
+}
+.chat-connection-journey-host[data-step='deep'] {
+  box-shadow: inset 4px 0 0 #f472b6;
 }
 .chat-connection-journey-host-badge {
   display: inline-block;

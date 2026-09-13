@@ -570,7 +570,7 @@ export async function startSearch(
       const { isSimulatorEnabled } = await import('../simulator/runtime.js');
       const { pickSimulatorDatePartner } = await import('../simulator/dateArena.js');
       if (isSimulatorEnabled()) {
-        const sim = pickSimulatorDatePartner({
+        const sim = await pickSimulatorDatePartner({
           seekerId: userId,
           lookingFor: valid,
           cityScope,

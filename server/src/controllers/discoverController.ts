@@ -16,6 +16,7 @@ import { getAllUsers, getUserById } from '../models/user.js';
 import { maskUserForViewer } from '../lib/celebMask.js';
 import { sanitizeForStorage, sanitizeMessageContent, LIMITS } from '../utils/sanitize.js';
 import { ensureMatchConversation } from '../models/chat.js';
+import { areOrientationCompatible } from '../utils/orientationMatch.js';
 
 export async function getAllCities(req: Request, res: Response) {
   try {
@@ -109,9 +110,13 @@ export async function searchByCity(req: Request, res: Response) {
       const fullCityUsers = users.filter(u => userIds.includes(u.id));
       const matchingUsers = await Promise.all(
         fullCityUsers.map(async (u) => {
+          if (u.id === userId) return null;
           const otherPref = await getUserPreference(u.id);
           if (!otherPref) return null;
-          if (matchesPreference(userPref, otherPref)) {
+          const me = await getUserById(userId);
+          if (
+            matchesPreference(userPref, otherPref, me?.gender, u.gender)
+          ) {
             const base = { id: u.id, name: u.name, username: u.username, profilePicture: u.profilePicture ?? null, publicFigureVerified: !!(u.publicFigureVerified), revealToUserIds: u.revealToUserIds || [] };
             return maskUserForViewer(base, userId);
           }
@@ -348,9 +353,11 @@ export async function getPlaceUsers(req: Request, res: Response) {
     // Filter by orientation/preference
     const matchingUsers = await Promise.all(
       nearbyUsers.map(async (u) => {
+        if (u.id === userId) return null;
         const pref = await getUserPreference(u.id);
         if (!pref) return null;
-        if (matchesPreference(userPref, pref)) {
+        const me = await getUserById(userId);
+        if (matchesPreference(userPref, pref, me?.gender, u.gender)) {
           const base = { id: u.id, name: u.name, username: u.username, profilePicture: u.profilePicture ?? null, publicFigureVerified: !!(u.publicFigureVerified), revealToUserIds: u.revealToUserIds || [] };
           return { ...maskUserForViewer(base, userId), preference: pref };
         }
@@ -380,23 +387,17 @@ function haversineMeters(lat1: number, lon1: number, lat2: number, lon2: number)
   return R * c;
 }
 
-function matchesPreference(user1: any, user2: any): boolean {
-  // Match based on orientation
-  if (user1.orientation === 'straight' && user2.orientation === 'straight') {
-    return true; // Would need gender check in real app
-  }
-  if (user1.orientation === 'gay' && user2.orientation === 'gay') {
-    return true;
-  }
-  if (user1.orientation === 'lesbian' && user2.orientation === 'lesbian') {
-    return true;
-  }
-  if (user1.orientation === 'bisexual' || user2.orientation === 'bisexual') {
-    return true; // Bisexual matches with anyone
-  }
-  if (user1.orientation === 'pansexual' || user2.orientation === 'pansexual') {
-    return true; // Pansexual matches with anyone
-  }
-  return false;
+function matchesPreference(
+  user1Pref: { orientation?: string },
+  user2Pref: { orientation?: string },
+  user1Gender?: string | null,
+  user2Gender?: string | null
+): boolean {
+  return areOrientationCompatible({
+    aOrientation: user1Pref?.orientation,
+    aGender: user1Gender,
+    bOrientation: user2Pref?.orientation,
+    bGender: user2Gender,
+  });
 }
 

@@ -1,5 +1,7 @@
 import { isSimulatorEnabled, isSimulatorUserId, getSimulatorUsers } from './runtime.js';
 import type { User } from '../models/user.js';
+import { genderBucket, areOrientationCompatible } from '../utils/orientationMatch.js';
+import { getUserPreference } from '../models/discover.js';
 
 function norm(s?: string | null): string {
   return String(s || '')
@@ -16,12 +18,12 @@ function overlapLooking(a: string[], b: string[]): boolean {
  * Pick a simulator mock for Date Arena when the live queue is empty.
  * Relocates the mock into the seeker's city/country so "My city only" works in local tests.
  */
-export function pickSimulatorDatePartner(params: {
+export async function pickSimulatorDatePartner(params: {
   seekerId: string;
   lookingFor: string[];
   cityScope: 'city' | 'country';
   seeker: Pick<User, 'city' | 'country' | 'gender' | 'blockedUsers' | 'unmatchedUsers'>;
-}): User | null {
+}): Promise<User | null> {
   if (!isSimulatorEnabled()) return null;
   const mocks = getSimulatorUsers().filter((m) => m.id !== params.seekerId && !isSimulatorUserId(params.seekerId));
   if (!mocks.length) return null;
@@ -31,25 +33,38 @@ export function pickSimulatorDatePartner(params: {
     ...(params.seeker.unmatchedUsers || []),
   ]);
 
-  const country = norm(params.seeker.country) || 'germany';
-  const city = norm(params.seeker.city) || 'berlin';
+  const seekerPref = await getUserPreference(params.seekerId);
+  const orientation = seekerPref?.orientation || 'straight';
 
-  const pool = mocks.filter((m) => {
-    if (blocked.has(m.id)) return false;
-    if ((m.blockedUsers || []).includes(params.seekerId)) return false;
+  const pool: typeof mocks = [];
+  for (const m of mocks) {
+    if (blocked.has(m.id)) continue;
+    if ((m.blockedUsers || []).includes(params.seekerId)) continue;
     const looking = (m as { dateLookingFor?: string[] }).dateLookingFor || [];
-    return overlapLooking(params.lookingFor, looking);
-  });
+    if (!overlapLooking(params.lookingFor, looking)) continue;
+    const mockPref = await getUserPreference(m.id);
+    if (
+      !areOrientationCompatible({
+        aOrientation: orientation,
+        aGender: params.seeker.gender,
+        bOrientation: mockPref?.orientation || 'straight',
+        bGender: m.gender,
+      })
+    ) {
+      continue;
+    }
+    pool.push(m);
+  }
 
   if (!pool.length) return null;
 
-  // Prefer opposite gender when seeker gender is known (straight-ish default for testing)
-  const g = norm(params.seeker.gender);
+  // Prefer opposite gender first for straight seekers
+  const me = genderBucket(params.seeker.gender);
   let ranked = [...pool];
-  if (g.startsWith('m')) {
-    ranked.sort((a, b) => (norm(a.gender).startsWith('f') ? -1 : 1) - (norm(b.gender).startsWith('f') ? -1 : 1));
-  } else if (g.startsWith('f')) {
-    ranked.sort((a, b) => (norm(a.gender).startsWith('m') ? -1 : 1) - (norm(b.gender).startsWith('m') ? -1 : 1));
+  if (me === 'male') {
+    ranked.sort((a, b) => (genderBucket(a.gender) === 'female' ? -1 : 1) - (genderBucket(b.gender) === 'female' ? -1 : 1));
+  } else if (me === 'female') {
+    ranked.sort((a, b) => (genderBucket(a.gender) === 'male' ? -1 : 1) - (genderBucket(b.gender) === 'male' ? -1 : 1));
   }
 
   const pick = ranked[Math.floor(Math.random() * Math.min(5, ranked.length))] || ranked[0];

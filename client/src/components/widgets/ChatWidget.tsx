@@ -2406,7 +2406,10 @@ const ChatWidget = ({
                   </div>
                 </div>
               ) : (
-                <div className={`chat-connection-journey-host ${connectionJourney?.nextStep ? `chat-connection-journey-step-${connectionJourney.nextStep.type}` : ''}`}>
+                <div
+                  className="chat-connection-journey-host"
+                  data-step={connectionJourney?.nextStep?.type || ''}
+                >
                   <div className="chat-connection-journey-host-badge">✨ Host</div>
                   {connectionJourney?.nextStep && connectionJourney.hostMode === 'host_asks' && connectionJourney.phase === 'connecting' && (
                     <div className="chat-connection-journey-step-day">

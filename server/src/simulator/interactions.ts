@@ -6,6 +6,7 @@ import { createBuzz } from '../models/connections.js';
 import { getUserPreference } from '../models/discover.js';
 import { readFile, writeFile, mkdir } from 'fs/promises';
 import { join } from 'path';
+import { areOrientationCompatible, genderBucket } from '../utils/orientationMatch.js';
 
 const OPENERS = [
   'Hey! Simulator hello from {city} 👋',
@@ -49,15 +50,29 @@ async function interactOnce(): Promise<void> {
     const target = await getUserById(targetId);
     if (!target) return;
     const targetPref = await getUserPreference(targetId);
+    const viewerOrientation = targetPref?.orientation || 'straight';
 
-    // Prefer mocks whose orientation is compatible-ish with the viewer
-    let pool = mocks;
-    if (targetPref?.orientation === 'straight' && (target.gender || '').toLowerCase().startsWith('m')) {
-      pool = mocks.filter((m) => (m.gender || '').toLowerCase().startsWith('f'));
-    } else if (targetPref?.orientation === 'straight' && (target.gender || '').toLowerCase().startsWith('f')) {
-      pool = mocks.filter((m) => (m.gender || '').toLowerCase().startsWith('m'));
+    // Strict mutual orientation + gender (straight men only get women, etc.)
+    const pool: typeof mocks = [];
+    for (const m of mocks) {
+      const mockPref = await getUserPreference(m.id);
+      if (
+        areOrientationCompatible({
+          aOrientation: viewerOrientation,
+          aGender: target.gender,
+          bOrientation: mockPref?.orientation || 'straight',
+          bGender: m.gender,
+        })
+      ) {
+        pool.push(m);
+      }
     }
-    if (!pool.length) pool = mocks;
+    // Never fall back to the full mock list — that was adding same-gender chats for straight users
+    if (!pool.length) return;
+    if (genderBucket(target.gender) === 'other' && viewerOrientation === 'straight') {
+      // Straight with unset gender: do not guess — skip until profile gender is set
+      return;
+    }
 
     const actors = [...pool].sort(() => Math.random() - 0.5).slice(0, 3 + Math.floor(Math.random() * 3));
     const { splitUsersForWrite } = await import('./runtime.js');
@@ -163,6 +178,7 @@ export function startSimulatorInteractions(): void {
   if (!isSimulatorEnabled()) return;
   if (timer) return;
   console.log('🧪 Simulator interactions ON — mocks will send interest, messages, buzzes to real accounts.');
+  void purgeIncompatibleSimThreads().catch(() => {});
   void interactOnce();
   void import('./contentSeed.js').then(async ({ seedSimulatorSocialContent, mockEngageLoveFeedOnce }) => {
     await seedSimulatorSocialContent();
@@ -171,6 +187,62 @@ export function startSimulatorInteractions(): void {
     void interactOnce();
     void import('./contentSeed.js').then(({ mockEngageLoveFeedOnce }) => mockEngageLoveFeedOnce());
   }, 55_000);
+}
+
+/** Drop simulator DMs / interests that violate the real user's orientation + gender. */
+async function purgeIncompatibleSimThreads(): Promise<void> {
+  const targets = await realTargets();
+  if (!targets.length) return;
+  const dataDirCandidates = [
+    join(process.cwd(), 'server', 'data'),
+    join(process.cwd(), 'data'),
+  ];
+
+  for (const targetId of targets) {
+    const target = await getUserById(targetId);
+    if (!target) continue;
+    const targetPref = await getUserPreference(targetId);
+    const orientation = targetPref?.orientation || 'straight';
+
+    for (const dataDir of dataDirCandidates) {
+      await mkdir(dataDir, { recursive: true });
+      for (const name of ['messages.json', 'buzzes.json', 'activity-interests.json', 'interests.json'] as const) {
+        const path = join(dataDir, name);
+        try {
+          const raw = JSON.parse(await readFile(path, 'utf-8'));
+          if (!Array.isArray(raw)) continue;
+          const next = [];
+          for (const row of raw) {
+            const otherId =
+              row.fromUserId === targetId
+                ? row.toUserId
+                : row.toUserId === targetId
+                  ? row.fromUserId
+                  : null;
+            if (!otherId || !isSimulatorUserId(otherId)) {
+              next.push(row);
+              continue;
+            }
+            const other = await getUserById(otherId);
+            const otherPref = await getUserPreference(otherId);
+            const ok = areOrientationCompatible({
+              aOrientation: orientation,
+              aGender: target.gender,
+              bOrientation: otherPref?.orientation || 'straight',
+              bGender: other?.gender,
+            });
+            if (ok) next.push(row);
+          }
+          if (next.length !== raw.length) {
+            await writeFile(path, JSON.stringify(next, null, 2));
+            console.log(`🧪 Removed ${raw.length - next.length} incompatible simulator rows from ${name}`);
+          }
+        } catch {
+          /* missing ok */
+        }
+      }
+    }
+  }
 }
 
 export function stopSimulatorInteractions(): void {

@@ -143,6 +143,10 @@ export default function AiGuideStudio({
     const list = ranked.length ? ranked : guides;
     return list;
   }, [ranked, guides]);
+  const fashionCrew = useMemo(
+    () => guides.filter((g) => g.desk === 'fashion' || g.id === 'elena'),
+    [guides]
+  );
 
   const runSearch = async (raw?: string) => {
     const q = (raw ?? query).trim();
@@ -351,6 +355,11 @@ export default function AiGuideStudio({
                 setShowFashion(true);
                 setShowAppearance(false);
                 setShowIntimacy(false);
+                setSelected((prev) =>
+                  prev && (prev.desk === 'fashion' || prev.id === 'elena')
+                    ? prev
+                    : guides.find((g) => g.id === 'elena') || fashionCrew[0] || prev
+                );
               })
             }
           >
@@ -454,7 +463,13 @@ export default function AiGuideStudio({
           ) : showAppearance && featured ? (
             <AppearanceDesk guide={featured} onClose={() => setShowAppearance(false)} onSpeaking={setSpeaking} />
           ) : showFashion && featured ? (
-            <FashionDesk guide={featured} onClose={() => setShowFashion(false)} onSpeaking={setSpeaking} />
+            <FashionDesk
+              guide={featured.desk === 'fashion' || featured.id === 'elena' ? featured : fashionCrew[0] || featured}
+              stylists={fashionCrew}
+              onPickStylist={(g) => setSelected(g)}
+              onClose={() => setShowFashion(false)}
+              onSpeaking={setSpeaking}
+            />
           ) : (
             <>
           {guess && !lesson && (
@@ -567,6 +582,7 @@ export default function AiGuideStudio({
                       <b>{g.name.toUpperCase()}</b>
                       <em>{g.specialty}</em>
                       {g.lens === 'feminine' && <span className="ai-lens-tag">Feminine lens</span>}
+                      {g.desk === 'fashion' && <span className="ai-lens-tag ai-lens-fashion">Fashion desk</span>}
                     </div>
                     <img src={g.portrait} alt="" />
                   </div>

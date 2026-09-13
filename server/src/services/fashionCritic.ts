@@ -1,5 +1,6 @@
 import type { FashionLook } from '../data/fashionCatalog.js';
 import type { FashionIntent } from './fashionIntent.js';
+import type { AiGuideCharacter } from '../data/aiGuideCatalog.js';
 
 export interface FashionCriticResult {
   winner: 'A' | 'B';
@@ -49,7 +50,8 @@ export async function critiqueLooks(
   optionA: FashionLook,
   optionB: FashionLook,
   intent: FashionIntent,
-  guideFirstName: string
+  guideFirstName: string,
+  guide?: AiGuideCharacter | null
 ): Promise<FashionCriticResult> {
   const A = pack(optionA, intent);
   const B = pack(optionB, intent);
@@ -63,7 +65,11 @@ export async function critiqueLooks(
     winLook.trendNotes,
   ];
   const skip = `Skip adding extra accessories on ${winLook.title}. One signature is enough.`;
-  let line = `${guideFirstName} here. Wear ${winLook.title}. ${reasons[0]} ${skip}`;
+  const cue = guide?.charStyle?.actionCue;
+  const hook = guide?.charStyle?.catchphrases?.[0];
+  let line = cue
+    ? `${cue}\n${hook ? `${hook}. ` : ''}Wear ${winLook.title}. ${reasons[0]} ${skip}`
+    : `${guideFirstName} here. Wear ${winLook.title}. ${reasons[0]} ${skip}`;
 
   const key = process.env.OPENAI_API_KEY;
   if (key) {
@@ -80,8 +86,9 @@ export async function critiqueLooks(
           messages: [
             {
               role: 'system',
-              content:
-                'You are a dating-app fashion critic. Pick A or B. Be specific about color, event, and fit. 4 short sentences. No brand essays.',
+              content: guide?.charStyle
+                ? `You are ${guide.name}, a dating-app fashion stylist. Personality: ${guide.personality} Mindset: ${guide.charStyle.mindset} Use catchphrases when natural: ${guide.charStyle.catchphrases.join('; ')}. Start with a short *action* in asterisks, then spoken advice. Pick A or B. 4 short sentences. No brand essays. Never say you are an AI.`
+                : 'You are a dating-app fashion critic. Pick A or B. Be specific about color, event, and fit. 4 short sentences. No brand essays.',
             },
             {
               role: 'user',

@@ -1,8 +1,10 @@
 import { DATING_COACH_GUIDES } from './aiDatingCoaches.js';
 import { FEMININE_DATING_COACH_GUIDES } from './aiFeminineDatingCoaches.js';
+import { FASHION_STYLE_GUIDES } from './aiFashionGuides.js';
 
 export type AiVoiceHint = 'female' | 'male';
 export type AiGuideLens = 'feminine' | 'masculine' | 'neutral';
+export type AiGuideDesk = 'fashion' | 'appearance' | 'intimacy' | 'dating';
 
 export interface AiGuideRatings {
   directness: number;
@@ -29,6 +31,8 @@ export interface AiGuideCharacter {
   categoryIds: string[];
   /** Feminine-lens coaches help women — and men learning how women choose. */
   lens?: AiGuideLens;
+  /** Specialty desk — fashion stylists power Outfit help. */
+  desk?: AiGuideDesk;
   /** Character.AI-style cognitive / dialogue engine for this guide. */
   charStyle?: {
     actionCue: string;
@@ -163,6 +167,7 @@ export const AI_GUIDES: AiGuideCharacter[] = [
     expertise: ['fashion', 'appearances', 'skin', 'hair', 'first dates', 'presence'],
     categoryIds: ['style-fashion', 'first-date', 'body-language-dating', 'confidence-dating'],
     lens: 'feminine',
+    desk: 'fashion',
     charStyle: {
       actionCue: '*Studies your silhouette like a fitting room mirror.*',
       catchphrases: ['Look like you belong', 'One signature', 'Fit first'],
@@ -209,6 +214,7 @@ export const AI_GUIDES: AiGuideCharacter[] = [
   },
   ...DATING_COACH_GUIDES.map((g) => ({ ...g, lens: g.lens || ('masculine' as const) })),
   ...FEMININE_DATING_COACH_GUIDES,
+  ...FASHION_STYLE_GUIDES,
 ];
 
 export const AI_LESSONS: AiLesson[] = [
@@ -433,7 +439,16 @@ export const AI_LESSONS: AiLesson[] = [
       'wardrobe',
     ],
     categoryIds: ['style-fashion', 'confidence-dating'],
-    bestGuideIds: ['elena', 'sofia'],
+    bestGuideIds: [
+      'elena',
+      'wisdom-kaye',
+      'tom-ford',
+      'virgil-abloh',
+      'tan-france',
+      'tim-gunn',
+      'rachel-zoe',
+      'miuccia-prada',
+    ],
     cause: 'Ill-fitting clothes read as “I did not try,” even if you did.',
     solution: 'One well-fitting base (dark jeans or clean trousers + fitted top) and one signature (watch, jacket, color).',
     prevention: 'Take a mirror photo in daylight. If the fit pulls or bags, change it before the date.',
@@ -783,5 +798,14 @@ export function guidesForLesson(lesson: AiLesson) {
     const other = rest.filter((g) => !(g.lens === 'feminine' || g.voice.hint === 'female'));
     return [...preferred, ...fem, ...other];
   }
+  if (lesson.id === 'fashion') {
+    const fashion = rest.filter((g) => g.desk === 'fashion' || g.categoryIds.includes('style-fashion'));
+    const other = rest.filter((g) => !(g.desk === 'fashion' || g.categoryIds.includes('style-fashion')));
+    return [...preferred, ...fashion, ...other];
+  }
   return [...preferred, ...rest];
+}
+
+export function fashionGuides(): AiGuideCharacter[] {
+  return AI_GUIDES.filter((g) => g.desk === 'fashion' || g.id === 'elena');
 }

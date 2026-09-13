@@ -244,6 +244,7 @@
 .ai-lens-tag {
   display: inline-block;
   margin-top: 4px;
+  margin-right: 4px;
   font-size: 9px;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -251,6 +252,11 @@
   border: 1px solid rgba(249, 168, 212, 0.45);
   border-radius: 999px;
   padding: 2px 7px;
+}
+
+.ai-lens-fashion {
+  color: #fcd34d;
+  border-color: rgba(252, 211, 77, 0.45);
 }
 
 .ai-blocks {

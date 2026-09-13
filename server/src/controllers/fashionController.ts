@@ -71,11 +71,15 @@ async function buildStylePayload(
   }
 
   const [a, b] = pairForCompare(sourced, excludeLookIds);
-  const critic = await critiqueLooks(a, b, intent, first);
+  const critic = await critiqueLooks(a, b, intent, first, guide);
+  const cue = guide?.charStyle?.actionCue;
+  const hook = guide?.charStyle?.catchphrases?.[0];
   const ask =
-    guideId === 'elena'
-      ? `Got it — ${intent.event.replace('-', ' ')}. Two looks. Compare them full-size, then pick or shuffle.`
-      : `I heard ${intent.event.replace('-', ' ')}. Two looks. ${first} is still in this call.`;
+    cue && hook
+      ? `${cue}\n${hook}. I heard ${intent.event.replace('-', ' ')}. Two looks — compare them, then pick or shuffle.`
+      : guideId === 'elena'
+        ? `Got it — ${intent.event.replace('-', ' ')}. Two looks. Compare them full-size, then pick or shuffle.`
+        : `I heard ${intent.event.replace('-', ' ')}. Two looks. ${first} is still in this call.`;
 
   return {
     prompt,

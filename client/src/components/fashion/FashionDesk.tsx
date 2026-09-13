@@ -14,8 +14,12 @@ import { checkFaceInPhoto } from '../../lib/fashionFaceCheck';
 import { prepareAndUploadFile } from '../../lib/uploadMedia';
 import './FashionDesk.css';
 
+function stripRoleplay(text: string) {
+  return text.replace(/\*[^*]+\*/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
 function speakLine(guide: AiGuideCharacter, text: string, onStart: () => void, onEnd: () => void) {
-  void speakGuideLine(guide.voice, text, onStart, onEnd);
+  void speakGuideLine(guide.voice, stripRoleplay(text), onStart, onEnd);
 }
 
 function getSpeechCtor(): (new () => SpeechRec) | null {
@@ -107,19 +111,25 @@ function LookPane({
 
 export default function FashionDesk({
   guide,
+  stylists,
+  onPickStylist,
   onClose,
   onSpeaking,
 }: {
   guide: AiGuideCharacter;
+  stylists?: AiGuideCharacter[];
+  onPickStylist?: (g: AiGuideCharacter) => void;
   onClose: () => void;
   onSpeaking: (on: boolean) => void;
 }) {
   const { user } = useContext(AuthContext);
   const first = guide.name.split(' ')[0];
   const opener =
-    guide.id === 'elena'
-      ? 'What are we dressing for? First date, dinner, club, brunch — talk or type it.'
-      : `What do you need to wear? Tell me the event. I will help you pick. ${first} is on the call.`;
+    guide.charStyle?.actionCue && guide.charStyle.catchphrases[0]
+      ? `${guide.charStyle.catchphrases[0]}. What are we dressing for? First date, dinner, club, brunch — talk or type it.`
+      : guide.id === 'elena'
+        ? 'What are we dressing for? First date, dinner, club, brunch — talk or type it.'
+        : `What do you need to wear? Tell me the event. I will help you pick. ${first} is on the call.`;
   const [prompt, setPrompt] = useState('');
   const [busy, setBusy] = useState(false);
   const [listening, setListening] = useState(false);
@@ -150,14 +160,14 @@ export default function FashionDesk({
   const [uploadWorn, setUploadWorn] = useState(true);
   const [uploading, setUploading] = useState(false);
   const recRef = useRef<{ stop: () => void } | null>(null);
-  const asked = useRef(false);
+  const lastSpokenGuide = useRef<string | null>(null);
   const faceInputRef = useRef<HTMLInputElement>(null);
   const bodyInputRef = useRef<HTMLInputElement>(null);
   const closetInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (asked.current) return;
-    asked.current = true;
+    if (lastSpokenGuide.current === guide.id) return;
+    lastSpokenGuide.current = guide.id;
     speakLine(guide, opener, () => onSpeaking(true), () => onSpeaking(false));
   }, [guide, opener, onSpeaking]);
 
@@ -495,6 +505,23 @@ export default function FashionDesk({
           </button>
         </div>
       </div>
+
+      {stylists && stylists.length > 1 && onPickStylist && (
+        <div className="fashion-stylist-row" aria-label="Fashion stylists">
+          {stylists.map((g) => (
+            <button
+              key={g.id}
+              type="button"
+              className={`fashion-stylist${g.id === guide.id ? ' is-on' : ''}`}
+              title={`${g.name} — ${g.specialty}`}
+              onClick={() => onPickStylist(g)}
+            >
+              <img src={g.portrait} alt="" />
+              <span>{g.name.split(' ')[0]}</span>
+            </button>
+          ))}
+        </div>
+      )}
 
       <form
         className="fashion-ask"

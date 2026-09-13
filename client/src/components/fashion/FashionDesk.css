@@ -39,6 +39,44 @@
   font-weight: 600;
 }
 
+.fashion-stylist-row {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 4px 2px 12px;
+  margin-bottom: 4px;
+  scrollbar-width: thin;
+}
+
+.fashion-stylist {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  width: 64px;
+  border: 1px solid rgba(245, 158, 11, 0.25);
+  background: rgba(0, 0, 0, 0.25);
+  color: #e7c9a0;
+  border-radius: 12px;
+  padding: 6px 4px;
+  cursor: pointer;
+  font-size: 10px;
+}
+
+.fashion-stylist img {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.fashion-stylist.is-on {
+  border-color: #f59e0b;
+  box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.45);
+  color: #fff;
+}
+
 .fashion-desk-tabs button.is-on,
 .fashion-mic.is-on {
   background: #f59e0b;

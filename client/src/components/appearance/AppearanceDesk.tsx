@@ -101,23 +101,29 @@ function HairPreview({
 export default function AppearanceDesk({
   guide,
   stylists,
+  hairStylists,
   onPickStylist,
   onClose,
   onSpeaking,
+  initialTab = 'scan',
 }: {
   guide: AiGuideCharacter;
   stylists?: AiGuideCharacter[];
+  hairStylists?: AiGuideCharacter[];
   onPickStylist?: (g: AiGuideCharacter) => void;
   onClose: () => void;
   onSpeaking: (on: boolean) => void;
+  initialTab?: Tab;
 }) {
   const { user } = useContext(AuthContext);
   const first = guide.name.split(' ')[0];
   const opener =
-    guide.charStyle?.catchphrases?.[0]
-      ? `${guide.charStyle.catchphrases[0]}. Three photos: face the camera, then left, then right. Daylight. I will read skin and bone, then pick a full look. You tell me if you like it.`
-      : 'Three photos: face the camera, then left, then right. Daylight. I will read skin and bone, then pick a full look. You tell me if you like it.';
-  const [tab, setTab] = useState<Tab>('scan');
+    guide.desk === 'hair' && guide.charStyle?.catchphrases?.[0]
+      ? `${guide.charStyle.catchphrases[0]} Describe the cut — length, texture, part — or upload a reference. I sculpt it on your frontal.`
+      : guide.charStyle?.catchphrases?.[0]
+        ? `${guide.charStyle.catchphrases[0]}. Three photos: face the camera, then left, then right. Daylight. I will read skin and bone, then pick a full look. You tell me if you like it.`
+        : 'Three photos: face the camera, then left, then right. Daylight. I will read skin and bone, then pick a full look. You tell me if you like it.';
+  const [tab, setTab] = useState<Tab>(initialTab);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [occasion, setOccasion] = useState('first date dinner');
@@ -311,11 +317,13 @@ export default function AppearanceDesk({
 
   const personUrl = previews.frontal || (typeof user?.profilePicture === 'string' ? user.profilePicture : null);
   const hairList = hairCatalog.length ? hairCatalog : selectedHair ? [selectedHair] : [];
+  const rowStylists = tab === 'hair' && hairStylists && hairStylists.length > 1 ? hairStylists : stylists;
+  const deskLabel = tab === 'hair' ? `Hair desk · ${first}` : `Face & look · ${first}`;
 
   return (
     <div className="appear-desk">
       <div className="appear-bar">
-        <strong>Face & look · {first}</strong>
+        <strong>{deskLabel}</strong>
         <div className="appear-tabs">
           {(['scan', 'after', 'look', 'hair', 'compare', 'wardrobe'] as Tab[]).map((t) => (
             <button key={t} type="button" className={tab === t ? 'is-on' : ''} onClick={() => setTab(t)}>
@@ -328,15 +336,18 @@ export default function AppearanceDesk({
         </div>
       </div>
 
-      {stylists && stylists.length > 1 && onPickStylist && (
-        <div className="appear-stylist-row" aria-label="Face coaches">
-          {stylists.map((g) => (
+      {rowStylists && rowStylists.length > 1 && onPickStylist && (
+        <div className="appear-stylist-row" aria-label={tab === 'hair' ? 'Hair stylists' : 'Face coaches'}>
+          {rowStylists.map((g) => (
             <button
               key={g.id}
               type="button"
               className={`appear-stylist${g.id === guide.id ? ' is-on' : ''}`}
               title={`${g.name} — ${g.specialty}`}
-              onClick={() => onPickStylist(g)}
+              onClick={() => {
+                onPickStylist(g);
+                if (g.desk === 'hair') setTab('hair');
+              }}
             >
               <img src={g.portrait} alt="" />
               <span>{g.name.split(' ')[0]}</span>
@@ -496,7 +507,7 @@ export default function AppearanceDesk({
         <div className="appear-barber">
           <aside className="appear-barber-menu">
             <header>
-              <strong>{first.toUpperCase()} · BARBERS</strong>
+              <strong>{first.toUpperCase()} · HAIR DESK</strong>
               <span>
                 HAIRSTYLES {selectedHair ? hairList.findIndex((h) => h.id === selectedHair.id) + 1 : 0} /{' '}
                 {Math.max(hairList.length, 1)}

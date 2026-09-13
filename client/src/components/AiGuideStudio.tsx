@@ -66,6 +66,7 @@ export default function AiGuideStudio({
   const [showFashion, setShowFashion] = useState(false);
   const [showAppearance, setShowAppearance] = useState(false);
   const [showIntimacy, setShowIntimacy] = useState(false);
+  const [startOnHair, setStartOnHair] = useState(false);
   const [startOnTermAct, setStartOnTermAct] = useState(openTermAct);
   const [paywall, setPaywall] = useState<GuideHelpStatus | null>(null);
   const [helpStatus, setHelpStatus] = useState<GuideHelpStatus | null>(null);
@@ -151,6 +152,10 @@ export default function AiGuideStudio({
     () => guides.filter((g) => g.desk === 'appearance' || g.id === 'elena'),
     [guides]
   );
+  const hairCrew = useMemo(
+    () => guides.filter((g) => g.desk === 'hair' || g.id === 'elena'),
+    [guides]
+  );
 
   const runSearch = async (raw?: string) => {
     const q = (raw ?? query).trim();
@@ -167,7 +172,18 @@ export default function AiGuideStudio({
       if (r.guess?.id === 'fashion') {
         await tryHelp('fashion', () => setShowFashion(true));
       } else if (r.guess?.id === 'appearance') {
+        setStartOnHair(false);
         await tryHelp('appearance', () => setShowAppearance(true));
+      } else if (r.guess?.id === 'hair') {
+        setStartOnHair(true);
+        await tryHelp('appearance', () => {
+          setShowAppearance(true);
+          setSelected((prev) =>
+            prev && (prev.desk === 'hair' || prev.id === 'elena')
+              ? prev
+              : guides.find((g) => g.id === 'kayra-theodore') || hairCrew[0] || prev
+          );
+        });
       } else if (r.guess?.id === 'intimacy-flow' || termCue) {
         await tryHelp(termCue ? 'termact' : 'intimacy', () => {
           setStartOnTermAct(termCue);
@@ -203,9 +219,26 @@ export default function AiGuideStudio({
     }
     if (topicId === 'appearance') {
       await tryHelp('appearance', () => {
+        setStartOnHair(false);
         setShowAppearance(true);
         setShowFashion(false);
         setShowIntimacy(false);
+        setLesson(null);
+        setMiss(false);
+      });
+      return;
+    }
+    if (topicId === 'hair') {
+      await tryHelp('appearance', () => {
+        setStartOnHair(true);
+        setShowAppearance(true);
+        setShowFashion(false);
+        setShowIntimacy(false);
+        setSelected((prev) =>
+          prev && (prev.desk === 'hair' || prev.id === 'elena')
+            ? prev
+            : guides.find((g) => g.id === 'kayra-theodore') || hairCrew[0] || prev
+        );
         setLesson(null);
         setMiss(false);
       });
@@ -374,6 +407,7 @@ export default function AiGuideStudio({
             className="ai-pill ai-pill-primary"
             onClick={() =>
               void tryHelp('appearance', () => {
+                setStartOnHair(false);
                 setShowAppearance(true);
                 setShowFashion(false);
                 setShowIntimacy(false);
@@ -471,14 +505,22 @@ export default function AiGuideStudio({
             />
           ) : showAppearance && featured ? (
             <AppearanceDesk
+              key={startOnHair ? 'hair' : 'face'}
               guide={
-                featured.desk === 'appearance' || featured.id === 'elena'
+                featured.desk === 'appearance' || featured.desk === 'hair' || featured.id === 'elena'
                   ? featured
-                  : appearanceCrew[0] || featured
+                  : startOnHair
+                    ? hairCrew.find((g) => g.id === 'kayra-theodore') || hairCrew[0] || featured
+                    : appearanceCrew[0] || featured
               }
               stylists={appearanceCrew}
+              hairStylists={hairCrew}
+              initialTab={startOnHair ? 'hair' : 'scan'}
               onPickStylist={(g) => setSelected(g)}
-              onClose={() => setShowAppearance(false)}
+              onClose={() => {
+                setShowAppearance(false);
+                setStartOnHair(false);
+              }}
               onSpeaking={setSpeaking}
             />
           ) : showFashion && featured ? (
@@ -569,9 +611,18 @@ export default function AiGuideStudio({
                     Open outfit desk
                   </button>
                 )}
-                {lesson.id === 'appearance' && (
-                  <button type="button" className="ai-pill ai-pill-primary" onClick={() => void tryHelp('appearance', () => setShowAppearance(true))}>
-                    Open face desk
+                {(lesson.id === 'appearance' || lesson.id === 'hair') && (
+                  <button
+                    type="button"
+                    className="ai-pill ai-pill-primary"
+                    onClick={() =>
+                      void tryHelp('appearance', () => {
+                        setStartOnHair(lesson.id === 'hair');
+                        setShowAppearance(true);
+                      })
+                    }
+                  >
+                    {lesson.id === 'hair' ? 'Open hair desk' : 'Open face desk'}
                   </button>
                 )}
                 {(lesson.id === 'intimacy-flow' || lesson.id === 'sex-mismatch') && (
@@ -594,7 +645,15 @@ export default function AiGuideStudio({
                   key={g.id}
                   type="button"
                   className={`ai-card ${featured?.id === g.id ? 'is-on' : ''}`}
-                  onClick={() => { setSelected(g); }}
+                  onClick={() => {
+                    setSelected(g);
+                    if (g.desk === 'hair') {
+                      setStartOnHair(true);
+                      void tryHelp('appearance', () => setShowAppearance(true));
+                    } else if (g.desk === 'appearance') {
+                      setStartOnHair(false);
+                    }
+                  }}
                 >
                   <div className="ai-card-head">
                     <div>
@@ -603,6 +662,7 @@ export default function AiGuideStudio({
                       {g.lens === 'feminine' && <span className="ai-lens-tag">Feminine lens</span>}
                       {g.desk === 'fashion' && <span className="ai-lens-tag ai-lens-fashion">Fashion desk</span>}
                       {g.desk === 'appearance' && <span className="ai-lens-tag ai-lens-face">Face desk</span>}
+                      {g.desk === 'hair' && <span className="ai-lens-tag ai-lens-hair">Hair desk</span>}
                       {g.desk === 'texting' && <span className="ai-lens-tag ai-lens-text">Texting desk</span>}
                     </div>
                     <img src={g.portrait} alt="" />

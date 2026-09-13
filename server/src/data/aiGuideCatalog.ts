@@ -2,11 +2,12 @@ import { DATING_COACH_GUIDES } from './aiDatingCoaches.js';
 import { FEMININE_DATING_COACH_GUIDES } from './aiFeminineDatingCoaches.js';
 import { FASHION_STYLE_GUIDES } from './aiFashionGuides.js';
 import { APPEARANCE_FACE_GUIDES } from './aiAppearanceGuides.js';
+import { HAIR_STYLE_GUIDES } from './aiHairGuides.js';
 import { TEXTING_COACH_GUIDES } from './aiTextingGuides.js';
 
 export type AiVoiceHint = 'female' | 'male';
 export type AiGuideLens = 'feminine' | 'masculine' | 'neutral';
-export type AiGuideDesk = 'fashion' | 'appearance' | 'intimacy' | 'dating' | 'texting';
+export type AiGuideDesk = 'fashion' | 'appearance' | 'intimacy' | 'dating' | 'texting' | 'hair';
 
 export interface AiGuideRatings {
   directness: number;
@@ -219,6 +220,7 @@ export const AI_GUIDES: AiGuideCharacter[] = [
   ...FEMININE_DATING_COACH_GUIDES,
   ...FASHION_STYLE_GUIDES,
   ...APPEARANCE_FACE_GUIDES,
+  ...HAIR_STYLE_GUIDES,
   ...TEXTING_COACH_GUIDES,
 ];
 
@@ -415,7 +417,6 @@ export const AI_LESSONS: AiLesson[] = [
       'mew',
       'glow up',
       'glowup',
-      'hair',
       'blemishes',
       'dark circles',
       'profile photo',
@@ -445,6 +446,49 @@ export const AI_LESSONS: AiLesson[] = [
     solution: 'Three photos: frontal, left, right. Then a 50-step habit plan and a look Elena picks for the night.',
     prevention: 'Same light, same angles, once a month. Do not chase a different face.',
     unknown: 'The after photo is a habit preview, not surgery. Clothes and hair still do most of the first impression.',
+    demo: 'mirror',
+  },
+  {
+    id: 'hair',
+    title: 'Hair, braids & cut design',
+    aliases: [
+      'hair',
+      'hairstyle',
+      'haircut',
+      'braid',
+      'braids',
+      'box braids',
+      'cornrow',
+      'silk press',
+      'parting',
+      'edge control',
+      'edges',
+      'barber',
+      'blowout',
+      'bun',
+      'fade',
+      'locs',
+      'twist out',
+      'big chop',
+      'kayra',
+      'weave',
+      'extensions',
+    ],
+    categoryIds: ['style-fashion', 'confidence-dating'],
+    bestGuideIds: [
+      'elena',
+      'kayra-theodore',
+      'chris-appleton',
+      'vernon-francois',
+      'kim-kimble',
+      'jen-atkin',
+      'jawara-wauchope',
+      'guido-palau',
+    ],
+    cause: 'A flat, untamed cut fights your face shape and the outfit before you say hello.',
+    solution: 'Pick a hair architect, describe length/texture/part, or upload a reference — then lock the cut on your frontal.',
+    prevention: 'Match density and family to the night: protective for long wear, slick for formal, soft for dates.',
+    unknown: 'Tension that hurts is a flaw, not a flex. Soften the pull. Texture is a feature, not a bug.',
     demo: 'mirror',
   },
   {
@@ -763,7 +807,11 @@ export function interpretQuery(query: string): { topic: AiLesson; score: number 
   const words = q.split(' ');
   const fashionCue = /\b(wear|outfit|dress|clothes|fashion|wardrobe|look)\b/.test(q);
   const appearanceCue =
-    /\b(face|skin|acne|jaw|mew|glow|hair|blemish|circle|profile|looksmax|canthal|hunter eyes|softmax|hardmax|symmetry|improve my face|face rating)\b/.test(
+    /\b(face|skin|acne|jaw|mew|glow|blemish|circle|profile|looksmax|canthal|hunter eyes|softmax|hardmax|symmetry|improve my face|face rating)\b/.test(
+      q
+    );
+  const hairCue =
+    /\b(hair|braid|braids|barber|silk press|parting|edge control|cornrow|blowout|bun|fade|locs|big chop|hairstyle|haircut|weave)\b/.test(
       q
     );
   const intimacyCue =
@@ -786,6 +834,7 @@ export function interpretQuery(query: string): { topic: AiLesson; score: number 
     }
     if (fashionCue && lesson.id === 'fashion') score += 10;
     if (appearanceCue && lesson.id === 'appearance') score += 12;
+    if (hairCue && lesson.id === 'hair') score += 14;
     if (intimacyCue && lesson.id === 'intimacy-flow') score += 14;
     if (talkCue && lesson.id === 'date-talk') score += 16;
     if (textingCue && ['ghosted', 'overthinking-texts', 'low-effort-openers', 'text-to-date'].includes(lesson.id)) {
@@ -840,6 +889,11 @@ export function guidesForLesson(lesson: AiLesson) {
     const other = rest.filter((g) => g.desk !== 'appearance');
     return [...preferred, ...face, ...other];
   }
+  if (lesson.id === 'hair') {
+    const hair = rest.filter((g) => g.desk === 'hair');
+    const other = rest.filter((g) => g.desk !== 'hair');
+    return [...preferred, ...hair, ...other];
+  }
   if (
     lesson.categoryIds.includes('texting') ||
     ['ghosted', 'overthinking-texts', 'text-to-date', 'low-effort-openers'].includes(lesson.id)
@@ -857,6 +911,10 @@ export function fashionGuides(): AiGuideCharacter[] {
 
 export function appearanceGuides(): AiGuideCharacter[] {
   return AI_GUIDES.filter((g) => g.desk === 'appearance' || g.id === 'elena');
+}
+
+export function hairGuides(): AiGuideCharacter[] {
+  return AI_GUIDES.filter((g) => g.desk === 'hair' || g.id === 'elena');
 }
 
 export function textingGuides(): AiGuideCharacter[] {

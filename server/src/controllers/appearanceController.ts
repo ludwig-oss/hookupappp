@@ -220,10 +220,17 @@ export const designHairHandler = async (req: Request, res: Response) => {
     const current = (req.body?.hair as HairLook | undefined) || null;
     const designed = designHairFromPrompt(message, current);
     const guideId = String(req.body?.guideId || 'elena');
-    const first = ((getGuide(guideId) || getGuide('elena'))?.name || 'Elena').split(' ')[0];
+    const guide = getGuide(guideId) || getGuide('elena');
+    const first = (guide?.name || 'Elena').split(' ')[0];
+    const cue = guide?.charStyle?.actionCue?.trim();
+    const hook = guide?.charStyle?.catchphrases?.[0];
+    const body = hook
+      ? `${hook}. ${designed.reply}`
+      : designed.reply;
+    const reply = cue ? `${cue}\n${first}: ${body}` : `${first}: ${body}`;
     res.json({
       hair: designed.hair,
-      reply: `${first}: ${designed.reply}`,
+      reply,
     });
   } catch (error) {
     console.error('Design hair error:', error);

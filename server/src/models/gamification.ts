@@ -148,20 +148,21 @@ export async function awardPoints(userId: string, points: number, reason?: strin
     userGam = await getUserGamification(userId);
     gamification.push(userGam);
   }
-  
-  userGam.points += points;
-  userGam.level = Math.floor(userGam.points / 100) + 1;
+
+  const row = userGam;
+  row.points += points;
+  row.level = Math.floor(row.points / 100) + 1;
   
   // Check for badge eligibility
   const badges = await getAllBadges();
   badges.forEach(badge => {
-    if (userGam.points >= badge.pointsRequired && !userGam.badges.includes(badge.id)) {
-      userGam.badges.push(badge.id);
+    if (row.points >= badge.pointsRequired && !row.badges.includes(badge.id)) {
+      row.badges.push(badge.id);
     }
   });
   
   await writeGamification(gamification);
-  return userGam;
+  return row;
 }
 
 export async function updateAchievementProgress(userId: string, achievementId: string, progress: number): Promise<UserGamification> {

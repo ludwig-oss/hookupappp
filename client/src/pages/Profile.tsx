@@ -1777,7 +1777,7 @@ const Profile = () => {
                 reviewsAPI.getReviews(String(viewingUserId)),
                 reviewsAPI.getMyReviewFor(String(viewingUserId)).catch(() => ({ review: null as Review | null })),
               ]);
-              if (Array.isArray(revData.reviews) && revData.reviews.length > 0) {
+              if (Array.isArray(revData.reviews)) {
                 setReviews(revData.reviews);
               }
               setOverallRating(revData.overall ?? null);

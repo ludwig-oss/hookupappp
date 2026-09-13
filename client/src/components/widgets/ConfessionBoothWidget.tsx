@@ -44,17 +44,30 @@ function stepForSession(session: ConfessionSessionView): Step {
   return 'intro';
 }
 
-/** Deepened / veiled TTS so AI replies feel like the lattice — not a clear real voice. */
-function speakVeiled(text: string) {
+/** Speak as the chosen AI guide — keep female guides sounding female (no forced male deepen). */
+function speakAsGuide(
+  text: string,
+  voice?: { hint: 'female' | 'male'; pitch: number; rate: number } | null
+) {
   if (typeof window === 'undefined' || !window.speechSynthesis) return;
   window.speechSynthesis.cancel();
   const utter = new SpeechSynthesisUtterance(text);
-  utter.pitch = 0.55;
-  utter.rate = 0.88;
+  const hint = voice?.hint || 'female';
+  const pitch = typeof voice?.pitch === 'number' ? voice.pitch : hint === 'female' ? 1.05 : 0.9;
+  const rate = typeof voice?.rate === 'number' ? voice.rate : 0.96;
+  utter.pitch = Math.max(0.7, Math.min(1.3, pitch));
+  utter.rate = Math.max(0.8, Math.min(1.15, rate));
   const voices = window.speechSynthesis.getVoices();
-  const deep = voices.find((v) => /male|david|daniel|google uk english male/i.test(`${v.name} ${v.lang}`));
-  if (deep) utter.voice = deep;
+  const pick =
+    hint === 'female'
+      ? voices.find((v) => /female|zira|samantha|victoria|google us english female|google uk english female/i.test(`${v.name} ${v.lang}`))
+      : voices.find((v) => /male|david|daniel|google uk english male|mark/i.test(`${v.name} ${v.lang}`));
+  if (pick) utter.voice = pick;
   window.speechSynthesis.speak(utter);
+}
+
+function speakVeiled(text: string, voice?: { hint: 'female' | 'male'; pitch: number; rate: number } | null) {
+  speakAsGuide(text, voice);
 }
 
 export default function ConfessionBoothWidget() {
@@ -68,6 +81,9 @@ export default function ConfessionBoothWidget() {
   const [selectedGuide, setSelectedGuide] = useState<BlurredConfessionGuide | null>(null);
   const [aiGuides, setAiGuides] = useState<ConfessionAiGuide[]>([]);
   const [selectedAi, setSelectedAi] = useState<ConfessionAiGuide | null>(null);
+  const [aiCallOn, setAiCallOn] = useState(false);
+  const [aiListening, setAiListening] = useState(false);
+  const recognitionRef = useRef<any>(null);
   const [amountEur, setAmountEur] = useState<5 | 10>(5);
   const [appointmentAt, setAppointmentAt] = useState(defaultAppointmentValue());
   const [agreedToTerms, setAgreedToTerms] = useState(false);
@@ -144,9 +160,58 @@ export default function ConfessionBoothWidget() {
     const last = [...session.messages].reverse().find((m) => m.fromRole === 'guide');
     if (last && last.content !== lastAiSpoke.current) {
       lastAiSpoke.current = last.content;
-      speakVeiled(last.content);
+      const guideVoice =
+        selectedAi?.voice ||
+        aiGuides.find((g) => g.id === session.aiGuideId)?.voice ||
+        null;
+      speakAsGuide(last.content, guideVoice);
     }
-  }, [session?.messages, session?.kind, session?.status]);
+  }, [session?.messages, session?.kind, session?.status, session?.aiGuideId, selectedAi, aiGuides]);
+
+  const activeAiGuide =
+    selectedAi || aiGuides.find((g) => g.id === session?.aiGuideId) || null;
+
+  const startAiCallListen = () => {
+    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SR) {
+      setError('Voice call needs Chrome/Edge speech recognition on this device.');
+      return;
+    }
+    setAiCallOn(true);
+    setError('');
+    try {
+      recognitionRef.current?.stop?.();
+    } catch {
+      /* ignore */
+    }
+    const rec = new SR();
+    recognitionRef.current = rec;
+    rec.continuous = false;
+    rec.interimResults = false;
+    rec.lang = 'en-US';
+    rec.onstart = () => setAiListening(true);
+    rec.onend = () => setAiListening(false);
+    rec.onerror = () => setAiListening(false);
+    rec.onresult = (ev: any) => {
+      const said = String(ev.results?.[0]?.[0]?.transcript || '').trim();
+      if (said) {
+        setMessage(said);
+        void handleSendText(said);
+      }
+    };
+    rec.start();
+  };
+
+  const stopAiCall = () => {
+    setAiCallOn(false);
+    setAiListening(false);
+    try {
+      recognitionRef.current?.stop?.();
+    } catch {
+      /* ignore */
+    }
+    window.speechSynthesis?.cancel?.();
+  };
 
   const loadGuides = async (scope: GuideScope) => {
     setLoading(true);
@@ -248,14 +313,19 @@ export default function ConfessionBoothWidget() {
     }
   };
 
-  const handleSend = async () => {
-    if (!session || !message.trim()) return;
+  const handleSend = async (overrideText?: string) => {
+    if (!session) return;
+    const text = (overrideText ?? message).trim();
+    if (!text) return;
     setLoading(true);
     setError('');
     try {
-      const res = await confessionAPI.sendMessage(session.id, message.trim());
+      const res = await confessionAPI.sendMessage(session.id, text);
       setSession(res.session);
       setMessage('');
+      if (aiCallOn) {
+        window.setTimeout(() => startAiCallListen(), 600);
+      }
     } catch (e: unknown) {
       const err = e as { response?: { data?: { blocked?: boolean; error?: string } } };
       if (err.response?.data?.blocked) {
@@ -267,6 +337,8 @@ export default function ConfessionBoothWidget() {
       setLoading(false);
     }
   };
+
+  const handleSendText = (text: string) => handleSend(text);
 
   const handleGuideToggle = async () => {
     setLoading(true);
@@ -757,9 +829,27 @@ export default function ConfessionBoothWidget() {
           </div>
 
           {isAiSession ? (
-            <p className="confession-veil-note">
-              AI replies speak through a deepened veil — private matters only. Crimes and harm are blocked.
-            </p>
+            <>
+              <p className="confession-veil-note">
+                AI replies use this guide&apos;s real voice character (women sound like women). Dating specialists use their standards-first thinking — not recycled therapy tips.
+              </p>
+              <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
+                {!aiCallOn ? (
+                  <button type="button" className="select-user-btn" onClick={startAiCallListen}>
+                    Call {activeAiGuide?.name?.split(' ')[0] || 'AI'} (like Character.AI)
+                  </button>
+                ) : (
+                  <>
+                    <button type="button" className="select-user-btn" onClick={startAiCallListen} disabled={aiListening || loading}>
+                      {aiListening ? 'Listening… speak now' : 'Tap to talk'}
+                    </button>
+                    <button type="button" className="chat-back-btn" onClick={stopAiCall}>
+                      End call
+                    </button>
+                  </>
+                )}
+              </div>
+            </>
           ) : (
             session.status === 'active' &&
             session.role && <ConfessionMaskedCall sessionId={session.id} role={session.role} />

@@ -41,14 +41,23 @@ export default function EventsWidget() {
   const userCountry = (user as any)?.country || '';
 
   useEffect(() => {
-    if (view === 'list') loadEvents();
+    // Discover tab: auto-load events for the user's city (no manual Search required)
+    if (view === 'list') {
+      if (!cityFilter.trim() && userCity) setCityFilter(userCity);
+      loadEvents();
+    }
     if (view === 'my') loadMyEvents();
-  }, [view]);
+  }, [view, userCity]);
 
   useEffect(() => {
     if (selectedEvent && view === 'detail') {
       if (selectedEvent.creatorUserId === user?.id) {
         eventsAPI.getRequests(selectedEvent.id).then((r) => setRequests(r.requests)).catch(() => setRequests([]));
+        // Poll join requests so simulator mock joins appear while testing
+        const t = setInterval(() => {
+          eventsAPI.getRequests(selectedEvent.id).then((r) => setRequests(r.requests)).catch(() => {});
+        }, 2500);
+        return () => clearInterval(t);
       }
       if (selectedEvent.canChat) {
         eventsAPI.getMessages(selectedEvent.id).then((r) => setMessages(r.messages)).catch(() => setMessages([]));
@@ -102,9 +111,16 @@ export default function EventsWidget() {
     }
     eventsAPI
       .create({ type, title, description, city, country: userCountry, startDate, startTime, endTime: '06:00' })
-      .then(() => {
-        setView('my');
-        loadMyEvents();
+      .then((r) => {
+        setView('detail');
+        if (r?.event) {
+          setSelectedEvent(r.event as Event);
+          // Host view: mock join requests arrive shortly in simulator
+          eventsAPI.getRequests(r.event.id).then((req) => setRequests(req.requests)).catch(() => {});
+        } else {
+          setView('my');
+          loadMyEvents();
+        }
       })
       .catch((err) => alert(err.response?.data?.error || 'Failed to create event'));
   };

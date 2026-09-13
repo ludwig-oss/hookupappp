@@ -53,6 +53,11 @@ export interface ConfessionAiGuide {
   tagline: string;
   portrait: string;
   personality: string;
+  thinking?: string;
+  voice?: { hint: 'female' | 'male'; pitch: number; rate: number };
+  charStyle?: { actionCue: string; catchphrases: string[]; mindset: string };
+  lens?: string;
+  desk?: string;
 }
 
 export interface ConfessionCallState {

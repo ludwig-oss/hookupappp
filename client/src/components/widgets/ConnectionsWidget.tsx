@@ -27,6 +27,7 @@ export interface PlaceCountOnly {
   venueType: string;
   location: { lat: number; lon: number };
   count: number;
+  preferenceHits?: number;
 }
 
 const PLACE_TYPES = [
@@ -71,6 +72,7 @@ const ConnectionsWidget = () => {
   const [searchPlaceLocationName, setSearchPlaceLocationName] = useState<string | null>(null);
   const [searchPlaceMostConcentrated, setSearchPlaceMostConcentrated] = useState<PlaceCountOnly | null>(null);
   const [searchPlacesLoading, setSearchPlacesLoading] = useState(false);
+  const [showPreferenceRankList, setShowPreferenceRankList] = useState(false);
   const [locationDeclined, setLocationDeclined] = useState(false);
   const [requestingLocation, setRequestingLocation] = useState(false);
   const [placeCity, setPlaceCity] = useState(() => String((user as { city?: string } | null)?.city || ''));
@@ -882,33 +884,99 @@ const ConnectionsWidget = () => {
               <div style={{ fontSize: '11px', color: '#ff00ff', fontFamily: 'Orbitron, monospace', marginBottom: '6px', textTransform: 'uppercase' }}>
                 Hottest spot — most of your preferences here
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
                 <span style={{ fontSize: '15px', fontWeight: 'bold', color: '#fff', fontFamily: 'Orbitron, monospace' }}>{searchPlaceMostConcentrated.venue}</span>
-                <span style={{ fontSize: '22px', fontWeight: 'bold', color: '#ff00ff' }}>{searchPlaceMostConcentrated.count}</span>
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ fontSize: '22px', fontWeight: 'bold', color: '#ff00ff' }}>
+                    {searchPlaceMostConcentrated.preferenceHits ?? searchPlaceMostConcentrated.count}
+                  </div>
+                  <div style={{ fontSize: 10, color: '#f9a8d4' }}>preference matches</div>
+                  <div style={{ fontSize: 10, color: '#9ca3af' }}>{searchPlaceMostConcentrated.count} people nearby</div>
+                </div>
               </div>
             </div>
           )}
           {searchPlaceResults.length > 0 && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '360px', overflowY: 'auto' }}>
-              {searchPlaceResults.map((place, idx) => (
-                <div
-                  key={idx}
-                  style={{
-                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                    padding: '14px', border: '2px solid rgba(0, 212, 255, 0.3)', borderRadius: '10px',
-                    background: 'rgba(0, 0, 0, 0.4)',
-                  }}
-                >
-                  <span style={{ fontSize: '14px', color: '#fff', fontFamily: 'Orbitron, monospace' }}>
-                    {place.venue}
-                    {place.venueType ? (
-                      <span style={{ display: 'block', fontSize: '11px', color: '#9ca3af', marginTop: 2 }}>{place.venueType}</span>
-                    ) : null}
-                  </span>
-                  <span style={{ fontSize: '20px', fontWeight: 'bold', color: '#ff00ff', minWidth: '32px', textAlign: 'right' }}>{place.count}</span>
+            <>
+              <button
+                type="button"
+                onClick={() => setShowPreferenceRankList((v) => !v)}
+                className="select-user-btn"
+                style={{
+                  width: '100%',
+                  marginBottom: 10,
+                  border: '2px solid #00d4ff',
+                  color: '#00d4ff',
+                  background: 'rgba(0,0,0,0.35)',
+                  fontFamily: 'Orbitron, monospace',
+                }}
+              >
+                {showPreferenceRankList ? 'Hide preference ranking' : 'Open preference ranking (high → low)'}
+              </button>
+              {showPreferenceRankList && (
+                <div style={{
+                  marginBottom: 12,
+                  padding: 12,
+                  borderRadius: 10,
+                  border: '1px solid rgba(0,212,255,0.35)',
+                  background: 'rgba(0,0,0,0.45)',
+                  maxHeight: 280,
+                  overflowY: 'auto',
+                }}>
+                  <p style={{ margin: '0 0 8px', fontSize: 12, color: '#00d4ff', fontFamily: 'Orbitron, monospace' }}>
+                    Where your preferences rank highest
+                  </p>
+                  {[...searchPlaceResults]
+                    .sort((a, b) => (b.preferenceHits ?? b.count) - (a.preferenceHits ?? a.count) || b.count - a.count)
+                    .map((place, idx) => (
+                      <div
+                        key={`rank-${place.venue}-${idx}`}
+                        style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          gap: 8,
+                          padding: '8px 0',
+                          borderBottom: '1px solid rgba(255,255,255,0.08)',
+                          fontFamily: 'Orbitron, monospace',
+                          fontSize: 12,
+                          color: '#e5e7eb',
+                        }}
+                      >
+                        <span>#{idx + 1} {place.venue}</span>
+                        <span style={{ color: '#ff00ff', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                          {place.preferenceHits ?? place.count} prefs · {place.count} people
+                        </span>
+                      </div>
+                    ))}
                 </div>
-              ))}
-            </div>
+              )}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '360px', overflowY: 'auto' }}>
+                {searchPlaceResults.map((place, idx) => (
+                  <div
+                    key={idx}
+                    style={{
+                      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                      padding: '14px', border: '2px solid rgba(0, 212, 255, 0.3)', borderRadius: '10px',
+                      background: 'rgba(0, 0, 0, 0.4)',
+                    }}
+                  >
+                    <span style={{ fontSize: '14px', color: '#fff', fontFamily: 'Orbitron, monospace' }}>
+                      {place.venue}
+                      {place.venueType ? (
+                        <span style={{ display: 'block', fontSize: '11px', color: '#9ca3af', marginTop: 2 }}>{place.venueType}</span>
+                      ) : null}
+                    </span>
+                    <div style={{ textAlign: 'right', minWidth: 72 }}>
+                      <div style={{ fontSize: '20px', fontWeight: 'bold', color: '#ff00ff' }}>
+                        {place.preferenceHits ?? place.count}
+                      </div>
+                      <div style={{ fontSize: 10, color: '#f9a8d4' }}>prefs</div>
+                      <div style={{ fontSize: 10, color: '#9ca3af' }}>{place.count} nearby</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
           )}
           {searchPlaceResults.length === 0 && searchPlaceLocationName && !searchPlacesLoading && (
             <p style={{ color: '#9ca3af', fontSize: '12px', fontFamily: 'Orbitron, monospace' }}>

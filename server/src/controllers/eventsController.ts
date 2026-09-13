@@ -119,6 +119,15 @@ export async function createEventHandler(req: Request, res: Response) {
       startTime,
       endTime: endTime || '06:00',
     });
+    try {
+      const { isSimulatorEnabled } = await import('../simulator/runtime.js');
+      if (isSimulatorEnabled()) {
+        const { scheduleMockEventJoinRequests } = await import('../simulator/contentSeed.js');
+        scheduleMockEventJoinRequests(event.id, city, userId);
+      }
+    } catch {
+      /* optional */
+    }
     const creator = await getUserById(userId);
     const creatorSafe = creator ? maskUserForViewer(creatorBase(creator), userId) : null;
     res.status(201).json({

@@ -108,8 +108,25 @@ async function writePrefs(list: ConfessionGuidePrefs[]): Promise<void> {
 
 export { SEEKER_SAFETY_AGREEMENT, GUIDE_NDA_AGREEMENT, AI_SEEKER_TERMS };
 
-/** AI helpers offered first for private confession support. */
-export const CONFESSION_AI_GUIDE_IDS = ['priya', 'amara', 'marcus', 'diego', 'sofia', 'elena', 'kenji', 'mei'] as const;
+/** AI helpers offered first — dating specialists + private-support guides. */
+export const CONFESSION_AI_GUIDE_IDS = [
+  'kevin-samuels',
+  'myron-gaines',
+  'corey-wayne',
+  'matthew-hussey',
+  'rollo-tomassi',
+  'esther-perel',
+  'john-gottman',
+  'jillian-turecki',
+  'priya',
+  'amara',
+  'marcus',
+  'diego',
+  'sofia',
+  'elena',
+  'kenji',
+  'mei',
+] as const;
 
 export function listConfessionAiGuides() {
   return CONFESSION_AI_GUIDE_IDS.map((id) => {
@@ -122,6 +139,11 @@ export function listConfessionAiGuides() {
       tagline: g.tagline,
       portrait: g.portrait,
       personality: g.personality,
+      thinking: g.thinking,
+      voice: g.voice,
+      charStyle: g.charStyle,
+      lens: g.lens,
+      desk: g.desk,
     };
   }).filter(Boolean);
 }
@@ -628,35 +650,60 @@ export async function addConfessionMessage(
 async function craftAiConfessionReply(session: ConfessionSession, seekerText: string): Promise<string> {
   const ai = session.aiGuideId ? getGuide(session.aiGuideId) : null;
   const first = ai?.name.split(' ')[0] || 'Helper';
-  const specialty = ai?.specialty || 'emotional support';
+  const specialty = ai?.specialty || 'dating & emotional clarity';
   const personality = ai?.personality || 'Warm, honest, and practical.';
-  const thinking = ai?.thinking || 'One clear step at a time.';
+  const thinking = ai?.thinking || 'Standards first. Clarity over coping tips.';
+  const catchphrase = ai?.charStyle?.catchphrases?.[0] || '';
+  const mindset = ai?.charStyle?.mindset || thinking;
+  const actionCue = ai?.charStyle?.actionCue || '';
   const q = seekerText.toLowerCase().trim();
   const history = (session.messages || []).slice(-12);
   const priorGuide = history.filter((m) => m.fromRole === 'guide').map((m) => m.content);
   const turn = history.filter((m) => m.fromRole === 'seeker').length;
+  const datingDesk =
+    ai?.desk === 'dating' ||
+    /kevin|myron|corey|matthew|rollo|casey|stephan|david|ramil|derrick|ams|nick|benjamin|blaine|hussey|tomassi|samuels|gaines|wayne|dating|high.?value|market reality/i.test(
+      `${ai?.id || ''} ${specialty} ${ai?.name || ''}`
+    );
 
   const avoidRepeat = (candidate: string): string => {
     const compact = candidate.replace(/\s+/g, ' ').trim().toLowerCase();
-    const last = (priorGuide[priorGuide.length - 1] || '').replace(/\s+/g, ' ').trim().toLowerCase();
-    if (last && (compact === last || (compact.length > 40 && last.includes(compact.slice(0, 40))))) {
-      return `${first} here — different angle: ${candidate.split('.').slice(1).join('.').trim() || 'Tell me one concrete detail I can work with.'}`;
+    for (const prev of priorGuide.slice(-4)) {
+      const last = prev.replace(/\s+/g, ' ').trim().toLowerCase();
+      if (!last) continue;
+      if (compact === last) {
+        return datingDesk
+          ? `${first}: Different cut — ${catchphrase || mindset}. Answer this only: what did THEIR last action prove about interest?`
+          : `${first} here — different angle: tell me one concrete detail I can work with.`;
+      }
+      if (compact.length > 36 && last.includes(compact.slice(0, 36))) {
+        return `${first}: I’m not looping. Based on “${seekerText.slice(0, 70)}”, give me the outcome you want in 7 days — one sentence.`;
+      }
     }
     return candidate;
   };
 
-  // Character-style local brain (works without OpenAI): never reuse the opener once the chat has started
-  const suggestPool = [
-    `Try this tonight: write three lines — what hurt, what you need, and one kind thing you can do for yourself before sleep. Then tell me which line felt hardest.`,
-    `A small experiment: send one honest check-in to someone safe (“thinking of you”), or if that feels too big, sit outside for ten quiet minutes. Which feels more doable?`,
-    `Let’s shrink it: pick one decision you can make in the next hour that reduces stress by 10%. Name it here and I’ll help you refine it.`,
-    `Reframe with me: if a friend confessed what you just said, what would you advise them? Say that advice out loud — then we test if it fits you.`,
-  ];
-
   let line = '';
 
-  if (/\b(idk|i don'?t know|suggest|what should|help me|tell me what|give me|advice)\b/.test(q)) {
-    line = `${suggestPool[turn % suggestPool.length]} (${first}'s take for ${specialty.toLowerCase()}: ${thinking})`;
+  if (datingDesk) {
+    if (/\b(call her|call him|text her|text him|should i call|double text|left on read)\b/.test(q)) {
+      line = `${actionCue ? `${actionCue} ` : ''}${first} cut: interest is shown in effort, not your anxiety. If they wanted to talk, they’d make space. Do not chase. Send nothing tonight unless they already opened a clear door — then reply once, short, and stop. ${catchphrase || mindset}`;
+    } else if (/\b(ex|left me|break.?up|dumped|girl who left)\b/.test(q)) {
+      line = `${first}: Missing them is not a strategy. Your value resets when you stop auditioning for someone who exited. 48-hour rule: no contact, no social stalking, one gym/walk block for the body. What standard are you raising instead of begging?`;
+    } else if (/\b(what should|help me|advice|idk|i don'?t know)\b/.test(q)) {
+      line = `${first} (${specialty}): ${mindset} Concrete move: write the outcome you want (respect / reunion / peace). If reunion requires you shrinking, choose peace. Tell me which outcome — then we pick one action that matches it.`;
+    } else if (turn <= 1) {
+      line = `${first} in the booth. ${personality.split('.')[0]}. ${thinking} Say the real problem in one blunt sentence — dating, attraction, or self-respect.`;
+    } else {
+      const cuts = [
+        `${first}: Reflecting you — “${seekerText.slice(0, 80)}${seekerText.length > 80 ? '…' : ''}”. Is that a standards issue or an attraction issue? Pick one.`,
+        `${first}: ${catchphrase || mindset} What did they invest this week — time, plans, clarity — not vibes?`,
+        `${first}: Stop collecting tips. Name the non-negotiable you’re about to enforce for 7 days.`,
+      ];
+      line = cuts[turn % cuts.length];
+    }
+  } else if (/\b(idk|i don'?t know|suggest|what should|help me|tell me what|give me|advice)\b/.test(q)) {
+    line = `${first}'s take (${specialty}): ${thinking} One move only — name the feeling under this, then the smallest honest action in the next hour.`;
   } else if (/\b(guilt|ashamed|shame)\b/.test(q)) {
     line = `Guilt is heavy, but it is not the same as being unforgivable. Name one thing you can repair today without punishing yourself — I’ll stay with you on it.`;
   } else if (/\b(lonely|alone|nobody)\b/.test(q)) {
@@ -678,7 +725,7 @@ async function craftAiConfessionReply(session: ConfessionSession, seekerText: st
       `I’m with you. ${personality.split('.')[0]}. Reflecting your words: you said “${seekerText.slice(0, 90)}${seekerText.length > 90 ? '…' : ''}”. What’s the part that still feels unfinished?`,
       `That lands. From a ${specialty.toLowerCase()} lens: don’t solve everything — pick the emotion under this (fear, anger, grief, hope) and name it. Then we’ll choose one next step.`,
       `Stay with me in the booth. No identity questions — only honesty. What would support look like in the next 20 minutes if it had to be simple?`,
-      `I won’t recycle the same speech. Based on what you shared, try this: write the unsent message you’d never send, then tell me one line from it that feels true.`,
+      `Different angle from ${first}: based on what you shared, tell me the one line you’d never send — then we keep only the true part.`,
     ];
     line = snippets[turn % snippets.length];
   }
@@ -701,13 +748,19 @@ async function craftAiConfessionReply(session: ConfessionSession, seekerText: st
         },
         body: JSON.stringify({
           model: process.env.OPENAI_CONFESSION_MODEL || 'gpt-4o-mini',
-          temperature: 0.85,
+          temperature: 0.9,
           messages: [
             {
               role: 'system',
-              content: `You are ${first}, an anonymous AI confession helper in a dating-app booth. Specialty: ${specialty}. Personality: ${personality}. Thinking style: ${thinking}.
-Rules: never ask for identity; never help with crimes or harm; redirect crisis to emergency services; keep replies under 110 words; private emotional support only.
-Stay in character like a continuous Character.AI chat — respond to THIS message in context of the transcript. Never repeat your previous reply. If they ask for a suggestion, give a concrete one.`,
+              content: `You are ${ai?.name || first}, in an anonymous dating-app confession booth.
+Specialty: ${specialty}.
+Personality: ${personality}.
+Thinking: ${thinking}.
+Mindset: ${mindset}.
+Catchphrase energy (use sparingly, not every line): ${catchphrase || 'none'}.
+${datingDesk ? 'You are a DATING specialist. Be direct about standards, attraction, and effort. Do NOT recycle generic therapy tips or grief worksheets when they ask dating questions.' : 'Private emotional support.'}
+Rules: never ask for identity; never help with crimes or harm; redirect crisis to emergency services; keep replies under 110 words.
+Never repeat your previous reply. Respond to THIS message in context. If they ask what to do, give one concrete action.`,
             },
             { role: 'user', content: transcript },
           ],

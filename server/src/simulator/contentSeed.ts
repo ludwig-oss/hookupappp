@@ -14,6 +14,8 @@ import {
 import { createPost, getAllPosts, addComment, likePost } from '../models/posts.js';
 import { getUserPreference } from '../models/discover.js';
 import { notifyNewAdviceAnswer } from '../realtime/notifications.js';
+import { createReview, getReviewsForUser } from '../models/reviews.js';
+import { createEvent, createEventRequest, getEventsByCity } from '../models/events.js';
 
 const ADVICE_ANSWERS: string[] = [
   'Been there. Next time confirm the morning of — flakes often go quiet the night before.',
@@ -106,17 +108,106 @@ function delay(ms: number) {
 
 /** Fill Dating Advice + Love Feed so the simulator feels alive immediately. */
 export async function seedSimulatorSocialContent(): Promise<void> {
-  if (!isSimulatorEnabled() || seeded) return;
-  seeded = true;
-  try {
-    await seedAdviceFeed();
-    await answerUnansweredAdvice();
-    await seedLoveFeed();
-    console.log('🧪 Simulator social seed: Dating Advice answers + Love Life Feed posts ready.');
-  } catch (e: any) {
-    console.warn('🧪 Simulator social seed skipped:', e?.message || e);
-    seeded = false;
+  if (!isSimulatorEnabled()) return;
+  if (!seeded) {
+    seeded = true;
+    try {
+      await seedAdviceFeed();
+      await answerUnansweredAdvice();
+      await seedLoveFeed();
+      console.log('🧪 Simulator social seed: Dating Advice answers + Love Life Feed posts ready.');
+    } catch (e: any) {
+      console.warn('🧪 Simulator social seed skipped:', e?.message || e);
+      seeded = false;
+    }
   }
+  // Always top-up profile reviews + city events (safe if already present)
+  await seedMockReviews().catch(() => {});
+  await seedMockCityEvents().catch(() => {});
+}
+
+const REVIEW_TEXTS = [
+  'Showed up on time, funny, and respectful. Would hang out again.',
+  'Great conversation — no phone glued to the table. Felt safe the whole time.',
+  'Cute vibe but a bit flaky on texting. Still a solid first meet.',
+  'Kind energy. Paid attention when I talked. Recommend.',
+  'Chemistry was real. Public place first date — did everything right.',
+];
+
+async function seedMockReviews(): Promise<void> {
+  const mocks = getSimulatorUsers();
+  if (mocks.length < 4) return;
+  let wrote = 0;
+  for (let i = 0; i < Math.min(12, mocks.length); i++) {
+    const to = mocks[i];
+    const existing = await getReviewsForUser(to.id);
+    if (existing.length >= 2) continue;
+    const fromA = mocks[(i + 1) % mocks.length];
+    const fromB = mocks[(i + 2) % mocks.length];
+    for (const from of [fromA, fromB]) {
+      if (from.id === to.id) continue;
+      await createReview({
+        fromUserId: from.id,
+        toUserId: to.id,
+        attributes: {},
+        overallStars: 3 + ((i + from.id.length) % 3),
+        reviewText: REVIEW_TEXTS[(i + wrote) % REVIEW_TEXTS.length],
+        source: 'manual',
+        disclaimerAccepted: true,
+      }).catch(() => {});
+      wrote++;
+    }
+  }
+}
+
+async function seedMockCityEvents(): Promise<void> {
+  const mocks = getSimulatorUsers();
+  if (mocks.length < 3) return;
+  const cities = [...new Set(mocks.map((m) => (m.city || '').trim()).filter(Boolean))];
+  for (const city of cities.slice(0, 8)) {
+    const existing = await getEventsByCity(city);
+    if (existing.length >= 2) continue;
+    const host = mocks.find((m) => (m.city || '').trim().toLowerCase() === city.toLowerCase()) || mocks[0];
+    const day = new Date();
+    day.setDate(day.getDate() + 2 + (city.length % 5));
+    const startDate = day.toISOString().slice(0, 10);
+    await createEvent(host.id, {
+      type: city.length % 2 === 0 ? 'drinks' : 'house_party',
+      title: city.length % 2 === 0 ? `${city} rooftop hang` : `Chill house night in ${city}`,
+      description: `Simulator meetup in ${city}. Public-friendly first, then decide.`,
+      city,
+      country: host.country,
+      startDate,
+      startTime: '19:00',
+      endTime: '06:00',
+    }).catch(() => {});
+  }
+}
+
+/** After a real user creates an event, mocks in that city send join requests. */
+export function scheduleMockEventJoinRequests(eventId: string, city: string, creatorUserId: string): void {
+  if (!isSimulatorEnabled()) return;
+  void (async () => {
+    try {
+      await delay(700 + Math.random() * 900);
+      const mocks = getSimulatorUsers().filter((m) => m.id !== creatorUserId);
+      const cityLower = (city || '').toLowerCase().trim();
+      const local = mocks.filter((m) => (m.city || '').toLowerCase().includes(cityLower) || cityLower.includes((m.city || '').toLowerCase()));
+      const pool = (local.length ? local : mocks).slice(0, 5);
+      const questions = [
+        'Can I bring a friend?',
+        'Is it still on if it rains?',
+        'What should I bring?',
+        'Public meetup spot first?',
+      ];
+      for (let i = 0; i < Math.min(3, pool.length); i++) {
+        await delay(350 + i * 500);
+        await createEventRequest(eventId, pool[i].id, questions[i % questions.length]).catch(() => {});
+      }
+    } catch {
+      /* optional */
+    }
+  })();
 }
 
 /** Backfill answers on any advice question still at 0 replies (incl. the user's). */

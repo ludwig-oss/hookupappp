@@ -157,9 +157,21 @@ export const connectionsAPI = {
 
   /** Search real places; type "none" = any place/shop by name (live OSM map). */
   searchPlaces: async (params: { q: string; type?: string }): Promise<{
-    places: Array<{ venue: string; venueType: string; location: { lat: number; lon: number }; count: number }>;
+    places: Array<{
+      venue: string;
+      venueType: string;
+      location: { lat: number; lon: number };
+      count: number;
+      preferenceHits?: number;
+    }>;
     locationName?: string;
-    mostConcentrated?: { venue: string; venueType: string; location: { lat: number; lon: number }; count: number } | null;
+    mostConcentrated?: {
+      venue: string;
+      venueType: string;
+      location: { lat: number; lon: number };
+      count: number;
+      preferenceHits?: number;
+    } | null;
     message?: string;
     liveMap?: boolean;
   }> => {

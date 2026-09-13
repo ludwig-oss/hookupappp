@@ -301,7 +301,37 @@ function matchesOrientationForVenue(
 }
 
 /** Radius in meters around a real-world venue to count app users as "at" that venue */
-const VENUE_USER_RADIUS_M = 150;
+const VENUE_USER_RADIUS_M = 800;
+const CITY_SCALE_RADIUS_M = 14000;
+const CITY_SCALE_TYPES = new Set([
+  'administrative',
+  'city',
+  'town',
+  'municipality',
+  'suburb',
+  'neighbourhood',
+  'neighborhood',
+  'place',
+  'boundary',
+  'county',
+  'state',
+  'province',
+]);
+
+function radiusForVenue(venueType: string): number {
+  const t = String(venueType || '').toLowerCase();
+  if (CITY_SCALE_TYPES.has(t)) return CITY_SCALE_RADIUS_M;
+  return VENUE_USER_RADIUS_M;
+}
+
+function sharedLookingForCount(
+  mine: string[] | undefined | null,
+  theirs: string[] | undefined | null
+): number {
+  if (!Array.isArray(mine) || !Array.isArray(theirs) || !mine.length || !theirs.length) return 0;
+  const set = new Set(theirs.map((x) => String(x).toLowerCase()));
+  return mine.filter((x) => set.has(String(x).toLowerCase())).length;
+}
 
 export async function getVenueCounts(
   userId: string,
@@ -333,7 +363,7 @@ export async function getVenueCounts(
         poi.lat, poi.lon,
         otherUser.location.lat, otherUser.location.lon
       );
-      if (distance > VENUE_USER_RADIUS_M) continue;
+      if (distance > radiusForVenue(poi.venueType)) continue;
 
       const otherPref = await getUserPreference(otherUser.id);
       if (!otherPref) continue;
@@ -358,12 +388,15 @@ export async function getVenueCounts(
   return result.sort((a, b) => b.count - a.count);
 }
 
-/** Return only venue name, type, location and count (no user list). For search-places. */
+/** Return venue name, type, location and preference-match count (no user list). For search-places. */
 export interface VenueCountOnly {
   venue: string;
   venueType: string;
   location: { lat: number; lon: number };
+  /** People nearby who match your dating orientation / preferences. */
   count: number;
+  /** Shared looking-for tags with those people (higher = stronger preference fit). */
+  preferenceHits: number;
 }
 
 export async function getCountsForOsmVenues(
@@ -373,22 +406,46 @@ export async function getCountsForOsmVenues(
   const user = await getUserById(userId);
   if (!user) return [];
   const userPref = await getUserPreference(userId);
+  const myLooking = userPref?.lookingFor || [];
   const allUsers = await getAllUsers();
   const result: VenueCountOnly[] = [];
 
   for (const poi of osmVenues) {
     let count = 0;
+    let preferenceHits = 0;
+    const radius = radiusForVenue(poi.venueType);
+    const poiCityHint = String(poi.name || '')
+      .split(',')[0]
+      ?.trim()
+      .toLowerCase();
+
     for (const otherUser of allUsers) {
       try {
         if (otherUser.id === userId) continue;
         if (user.blockedUsers?.includes(otherUser.id)) continue;
-        if (!otherUser.location) continue;
-        if (!Number.isFinite(otherUser.location.lat) || !Number.isFinite(otherUser.location.lon)) continue;
-        const distance = calculateDistance(poi.lat, poi.lon, otherUser.location.lat, otherUser.location.lon);
-        if (distance > VENUE_USER_RADIUS_M) continue;
+
+        let near = false;
+        if (
+          otherUser.location &&
+          Number.isFinite(otherUser.location.lat) &&
+          Number.isFinite(otherUser.location.lon)
+        ) {
+          const distance = calculateDistance(poi.lat, poi.lon, otherUser.location.lat, otherUser.location.lon);
+          near = distance <= radius;
+        }
+        // City-scale fallback: profile city name matches the searched place
+        if (!near && poiCityHint && otherUser.city) {
+          const oc = String(otherUser.city).toLowerCase().trim();
+          if (oc === poiCityHint || oc.includes(poiCityHint) || poiCityHint.includes(oc)) {
+            near = CITY_SCALE_TYPES.has(String(poi.venueType || '').toLowerCase());
+          }
+        }
+        if (!near) continue;
+
         const otherPref = await getUserPreference(otherUser.id);
         if (!matchesOrientationForVenue(user, otherUser, userPref, otherPref)) continue;
         count++;
+        preferenceHits += Math.max(1, sharedLookingForCount(myLooking, otherPref?.lookingFor));
       } catch {
         /* skip bad user row */
       }
@@ -398,9 +455,10 @@ export async function getCountsForOsmVenues(
       venueType: poi.venueType,
       location: { lat: poi.lat, lon: poi.lon },
       count,
+      preferenceHits,
     });
   }
-  return result.sort((a, b) => b.count - a.count);
+  return result.sort((a, b) => b.preferenceHits - a.preferenceHits || b.count - a.count);
 }
 
 export function getComfortingMessage(): string {

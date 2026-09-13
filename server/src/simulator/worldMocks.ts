@@ -23,6 +23,10 @@ type CitySeed = {
 /** Real cities worldwide — enough spread for Connections / search-places testing. */
 const CITIES: CitySeed[] = [
   { city: 'Berlin', country: 'Germany', lat: 52.52, lon: 13.405 },
+  { city: 'Munich', country: 'Germany', lat: 48.137, lon: 11.576 },
+  { city: 'Hamburg', country: 'Germany', lat: 53.551, lon: 9.993 },
+  { city: 'Cologne', country: 'Germany', lat: 50.938, lon: 6.96 },
+  { city: 'Frankfurt', country: 'Germany', lat: 50.11, lon: 8.68 },
   { city: 'Paris', country: 'France', lat: 48.8566, lon: 2.3522 },
   { city: 'London', country: 'United Kingdom', lat: 51.5074, lon: -0.1278 },
   { city: 'Madrid', country: 'Spain', lat: 40.4168, lon: -3.7038 },

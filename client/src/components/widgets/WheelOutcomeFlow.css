@@ -1,3 +1,37 @@
+.wheel-call-booth {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 12px 0 14px;
+  padding: 12px;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(0, 212, 255, 0.35);
+}
+.wheel-call-side {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  min-width: 88px;
+}
+.wheel-call-wave {
+  font-size: 22px;
+  opacity: 0.9;
+}
+.wheel-outcome-avatar.mic-glow {
+  box-shadow: 0 0 0 2px rgba(134, 239, 172, 0.9), 0 0 18px rgba(0, 212, 255, 0.55);
+}
+.wheel-outcome-avatar.pulse-call {
+  animation: wheel-call-pulse 1.2s ease-in-out infinite;
+}
+@keyframes wheel-call-pulse {
+  0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(236, 72, 153, 0.55); }
+  50% { transform: scale(1.05); box-shadow: 0 0 0 10px rgba(236, 72, 153, 0); }
+}
+
 .wheel-name-blurred {
   filter: blur(6px);
   user-select: none;

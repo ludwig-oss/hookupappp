@@ -188,12 +188,41 @@ export default function WheelOutcomeFlow({ gameId, country, city, onClose, onOpe
 }
 
 const BLIND_DATE_PROMPTS = [
-  "Icebreaker: I'm really into hiking and terrible puns 😄 — what about you?",
-  "Question for you: Coffee or tea? (I'm judging silently)",
-  "Icebreaker: I once traveled 3 hours for a good taco. No regrets. Your turn — share a food adventure.",
-  "Icebreaker: My superpower is falling asleep in 2 minutes flat. What's yours?",
-  "Question for you: What's the last thing that made you laugh really hard?",
+  "Hey — coffee or tea? Be honest, I'm judging a little.",
+  "What's one thing that always makes a first date better?",
+  "Tell me a green flag you noticed recently.",
+  "Okay your turn: worst dating app opener you've seen?",
+  "If we had twenty minutes left, what would you ask me?",
 ];
+
+const BLIND_DATE_REPLIES = [
+  "Ha, fair. Keep going — I'm listening.",
+  "Okay that was actually cute. Say more.",
+  "Interesting. Would you do that again?",
+  "Same energy here. Next question?",
+  "Alright, I vibe with that.",
+];
+
+function speakAsOther(text: string, voiceHint: 'female' | 'male' = 'female') {
+  if (typeof window === 'undefined' || !window.speechSynthesis) return;
+  try {
+    window.speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.02;
+    u.pitch = voiceHint === 'female' ? 1.15 : 0.85;
+    const voices = window.speechSynthesis.getVoices();
+    const pick =
+      voices.find((v) =>
+        voiceHint === 'female'
+          ? /female|zira|samantha|google uk english female|eva/i.test(v.name)
+          : /male|david|daniel|google uk english male|mark/i.test(v.name)
+      ) || voices[0];
+    if (pick) u.voice = pick;
+    window.speechSynthesis.speak(u);
+  } catch {
+    /* ignore */
+  }
+}
 
 function BlindDateFlow({
   users,
@@ -206,62 +235,83 @@ function BlindDateFlow({
   onClose: () => void;
   onOpenChat: (id: string) => void;
 }) {
-  const [step, setStep] = useState<'intro' | 'matched' | 'timer' | 'vote' | 'reveal' | 'add' | 'done'>('intro');
+  const [step, setStep] = useState<'intro' | 'ringing' | 'calling' | 'vote' | 'reveal' | 'add' | 'done'>('intro');
   const [match] = useState<UserInfo | null>(() => users[0] || null);
-  const CALL_SEC = 45;
+  const CALL_SEC = 60;
   const [timerSec, setTimerSec] = useState(CALL_SEC);
-  const [promptIndex, setPromptIndex] = useState(0);
   const [otherSaidYes, setOtherSaidYes] = useState(false);
   const [micError, setMicError] = useState<string | null>(null);
   const [micLive, setMicLive] = useState(false);
+  const [remoteTalking, setRemoteTalking] = useState(false);
+  const [lastHeard, setLastHeard] = useState('');
   const streamRef = useRef<MediaStream | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const rafRef = useRef<number | null>(null);
+
+  const stopMedia = () => {
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    rafRef.current = null;
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+    streamRef.current = null;
+    try {
+      audioCtxRef.current?.close();
+    } catch {
+      /* ignore */
+    }
+    audioCtxRef.current = null;
+    analyserRef.current = null;
+    setMicLive(false);
+    try {
+      window.speechSynthesis?.cancel();
+    } catch {
+      /* ignore */
+    }
+  };
 
   useEffect(() => {
     if (step === 'intro') {
-      const t = setTimeout(() => setStep('matched'), 1500);
-      return () => clearTimeout(t);
-    }
-    if (step === 'matched') {
-      const t = setTimeout(() => setStep('timer'), 1800);
+      const t = setTimeout(() => setStep('ringing'), 1200);
       return () => clearTimeout(t);
     }
   }, [step]);
 
-  useEffect(() => {
-    if (step !== 'timer') return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-        if (cancelled) {
-          stream.getTracks().forEach((t) => t.stop());
-          return;
-        }
-        streamRef.current = stream;
-        setMicLive(true);
-        setMicError(null);
-      } catch {
-        setMicError('Mic permission needed for the voice round — enable it, or continue with prompts only.');
-        setMicLive(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-      streamRef.current?.getTracks().forEach((t) => t.stop());
-      streamRef.current = null;
-      setMicLive(false);
-    };
-  }, [step]);
+  useEffect(() => () => stopMedia(), []);
+
+  const startCall = async () => {
+    setMicError(null);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      streamRef.current = stream;
+      const ctx = new AudioContext();
+      audioCtxRef.current = ctx;
+      const source = ctx.createMediaStreamSource(stream);
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 256;
+      source.connect(analyser);
+      analyserRef.current = analyser;
+      setMicLive(true);
+      setStep('calling');
+      setTimerSec(CALL_SEC);
+      setTimeout(() => {
+        const line = BLIND_DATE_PROMPTS[0];
+        setLastHeard(line);
+        setRemoteTalking(true);
+        speakAsOther(line);
+        setTimeout(() => setRemoteTalking(false), 3500);
+      }, 600);
+    } catch {
+      setMicError('Allow the microphone to answer this voice call.');
+    }
+  };
 
   useEffect(() => {
-    if (step !== 'timer') return;
+    if (step !== 'calling') return;
     const interval = setInterval(() => {
       setTimerSec((s) => {
         if (s <= 1) {
           clearInterval(interval);
-          streamRef.current?.getTracks().forEach((t) => t.stop());
-          streamRef.current = null;
-          setMicLive(false);
+          stopMedia();
           setStep('vote');
           return 0;
         }
@@ -272,10 +322,49 @@ function BlindDateFlow({
   }, [step]);
 
   useEffect(() => {
-    if (step !== 'timer') return;
-    const rot = setInterval(() => setPromptIndex((i) => (i + 1) % BLIND_DATE_PROMPTS.length), 8000);
+    if (step !== 'calling') return;
+    let i = 0;
+    const rot = setInterval(() => {
+      i = (i + 1) % BLIND_DATE_PROMPTS.length;
+      const line = BLIND_DATE_PROMPTS[i];
+      setLastHeard(line);
+      setRemoteTalking(true);
+      speakAsOther(line);
+      setTimeout(() => setRemoteTalking(false), 3500);
+    }, 12000);
     return () => clearInterval(rot);
   }, [step]);
+
+  useEffect(() => {
+    if (step !== 'calling' || !analyserRef.current) return;
+    const data = new Uint8Array(analyserRef.current.frequencyBinCount);
+    let coolDown = 0;
+    const tick = () => {
+      const analyser = analyserRef.current;
+      if (!analyser) return;
+      analyser.getByteFrequencyData(data);
+      const avg = data.reduce((a, b) => a + b, 0) / data.length;
+      if (avg > 28 && coolDown <= 0 && !remoteTalking) {
+        coolDown = 90;
+        const reply = BLIND_DATE_REPLIES[Math.floor(Math.random() * BLIND_DATE_REPLIES.length)];
+        setLastHeard(reply);
+        setRemoteTalking(true);
+        speakAsOther(reply);
+        setTimeout(() => setRemoteTalking(false), 2500);
+      }
+      if (coolDown > 0) coolDown -= 1;
+      rafRef.current = requestAnimationFrame(tick);
+    };
+    rafRef.current = requestAnimationFrame(tick);
+    return () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    };
+  }, [step, remoteTalking]);
+
+  const hangUpEarly = () => {
+    stopMedia();
+    setStep('vote');
+  };
 
   const handleVote = (vote: 'yes' | 'no') => {
     setTimeout(() => {
@@ -312,41 +401,64 @@ function BlindDateFlow({
     <div className="wheel-outcome-overlay" onClick={onClose}>
       <div className="wheel-outcome-modal blind-date" onClick={(e) => e.stopPropagation()}>
         <button type="button" className="wheel-outcome-close" onClick={onClose}>×</button>
-        {step === 'intro' && <p className="wheel-outcome-msg">Finding your match...</p>}
-        {step === 'matched' && (
+        {step === 'intro' && <p className="wheel-outcome-msg">Connecting a private voice line…</p>}
+        {step === 'ringing' && (
           <>
-            <h3 className="wheel-outcome-title">{title}</h3>
+            <h3 className="wheel-outcome-title">📞 Incoming voice call</h3>
             <div className="wheel-outcome-reveal">
-              <div className="wheel-outcome-avatar placeholder wheel-name-blurred">?</div>
+              <div className="wheel-outcome-avatar placeholder wheel-name-blurred pulse-call">?</div>
               <p className="wheel-name-blurred">{blurredLabel}</p>
+              <p style={{ fontSize: 12, opacity: 0.85 }}>{title} · identity hidden</p>
             </div>
             <p className="wheel-outcome-msg">
-              Names stay blurred. You get a timed voice round — talk only until the clock hits zero, then vote if you think they’re a match.
+              Answer to talk live. Names stay blurred. You only get the call length on the timer — then it ends.
             </p>
+            {micError && <p className="wheel-outcome-msg" style={{ color: '#fca5a5' }}>{micError}</p>}
+            <div className="wheel-outcome-actions">
+              <button type="button" className="wheel-outcome-btn" onClick={() => void startCall()}>
+                Answer call
+              </button>
+              <button type="button" className="wheel-outcome-btn secondary" onClick={onClose}>
+                Decline
+              </button>
+            </div>
           </>
         )}
-        {step === 'timer' && (
+        {step === 'calling' && (
           <>
-            <h3 className="wheel-outcome-title">🎙 Voice round · {title}</h3>
+            <h3 className="wheel-outcome-title">🎙 On call · {title}</h3>
             <p className="wheel-outcome-timer">{Math.floor(timerSec / 60)}:{(timerSec % 60).toString().padStart(2, '0')}</p>
-            <div className="wheel-outcome-reveal">
-              <div className="wheel-outcome-avatar placeholder wheel-name-blurred">?</div>
-              <p className="wheel-name-blurred">{blurredLabel}</p>
-              <p style={{ fontSize: 12, color: micLive ? '#86efac' : '#fca5a5' }}>
-                {micLive ? 'Mic live — talk now' : micError || 'Connecting mic…'}
-              </p>
+            <div className="wheel-call-booth">
+              <div className="wheel-call-side">
+                <div className={`wheel-outcome-avatar placeholder ${micLive ? 'mic-glow' : ''}`}>You</div>
+                <span>{micLive ? 'Mic on — speak' : 'Mic off'}</span>
+              </div>
+              <div className="wheel-call-wave" aria-hidden>{remoteTalking ? '🔊' : '···'}</div>
+              <div className="wheel-call-side">
+                <div className={`wheel-outcome-avatar placeholder wheel-name-blurred ${remoteTalking ? 'mic-glow' : ''}`}>?</div>
+                <span className="wheel-name-blurred">{blurredLabel}</span>
+              </div>
             </div>
             <div className="wheel-outcome-chat-bubble">
-              {BLIND_DATE_PROMPTS[promptIndex]}
+              {remoteTalking
+                ? `They said: “${lastHeard}”`
+                : lastHeard
+                  ? `Last: “${lastHeard}” — your turn, talk into the mic`
+                  : 'Connected — start talking'}
             </div>
             <p className="wheel-outcome-msg">
-              Voice only for this countdown. When time’s up the call ends and we ask: Do you think they’re a match?
+              Live voice round. Talk to them now. When the timer hits zero the call drops automatically.
             </p>
+            <div className="wheel-outcome-actions">
+              <button type="button" className="wheel-outcome-btn secondary" onClick={hangUpEarly}>
+                End call
+              </button>
+            </div>
           </>
         )}
         {step === 'vote' && (
           <>
-            <h3 className="wheel-outcome-title">Time’s up — call ended</h3>
+            <h3 className="wheel-outcome-title">Call ended</h3>
             <p className="wheel-outcome-msg">Do you think they’re a match?</p>
             <div className="wheel-outcome-actions">
               <button type="button" className="wheel-outcome-btn" onClick={() => handleVote('yes')}>Yes</button>

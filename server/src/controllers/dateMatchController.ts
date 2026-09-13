@@ -7,6 +7,7 @@ import {
   setAvailability,
   respondMatch,
   spinDateIdea,
+  selectDateIdea,
   cancelScheduledDate,
   reportHowItsGoing,
   listMyMatches,
@@ -181,6 +182,20 @@ export async function postSpin(req: Request, res: Response) {
     const { matchId } = req.body || {};
     if (!matchId) return res.status(400).json({ error: 'matchId is required' });
     const match = await spinDateIdea(uid(req), matchId);
+    const other = match.userId1 === uid(req) ? match.userId2 : match.userId1;
+    notifyDateMatch(other, { matchId: match.id, fromUserId: uid(req), status: match.status, ideaTitle: match.ideaTitle });
+    res.json({ match });
+  } catch (e: any) {
+    res.status(400).json({ error: e.message });
+  }
+}
+
+export async function postSelectIdea(req: Request, res: Response) {
+  try {
+    const { matchId, ideaId } = req.body || {};
+    if (!matchId) return res.status(400).json({ error: 'matchId is required' });
+    if (!ideaId) return res.status(400).json({ error: 'ideaId is required' });
+    const match = await selectDateIdea(uid(req), matchId, String(ideaId));
     const other = match.userId1 === uid(req) ? match.userId2 : match.userId1;
     notifyDateMatch(other, { matchId: match.id, fromUserId: uid(req), status: match.status, ideaTitle: match.ideaTitle });
     res.json({ match });

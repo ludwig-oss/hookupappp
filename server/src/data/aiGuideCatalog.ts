@@ -1,3 +1,5 @@
+import { DATING_COACH_GUIDES } from './aiDatingCoaches.js';
+
 export type AiVoiceHint = 'female' | 'male';
 
 export interface AiGuideRatings {
@@ -23,6 +25,12 @@ export interface AiGuideCharacter {
   ratings: AiGuideRatings;
   expertise: string[];
   categoryIds: string[];
+  /** Character.AI-style cognitive / dialogue engine for this guide. */
+  charStyle?: {
+    actionCue: string;
+    catchphrases: string[];
+    mindset: string;
+  };
 }
 
 export interface AiLesson {
@@ -38,6 +46,8 @@ export interface AiLesson {
   demo: string;
   /** Per-guide voice — each helper has their own take, not a shared script. */
   guideTakes?: Record<string, { cause: string; solution: string; prevention: string; unknown: string }>;
+  /** Character.AI-style full reply when resolved for a specific guide. */
+  reply?: string;
 }
 
 export const AI_GUIDES: AiGuideCharacter[] = [
@@ -53,6 +63,11 @@ export const AI_GUIDES: AiGuideCharacter[] = [
     ratings: { directness: 7, warmth: 10, datingIq: 8, texting: 6, style: 5, boundaries: 9, healing: 8, attraction: 6 },
     expertise: ['low self-esteem', 'friendzone', 'hyper-independence', 'fear of rejection'],
     categoryIds: ['self-worth', 'rejection', 'confidence-dating', 'boundaries'],
+    charStyle: {
+      actionCue: '*Softens her eyes, then names the pattern without flinching.*',
+      catchphrases: ['You are not a backup plan', 'Start with how you treat yourself'],
+      mindset: 'Warm honesty. Self-worth first, then the other person.',
+    },
   },
   {
     id: 'kenji',
@@ -66,6 +81,11 @@ export const AI_GUIDES: AiGuideCharacter[] = [
     ratings: { directness: 8, warmth: 5, datingIq: 10, texting: 7, style: 6, boundaries: 7, healing: 4, attraction: 6 },
     expertise: ['dating apps', 'choice overload', 'getting dates', 'money on dates'],
     categoryIds: ['dating-apps', 'first-date', 'asking-out', 'quality-time'],
+    charStyle: {
+      actionCue: '*Sets his phone face-down and looks at you.*',
+      catchphrases: ['One next move', 'Cut the noise', 'Dates live off the screen'],
+      mindset: 'Strategy over hype. Cap options, book a real meet.',
+    },
   },
   {
     id: 'sofia',
@@ -79,6 +99,11 @@ export const AI_GUIDES: AiGuideCharacter[] = [
     ratings: { directness: 8, warmth: 8, datingIq: 7, texting: 8, style: 7, boundaries: 6, healing: 4, attraction: 10 },
     expertise: ['flirting', 'attraction', 'awkward dates', 'hard to get'],
     categoryIds: ['flirting', 'body-language-dating', 'conversation-dating', 'asking-out'],
+    charStyle: {
+      actionCue: '*Smirks, then keeps it short on purpose.*',
+      catchphrases: ['One clear cue', 'Stop talking', 'Interest is a signal'],
+      mindset: 'Playful, direct spark. Less essay, more timing.',
+    },
   },
   {
     id: 'marcus',
@@ -92,6 +117,11 @@ export const AI_GUIDES: AiGuideCharacter[] = [
     ratings: { directness: 10, warmth: 4, datingIq: 9, texting: 5, style: 4, boundaries: 10, healing: 6, attraction: 5 },
     expertise: ['red flags', 'wrong partner', 'situationships', 'misaligned intentions'],
     categoryIds: ['red-flags', 'exclusivity', 'expectations', 'boundaries'],
+    charStyle: {
+      actionCue: '*Shakes his head once — no soft landing.*',
+      catchphrases: ['Pattern not potential', 'Confusing is a no', 'Mixed signals cost'],
+      mindset: 'No romanticizing red flags. Exit when confused.',
+    },
   },
   {
     id: 'priya',
@@ -105,6 +135,11 @@ export const AI_GUIDES: AiGuideCharacter[] = [
     ratings: { directness: 6, warmth: 9, datingIq: 7, texting: 5, style: 4, boundaries: 8, healing: 10, attraction: 4 },
     expertise: ['past relationships', 'attachment', 'fear of vulnerability', 'readiness'],
     categoryIds: ['moving-on', 'emotional-intimacy', 'getting-back', 'trust'],
+    charStyle: {
+      actionCue: '*Slows her breath, then meets your eyes.*',
+      catchphrases: ['Ready beats rushing', 'One safe experiment', 'Old wound first'],
+      mindset: 'Gentle precision. Heal the attachment pattern before the next chase.',
+    },
   },
   {
     id: 'elena',
@@ -118,6 +153,11 @@ export const AI_GUIDES: AiGuideCharacter[] = [
     ratings: { directness: 7, warmth: 5, datingIq: 6, texting: 4, style: 10, boundaries: 6, healing: 3, attraction: 8 },
     expertise: ['fashion', 'appearances', 'skin', 'hair', 'first dates', 'presence'],
     categoryIds: ['style-fashion', 'first-date', 'body-language-dating', 'confidence-dating'],
+    charStyle: {
+      actionCue: '*Studies your silhouette like a fitting room mirror.*',
+      catchphrases: ['Look like you belong', 'One signature', 'Fit first'],
+      mindset: 'Visual presence. Clothes and face as confidence, not a costume.',
+    },
   },
   {
     id: 'diego',
@@ -130,7 +170,12 @@ export const AI_GUIDES: AiGuideCharacter[] = [
     voice: { hint: 'male', pitch: 0.95, rate: 1.02 },
     ratings: { directness: 7, warmth: 8, datingIq: 7, texting: 10, style: 5, boundaries: 6, healing: 5, attraction: 7 },
     expertise: ['texting anxiety', 'ghosting', 'dry replies', 'moving to a date'],
-    categoryIds: ['texting', 'communication', 'asking-out', 'first-date'],
+    categoryIds: ['texting', 'communication', 'asking-out', 'first-date', 'conversation-dating'],
+    charStyle: {
+      actionCue: '*Glances at an imaginary timer, then grins.*',
+      catchphrases: ['Send it', 'One ask', 'No essays', 'Then live your life'],
+      mindset: 'Kill overthinking. One clear message, then put the phone down.',
+    },
   },
   {
     id: 'mei',
@@ -144,7 +189,13 @@ export const AI_GUIDES: AiGuideCharacter[] = [
     ratings: { directness: 8, warmth: 7, datingIq: 6, texting: 5, style: 6, boundaries: 9, healing: 7, attraction: 7 },
     expertise: ['sex', 'sexual incompatibility', 'pressure', 'saying no', 'lasting longer', 'positions', 'foreplay', 'termact'],
     categoryIds: ['bedroom', 'emotional-intimacy', 'boundaries', 'keeping-spark'],
+    charStyle: {
+      actionCue: '*Settles in, voice quiet and sure — no awkward laugh.*',
+      catchphrases: ['Consent first', 'Pace matters', 'Wanting and ready are different'],
+      mindset: 'Direct about sex and pace without shame. Clear boundaries, warm delivery.',
+    },
   },
+  ...DATING_COACH_GUIDES,
 ];
 
 export const AI_LESSONS: AiLesson[] = [
@@ -492,6 +543,31 @@ export const AI_LESSONS: AiLesson[] = [
     demo: 'two-doors',
   },
   {
+    id: 'date-talk',
+    title: 'What to talk about on a date',
+    aliases: [
+      'what to talk about',
+      'what to talk about during date',
+      'during date',
+      'date conversation',
+      'conversation on a date',
+      'awkward silence',
+      'topics for a date',
+      'what do i say',
+      'talking points',
+      'date chat',
+      'keep conversation going',
+    ],
+    categoryIds: ['conversation-dating', 'first-date', 'flirting'],
+    bestGuideIds: ['diego', 'sofia', 'matthew-hussey', 'kevin-samuels'],
+    cause: 'You treat the date like an interview or a performance, so every silence feels like failure.',
+    solution:
+      'Lead with one real curiosity about them, one story about you (30 seconds max), then a light invite to the next beat — food, walk, or a tiny shared dare. Skip job résumés and “so what do you do” loops.',
+    prevention: 'Prep three open questions and one playful observation about the place you are in. Put the phone away.',
+    unknown: 'Chemistry is turn-taking, not filling every gap. A two-second pause is normal — do not panic-fill with your life story.',
+    demo: 'texts',
+  },
+  {
     id: 'unsafe-date',
     title: 'Feeling unsafe or stuck on a date',
     aliases: ['unsafe', 'uncomfortable', 'first meeting', 'awkward silence', 'leave the date', 'first date tips', 'date tips', 'tips for the date', 'going on a date'],
@@ -559,6 +635,31 @@ function norm(s: string) {
   return s.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
+/** Character.AI-style human cognition: thoughts in asterisks, then spoken dialogue. */
+export function buildCharacterReply(guide: AiGuideCharacter, lesson: AiLesson): string {
+  const style = guide.charStyle;
+  const cue =
+    style?.actionCue ||
+    `*Pauses, taking in what you said about ${lesson.title.toLowerCase()}.*`;
+  const mind = style?.mindset
+    ? `\n*${guide.name.split(' ')[0]} thinks: ${style.mindset.split('.')[0]}.*`
+    : '';
+  const hook = style?.catchphrases?.[0];
+
+  const lines: string[] = [];
+  if (hook) lines.push(`${hook}.`);
+  lines.push(lesson.cause.endsWith('.') ? lesson.cause : `${lesson.cause}.`);
+  lines.push(lesson.solution.endsWith('.') ? lesson.solution : `${lesson.solution}.`);
+  lines.push(
+    `Most people miss this — ${lesson.unknown.endsWith('.') ? lesson.unknown : `${lesson.unknown}.`}`
+  );
+  lines.push(
+    `Lock it in early: ${lesson.prevention.endsWith('.') ? lesson.prevention : `${lesson.prevention}.`}`
+  );
+
+  return `${cue}${mind}\n${lines.join(' ')}`.trim();
+}
+
 export function interpretQuery(query: string): { topic: AiLesson; score: number }[] {
   const q = norm(query);
   if (!q) return [];
@@ -567,6 +668,8 @@ export function interpretQuery(query: string): { topic: AiLesson; score: number 
   const appearanceCue = /\b(face|skin|acne|jaw|mew|glow|hair|blemish|circle|profile)\b/.test(q);
   const intimacyCue =
     /\b(position|last longer|lasting|premature|finish too fast|during sex|bedroom flow|lotus|how to last|termact|foreplay|boy to girl|girl to boy)\b/.test(q);
+  const talkCue =
+    /\b(talk about|what to say|conversation|topics?|awkward silence|during (the )?date|date chat|keep (the )?conversation)\b/.test(q);
   const scored = AI_LESSONS.map((lesson) => {
     const hay = norm([lesson.title, ...lesson.aliases].join(' '));
     let score = 0;
@@ -578,6 +681,7 @@ export function interpretQuery(query: string): { topic: AiLesson; score: number 
     if (fashionCue && lesson.id === 'fashion') score += 10;
     if (appearanceCue && lesson.id === 'appearance') score += 12;
     if (intimacyCue && lesson.id === 'intimacy-flow') score += 14;
+    if (talkCue && lesson.id === 'date-talk') score += 16;
     return { topic: lesson, score };
   }).filter((x) => x.score > 0);
   scored.sort((a, b) => b.score - a.score);
@@ -592,22 +696,19 @@ export function getLesson(id: string) {
   return AI_LESSONS.find((l) => l.id === id) || null;
 }
 
-/** Each guide speaks in their own mind — never a shared script when a take exists. */
+/** Each guide speaks in their own mind — Character.AI style, never a shared corporate script. */
 export function resolveLessonForGuide(lesson: AiLesson, guideId: string): AiLesson {
   const take = lesson.guideTakes?.[guideId];
-  if (take) {
-    return { ...lesson, cause: take.cause, solution: take.solution, prevention: take.prevention, unknown: take.unknown };
-  }
+  const clean: AiLesson = take
+    ? { ...lesson, cause: take.cause, solution: take.solution, prevention: take.prevention, unknown: take.unknown }
+    : { ...lesson };
   const guide = getGuide(guideId);
-  if (!guide) return lesson;
-  const first = guide.name.split(' ')[0];
-  const specialty = guide.specialty.toLowerCase();
+  if (!guide) {
+    return { ...clean, reply: `${clean.solution} ${clean.unknown}` };
+  }
   return {
-    ...lesson,
-    cause: `${lesson.cause} (${first}'s read: this usually shows up around ${specialty}.)`,
-    solution: `${first}'s move: ${lesson.solution}`,
-    prevention: `${first} would lock this in early: ${lesson.prevention}`,
-    unknown: `${first}'s edge: ${lesson.unknown}`,
+    ...clean,
+    reply: buildCharacterReply(guide, clean),
   };
 }
 

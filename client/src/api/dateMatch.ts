@@ -192,6 +192,10 @@ export const dateMatchAPI = {
     const { data } = await axios.post(`${API_URL}/spin`, { matchId });
     return data as { match: DateMatch };
   },
+  selectIdea: async (matchId: string, ideaId: string) => {
+    const { data } = await axios.post(`${API_URL}/select-idea`, { matchId, ideaId });
+    return data as { match: DateMatch };
+  },
   cancelDate: async (matchId: string, reason: string, proofUrl?: string) => {
     const { data } = await axios.post(`${API_URL}/cancel`, { matchId, reason, proofUrl });
     return data as { match: DateMatch };

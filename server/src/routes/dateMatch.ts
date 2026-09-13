@@ -10,6 +10,7 @@ import {
   postAvailability,
   postRespond,
   postSpin,
+  postSelectIdea,
   postCancelDate,
   postHowGoing,
   getPitches,
@@ -38,6 +39,7 @@ router.post('/search/cancel', postCancelSearch);
 router.post('/availability', postAvailability);
 router.post('/respond', postRespond);
 router.post('/spin', postSpin);
+router.post('/select-idea', postSelectIdea);
 router.post('/cancel', postCancelDate);
 router.post('/how-going', postHowGoing);
 

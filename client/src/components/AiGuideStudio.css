@@ -215,6 +215,32 @@
   font-size: 15px;
 }
 
+.ai-reply {
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 12px;
+  padding: 12px 14px;
+  margin: 8px 0 12px;
+  border: 1px solid rgba(251, 191, 36, 0.2);
+}
+
+.ai-reply-thought,
+.ai-reply-line {
+  margin: 0 0 8px;
+  font-size: 14px;
+  line-height: 1.45;
+  color: #e5e7eb;
+  white-space: pre-wrap;
+}
+
+.ai-reply-thought {
+  color: #fcd34d;
+  font-style: italic;
+}
+
+.ai-reply p:last-child {
+  margin-bottom: 0;
+}
+
 .ai-blocks {
   display: grid;
   grid-template-columns: 1fr 1fr;

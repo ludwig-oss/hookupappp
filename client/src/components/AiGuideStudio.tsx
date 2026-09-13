@@ -23,8 +23,12 @@ const STATS: { key: keyof AiGuideCharacter['ratings']; label: string }[] = [
   { key: 'attraction', label: 'Spark' },
 ];
 
+function stripRoleplay(text: string) {
+  return text.replace(/\*[^*]+\*/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
 function speak(guide: AiGuideCharacter, text: string, onStart: () => void, onEnd: () => void) {
-  void speakGuideLine(guide.voice, text, onStart, onEnd);
+  void speakGuideLine(guide.voice, stripRoleplay(text), onStart, onEnd);
 }
 
 type Kind = 'choose' | 'ai' | 'human';
@@ -98,15 +102,16 @@ export default function AiGuideStudio({
     }
     let cancelled = false;
     (async () => {
-      const [title, cause, solution, prevention, unknown] = await Promise.all([
+      const [title, cause, solution, prevention, unknown, reply] = await Promise.all([
         translateGuideText(lesson.title, language),
         translateGuideText(lesson.cause, language),
         translateGuideText(lesson.solution, language),
         translateGuideText(lesson.prevention, language),
         translateGuideText(lesson.unknown, language),
+        translateGuideText(lesson.reply || `${lesson.solution} ${lesson.unknown}`, language),
       ]);
       if (!cancelled) {
-        setLessonLocal({ ...lesson, title, cause, solution, prevention, unknown });
+        setLessonLocal({ ...lesson, title, cause, solution, prevention, unknown, reply });
       }
     })();
     return () => {
@@ -247,7 +252,7 @@ export default function AiGuideStudio({
       updateUser({ aiGuideId: g.id });
       window.dispatchEvent(new Event('guide-program:updated'));
       const text = lesson
-        ? `${lesson.solution} ${lesson.unknown}`
+        ? lesson.reply || `${lesson.solution} ${lesson.unknown}`
         : `${g.tagline} Tell me what is going on. I will keep it under a minute.`;
       speak(g, text, () => setSpeaking(true), () => setSpeaking(false));
       if (mode === 'gate') onUnlocked?.();
@@ -469,18 +474,21 @@ export default function AiGuideStudio({
           )}
           {miss && !lesson && (
             <div className="ai-confirm">
-              <p>I did not catch that. Try a short line like ghosting, friendzone, red flags, or what to wear.</p>
+              <p>I did not catch that. Try a short line like ghosting, friendzone, what to talk about on a date, or what to wear.</p>
             </div>
           )}
           {lesson && (
             <div className="ai-session">
               <h4>{(lessonLocal || lesson).title}</h4>
               <AiGuideDemo kind={lesson.demo} />
-              <div className="ai-blocks">
-                <div className="ai-block"><b>Cause</b><p>{(lessonLocal || lesson).cause}</p></div>
-                <div className="ai-block"><b>Do this</b><p>{(lessonLocal || lesson).solution}</p></div>
-                <div className="ai-block"><b>Prevent it</b><p>{(lessonLocal || lesson).prevention}</p></div>
-                <div className="ai-block"><b>Most people miss</b><p>{(lessonLocal || lesson).unknown}</p></div>
+              <div className="ai-reply" aria-label="Guide reply">
+                {((lessonLocal || lesson).reply || `${(lessonLocal || lesson).solution} ${(lessonLocal || lesson).unknown}`)
+                  .split('\n')
+                  .map((line, i) => (
+                    <p key={i} className={/\*[^*]+\*/.test(line) ? 'ai-reply-thought' : 'ai-reply-line'}>
+                      {line}
+                    </p>
+                  ))}
               </div>
               {featured && (
                 <p style={{ fontSize: 12, color: '#f59e0b', margin: '0 0 10px' }}>
@@ -513,7 +521,7 @@ export default function AiGuideStudio({
                     onClick={() =>
                       speak(
                         featured,
-                        `${lesson.solution} ${lesson.unknown}`,
+                        lesson.reply || `${lesson.solution} ${lesson.unknown}`,
                         () => setSpeaking(true),
                         () => setSpeaking(false)
                       )

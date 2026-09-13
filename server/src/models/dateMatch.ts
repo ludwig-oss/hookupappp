@@ -737,6 +737,44 @@ function unusedIdeasForPair(used: UsedIdea[], userId1: string, userId2: string):
   return pool.length ? pool : DATE_IDEAS;
 }
 
+async function applyIdeaToMatch(m: DateMatch, idea: DateIdea): Promise<DateMatch> {
+  const matches = await readMatches();
+  const row = matches.find((x) => x.id === m.id);
+  if (!row) throw new Error('Match not found');
+  if (row.ideaId) return row;
+
+  const used = await readUsed();
+  row.ideaId = idea.id;
+  row.ideaTitle = idea.title;
+  row.ideaDetail = idea.detail;
+  row.ideaCategory = idea.category;
+  row.status = 'scheduled';
+  const slot = row.agreedSlot || row.user1FreeSlots[0] || row.user2FreeSlots[0];
+  const when = slot ? new Date(slot) : new Date(Date.now() + 48 * 60 * 60 * 1000);
+  if (Number.isNaN(when.getTime())) {
+    row.scheduledAt = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString();
+  } else {
+    row.scheduledAt = when.toISOString();
+  }
+  row.updatedAt = new Date().toISOString();
+  used.push({ userId: row.userId1, ideaId: idea.id, usedAt: row.updatedAt });
+  used.push({ userId: row.userId2, ideaId: idea.id, usedAt: row.updatedAt });
+  await writeUsed(used);
+  await writeMatches(matches);
+
+  const dateLabel = new Date(row.scheduledAt).toLocaleDateString(undefined, {
+    weekday: 'long',
+    month: 'short',
+    day: 'numeric',
+  });
+  await ensureMatchConversation(
+    row.userId1,
+    row.userId2,
+    `Date Arena: you're set up for “${idea.title}” on ${dateLabel}. Chat unlocks that day — show up.`
+  );
+  return row;
+}
+
 export async function spinDateIdea(userId: string, matchId: string): Promise<DateMatch> {
   const matches = await readMatches();
   const m = matches.find((x) => x.id === matchId);
@@ -747,35 +785,25 @@ export async function spinDateIdea(userId: string, matchId: string): Promise<Dat
   const used = await readUsed();
   const pool = unusedIdeasForPair(used, m.userId1, m.userId2);
   const idea = pool[Math.floor(Math.random() * pool.length)];
-  m.ideaId = idea.id;
-  m.ideaTitle = idea.title;
-  m.ideaDetail = idea.detail;
-  m.ideaCategory = idea.category;
-  m.status = 'scheduled';
-  const slot = m.agreedSlot || m.user1FreeSlots[0] || m.user2FreeSlots[0];
-  const when = slot ? new Date(slot) : new Date(Date.now() + 48 * 60 * 60 * 1000);
-  if (Number.isNaN(when.getTime())) {
-    m.scheduledAt = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString();
-  } else {
-    m.scheduledAt = when.toISOString();
-  }
-  m.updatedAt = new Date().toISOString();
-  used.push({ userId: m.userId1, ideaId: idea.id, usedAt: m.updatedAt });
-  used.push({ userId: m.userId2, ideaId: idea.id, usedAt: m.updatedAt });
-  await writeUsed(used);
-  await writeMatches(matches);
+  return applyIdeaToMatch(m, idea);
+}
 
-  const dateLabel = new Date(m.scheduledAt).toLocaleDateString(undefined, {
-    weekday: 'long',
-    month: 'short',
-    day: 'numeric',
-  });
-  await ensureMatchConversation(
-    m.userId1,
-    m.userId2,
-    `Date Arena: you're set up for “${idea.title}” on ${dateLabel}. Chat unlocks that day — show up.`
-  );
-  return m;
+export async function selectDateIdea(userId: string, matchId: string, ideaId: string): Promise<DateMatch> {
+  const matches = await readMatches();
+  const m = matches.find((x) => x.id === matchId);
+  if (!m || (m.userId1 !== userId && m.userId2 !== userId)) throw new Error('Match not found');
+  if (m.status !== 'picking_idea' && m.status !== 'scheduled') throw new Error('Accept the match first');
+  if (m.ideaId) return m;
+
+  const idea = getIdeaById(ideaId);
+  if (!idea) throw new Error('Unknown date idea');
+
+  const used = await readUsed();
+  const pool = unusedIdeasForPair(used, m.userId1, m.userId2);
+  const allowed = pool.some((d) => d.id === idea.id) || pool.length === DATE_IDEAS.length;
+  if (!allowed) throw new Error('That idea was already used — pick another or tap ?');
+
+  return applyIdeaToMatch(m, idea);
 }
 
 export async function getDateChatLock(userId: string, otherUserId: string): Promise<DateChatLock> {

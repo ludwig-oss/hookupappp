@@ -27,6 +27,11 @@ export interface AiGuideCharacter {
   ratings: AiGuideRatings;
   expertise: string[];
   categoryIds: string[];
+  charStyle?: {
+    actionCue: string;
+    catchphrases: string[];
+    mindset: string;
+  };
 }
 
 export interface AiLesson {
@@ -40,6 +45,7 @@ export interface AiLesson {
   prevention: string;
   unknown: string;
   demo: string;
+  reply?: string;
 }
 
 export const aiGuidesAPI = {

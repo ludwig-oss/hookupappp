@@ -276,6 +276,13 @@
   gap: 6px;
 }
 
+.da-grid-scroll {
+  max-height: min(52vh, 420px);
+  overflow-y: auto;
+  padding-right: 4px;
+  scrollbar-width: thin;
+}
+
 .da-tile {
   aspect-ratio: 1;
   border-radius: 6px;
@@ -289,6 +296,23 @@
   text-align: center;
   padding: 3px;
   border: 1px solid #2a3140;
+}
+
+.da-tile-pick {
+  cursor: pointer;
+  font: inherit;
+  line-height: 1.15;
+}
+
+.da-tile-pick:hover:not(:disabled) {
+  border-color: #f472b6;
+  color: #fff;
+  background: #2a2030;
+}
+
+.da-tile-pick:disabled {
+  opacity: 0.55;
+  cursor: wait;
 }
 
 .da-tile-q {

@@ -237,6 +237,7 @@ const ProfileSetup = () => {
     setError('');
   };
 
+  const alreadyPickedLookingFor = lookingFor.length >= 1;
   const canContinue = lookingFor.length >= 1 && !loading && !trimming;
 
   return (
@@ -246,12 +247,18 @@ const ProfileSetup = () => {
           ← Back to start
         </Link>
         <h1 className="setup-title">Complete Your Profile</h1>
-        <p className="setup-subtitle">Add a photo first, then say what you&apos;re looking for.</p>
+        <p className="setup-subtitle">
+          {alreadyPickedLookingFor
+            ? 'Add a photo to finish — you already told us what you are looking for at signup.'
+            : 'Add a photo first, then say what you\'re looking for.'}
+        </p>
 
         {error && <div className="error-message">{error}</div>}
 
         <section className="setup-section" aria-labelledby="setup-photo-heading">
-          <h2 id="setup-photo-heading" className="setup-section-title">1. Upload a photo</h2>
+          <h2 id="setup-photo-heading" className="setup-section-title">
+            {alreadyPickedLookingFor ? 'Upload a photo' : '1. Upload a photo'}
+          </h2>
           <p className="setup-section-hint">Photo recommended — or a short GIF-length clip (max {MAX_CLIP_SEC}s). You can skip the photo.</p>
 
           <div className="setup-mode-tabs" role="tablist" aria-label="Media type">
@@ -338,10 +345,12 @@ const ProfileSetup = () => {
           </div>
         </section>
 
-        <section className="setup-section" aria-labelledby="setup-looking-heading">
-          <h2 id="setup-looking-heading" className="setup-section-title">2. What you&apos;re looking for</h2>
-          <LookingForChips value={lookingFor} onChange={setLookingFor} variant="setup" />
-        </section>
+        {!alreadyPickedLookingFor && (
+          <section className="setup-section" aria-labelledby="setup-looking-heading">
+            <h2 id="setup-looking-heading" className="setup-section-title">2. What you&apos;re looking for</h2>
+            <LookingForChips value={lookingFor} onChange={setLookingFor} variant="setup" />
+          </section>
+        )}
 
         <input ref={photoInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleImageSelect} />
         <input ref={videoInputRef} type="file" accept="video/*" style={{ display: 'none' }} onChange={handleVideoSelect} />

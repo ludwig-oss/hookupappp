@@ -209,6 +209,20 @@ export default function DateMatchWidget({
     }
   };
 
+  const pickIdea = async (ideaId: string) => {
+    if (!match) return;
+    setLoading(true);
+    try {
+      const { match: next } = await dateMatchAPI.selectIdea(match.id, ideaId);
+      setMatch(next);
+      setView('scheduled');
+    } catch (e: any) {
+      setError(e.response?.data?.error || 'Could not pick that date');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const submitCancel = async () => {
     if (!match) return;
     setLoading(true);
@@ -243,13 +257,13 @@ export default function DateMatchWidget({
     }
   };
 
-  const ideasPreview = (catalog?.ideas || []).slice(0, 13);
+  const allIdeas = catalog?.ideas || [];
 
   return (
     <div className="widget da-root">
       <h2 className="da-title">Date Arena</h2>
       <p className="da-sub">
-        Interest level {catalog?.interestLevel ?? '—'}. Higher interest pairs you with people who get more interest too.
+        Matching runs quietly in the background — you get paired with people at a similar interest level.
         {catalog?.quota.unlimited
           ? ' Unlimited searches.'
           : ` ${catalog?.quota.remaining ?? 0} of ${catalog?.quota.limit ?? 3} free searches left this month.`}
@@ -391,7 +405,7 @@ export default function DateMatchWidget({
           <div className="da-warn">
             <strong>Before you search</strong>
             <p>You have to appear at the date you get set up for. You cannot back out for convenience. Cancelling without a sick/emergency proof is a €{catalog?.cancellationFineEur ?? 10} fine paid to the other person.</p>
-            <p>How much interest you get on the app — including when you are out — decides who you are paired with. Higher interest meets higher interest. Sometimes you will be matched with someone who has more than you.</p>
+            <p>Who you match with is decided quietly by how much interest you get on the app — including when you are out. Higher interest meets higher interest. Sometimes you will be matched with someone who has more than you.</p>
             <p>Chat stays locked until the day of the date. After the date, both of you choose whether to keep talking.</p>
           </div>
           <button type="button" className="da-btn da-btn-primary" onClick={startSearch}>I understand — find a match</button>
@@ -403,7 +417,7 @@ export default function DateMatchWidget({
         <div className="da-searching">
           <div className="da-radar" />
           <h3>Finding a match…</h3>
-          <p className="da-sub">Pairing by interest level, what you want, and {cityScope === 'city' ? 'your city' : 'your country'}. Stay here — we put them on pending if they are offline.</p>
+          <p className="da-sub">Pairing by what you want and {cityScope === 'city' ? 'your city' : 'your country'}. Stay here — we put them on pending if they are offline.</p>
           <button type="button" className="da-btn da-btn-ghost" onClick={async () => { await dateMatchAPI.cancelSearch(); setView('home'); }}>Stop searching</button>
         </div>
       )}
@@ -419,9 +433,9 @@ export default function DateMatchWidget({
             </div>
             <div className="da-mid">
               <div className="da-e-logo">e</div>
-              <div className="da-stat">Interest<br />{match.userId1 === user?.id ? match.interest1 : match.interest2}</div>
+              <div className="da-stat">Match</div>
               <div className="da-stat" style={{ margin: '10px 0' }}>vs</div>
-              <div className="da-stat">Interest<br />{match.userId1 === user?.id ? match.interest2 : match.interest1}</div>
+              <div className="da-stat">Match</div>
             </div>
             <div className="da-panel da-panel-right">
               <img className="da-avatar" src={avatar(other)} alt="" />
@@ -470,15 +484,26 @@ export default function DateMatchWidget({
               <div>{other?.name || 'Them'}</div>
             </div>
           </div>
-          <p className="da-sub">Tap ? to roll a fun date neither of you has done — hobbies, good deeds, or cheap eats/drinks you have never tried. Same idea will not repeat for you.</p>
-          <div className="da-grid">
-            {ideasPreview.map((idea, i) =>
-              i === 3 ? (
-                <button key="q" type="button" className="da-tile da-tile-q" onClick={spin} disabled={loading}>?</button>
-              ) : (
-                <div key={idea.id} className="da-tile">{idea.title}</div>
-              )
-            )}
+          <p className="da-sub">
+            Tap any idea to lock it in, or tap ? for a random one neither of you has done. Same idea will not repeat for you.
+            {allIdeas.length ? ` ${allIdeas.length} ideas ready.` : ''}
+          </p>
+          <div className="da-grid da-grid-scroll">
+            <button key="q" type="button" className="da-tile da-tile-q" onClick={spin} disabled={loading} title="Random date">
+              ?
+            </button>
+            {allIdeas.map((idea) => (
+              <button
+                key={idea.id}
+                type="button"
+                className="da-tile da-tile-pick"
+                disabled={loading}
+                title={idea.detail}
+                onClick={() => void pickIdea(idea.id)}
+              >
+                {idea.title}
+              </button>
+            ))}
           </div>
         </div>
       )}

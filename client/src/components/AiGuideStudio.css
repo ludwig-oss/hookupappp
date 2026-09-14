@@ -21,6 +21,13 @@
   width: 100%;
 }
 
+.ai-studio-chat-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 2;
+}
+
 .ai-studio-overlay.embedded {
   position: relative;
   inset: auto;

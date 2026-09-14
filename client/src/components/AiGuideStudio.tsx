@@ -472,13 +472,20 @@ export default function AiGuideStudio({
               if (typeof window !== 'undefined' && window.speechSynthesis) window.speechSynthesis.cancel();
               setSpeaking(false);
             }}
+            onClose={
+              closeStudio
+                ? () => {
+                    if (mode === 'gate') onUnlocked?.();
+                    closeStudio();
+                  }
+                : undefined
+            }
           />
         )}
-        {closeStudio && (
+        {closeStudio && (showFashion || showAppearance) && (
           <button
             type="button"
-            className="ai-pill ai-pill-ghost"
-            style={{ position: 'absolute', top: 12, right: 12, zIndex: 2 }}
+            className="ai-pill ai-pill-ghost ai-studio-chat-close"
             onClick={() => {
               if (mode === 'gate') onUnlocked?.();
               closeStudio();

@@ -26,6 +26,7 @@ export default function AiGuideChat({
   onOpenFashion,
   onOpenAppearance,
   onOpenTopic,
+  onClose,
 }: {
   guide: AiGuideCharacter;
   lesson?: AiLesson | null;
@@ -34,6 +35,7 @@ export default function AiGuideChat({
   onOpenFashion?: () => void;
   onOpenAppearance?: () => void;
   onOpenTopic?: (topicId: string) => void;
+  onClose?: () => void;
 }) {
   const [messages, setMessages] = useState<Msg[]>(() => [
     { id: 'g0', from: 'guide', text: greetingFor(guide) },
@@ -194,6 +196,11 @@ export default function AiGuideChat({
           >
             Voice call
           </button>
+          {onClose && (
+            <button type="button" className="ai-chat-close" onClick={onClose}>
+              Close
+            </button>
+          )}
         </div>
       </header>
 

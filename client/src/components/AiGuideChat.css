@@ -16,6 +16,8 @@
   padding: 12px 14px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   background: #121214;
+  flex-wrap: wrap;
+  row-gap: 10px;
 }
 
 .ai-chat-head img {
@@ -49,7 +51,11 @@
 .ai-chat-modes {
   margin-left: auto;
   display: flex;
-  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  max-width: min(100%, 420px);
 }
 
 .ai-chat-modes button {
@@ -57,15 +63,22 @@
   background: transparent;
   color: #e7c9a0;
   border-radius: 999px;
-  padding: 8px 12px;
+  padding: 8px 14px;
   font-weight: 700;
   cursor: pointer;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .ai-chat-modes button.is-on {
   background: linear-gradient(135deg, #f59e0b, #ea580c);
   color: #111;
   border-color: transparent;
+}
+
+.ai-chat-modes button.ai-chat-close {
+  border-color: rgba(255, 255, 255, 0.22);
+  color: #f3f3f5;
 }
 
 .ai-chat-thread {

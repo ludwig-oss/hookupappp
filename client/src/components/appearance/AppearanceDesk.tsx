@@ -11,10 +11,11 @@ import {
 } from '../../api/appearance';
 import { measureFace, readAngleFile } from '../../lib/appearanceFaceMetrics';
 import { paintAppearanceAfter } from '../../lib/appearanceAfterCanvas';
-import { paintFashionTryOn } from '../../lib/fashionTryOnCanvas';
 import { paintHairTryOn } from '../../lib/hairTryOnCanvas';
 import { speakGuideLine } from '../../lib/aiGuideSpeech';
 import { prepareAndUploadFile } from '../../lib/uploadMedia';
+import ClosetInterface from '../closet/ClosetInterface';
+import type { ClosetGender } from '../../data/closetCatalog';
 import './AppearanceDesk.css';
 
 function stripRoleplay(text: string) {
@@ -52,21 +53,48 @@ function AfterPane({
   );
 }
 
-function LookPreview({ look, personUrl }: { look: CompleteLook; personUrl: string | null }) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    canvas.width = 720;
-    canvas.height = 960;
-    void paintFashionTryOn(canvas, personUrl, look.outfit.imageUrl, look.outfit.warp, look.outfit.fallback);
-  }, [look, personUrl]);
+function LookPreview({ look, personUrl, gender }: { look: CompleteLook; personUrl: string | null; gender: ClosetGender }) {
+  const palette = look.outfit.palette || [];
+  const hint = {
+    top: palette[0] ? cssFromName(palette[0]) : look.outfit.fallback,
+    bottom: palette[1] ? cssFromName(palette[1]) : '#1c2331',
+    outer: /blazer|jacket|leather|coat/i.test(look.outfit.pieces.join(' '))
+      ? cssFromName(palette[0] || 'navy')
+      : undefined,
+    shoeColor: /sneaker|boot|derby|shoe/i.test(look.outfit.pieces.join(' ')) ? '#5c3317' : '#111',
+  };
   return (
-    <div className="appear-look-photo" style={{ background: look.outfit.fallback }}>
-      <canvas ref={canvasRef} />
+    <div className="appear-look-photo appear-closet-host" style={{ background: 'transparent' }}>
+      <ClosetInterface gender={gender} faceUrl={personUrl} outfitHint={hint} />
       <span className="appear-hair-chip">{look.hair.title}</span>
     </div>
   );
+}
+
+function cssFromName(name: string): string {
+  const map: Record<string, string> = {
+    navy: '#1e3a5f',
+    black: '#111111',
+    white: '#f4f4f4',
+    charcoal: '#3a3a3a',
+    cream: '#f5f0e6',
+    ivory: '#fffff0',
+    olive: '#556b2f',
+    camel: '#c19a6b',
+    brown: '#5c3317',
+    gold: '#c9a227',
+    silver: '#c0c0c0',
+    espresso: '#3d2914',
+    burgundy: '#6b1e2e',
+    blue: '#2a4a7a',
+    grey: '#6b7280',
+    gray: '#6b7280',
+    sand: '#c2b280',
+    taupe: '#8b7d6b',
+    indigo: '#1c2331',
+  };
+  const key = name.toLowerCase().split(/[\s/]/)[0];
+  return map[key] || '#3a3a3a';
 }
 
 function HairPreview({
@@ -316,6 +344,12 @@ export default function AppearanceDesk({
   };
 
   const personUrl = previews.frontal || (typeof user?.profilePicture === 'string' ? user.profilePicture : null);
+  const closetGender: ClosetGender = (() => {
+    const g = String((user as { gender?: string } | null)?.gender || '').toLowerCase();
+    if (g === 'female' || g === 'woman' || g === 'f') return 'fem';
+    if (g === 'male' || g === 'man' || g === 'm') return 'masc';
+    return 'masc';
+  })();
   const hairList = hairCatalog.length ? hairCatalog : selectedHair ? [selectedHair] : [];
   const rowStylists = tab === 'hair' && hairStylists && hairStylists.length > 1 ? hairStylists : stylists;
   const deskLabel = tab === 'hair' ? `Hair desk · ${first}` : `Face & look · ${first}`;
@@ -449,7 +483,7 @@ export default function AppearanceDesk({
         <div className="appear-look-wrap">
           <div>
             <p className="appear-auto">Auto-chosen for {look.occasion.replace('-', ' ')}</p>
-            <LookPreview look={look} personUrl={personUrl} />
+            <LookPreview look={look} personUrl={personUrl} gender={closetGender} />
             <h3>
               {look.outfit.title} · {look.hair.title}
             </h3>
@@ -594,11 +628,11 @@ export default function AppearanceDesk({
         <div className="appear-compare-wrap">
           <div className="appear-compare" ref={compareRef}>
             <div className="appear-compare-base">
-              <LookPreview look={optionB} personUrl={personUrl} />
+              <LookPreview look={optionB} personUrl={personUrl} gender={closetGender} />
             </div>
             <div className="appear-compare-clip" style={{ width: `${split}%` }}>
               <div className="appear-compare-clip-inner" style={{ width: compareW ? `${compareW}px` : '200%' }}>
-                <LookPreview look={look} personUrl={personUrl} />
+                <LookPreview look={look} personUrl={personUrl} gender={closetGender} />
               </div>
             </div>
             <span className="appear-corner appear-corner-a">A · {look.outfit.title}</span>

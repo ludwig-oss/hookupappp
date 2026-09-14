@@ -21,5 +21,20 @@ export function hasWheelUserActed(userId: string): boolean {
 }
 
 export function filterWheelUsers<T extends { id: string }>(users: T[]): T[] {
-  return users.filter((u) => !hasWheelUserActed(u.id));
+  const fresh = users.filter((u) => !hasWheelUserActed(u.id));
+  // If we've exhausted everyone, reset the acted set so the wheel can play again
+  if (!fresh.length && users.length) {
+    try {
+      const keys: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith(PREFIX)) keys.push(k);
+      }
+      keys.forEach((k) => localStorage.removeItem(k));
+    } catch {
+      /* ignore */
+    }
+    return users;
+  }
+  return fresh;
 }

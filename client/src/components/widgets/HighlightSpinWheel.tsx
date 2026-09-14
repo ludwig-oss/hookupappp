@@ -56,13 +56,16 @@ export default function HighlightSpinWheel({ onOutcome }: HighlightSpinWheelProp
     setSpinning(true);
     const fullSpins = 4 + Math.floor(Math.random() * 4);
     const finalSlice = Math.floor(Math.random() * SECTIONS);
+    const landedId = games[finalSlice]?.id || games[0]?.id;
     const finalAngle = 360 - (finalSlice * SLICE_ANGLE + SLICE_ANGLE / 2);
     const totalDegrees = rotationRef.current + fullSpins * 360 + finalAngle;
     setRotation(totalDegrees);
     rotationRef.current = totalDegrees;
-    setTimeout(() => {
+    window.setTimeout(() => {
       setSpinning(false);
-      onOutcome?.(games[finalSlice]?.id || games[0].id);
+      if (landedId) {
+        onOutcome?.(landedId);
+      }
     }, 4000);
   };
 

@@ -11,6 +11,7 @@ import {
   buildChatTurn,
 } from '../data/aiGuideCatalog.js';
 import { buildTextingCoachAdvice, type ChatLine } from './textingCoach.js';
+import { buildPersonaSystemPrompt, callOpenAiChat } from '../services/llmChat.js';
 
 export async function listAiGuides() {
   return AI_GUIDES.map((g) => ({
@@ -42,11 +43,52 @@ export async function chatWithGuide(params: {
   message: string;
   history?: Array<{ from: 'me' | 'guide'; text: string }>;
 }) {
-  return buildChatTurn({
+  const guide = getGuide(params.guideId);
+  const fallback = buildChatTurn({
     guideId: params.guideId,
     userText: params.message,
     history: params.history,
   });
+
+  // Clarifies (which problem?) stay local — chips need structured options
+  if (fallback.mode === 'clarify') return fallback;
+
+  if (!guide) return fallback;
+
+  const history = (params.history || []).slice(-14);
+  const messages = [
+    {
+      role: 'system' as const,
+      content: buildPersonaSystemPrompt({
+        name: guide.name,
+        specialty: guide.specialty,
+        personality: guide.personality,
+        thinking: guide.thinking,
+        mindset: guide.charStyle?.mindset,
+        catchphrases: guide.charStyle?.catchphrases,
+        extra: `Tagline energy: ${guide.tagline}. Expertise: ${guide.expertise.join(', ')}.`,
+      }),
+    },
+    ...history.map((m) => ({
+      role: (m.from === 'me' ? 'user' : 'assistant') as 'user' | 'assistant',
+      content: m.text.slice(0, 800),
+    })),
+    { role: 'user' as const, content: params.message.slice(0, 1200) },
+  ];
+
+  const llm = await callOpenAiChat({
+    messages,
+    model: process.env.OPENAI_GUIDE_MODEL || 'gpt-4o',
+    max_tokens: 180,
+  });
+
+  if (!llm) return fallback;
+
+  return {
+    reply: llm,
+    mode: 'chat' as const,
+    topicId: fallback.topicId,
+  };
 }
 
 export async function lessonWithGuides(topicId: string, guideId?: string) {

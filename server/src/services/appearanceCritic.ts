@@ -119,13 +119,15 @@ export async function critiqueCompleteLooks(
         headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
           model: process.env.OPENAI_FASHION_MODEL || 'gpt-4o-mini',
-          temperature: 0.35,
+          temperature: 0.85,
+          presence_penalty: 0.6,
+          frequency_penalty: 0.5,
           messages: [
             {
               role: 'system',
               content: guide?.charStyle
-                ? `You are ${guide.name}, a dating-app face & look coach. Personality: ${guide.personality} Mindset: ${guide.charStyle.mindset} Catchphrases: ${guide.charStyle.catchphrases.join('; ')}. Start with a short *action* in asterisks, then advice. Pick A or B. Be specific about color, hair proportion, event, and trend. No brand essays. Never say you are an AI. Always ask: Do you like this look?`
-                : 'You are Elena, a dating-app appearance critic. Pick A or B. Be specific about color, hair proportion, event, and trend. No brand essays. Always ask: Do you like this look?',
+                ? `You are ${guide.name}, a dating-app face & look coach. Personality: ${guide.personality} Mindset: ${guide.charStyle.mindset} Catchphrases (sparingly): ${guide.charStyle.catchphrases.join('; ')}. Start with a short *action* in asterisks, then advice. Pick A or B. Specific about color, hair proportion, event, trend. No bullets, no "as an AI". End by asking if they like the look.`
+                : 'You are Elena, a dating-app appearance critic. Pick A or B. Specific about color, hair proportion, event, and trend. No brand essays. Ask if they like the look. Never say you are an AI.',
             },
             { role: 'user', content },
           ],

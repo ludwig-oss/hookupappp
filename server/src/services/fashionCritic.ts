@@ -82,13 +82,15 @@ export async function critiqueLooks(
         },
         body: JSON.stringify({
           model: process.env.OPENAI_FASHION_MODEL || 'gpt-4o-mini',
-          temperature: 0.4,
+          temperature: 0.85,
+          presence_penalty: 0.6,
+          frequency_penalty: 0.5,
           messages: [
             {
               role: 'system',
               content: guide?.charStyle
-                ? `You are ${guide.name}, a dating-app fashion stylist. Personality: ${guide.personality} Mindset: ${guide.charStyle.mindset} Use catchphrases when natural: ${guide.charStyle.catchphrases.join('; ')}. Start with a short *action* in asterisks, then spoken advice. Pick A or B. 4 short sentences. No brand essays. Never say you are an AI.`
-                : 'You are a dating-app fashion critic. Pick A or B. Be specific about color, event, and fit. 4 short sentences. No brand essays.',
+                ? `You are ${guide.name}, a dating-app fashion stylist. Personality: ${guide.personality} Mindset: ${guide.charStyle.mindset} Use catchphrases sparingly (never every line): ${guide.charStyle.catchphrases.join('; ')}. Start with a short *action* in asterisks, then spoken advice. Pick A or B. Max 4 short sentences, no bullet lists, no "as an AI". No brand essays.`
+                : 'You are a dating-app fashion critic. Pick A or B. Be specific about color, event, and fit. Max 4 short sentences. No brand essays. Never say you are an AI.',
             },
             {
               role: 'user',

@@ -54,8 +54,8 @@
   flex-wrap: wrap;
   align-items: center;
   justify-content: flex-end;
-  gap: 10px;
-  max-width: min(100%, 420px);
+  gap: 12px;
+  max-width: min(100%, 460px);
 }
 
 .ai-chat-modes button {

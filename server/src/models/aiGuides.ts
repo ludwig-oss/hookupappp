@@ -39,10 +39,9 @@ export async function interpretAiQuery(query: string) {
         }
       : null,
     alternates: matches.slice(1).map((m) => ({ id: m.topic.id, title: m.topic.title })),
-    /** When confidence is low, client should ask which specific — do not auto-open a desk. */
-    needsClarify: resists ? false : !top || top.score < 12,
-    /** Client: drop chip UI and open freeform chat with a guide. */
-    openChat: resists,
+    /** Never force category chip UI — open chat and answer. */
+    needsClarify: false,
+    openChat: resists || !top || top.score < 8,
   };
 }
 
@@ -58,14 +57,14 @@ export async function chatWithGuide(params: {
     history: params.history,
   });
 
-  const friction = userResistsCategoryLoop(params.message);
-  const alreadyAsked = guideAlreadyAskedCategories(params.history);
-  const financeDesk = guide?.desk === 'finance';
+  // Never serve chip menus — strip clarify even on local fallback
+  const safeFallback = {
+    ...fallback,
+    mode: (fallback.mode === 'clarify' ? 'chat' : fallback.mode) as 'chat' | 'lesson',
+    clarifyOptions: undefined,
+  };
 
-  // Clarifies stay local for dating desks — except friction / already-asked / finance
-  if (fallback.mode === 'clarify' && !friction && !alreadyAsked && !financeDesk) return fallback;
-
-  if (!guide) return fallback;
+  if (!guide) return safeFallback;
 
   const history = (params.history || []).slice(-14);
   const messages = [
@@ -82,12 +81,13 @@ export async function chatWithGuide(params: {
         expertise: guide.expertise,
         extra: [
           `Tagline energy: ${guide.tagline}.`,
-          'Absolute isolation: never name other coaches, never borrow another niche\'s playbook.',
-          friction
-            ? 'The user resisted menus/categories. Do not list options. Talk open-ended inside your lane and ask one real question.'
-            : alreadyAsked
-              ? 'You already asked them to pick a category once. Never ask again. Respond to what they said as a real conversation in your lane only.'
-              : '',
+          'Unified Intel Core is active — answer the exact sentence they typed. No chips. No category menus.',
+          guideAlreadyAskedCategories(params.history)
+            ? 'You already asked for a category once. Never ask again. Answer their latest message directly.'
+            : '',
+          userResistsCategoryLoop(params.message)
+            ? 'They resisted menus. Talk open-ended and solve what they said.'
+            : '',
         ]
           .filter(Boolean)
           .join(' '),
@@ -103,21 +103,15 @@ export async function chatWithGuide(params: {
   const llm = await callOpenAiChat({
     messages,
     model: process.env.OPENAI_GUIDE_MODEL || 'gpt-4o',
-    max_tokens: financeDesk ? 200 : 180,
+    max_tokens: 200,
   });
 
-  if (!llm) {
-    // Finance / friction must never fall back into clarify chips
-    if (fallback.mode === 'clarify' && (financeDesk || friction || alreadyAsked)) {
-      return { ...fallback, mode: 'chat' as const, clarifyOptions: undefined };
-    }
-    return fallback;
-  }
+  if (!llm) return safeFallback;
 
   return {
     reply: llm,
     mode: 'chat' as const,
-    topicId: fallback.topicId,
+    topicId: safeFallback.topicId,
   };
 }
 

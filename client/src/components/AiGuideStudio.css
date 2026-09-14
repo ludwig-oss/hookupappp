@@ -46,8 +46,15 @@
 
 .ai-studio-top-actions {
   display: flex;
-  gap: 8px;
+  gap: 12px;
   flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.ai-studio-top-actions .ai-pill {
+  margin: 0;
+  flex-shrink: 0;
 }
 
 .ai-studio-brand {

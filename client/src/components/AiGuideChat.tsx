@@ -25,7 +25,6 @@ export default function AiGuideChat({
   onSpeaking,
   onOpenFashion,
   onOpenAppearance,
-  onOpenTopic,
   onClose,
 }: {
   guide: AiGuideCharacter;
@@ -34,7 +33,6 @@ export default function AiGuideChat({
   onSpeaking: (on: boolean) => void;
   onOpenFashion?: () => void;
   onOpenAppearance?: () => void;
-  onOpenTopic?: (topicId: string) => void;
   onClose?: () => void;
 }) {
   const [messages, setMessages] = useState<Msg[]>(() => [
@@ -44,7 +42,6 @@ export default function AiGuideChat({
   const [busy, setBusy] = useState(false);
   const [callOn, setCallOn] = useState(false);
   const [listening, setListening] = useState(false);
-  const [clarify, setClarify] = useState<{ id: string; title: string }[]>([]);
   const bottomRef = useRef<HTMLDivElement>(null);
   const recRef = useRef<{ stop: () => void } | null>(null);
   const guideRef = useRef(guide);
@@ -54,12 +51,11 @@ export default function AiGuideChat({
     setMessages([{ id: `g-${guide.id}`, from: 'guide', text: greetingFor(guide) }]);
     setDraft('');
     setCallOn(false);
-    setClarify([]);
   }, [guide.id]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, callOn, clarify]);
+  }, [messages, callOn]);
 
   useEffect(() => {
     const first = messages[0];
@@ -74,7 +70,6 @@ export default function AiGuideChat({
 
   const replyAsGuide = async (userText: string) => {
     setBusy(true);
-    setClarify([]);
     try {
       const history = messages.slice(-12).map((m) => ({
         from: (m.from === 'me' ? 'me' : 'guide') as 'me' | 'guide',
@@ -83,9 +78,6 @@ export default function AiGuideChat({
       const turn = await aiGuidesAPI.chat(guideRef.current.id, userText, history);
       const text = stripRoleplay(turn.reply || 'Say that again in one sentence.');
       setMessages((prev) => [...prev, { id: `g-${Date.now()}`, from: 'guide', text }]);
-      if (turn.mode === 'clarify' && turn.clarifyOptions?.length) {
-        setClarify(turn.clarifyOptions);
-      }
       speak(text);
     } catch {
       const fallback = `Hey — say that again shorter. One sentence. What's actually going on?`;
@@ -102,15 +94,6 @@ export default function AiGuideChat({
     setDraft('');
     setMessages((prev) => [...prev, { id: `m-${Date.now()}`, from: 'me', text }]);
     await replyAsGuide(text);
-  };
-
-  const pickClarify = async (opt: { id: string; title: string }) => {
-    setClarify([]);
-    setMessages((prev) => [...prev, { id: `m-${Date.now()}`, from: 'me', text: opt.title }]);
-    if (onOpenTopic && ['fashion', 'appearance', 'hair', 'intimacy-flow'].includes(opt.id)) {
-      onOpenTopic(opt.id);
-    }
-    await replyAsGuide(opt.title);
   };
 
   const stopMic = () => {
@@ -234,16 +217,6 @@ export default function AiGuideChat({
               <p>{m.text}</p>
             </div>
           ))}
-          {clarify.length > 0 && (
-            <div className="ai-chat-clarify">
-              <span>Which one?</span>
-              {clarify.map((c) => (
-                <button key={c.id} type="button" disabled={busy} onClick={() => void pickClarify(c)}>
-                  {c.title}
-                </button>
-              ))}
-            </div>
-          )}
           <div ref={bottomRef} />
         </div>
       )}

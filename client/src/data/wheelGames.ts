@@ -29,7 +29,7 @@ export const SET_A: WheelGame[] = [
 
 /** Set B — chat challenge pack 1 */
 export const SET_B: WheelGame[] = [
-  { id: 'predictive_text', name: 'Predictive Text Fate', short: 'PredTxt', mechanic: 'chat_challenge', blurb: 'Only tap the middle predictive word to build 3 messages.' },
+  { id: 'predictive_text', name: 'Predictive Text Fate', short: 'PredTxt', mechanic: 'chat_challenge', blurb: 'Build replies from predictive word taps — then send.' },
   { id: 'one_word', name: 'One-Word Limit', short: '1Word', mechanic: 'chat_challenge', blurb: 'Exactly one word per reply. Make it count.' },
   { id: 'gif_roulette', name: 'GIF Roulette', short: 'GIF', mechanic: 'chat_challenge', blurb: 'No typing — only the first GIF that pops up.' },
   { id: 'rhyme_crime', name: 'Rhyme Crime', short: 'Rhyme', mechanic: 'chat_challenge', blurb: 'Every reply must rhyme with their last line.' },
@@ -43,7 +43,7 @@ export const SET_C: WheelGame[] = [
   { id: 'emoji_only', name: 'Emoji Only', short: 'Emoji', mechanic: 'chat_challenge', blurb: 'Banned from words — emoji replies only.' },
   { id: 'hardcore_detective', name: 'Hardcore Detective', short: 'Detect', mechanic: 'chat_challenge', blurb: 'Treat everything they say like a crime clue.' },
   { id: 'letter_ban', name: 'Letter Ban', short: 'Ban', mechanic: 'chat_challenge', blurb: 'Spin bans a letter — don’t use it for 5 messages.' },
-  { id: 'no_context_image', name: 'No-Context Image', short: 'NoCtx', mechanic: 'chat_challenge', blurb: 'Send a random photo. Refuse to explain it.' },
+  { id: 'no_context_image', name: 'No-Context Image', short: 'NoCtx', mechanic: 'chat_challenge', blurb: 'Snap or pick a real photo. Send it. Refuse to explain it.' },
   { id: 'blind_compliment', name: 'Blind Compliment', short: 'Compliment', mechanic: 'chat_challenge', blurb: 'Compliment something bizarrely specific in their pics.' },
 ];
 

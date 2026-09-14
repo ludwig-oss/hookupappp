@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { activityAPI } from '../../api/activity';
 import { openChatWithUser } from '../../lib/openChat';
@@ -15,7 +15,7 @@ type UserInfo = {
   displayName?: string;
 };
 
-type ChatLine = { who: 'them' | 'you' | 'system'; text: string };
+type ChatLine = { who: 'them' | 'you' | 'system'; text: string; imageUrl?: string };
 
 const MATCH_24H =
   'Reply within 24 hours after each message or the match ends.';
@@ -40,14 +40,6 @@ const GIF_PACKS: Record<string, string[]> = {
   confused: ['🤔❓', 'confused blink', 'wait what', 'loading brain'],
   hype: ['🔥🔥🔥', 'lets gooo', 'airhorn gif', 'standing ovation'],
 };
-
-const RANDOM_PHOTOS = [
-  '📷 blurry ceiling fan',
-  '📷 half a sandwich',
-  '📷 sock on a radiator',
-  '📷 parking lot at 2am',
-  '📷 mysterious left elbow',
-];
 
 function lastWord(s: string): string {
   const m = s.trim().toLowerCase().match(/[a-z']+(?=[^a-z']*$)/i);
@@ -121,7 +113,7 @@ function defFor(id: string): ChallengeDef {
   switch (id) {
     case 'predictive_text':
       return {
-        rules: 'For your next 3 messages, only tap the MIDDLE predictive word. Build a sentence. Break the rule = lose.',
+        rules: 'Build 3 messages using the predictive word buttons. Tap any suggested word, then Send.',
         rounds: 3,
         theirOpener: base,
         inputMode: 'predictive',
@@ -227,11 +219,11 @@ function defFor(id: string): ChallengeDef {
       };
     case 'no_context_image':
       return {
-        rules: 'Send a completely random photo. Zero context. Refuse to explain.',
+        rules: 'Take or pick a real photo. Send it with zero explanation. Refuse to explain.',
         rounds: 2,
         theirOpener: 'Okay send me something fun?',
         inputMode: 'image',
-        validate: (input) => (input ? null : 'Send a random photo.'),
+        validate: (input) => (input ? null : 'Send a real photo.'),
       };
     case 'blind_compliment':
       return {
@@ -348,6 +340,8 @@ export default function ChatChallengeFlow({
   const [predMid, setPredMid] = useState(() => PREDICTIVE_POOL[1]);
   const [predRight, setPredRight] = useState(() => PREDICTIVE_POOL[2]);
   const [gifKey, setGifKey] = useState<keyof typeof GIF_PACKS>('laugh');
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const galleryInputRef = useRef<HTMLInputElement>(null);
 
   if (!match) {
     return createPortal(
@@ -393,9 +387,35 @@ export default function ChatChallengeFlow({
     setPredRight(shuffle[2]);
   };
 
-  const tapMiddlePredictive = () => {
-    setDraft((d) => (d ? `${d} ${predMid}` : predMid));
+  const tapPredictive = (word: string) => {
+    setDraft((d) => (d ? `${d} ${word}` : word));
     rollPredictive();
+  };
+
+  const submitPhoto = (file: File | null | undefined) => {
+    if (!file || !file.type.startsWith('image/')) {
+      setError('Pick or take a real photo.');
+      return;
+    }
+    const imageUrl = URL.createObjectURL(file);
+    const caption = '📷 (no context. not explaining.)';
+    const fail = def.validate(caption, ctx);
+    if (fail) {
+      URL.revokeObjectURL(imageUrl);
+      setError(fail);
+      setPhase('lost');
+      return;
+    }
+    const nextRound = round + 1;
+    const theirFollow = THEIR_LINES[(nextRound + 1) % THEIR_LINES.length];
+    setChat((c) => {
+      const lines: ChatLine[] = [...c, { who: 'you', text: caption, imageUrl }];
+      if (nextRound < def.rounds) lines.push({ who: 'them', text: theirFollow });
+      return lines;
+    });
+    setError(null);
+    setRound(nextRound);
+    if (nextRound >= def.rounds) setPhase('won');
   };
 
   const submitReply = (raw: string) => {
@@ -479,6 +499,9 @@ export default function ChatChallengeFlow({
                 <div key={i} className={`challenge-bubble ${line.who}`}>
                   {line.who === 'them' ? 'Them: ' : line.who === 'you' ? 'You: ' : ''}
                   {line.text}
+                  {line.imageUrl ? (
+                    <img src={line.imageUrl} alt="" className="challenge-photo" />
+                  ) : null}
                 </div>
               ))}
             </div>
@@ -494,17 +517,27 @@ export default function ChatChallengeFlow({
                 {def.inputMode === 'predictive' && (
                   <>
                     <div className="predictive-row">
-                      <button type="button" className="pred-btn dim" disabled>{predLeft}</button>
-                      <button type="button" className="pred-btn mid" onClick={tapMiddlePredictive}>{predMid}</button>
-                      <button type="button" className="pred-btn dim" disabled>{predRight}</button>
+                      <button type="button" className="pred-btn" onClick={() => tapPredictive(predLeft)}>
+                        {predLeft}
+                      </button>
+                      <button type="button" className="pred-btn mid" onClick={() => tapPredictive(predMid)}>
+                        {predMid}
+                      </button>
+                      <button type="button" className="pred-btn" onClick={() => tapPredictive(predRight)}>
+                        {predRight}
+                      </button>
                     </div>
-                    <p className="wheel-outcome-msg" style={{ fontSize: '0.8rem' }}>Only the middle button works.</p>
+                    <p className="wheel-outcome-msg" style={{ fontSize: '0.8rem' }}>
+                      Tap any word to build your line, then Send.
+                    </p>
                     <p className="challenge-draft">{draft || '…'}</p>
                     <div className="wheel-outcome-actions">
                       <button type="button" className="wheel-outcome-btn" disabled={!draft} onClick={() => submitReply(draft)}>
                         Send message
                       </button>
-                      <button type="button" className="wheel-outcome-btn secondary" onClick={() => setDraft('')}>Clear</button>
+                      <button type="button" className="wheel-outcome-btn secondary" onClick={() => setDraft('')}>
+                        Clear
+                      </button>
                     </div>
                   </>
                 )}
@@ -530,12 +563,37 @@ export default function ChatChallengeFlow({
                 )}
 
                 {def.inputMode === 'image' && (
-                  <div className="wheel-outcome-actions" style={{ flexDirection: 'column' }}>
-                    {RANDOM_PHOTOS.map((p) => (
-                      <button key={p} type="button" className="wheel-outcome-btn" onClick={() => submitReply(`${p} (no context. not explaining.)`)}>
-                        Send {p}
-                      </button>
-                    ))}
+                  <div className="wheel-outcome-actions" style={{ flexDirection: 'column', gap: 10 }}>
+                    <input
+                      ref={cameraInputRef}
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      hidden
+                      onChange={(e) => {
+                        submitPhoto(e.target.files?.[0]);
+                        e.target.value = '';
+                      }}
+                    />
+                    <input
+                      ref={galleryInputRef}
+                      type="file"
+                      accept="image/*"
+                      hidden
+                      onChange={(e) => {
+                        submitPhoto(e.target.files?.[0]);
+                        e.target.value = '';
+                      }}
+                    />
+                    <button type="button" className="wheel-outcome-btn" onClick={() => cameraInputRef.current?.click()}>
+                      Take photo
+                    </button>
+                    <button type="button" className="wheel-outcome-btn secondary" onClick={() => galleryInputRef.current?.click()}>
+                      Choose from gallery
+                    </button>
+                    <p className="wheel-outcome-msg" style={{ fontSize: '0.8rem' }}>
+                      Real camera or gallery. Send it. Do not explain it.
+                    </p>
                   </div>
                 )}
 

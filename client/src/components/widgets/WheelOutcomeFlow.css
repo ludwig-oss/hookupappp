@@ -5,7 +5,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 10050;
+  z-index: 14000;
   padding: 16px;
   box-sizing: border-box;
 }
@@ -548,5 +548,19 @@
 .pred-btn.dim {
   opacity: 0.45;
   cursor: not-allowed;
+}
+
+.challenge-photo {
+  display: block;
+  width: 100%;
+  max-width: 220px;
+  margin-top: 8px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 107, 157, 0.45);
+  object-fit: cover;
+}
+
+.challenge-controls .wheel-outcome-actions {
+  gap: 10px;
 }
 

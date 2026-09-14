@@ -1,9 +1,8 @@
 import { useState, useRef } from 'react';
 import {
-  pickWheelBatch,
-  peekRestOfPool,
-  readRecentWheelIds,
-  writeRecentWheelIds,
+  getCurrentWheelSet,
+  advanceWheelSet,
+  SET_LABELS,
   type WheelGame,
 } from '../../data/wheelGames';
 
@@ -15,22 +14,17 @@ interface HighlightSpinWheelProps {
 }
 
 export default function HighlightSpinWheel({ onOutcome }: HighlightSpinWheelProps) {
-  const [games, setGames] = useState<WheelGame[]>(() => pickWheelBatch(readRecentWheelIds()));
+  const initial = getCurrentWheelSet();
+  const [games, setGames] = useState<WheelGame[]>(() => initial.games);
+  const [setLabel, setSetLabel] = useState(() => initial.label);
+  const [setIndex, setSetIndex] = useState(() => initial.setIndex);
   const [rotation, setRotation] = useState(0);
   const [spinning, setSpinning] = useState(false);
   const rotationRef = useRef(0);
   const gamesRef = useRef(games);
   gamesRef.current = games;
-  const poolPeek = peekRestOfPool(games, 12);
 
-  const remixForNextSpin = (justPlayedId?: string) => {
-    const prevIds = gamesRef.current.map((g) => g.id);
-    const recent = [...readRecentWheelIds(), ...prevIds, ...(justPlayedId ? [justPlayedId] : [])];
-    writeRecentWheelIds(recent);
-    const next = pickWheelBatch(recent);
-    setGames(next);
-    gamesRef.current = next;
-  };
+  const nextLabel = SET_LABELS[(setIndex + 1) % SET_LABELS.length];
 
   const handleSpin = () => {
     if (spinning || gamesRef.current.length < 6) return;
@@ -46,8 +40,12 @@ export default function HighlightSpinWheel({ onOutcome }: HighlightSpinWheelProp
     window.setTimeout(() => {
       setSpinning(false);
       if (landedId) onOutcome?.(landedId);
-      // Auto-remix after every spin so the next wheel shows other games from the 24
-      remixForNextSpin(landedId);
+      // Hard swap to the next full set of 6 (A→B→C→D→A…) so new games actually show
+      const next = advanceWheelSet();
+      setGames(next.games);
+      gamesRef.current = next.games;
+      setSetLabel(next.label);
+      setSetIndex(next.setIndex);
     }, 4000);
   };
 
@@ -81,7 +79,7 @@ export default function HighlightSpinWheel({ onOutcome }: HighlightSpinWheelProp
             const angle = 30 + i * SLICE_ANGLE;
             return (
               <div
-                key={`${g.id}-${i}`}
+                key={`${g.id}-${setIndex}-${i}`}
                 className="highlight-spin-wheel-label-pos"
                 style={{
                   transform: `rotate(${angle}deg) translateY(-58px)`,
@@ -98,36 +96,15 @@ export default function HighlightSpinWheel({ onOutcome }: HighlightSpinWheelProp
       </button>
       <p className="highlight-spin-wheel-hint">{spinning ? 'Spinning...' : 'Click the wheel to spin'}</p>
       <p className="highlight-spin-wheel-how" style={{ maxWidth: 340, margin: '0.5rem auto', fontSize: '0.85rem', opacity: 0.9, lineHeight: 1.4 }}>
-        <strong>6 of 24</strong> games on the wheel. After every spin the wheel auto-remixes so you can test the wild ones (Ex-Talk Ban, Ghost Protocol, First-Date Roulette, etc.).
+        Set: <strong>{setLabel}</strong> (6 games). After this spin → <strong>{nextLabel}</strong>. Cycles all 24 automatically — no remix button.
       </p>
-      <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
-        <button
-          type="button"
-          className="wheel-outcome-btn"
-          onClick={() => remixForNextSpin()}
-          disabled={spinning}
-          style={{ padding: '8px 16px', fontSize: 13 }}
-        >
-          Remix now
-        </button>
-      </div>
       <div className="highlight-spin-wheel-legend" aria-label="Games on this wheel">
-        <p>On the wheel right now:</p>
+        <p>On the wheel ({setLabel}):</p>
         <ul>
           {games.slice(0, SECTIONS).map((g, i) => (
             <li key={g.id}>{i + 1}. {g.name}</li>
           ))}
         </ul>
-        {poolPeek.length > 0 && (
-          <>
-            <p style={{ marginTop: 10 }}>Coming up after spins (not on this wheel yet):</p>
-            <ul style={{ opacity: 0.85 }}>
-              {poolPeek.map((g) => (
-                <li key={g.id}>{g.name}</li>
-              ))}
-            </ul>
-          </>
-        )}
       </div>
     </div>
   );

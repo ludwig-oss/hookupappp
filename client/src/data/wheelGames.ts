@@ -1,4 +1,4 @@
-/** 24 dating mini-games: 4 themed sets of 6. Only 6 show on the wheel at a time; remix after every spin. */
+/** 24 dating mini-games: 4 themed sets of 6. Exactly one set on the wheel; advances after every spin. */
 
 export type WheelMechanic =
   | 'blind_date'
@@ -17,7 +17,7 @@ export type WheelGame = {
 };
 
 /** Set A — classic wheel */
-const SET_A: WheelGame[] = [
+export const SET_A: WheelGame[] = [
   { id: 'blind_date', name: 'Blind Date', short: 'Blind', mechanic: 'blind_date', blurb: 'Voice icebreakers; faces stay blurred.' },
   { id: 'picture_pick', name: 'Picture Pick', short: 'Pick', mechanic: 'picture_pick', blurb: 'Choose a photo + vibe hint.' },
   { id: 'compatibility_rush', name: 'Compatibility Rush', short: 'Rush', mechanic: 'compatibility_rush', blurb: 'Quick vibe questions.' },
@@ -26,8 +26,8 @@ const SET_A: WheelGame[] = [
   { id: 'mystery_message', name: 'Mystery Message', short: 'Mystery', mechanic: 'mystery_message', blurb: 'Send a typed mystery line.' },
 ];
 
-/** Set B — chaotic dating chaos */
-const SET_B: WheelGame[] = [
+/** Set B — chaotic dating */
+export const SET_B: WheelGame[] = [
   { id: 'ex_talk_ban', name: 'Ex-Talk Ban', short: 'ExBan', mechanic: 'compatibility_rush', blurb: 'Answer prompts — saying “ex” loses.' },
   { id: 'soft_launch', name: 'Soft Launch Roulette', short: 'Soft', mechanic: 'picture_pick', blurb: 'Pick who you’d soft-launch first.' },
   { id: 'situationship', name: 'Situationship Spin', short: 'Situ', mechanic: 'blind_date', blurb: 'Voice-only: define the vibe live.' },
@@ -37,7 +37,7 @@ const SET_B: WheelGame[] = [
 ];
 
 /** Set C — spicy / chaotic fun */
-const SET_C: WheelGame[] = [
+export const SET_C: WheelGame[] = [
   { id: 'lovebomb_defuse', name: 'Love-Bomb Defuse', short: 'Defuse', mechanic: 'compatibility_rush', blurb: 'Diffuses over-the-top lines.' },
   { id: 'breadcrumb_chase', name: 'Breadcrumb Chase', short: 'Crumb', mechanic: 'speed_pick', blurb: 'Chase or drop the breadcrumbs.' },
   { id: 'double_text_dare', name: 'Double-Text Dare', short: 'DblTxt', mechanic: 'mystery_message', blurb: 'Type the double-text you’d send.' },
@@ -47,7 +47,7 @@ const SET_C: WheelGame[] = [
 ];
 
 /** Set D — wild date energy */
-const SET_D: WheelGame[] = [
+export const SET_D: WheelGame[] = [
   { id: 'first_date_roulette', name: 'First-Date Roulette', short: '1stDate', mechanic: 'blind_date', blurb: 'Voice plan a wild first date.' },
   { id: 'meet_cute_remix', name: 'Meet-Cute Remix', short: 'Cute', mechanic: 'mystery_message', blurb: 'Write your meet-cute opener.' },
   { id: 'pet_name_lottery', name: 'Pet-Name Lottery', short: 'Pet', mechanic: 'compatibility_rush', blurb: 'Survive the pet-name gauntlet.' },
@@ -58,9 +58,16 @@ const SET_D: WheelGame[] = [
 
 export const ALL_WHEEL_GAMES: WheelGame[] = [...SET_A, ...SET_B, ...SET_C, ...SET_D];
 
-const SETS = [SET_A, SET_B, SET_C, SET_D];
+export const WHEEL_SETS = [SET_A, SET_B, SET_C, SET_D] as const;
 
-const RECENT_KEY = 'highlights:recentWheelGameIds';
+export const SET_LABELS = [
+  'Classic',
+  'Chaotic dating',
+  'Spicy chaos',
+  'Wild dates',
+] as const;
+
+const SET_INDEX_KEY = 'highlights:wheelSetIndex';
 
 function shuffle<T>(arr: T[]): T[] {
   const out = [...arr];
@@ -71,67 +78,69 @@ function shuffle<T>(arr: T[]): T[] {
   return out;
 }
 
-export function readRecentWheelIds(): string[] {
+export function readWheelSetIndex(): number {
   try {
-    const raw = localStorage.getItem(RECENT_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed.filter((x) => typeof x === 'string') : [];
+    const raw = localStorage.getItem(SET_INDEX_KEY);
+    // Default to Chaotic (set 1) so new games aren't buried behind classics
+    if (raw == null) {
+      localStorage.setItem(SET_INDEX_KEY, '1');
+      return 1;
+    }
+    const n = Number(raw);
+    return Number.isFinite(n) ? ((Math.floor(n) % WHEEL_SETS.length) + WHEEL_SETS.length) % WHEEL_SETS.length : 1;
   } catch {
-    return [];
+    return 1;
   }
 }
 
-export function writeRecentWheelIds(ids: string[]): void {
+function writeWheelSetIndex(idx: number): void {
   try {
-    localStorage.setItem(RECENT_KEY, JSON.stringify(ids.slice(-20)));
+    localStorage.setItem(SET_INDEX_KEY, String(idx % WHEEL_SETS.length));
+    // Clear old remix keys so stale logic can't stick
+    localStorage.removeItem('highlights:wheelRemixBump');
+    localStorage.removeItem('highlights:recentWheelGameIds');
   } catch {
     /* ignore */
   }
 }
 
-/**
- * Pick 6 games for the wheel.
- * Prefers games you haven't seen recently so all 24 rotate through.
- * Mixes sets: never all from one set when avoidable.
- */
-export function pickWheelBatch(recentIds: string[] = []): WheelGame[] {
-  const recent = new Set(recentIds);
-  const fresh = ALL_WHEEL_GAMES.filter((g) => !recent.has(g.id));
-  const pool = fresh.length >= 6 ? fresh : ALL_WHEEL_GAMES;
-
-  // Try to pull from different sets for variety
-  const bySet = SETS.map((set) => shuffle(set.filter((g) => pool.some((p) => p.id === g.id))));
-  const picked: WheelGame[] = [];
-  const used = new Set<string>();
-
-  // Round-robin one from each set first
-  for (let round = 0; round < 3 && picked.length < 6; round++) {
-    for (const set of bySet) {
-      if (picked.length >= 6) break;
-      const next = set.find((g) => !used.has(g.id));
-      if (next) {
-        picked.push(next);
-        used.add(next.id);
-      }
+/** Current full set of 6 (no mixing classics into wild sets). */
+export function getCurrentWheelSet(): { games: WheelGame[]; setIndex: number; label: string } {
+  try {
+    // One-time: if they were stuck on the old remix mix, jump to Chaotic set so new games show now
+    if (localStorage.getItem('highlights:wheelRemixBump') != null || localStorage.getItem('highlights:recentWheelGameIds') != null) {
+      writeWheelSetIndex(1);
     }
+  } catch {
+    /* ignore */
   }
-
-  // Fill remainder from shuffled pool
-  for (const g of shuffle(pool)) {
-    if (picked.length >= 6) break;
-    if (!used.has(g.id)) {
-      picked.push(g);
-      used.add(g.id);
-    }
-  }
-
-  return shuffle(picked).slice(0, 6);
+  const setIndex = readWheelSetIndex();
+  return {
+    games: shuffle([...WHEEL_SETS[setIndex]]),
+    setIndex,
+    label: SET_LABELS[setIndex],
+  };
 }
 
-/** @deprecated use pickWheelBatch — kept for callers that pass bump */
+/** After a spin: jump to the next full set so all 24 get a turn. */
+export function advanceWheelSet(): { games: WheelGame[]; setIndex: number; label: string } {
+  const next = (readWheelSetIndex() + 1) % WHEEL_SETS.length;
+  writeWheelSetIndex(next);
+  return {
+    games: shuffle([...WHEEL_SETS[next]]),
+    setIndex: next,
+    label: SET_LABELS[next],
+  };
+}
+
+/** @deprecated */
+export function pickWheelBatch(_recentIds: string[] = []): WheelGame[] {
+  return getCurrentWheelSet().games;
+}
+
+/** @deprecated */
 export function getActiveWheelGames(_now = Date.now(), _remixBump = 0): WheelGame[] {
-  return pickWheelBatch(readRecentWheelIds());
+  return getCurrentWheelSet().games;
 }
 
 export function getWheelGameById(id: string): WheelGame | undefined {
@@ -139,10 +148,15 @@ export function getWheelGameById(id: string): WheelGame | undefined {
 }
 
 export function minutesUntilWheelRotate(_now = Date.now()): number {
-  return 0; // remixed after every spin now
+  return 0;
 }
 
-/** Games not on the wheel right now — for the “also in the pool” peek. */
+export function readRecentWheelIds(): string[] {
+  return [];
+}
+
+export function writeRecentWheelIds(_ids: string[]): void {}
+
 export function peekRestOfPool(active: WheelGame[], limit = 12): WheelGame[] {
   const ids = new Set(active.map((g) => g.id));
   return ALL_WHEEL_GAMES.filter((g) => !ids.has(g.id)).slice(0, limit);

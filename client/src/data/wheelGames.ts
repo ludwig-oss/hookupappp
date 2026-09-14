@@ -1,4 +1,4 @@
-/** 24 dating mini-games: 4 themed sets of 6. Exactly one set on the wheel; advances after every spin. */
+/** 24 wheel games: 6 classics + 18 unique chat challenges. One set of 6 on the wheel; advances after every spin. */
 
 export type WheelMechanic =
   | 'blind_date'
@@ -6,7 +6,8 @@ export type WheelMechanic =
   | 'compatibility_rush'
   | 'lucky_like'
   | 'speed_pick'
-  | 'mystery_message';
+  | 'mystery_message'
+  | 'chat_challenge';
 
 export type WheelGame = {
   id: string;
@@ -16,7 +17,7 @@ export type WheelGame = {
   blurb: string;
 };
 
-/** Set A — classic wheel */
+/** Set A — classic match games (original 6) */
 export const SET_A: WheelGame[] = [
   { id: 'blind_date', name: 'Blind Date', short: 'Blind', mechanic: 'blind_date', blurb: 'Voice icebreakers; faces stay blurred.' },
   { id: 'picture_pick', name: 'Picture Pick', short: 'Pick', mechanic: 'picture_pick', blurb: 'Choose a photo + vibe hint.' },
@@ -26,34 +27,34 @@ export const SET_A: WheelGame[] = [
   { id: 'mystery_message', name: 'Mystery Message', short: 'Mystery', mechanic: 'mystery_message', blurb: 'Send a typed mystery line.' },
 ];
 
-/** Set B — chaotic dating */
+/** Set B — chat challenge pack 1 */
 export const SET_B: WheelGame[] = [
-  { id: 'ex_talk_ban', name: 'Ex-Talk Ban', short: 'ExBan', mechanic: 'compatibility_rush', blurb: 'Answer prompts — saying “ex” loses.' },
-  { id: 'soft_launch', name: 'Soft Launch Roulette', short: 'Soft', mechanic: 'picture_pick', blurb: 'Pick who you’d soft-launch first.' },
-  { id: 'situationship', name: 'Situationship Spin', short: 'Situ', mechanic: 'blind_date', blurb: 'Voice-only: define the vibe live.' },
-  { id: 'red_flag_radar', name: 'Red Flag Radar', short: 'Red', mechanic: 'speed_pick', blurb: 'Spot the red flag in seconds.' },
-  { id: 'green_flag_gauntlet', name: 'Green Flag Gauntlet', short: 'Green', mechanic: 'lucky_like', blurb: 'Reward the greenest flag.' },
-  { id: 'orbit_intercept', name: 'Orbit Intercept', short: 'Orbit', mechanic: 'mystery_message', blurb: 'Intercept someone in your orbit.' },
+  { id: 'predictive_text', name: 'Predictive Text Fate', short: 'PredTxt', mechanic: 'chat_challenge', blurb: 'Only tap the middle predictive word to build 3 messages.' },
+  { id: 'one_word', name: 'One-Word Limit', short: '1Word', mechanic: 'chat_challenge', blurb: 'Exactly one word per reply. Make it count.' },
+  { id: 'gif_roulette', name: 'GIF Roulette', short: 'GIF', mechanic: 'chat_challenge', blurb: 'No typing — only the first GIF that pops up.' },
+  { id: 'rhyme_crime', name: 'Rhyme Crime', short: 'Rhyme', mechanic: 'chat_challenge', blurb: 'Every reply must rhyme with their last line.' },
+  { id: 'job_interviewer', name: 'Job Interviewer', short: 'Hire', mechanic: 'chat_challenge', blurb: 'Treat the chat like a high-stakes hiring interview.' },
+  { id: 'cryptic_riddle', name: 'Cryptic Riddle', short: 'Riddle', mechanic: 'chat_challenge', blurb: 'No straight answers — only riddles & deep questions.' },
 ];
 
-/** Set C — spicy / chaotic fun */
+/** Set C — chat challenge pack 2 */
 export const SET_C: WheelGame[] = [
-  { id: 'lovebomb_defuse', name: 'Love-Bomb Defuse', short: 'Defuse', mechanic: 'compatibility_rush', blurb: 'Diffuses over-the-top lines.' },
-  { id: 'breadcrumb_chase', name: 'Breadcrumb Chase', short: 'Crumb', mechanic: 'speed_pick', blurb: 'Chase or drop the breadcrumbs.' },
-  { id: 'double_text_dare', name: 'Double-Text Dare', short: 'DblTxt', mechanic: 'mystery_message', blurb: 'Type the double-text you’d send.' },
-  { id: 'ghost_protocol', name: 'Ghost Protocol', short: 'Ghost', mechanic: 'blind_date', blurb: 'Voice call before anyone ghosts.' },
-  { id: 'soft_reject_flip', name: 'Soft-Reject Flip', short: 'Flip', mechanic: 'lucky_like', blurb: 'Turn a soft no into maybe.' },
-  { id: 'chem_crash', name: 'Chemistry Crash Test', short: 'Crash', mechanic: 'picture_pick', blurb: 'Crash-test the spark with photos.' },
+  { id: 'reality_villain', name: 'Reality Villain', short: 'Villain', mechanic: 'chat_challenge', blurb: 'Narrate strategy like you’re on The Bachelor.' },
+  { id: 'emoji_only', name: 'Emoji Only', short: 'Emoji', mechanic: 'chat_challenge', blurb: 'Banned from words — emoji replies only.' },
+  { id: 'hardcore_detective', name: 'Hardcore Detective', short: 'Detect', mechanic: 'chat_challenge', blurb: 'Treat everything they say like a crime clue.' },
+  { id: 'letter_ban', name: 'Letter Ban', short: 'Ban', mechanic: 'chat_challenge', blurb: 'Spin bans a letter — don’t use it for 5 messages.' },
+  { id: 'no_context_image', name: 'No-Context Image', short: 'NoCtx', mechanic: 'chat_challenge', blurb: 'Send a random photo. Refuse to explain it.' },
+  { id: 'blind_compliment', name: 'Blind Compliment', short: 'Compliment', mechanic: 'chat_challenge', blurb: 'Compliment something bizarrely specific in their pics.' },
 ];
 
-/** Set D — wild date energy */
+/** Set D — chat challenge pack 3 (fills to 24) */
 export const SET_D: WheelGame[] = [
-  { id: 'first_date_roulette', name: 'First-Date Roulette', short: '1stDate', mechanic: 'blind_date', blurb: 'Voice plan a wild first date.' },
-  { id: 'meet_cute_remix', name: 'Meet-Cute Remix', short: 'Cute', mechanic: 'mystery_message', blurb: 'Write your meet-cute opener.' },
-  { id: 'pet_name_lottery', name: 'Pet-Name Lottery', short: 'Pet', mechanic: 'compatibility_rush', blurb: 'Survive the pet-name gauntlet.' },
-  { id: 'playlist_confess', name: 'Playlist Confession', short: 'Playlist', mechanic: 'picture_pick', blurb: 'Confess via song energy pics.' },
-  { id: 'awkward_silence', name: 'Awkward Silence Sprint', short: 'Silence', mechanic: 'speed_pick', blurb: 'Break the silence — fast.' },
-  { id: 'forever_never', name: 'Forever-or-Never Vote', short: '4ever', mechanic: 'lucky_like', blurb: 'One vote: forever energy or never.' },
+  { id: 'caps_lock_chaos', name: 'CAPS LOCK Chaos', short: 'CAPS', mechanic: 'chat_challenge', blurb: 'Every message must be ALL CAPS energy.' },
+  { id: 'question_only', name: 'Question Only', short: '???', mechanic: 'chat_challenge', blurb: 'You may only answer with another question.' },
+  { id: 'opposite_day', name: 'Opposite Day', short: 'Opp', mechanic: 'chat_challenge', blurb: 'Say the opposite of what you mean — they guess the truth.' },
+  { id: 'seven_word_max', name: 'Seven-Word Max', short: '7Max', mechanic: 'chat_challenge', blurb: 'Hard cap: 7 words max per message.' },
+  { id: 'soft_roast', name: 'Soft Roast', short: 'Roast', mechanic: 'chat_challenge', blurb: 'Roast them gently, then save it with a compliment.' },
+  { id: 'future_ex', name: 'Future-Ex Forecast', short: '4cast', mechanic: 'chat_challenge', blurb: 'Predict your “breakup reason” as a joke — then pitch why you’d still match.' },
 ];
 
 export const ALL_WHEEL_GAMES: WheelGame[] = [...SET_A, ...SET_B, ...SET_C, ...SET_D];
@@ -61,10 +62,10 @@ export const ALL_WHEEL_GAMES: WheelGame[] = [...SET_A, ...SET_B, ...SET_C, ...SE
 export const WHEEL_SETS = [SET_A, SET_B, SET_C, SET_D] as const;
 
 export const SET_LABELS = [
-  'Classic',
-  'Chaotic dating',
-  'Spicy chaos',
-  'Wild dates',
+  'Classic matches',
+  'Chat challenges I',
+  'Chat challenges II',
+  'Chat challenges III',
 ] as const;
 
 const SET_INDEX_KEY = 'highlights:wheelSetIndex';
@@ -81,7 +82,7 @@ function shuffle<T>(arr: T[]): T[] {
 export function readWheelSetIndex(): number {
   try {
     const raw = localStorage.getItem(SET_INDEX_KEY);
-    // Default to Chaotic (set 1) so new games aren't buried behind classics
+    // Default to Chat challenges I so new games show immediately
     if (raw == null) {
       localStorage.setItem(SET_INDEX_KEY, '1');
       return 1;
@@ -96,7 +97,6 @@ export function readWheelSetIndex(): number {
 function writeWheelSetIndex(idx: number): void {
   try {
     localStorage.setItem(SET_INDEX_KEY, String(idx % WHEEL_SETS.length));
-    // Clear old remix keys so stale logic can't stick
     localStorage.removeItem('highlights:wheelRemixBump');
     localStorage.removeItem('highlights:recentWheelGameIds');
   } catch {
@@ -104,12 +104,16 @@ function writeWheelSetIndex(idx: number): void {
   }
 }
 
-/** Current full set of 6 (no mixing classics into wild sets). */
+/** Force challenge pack after old remix junk / one-time bump to set B. */
 export function getCurrentWheelSet(): { games: WheelGame[]; setIndex: number; label: string } {
   try {
-    // One-time: if they were stuck on the old remix mix, jump to Chaotic set so new games show now
     if (localStorage.getItem('highlights:wheelRemixBump') != null || localStorage.getItem('highlights:recentWheelGameIds') != null) {
       writeWheelSetIndex(1);
+    }
+    // One-shot: migrate anyone stuck on classic-only view into challenges
+    if (localStorage.getItem('highlights:challengePackV1') == null) {
+      writeWheelSetIndex(1);
+      localStorage.setItem('highlights:challengePackV1', '1');
     }
   } catch {
     /* ignore */
@@ -122,7 +126,6 @@ export function getCurrentWheelSet(): { games: WheelGame[]; setIndex: number; la
   };
 }
 
-/** After a spin: jump to the next full set so all 24 get a turn. */
 export function advanceWheelSet(): { games: WheelGame[]; setIndex: number; label: string } {
   const next = (readWheelSetIndex() + 1) % WHEEL_SETS.length;
   writeWheelSetIndex(next);
@@ -133,12 +136,10 @@ export function advanceWheelSet(): { games: WheelGame[]; setIndex: number; label
   };
 }
 
-/** @deprecated */
 export function pickWheelBatch(_recentIds: string[] = []): WheelGame[] {
   return getCurrentWheelSet().games;
 }
 
-/** @deprecated */
 export function getActiveWheelGames(_now = Date.now(), _remixBump = 0): WheelGame[] {
   return getCurrentWheelSet().games;
 }

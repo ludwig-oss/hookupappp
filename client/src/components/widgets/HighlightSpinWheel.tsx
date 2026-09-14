@@ -96,7 +96,7 @@ export default function HighlightSpinWheel({ onOutcome }: HighlightSpinWheelProp
       </button>
       <p className="highlight-spin-wheel-hint">{spinning ? 'Spinning...' : 'Click the wheel to spin'}</p>
       <p className="highlight-spin-wheel-how" style={{ maxWidth: 340, margin: '0.5rem auto', fontSize: '0.85rem', opacity: 0.9, lineHeight: 1.4 }}>
-        Set: <strong>{setLabel}</strong> (6 games). After this spin → <strong>{nextLabel}</strong>. Cycles all 24 automatically — no remix button.
+        Set: <strong>{setLabel}</strong>. After each spin → <strong>{nextLabel}</strong>. Clear a chat challenge to add them to Communications.
       </p>
       <div className="highlight-spin-wheel-legend" aria-label="Games on this wheel">
         <p>On the wheel ({setLabel}):</p>

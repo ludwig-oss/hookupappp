@@ -5,6 +5,7 @@ import { openChatWithUser } from '../../lib/openChat';
 import { filterWheelUsers, markWheelUserActed } from '../../lib/wheelEncounter';
 import { formatAxiosError } from '../../lib/apiError';
 import { getWheelGameById } from '../../data/wheelGames';
+import ChatChallengeFlow from './ChatChallengeFlow';
 import './WheelOutcomeFlow.css';
 
 const MATCH_24H_RULE =
@@ -172,6 +173,9 @@ export default function WheelOutcomeFlow({ gameId, country, city, onClose, onOpe
     { id: 'wheel_fill_5', name: 'Someone nearby', username: 'nearby_5', profilePicture: null },
   ];
 
+  if (mechanic === 'chat_challenge' && game) {
+    return <ChatChallengeFlow game={game} users={playUsers} onClose={onClose} onOpenChat={onOpenChat} />;
+  }
   if (mechanic === 'blind_date') return <BlindDateFlow users={playUsers} title={gameTitle} onClose={onClose} onOpenChat={onOpenChat} />;
   if (mechanic === 'picture_pick') return <PicturePickFlow users={playUsers} title={gameTitle} onClose={onClose} onOpenChat={onOpenChat} />;
   if (mechanic === 'compatibility_rush') return <CompatibilityRushFlow users={playUsers} title={gameTitle} onClose={onClose} onOpenChat={onOpenChat} />;

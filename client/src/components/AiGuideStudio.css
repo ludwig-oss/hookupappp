@@ -205,7 +205,6 @@
   min-height: 0;
 }
 
-.ai-confirm,
 .ai-session {
   background: rgba(12, 8, 5, 0.8);
   border: 1px solid rgba(245, 158, 11, 0.3);
@@ -214,7 +213,6 @@
   margin-bottom: 10px;
 }
 
-.ai-confirm-actions,
 .ai-session-actions {
   display: flex;
   gap: 8px;

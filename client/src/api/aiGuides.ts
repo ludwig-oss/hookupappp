@@ -63,8 +63,6 @@ export const aiGuidesAPI = {
     query: string;
     guess: { id: string; title: string; confidence: number } | null;
     alternates: { id: string; title: string }[];
-    needsClarify?: boolean;
-    /** Drop category chips — open freeform guide chat. */
     openChat?: boolean;
   }> => {
     const response = await axios.post(`${API_URL}/interpret`, { query });
@@ -76,9 +74,8 @@ export const aiGuidesAPI = {
     history?: Array<{ from: 'me' | 'guide'; text: string }>
   ): Promise<{
     reply: string;
-    mode: 'chat' | 'clarify' | 'lesson';
+    mode: 'chat' | 'lesson';
     topicId?: string;
-    clarifyOptions?: { id: string; title: string }[];
   }> => {
     const response = await axios.post(`${API_URL}/chat`, { guideId, message, history });
     return response.data;

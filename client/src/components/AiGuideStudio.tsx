@@ -59,8 +59,6 @@ export default function AiGuideStudio({
   const [kind, setKind] = useState<Kind>(mode === 'app' ? 'ai' : 'choose');
   const [guides, setGuides] = useState<AiGuideCharacter[]>([]);
   const [query, setQuery] = useState(initialQuery);
-  const [guess, setGuess] = useState<{ id: string; title: string } | null>(null);
-  const [alternates, setAlternates] = useState<{ id: string; title: string }[]>([]);
   const [lesson, setLesson] = useState<AiLesson | null>(null);
   const [lessonLocal, setLessonLocal] = useState<AiLesson | null>(null);
   const [ranked, setRanked] = useState<AiGuideCharacter[]>([]);
@@ -68,7 +66,6 @@ export default function AiGuideStudio({
   const [speaking, setSpeaking] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const [miss, setMiss] = useState(false);
   const [showFashion, setShowFashion] = useState(false);
   const [showAppearance, setShowAppearance] = useState(false);
   const [showIntimacy, setShowIntimacy] = useState(false);
@@ -180,39 +177,29 @@ export default function AiGuideStudio({
       const r = await aiGuidesAPI.interpret(q);
       setLesson(null);
 
-      // Friction / "can't" / "different" — kill category UI, open real chat
-      if (r.openChat) {
-        setGuess(null);
-        setAlternates([]);
-        setMiss(false);
-        const moneyCue = /\b(money|debt|budget|income|business|saas|hustle|broke|spend)\b/i.test(q);
+      const openTalk = (preferFinance?: boolean) => {
         const g =
-          (moneyCue
-            ? guides.find((x) => x.desk === 'finance')
-            : null) ||
+          (preferFinance ? guides.find((x) => x.desk === 'finance') : null) ||
           selected ||
           ranked[0] ||
           guides[0] ||
           null;
-        if (g) {
-          setSelected(g);
-          if (mode === 'gate') onUnlocked?.();
-          setInChat(true);
-        } else {
-          setError('Tell me in your own words — no menu. Pick any coach avatar and talk.');
+        if (!g) {
+          setError('Pick any coach avatar and talk — no menu.');
+          return;
         }
+        setSelected(g);
+        if (mode === 'gate') onUnlocked?.();
+        setInChat(true);
+      };
+
+      // Never show category chips — open chat or a specialist desk
+      if (r.openChat || !r.guess || (r.guess.confidence != null && r.guess.confidence < 0.7)) {
+        const moneyCue = /\b(money|debt|budget|income|business|saas|hustle|broke|spend)\b/i.test(q);
+        openTalk(moneyCue);
         return;
       }
 
-      setGuess(r.guess);
-      setAlternates(r.alternates);
-      setMiss(!r.guess);
-      // Low confidence → ask which specific problem. Do not jump into a desk.
-      if (r.needsClarify || !r.guess || (r.guess.confidence != null && r.guess.confidence < 0.7)) {
-        setMiss(false);
-        if (!r.guess && !r.alternates.length) setMiss(true);
-        return;
-      }
       const termCue = /\b(termact|foreplay|boy to girl|girl to boy)\b/i.test(q);
       if (r.guess?.id === 'fashion') {
         await tryHelp('fashion', () => setShowFashion(true));
@@ -235,6 +222,9 @@ export default function AiGuideStudio({
           setShowIntimacy(true);
           setSelected((prev) => guides.find((g) => g.id === 'mei') || prev);
         });
+      } else {
+        // Dating / money / anything else → straight into Character.AI-style chat
+        openTalk(r.guess?.id === 'cash-flow-execution');
       }
     } catch {
       setError('Could not read that. Try fewer words.');
@@ -250,73 +240,6 @@ export default function AiGuideStudio({
     searchedInitial.current = true;
     void runSearch(initialQuery);
   }, [initialQuery, guides.length]);
-
-  const confirmTopic = async (topicId: string) => {
-    if (topicId === 'fashion') {
-      await tryHelp('fashion', () => {
-        setShowFashion(true);
-        setShowAppearance(false);
-        setShowIntimacy(false);
-        setLesson(null);
-        setMiss(false);
-      });
-      return;
-    }
-    if (topicId === 'appearance') {
-      await tryHelp('appearance', () => {
-        setStartOnHair(false);
-        setShowAppearance(true);
-        setShowFashion(false);
-        setShowIntimacy(false);
-        setLesson(null);
-        setMiss(false);
-      });
-      return;
-    }
-    if (topicId === 'hair') {
-      await tryHelp('appearance', () => {
-        setStartOnHair(true);
-        setShowAppearance(true);
-        setShowFashion(false);
-        setShowIntimacy(false);
-        setSelected((prev) =>
-          prev && (prev.desk === 'hair' || prev.id === 'elena')
-            ? prev
-            : guides.find((g) => g.id === 'kayra-theodore') || hairCrew[0] || prev
-        );
-        setLesson(null);
-        setMiss(false);
-      });
-      return;
-    }
-    if (topicId === 'intimacy-flow') {
-      await tryHelp('intimacy', () => {
-        setShowIntimacy(true);
-        setShowFashion(false);
-        setShowAppearance(false);
-        setStartOnTermAct(false);
-        setSelected((prev) => guides.find((g) => g.id === 'mei') || prev);
-        setLesson(null);
-        setMiss(false);
-      });
-      return;
-    }
-    setBusy(true);
-    try {
-      const r = await aiGuidesAPI.lesson(topicId, selected?.id);
-      await tryHelp('lesson', () => {
-        setLesson(r.lesson);
-        setRanked(r.guides);
-        setSelected(r.guides.find((g) => g.id === selected?.id) || r.guides[0] || null);
-        setGuess({ id: r.lesson.id, title: r.lesson.title });
-        setMiss(false);
-      });
-    } catch {
-      setError('Could not open that topic.');
-    } finally {
-      setBusy(false);
-    }
-  };
 
   const switchGuideOnLesson = async (g: AiGuideCharacter) => {
     setSelected(g);
@@ -675,70 +598,6 @@ export default function AiGuideStudio({
             />
           ) : (
             <>
-          {guess && !lesson && (
-            <div className="ai-confirm">
-              <p>
-                Which specific problem? Closest guess: <strong>{guess.title}</strong>
-              </p>
-              <p className="ai-confirm-hint">If you&apos;re already good there, pick another — or say what&apos;s actually wrong.</p>
-              <div className="ai-confirm-actions">
-                <button type="button" className="ai-pill ai-pill-primary" onClick={() => void confirmTopic(guess.id)}>
-                  Yes — help with this
-                </button>
-                <button
-                  type="button"
-                  className="ai-pill ai-pill-ghost"
-                  onClick={() => {
-                    setGuess(null);
-                    setAlternates([]);
-                    setMiss(false);
-                    setQuery('');
-                    const g = selected || ranked[0] || guides[0];
-                    if (g) {
-                      setSelected(g);
-                      if (mode === 'gate') onUnlocked?.();
-                      setInChat(true);
-                    } else {
-                      setError("Cool — you're good there. Type the real problem in your own words.");
-                    }
-                  }}
-                >
-                  I&apos;m good there — different problem
-                </button>
-                {alternates.map((a) => (
-                  <button key={a.id} type="button" className="ai-pill ai-pill-ghost" onClick={() => void confirmTopic(a.id)}>
-                    {a.title}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-          {miss && !lesson && (
-            <div className="ai-confirm">
-              <p>
-                Say it in your own words — or open a coach and talk. Money, dating, style, whatever is actually broken.
-              </p>
-              <button
-                type="button"
-                className="ai-pill ai-pill-primary"
-                onClick={() => {
-                  const g =
-                    guides.find((x) => x.desk === 'finance') ||
-                    selected ||
-                    ranked[0] ||
-                    guides[0];
-                  if (!g) return;
-                  setMiss(false);
-                  setGuess(null);
-                  setSelected(g);
-                  if (mode === 'gate') onUnlocked?.();
-                  setInChat(true);
-                }}
-              >
-                Just talk — no menu
-              </button>
-            </div>
-          )}
           {lesson && (
             <div className="ai-session">
               <h4>{(lessonLocal || lesson).title}</h4>

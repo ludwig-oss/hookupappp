@@ -1033,7 +1033,7 @@ export function buildChatTurn(params: {
   guideId: string;
   userText: string;
   history?: Array<{ from: 'me' | 'guide'; text: string }>;
-}): { reply: string; mode: 'chat' | 'clarify' | 'lesson'; topicId?: string; clarifyOptions?: { id: string; title: string }[] } {
+}): { reply: string; mode: 'chat' | 'lesson'; topicId?: string } {
   const guide = getGuide(params.guideId);
   if (!guide) {
     return { reply: 'Pick a guide first, then talk to me.', mode: 'chat' };

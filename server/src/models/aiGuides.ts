@@ -39,8 +39,6 @@ export async function interpretAiQuery(query: string) {
         }
       : null,
     alternates: matches.slice(1).map((m) => ({ id: m.topic.id, title: m.topic.title })),
-    /** Never force category chip UI — open chat and answer. */
-    needsClarify: false,
     openChat: resists || !top || top.score < 8,
   };
 }
@@ -57,11 +55,11 @@ export async function chatWithGuide(params: {
     history: params.history,
   });
 
-  // Never serve chip menus — strip clarify even on local fallback
+  // Never serve chip menus
   const safeFallback = {
-    ...fallback,
-    mode: (fallback.mode === 'clarify' ? 'chat' : fallback.mode) as 'chat' | 'lesson',
-    clarifyOptions: undefined,
+    reply: fallback.reply,
+    mode: (fallback.mode === 'lesson' ? 'lesson' : 'chat') as 'chat' | 'lesson',
+    topicId: fallback.topicId,
   };
 
   if (!guide) return safeFallback;

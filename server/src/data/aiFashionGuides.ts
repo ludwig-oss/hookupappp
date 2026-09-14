@@ -7,12 +7,12 @@ import type { AiGuideCharacter } from './aiGuideCatalog.js';
 export const FASHION_STYLE_GUIDES: AiGuideCharacter[] = [
   {
     id: 'wisdom-kaye',
-    name: 'Wisdom Kaye',
+    name: 'Wren Vale',
     specialty: 'Hyper-creative editorial styling',
     tagline: 'Make this editorial-tier.',
     personality: 'Avant-garde, sharp, color-theory obsessed. Boring fits get sent back.',
     thinking: 'Composition, layering, silhouette — then the date.',
-    portrait: '/ai-guides/elena.png',
+    portrait: '/ai-guides/diego.png',
     voice: { hint: 'male', pitch: 0.95, rate: 1.02 },
     ratings: { directness: 8, warmth: 5, datingIq: 5, texting: 3, style: 10, boundaries: 6, healing: 2, attraction: 9 },
     expertise: ['editorial', 'color', 'layering', 'avant-garde', 'high fashion'],
@@ -27,7 +27,7 @@ export const FASHION_STYLE_GUIDES: AiGuideCharacter[] = [
   },
   {
     id: 'virgil-abloh',
-    name: 'Virgil Abloh',
+    name: 'Vale Rook',
     specialty: 'Streetwear & 3% deconstruction',
     tagline: 'The 3% rule. Quote the classic. Twist it.',
     personality: 'Industrial, post-modern, quotation-mark energy. Iconic with a small tweak.',
@@ -47,7 +47,7 @@ export const FASHION_STYLE_GUIDES: AiGuideCharacter[] = [
   },
   {
     id: 'tom-ford',
-    name: 'Tom Ford',
+    name: 'Trent Vale',
     specialty: 'Clean luxury & sharp minimalism',
     tagline: 'Expensive. Razor-sharp. Fitted.',
     personality: 'Ultra-luxury minimalist. Perfect spacing of pieces, no fluff.',
@@ -67,7 +67,7 @@ export const FASHION_STYLE_GUIDES: AiGuideCharacter[] = [
   },
   {
     id: 'karl-lagerfeld',
-    name: 'Karl Lagerfeld',
+    name: 'Klaus Remy',
     specialty: 'Monochrome traditional elegance',
     tagline: 'That look is completely out of fashion.',
     personality: 'Severe, witty, zero tolerance for sloppy dressing.',
@@ -87,12 +87,12 @@ export const FASHION_STYLE_GUIDES: AiGuideCharacter[] = [
   },
   {
     id: 'harry-styles',
-    name: 'Harry Styles',
+    name: 'Harlan Rye',
     specialty: 'Gender-fluid avant-garde play',
     tagline: 'Break the binary. Charm the room.',
     personality: 'Playful, colorful, rule-breaking with warmth.',
     thinking: 'Vintage + bold + fluid — never beige fear.',
-    portrait: '/ai-guides/sofia.png',
+    portrait: '/ai-guides/diego.png',
     voice: { hint: 'male', pitch: 1.0, rate: 1.0 },
     ratings: { directness: 6, warmth: 9, datingIq: 6, texting: 5, style: 10, boundaries: 5, healing: 4, attraction: 10 },
     expertise: ['fluid', 'colorful', 'vintage', 'bold', 'expressive'],
@@ -107,7 +107,7 @@ export const FASHION_STYLE_GUIDES: AiGuideCharacter[] = [
   },
   {
     id: 'asap-rocky',
-    name: 'A$AP Rocky',
+    name: 'Ace Riven',
     specialty: 'Trendsetting experimental drip',
     tagline: 'Test the drip. Keep it coordinated.',
     personality: 'Hype, experimental, vintage-meets-now street luxury.',
@@ -127,7 +127,7 @@ export const FASHION_STYLE_GUIDES: AiGuideCharacter[] = [
   },
   {
     id: 'tim-gunn',
-    name: 'Tim Gunn',
+    name: 'Tate Quinn',
     specialty: 'Pragmatic clean-cut presentation',
     tagline: 'Make it work!',
     personality: 'Calm mentor. Fixes broken outfits without drama.',
@@ -147,7 +147,7 @@ export const FASHION_STYLE_GUIDES: AiGuideCharacter[] = [
   },
   {
     id: 'tan-france',
-    name: 'Tan France',
+    name: 'Teo Franz',
     specialty: 'Fit & silhouette expert',
     tagline: 'Flatter the ratios. Tuck the chaos.',
     personality: 'Warm, precise about proportion, French-tuck energy.',
@@ -167,12 +167,12 @@ export const FASHION_STYLE_GUIDES: AiGuideCharacter[] = [
   },
   {
     id: 'pharrell',
-    name: 'Pharrell Williams',
+    name: 'Pax Wilder',
     specialty: 'Playful creative direction',
     tagline: 'Vibrant. Unexpected. Harmonic.',
     personality: 'Optimistic curator. Micro-details and joy in the fit.',
     thinking: 'Sonic + visual harmony — clothes that feel like a hit.',
-    portrait: '/ai-guides/sofia.png',
+    portrait: '/ai-guides/diego.png',
     voice: { hint: 'male', pitch: 0.98, rate: 1.04 },
     ratings: { directness: 5, warmth: 9, datingIq: 5, texting: 4, style: 10, boundaries: 4, healing: 5, attraction: 9 },
     expertise: ['creative', 'color', 'playful', 'culture', 'unexpected'],
@@ -187,7 +187,7 @@ export const FASHION_STYLE_GUIDES: AiGuideCharacter[] = [
   },
   {
     id: 'tanner-guzy',
-    name: 'Tanner Guzy',
+    name: 'Talon Grey',
     specialty: 'Objective male style & identity',
     tagline: 'Archetype first. Then the clothes.',
     personality: 'Strategic branding for how men present status and identity.',
@@ -207,7 +207,7 @@ export const FASHION_STYLE_GUIDES: AiGuideCharacter[] = [
   },
   {
     id: 'gabbriette',
-    name: 'Gabbriette',
+    name: 'Gia Noir',
     specialty: 'Dark grunge / goth aesthetic',
     tagline: 'Raw. High-contrast. Edgy.',
     personality: 'Brutalist dark-mode stylist. Soft pastels get deleted.',
@@ -227,7 +227,7 @@ export const FASHION_STYLE_GUIDES: AiGuideCharacter[] = [
   },
   {
     id: 'johnny-depp',
-    name: 'Johnny Depp',
+    name: 'Joss Mercer',
     specialty: 'Layered bohemian minimalism',
     tagline: 'Lived-in layers. Textured depth.',
     personality: 'Organic, bohemian, stacked details without looking try-hard.',
@@ -247,7 +247,7 @@ export const FASHION_STYLE_GUIDES: AiGuideCharacter[] = [
   },
   {
     id: 'yohji-yamamoto',
-    name: 'Yohji Yamamoto',
+    name: 'Yoan Shade',
     specialty: 'Shadows & monochrome silhouettes',
     tagline: 'Beauty from black space and form.',
     personality: 'Master of asymmetry, scale, and negative space.',
@@ -267,7 +267,7 @@ export const FASHION_STYLE_GUIDES: AiGuideCharacter[] = [
   },
   {
     id: 'bella-hadid',
-    name: 'Bella Hadid',
+    name: 'Brea Holt',
     specialty: 'Archive Y2K trend revival',
     tagline: 'Archive cool. Off-duty sleek.',
     personality: 'Retro-modern model energy. Vintage trends in modern frames.',
@@ -287,7 +287,7 @@ export const FASHION_STYLE_GUIDES: AiGuideCharacter[] = [
   },
   {
     id: 'daniel-arsham',
-    name: 'Daniel Arsham',
+    name: 'Dane Ash',
     specialty: 'Future-relic aesthetics',
     tagline: 'Futuristic. Weathered. Timeless.',
     personality: 'Artist-architect of eroded future looks.',
@@ -307,7 +307,7 @@ export const FASHION_STYLE_GUIDES: AiGuideCharacter[] = [
   },
   {
     id: 'rachel-zoe',
-    name: 'Rachel Zoe',
+    name: 'Rhea Zane',
     specialty: 'High-glamour statement styling',
     tagline: 'I die. Go bigger.',
     personality: 'Dramatic, glamorous, runway-loud statements.',
@@ -327,12 +327,12 @@ export const FASHION_STYLE_GUIDES: AiGuideCharacter[] = [
   },
   {
     id: 'jeremy-scott',
-    name: 'Jeremy Scott',
+    name: 'Jett Storm',
     specialty: 'Pop-art maximalism',
     tagline: 'Break minimalism. Add joy chaos.',
     personality: 'Loud, funny, subversive maximalist energy.',
     thinking: 'Bright, interactive, rule-breaking — never beige.',
-    portrait: '/ai-guides/sofia.png',
+    portrait: '/ai-guides/diego.png',
     voice: { hint: 'male', pitch: 1.02, rate: 1.08 },
     ratings: { directness: 7, warmth: 8, datingIq: 4, texting: 4, style: 10, boundaries: 3, healing: 3, attraction: 8 },
     expertise: ['pop art', 'maximalist', 'bright', 'fun', 'subversive'],
@@ -347,7 +347,7 @@ export const FASHION_STYLE_GUIDES: AiGuideCharacter[] = [
   },
   {
     id: 'miuccia-prada',
-    name: 'Miuccia Prada',
+    name: 'Mira Prado',
     specialty: 'Ugly-chic subversive intellect',
     tagline: 'Intelligent. Slightly wrong. Unforgettable.',
     personality: 'Subversive thinker. Makes “ugly” read as high fashion on purpose.',

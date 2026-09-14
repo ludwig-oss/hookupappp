@@ -8,7 +8,7 @@ import {
   type PieceSlot,
   type WardrobeItem,
 } from '../../api/fashion';
-import { paintFashionTryOn } from '../../lib/fashionTryOnCanvas';
+import { paintFashionTryOn, renderBodyAvatarDataUrl, type BodyAvatarOpts } from '../../lib/fashionTryOnCanvas';
 import { speakGuideLine, speechLangFor } from '../../lib/aiGuideSpeech';
 import { checkFaceInPhoto } from '../../lib/fashionFaceCheck';
 import { prepareAndUploadFile } from '../../lib/uploadMedia';
@@ -45,6 +45,7 @@ function LookPane({
   look,
   personUrl,
   bodyUrl,
+  bodyAvatar,
   fitting,
   label,
   isWinner,
@@ -54,6 +55,7 @@ function LookPane({
   look: FashionLookCard;
   personUrl: string | null;
   bodyUrl: string | null;
+  bodyAvatar: BodyAvatarOpts;
   fitting: boolean;
   label: 'A' | 'B';
   isWinner: boolean;
@@ -69,10 +71,10 @@ function LookPane({
     if (!canvas) return;
     canvas.width = 720;
     canvas.height = 960;
-    void paintFashionTryOn(canvas, personUrl, look.imageUrl, look.warp, look.fallback, bodyUrl);
-  }, [modelUrl, personUrl, bodyUrl, look.imageUrl, look.warp, look.fallback]);
+    void paintFashionTryOn(canvas, personUrl, look.imageUrl, look.warp, look.fallback, bodyUrl, bodyAvatar);
+  }, [modelUrl, personUrl, bodyUrl, bodyAvatar, look.imageUrl, look.warp, look.fallback]);
 
-  const badge = modelUrl ? 'On you' : fitting ? 'Fitting…' : 'Wardrobe preview';
+  const badge = modelUrl ? 'On you' : fitting ? 'Fitting…' : 'On figure';
 
   return (
     <article className={`fashion-card${isWinner ? ' is-winner' : ''}`}>
@@ -152,6 +154,32 @@ export default function FashionDesk({
       return null;
     }
   });
+  const [bodyAvatar, setBodyAvatar] = useState<BodyAvatarOpts>(() => {
+    try {
+      const raw = localStorage.getItem('fashion-body-avatar');
+      if (raw) return JSON.parse(raw) as BodyAvatarOpts;
+    } catch {
+      /* */
+    }
+    const g = String((user as { gender?: string } | null)?.gender || '').toLowerCase();
+    return {
+      gender: g === 'female' || g === 'woman' ? 'fem' : g === 'male' || g === 'man' ? 'masc' : 'any',
+      skinTone: '#c4a484',
+      build: 0.45,
+      height: 0.55,
+    };
+  });
+  const [showBodyEditor, setShowBodyEditor] = useState(false);
+  const [weekPlan, setWeekPlan] = useState<'ask' | 'yes' | 'no' | 'later'>(() => {
+    try {
+      const raw = localStorage.getItem('fashion-week-plan');
+      if (raw === 'yes' || raw === 'no' || raw === 'later') return raw;
+    } catch {
+      /* */
+    }
+    return 'ask';
+  });
+  const [weekNote, setWeekNote] = useState('');
   const [faceOk, setFaceOk] = useState<boolean | null>(null);
   const [faceNote, setFaceNote] = useState('Checking for a clear face…');
   const [chosenId, setChosenId] = useState<string | null>(null);
@@ -196,8 +224,8 @@ export default function FashionDesk({
       setFaceNote(
         check.ok
           ? bodyUrl
-            ? 'Face + body ready — wardrobe preview uses both.'
-            : 'Face ready — upload a body photo for the full wardrobe figure.'
+            ? 'Face + body ready — looks drape on your figure.'
+            : 'Face ready — adjust the body figure below, or upload a full-body photo.'
           : check.reason || 'Upload a clear face photo for try-on.'
       );
     })();
@@ -560,7 +588,174 @@ export default function FashionDesk({
           <button type="button" className="ghost" disabled={uploading} onClick={() => bodyInputRef.current?.click()}>
             {bodyUrl ? 'Change body photo' : 'Upload body photo'}
           </button>
+          <button type="button" className="ghost" onClick={() => setShowBodyEditor((v) => !v)}>
+            {showBodyEditor ? 'Hide body editor' : 'Adjust body figure'}
+          </button>
         </div>
+        {showBodyEditor && (
+          <div className="fashion-body-editor">
+            <p>No body photo? Build a stand-in — skin tone, build, height — then your face sits on the head.</p>
+            <label>
+              Skin
+              <input
+                type="color"
+                value={bodyAvatar.skinTone}
+                onChange={(e) => {
+                  const next = { ...bodyAvatar, skinTone: e.target.value };
+                  setBodyAvatar(next);
+                  try {
+                    localStorage.setItem('fashion-body-avatar', JSON.stringify(next));
+                    if (!bodyUrl) localStorage.setItem('fashion-body-url', renderBodyAvatarDataUrl(next));
+                  } catch {
+                    /* */
+                  }
+                }}
+              />
+            </label>
+            <label>
+              Build
+              <input
+                type="range"
+                min={0}
+                max={100}
+                value={Math.round(bodyAvatar.build * 100)}
+                onChange={(e) => {
+                  const next = { ...bodyAvatar, build: Number(e.target.value) / 100 };
+                  setBodyAvatar(next);
+                  try {
+                    localStorage.setItem('fashion-body-avatar', JSON.stringify(next));
+                  } catch {
+                    /* */
+                  }
+                }}
+              />
+            </label>
+            <label>
+              Height
+              <input
+                type="range"
+                min={0}
+                max={100}
+                value={Math.round(bodyAvatar.height * 100)}
+                onChange={(e) => {
+                  const next = { ...bodyAvatar, height: Number(e.target.value) / 100 };
+                  setBodyAvatar(next);
+                  try {
+                    localStorage.setItem('fashion-body-avatar', JSON.stringify(next));
+                  } catch {
+                    /* */
+                  }
+                }}
+              />
+            </label>
+            <label>
+              Shape
+              <select
+                value={bodyAvatar.gender}
+                onChange={(e) => {
+                  const next = { ...bodyAvatar, gender: e.target.value as BodyAvatarOpts['gender'] };
+                  setBodyAvatar(next);
+                  try {
+                    localStorage.setItem('fashion-body-avatar', JSON.stringify(next));
+                  } catch {
+                    /* */
+                  }
+                }}
+              >
+                <option value="masc">Masculine</option>
+                <option value="fem">Feminine</option>
+                <option value="any">Neutral</option>
+              </select>
+            </label>
+            <button
+              type="button"
+              className="ghost"
+              onClick={() => {
+                const url = renderBodyAvatarDataUrl(bodyAvatar);
+                setBodyUrl(url);
+                try {
+                  localStorage.setItem('fashion-body-url', url);
+                  localStorage.setItem('fashion-body-avatar', JSON.stringify(bodyAvatar));
+                } catch {
+                  /* */
+                }
+                setFaceNote('Custom body figure saved — face sits on the head.');
+              }}
+            >
+              Apply figure
+            </button>
+          </div>
+        )}
+        {weekPlan === 'ask' && (
+          <div className="fashion-week-ask">
+            <p>Any plans this week or weekend I should dress you for?</p>
+            <div className="fashion-week-actions">
+              <button
+                type="button"
+                onClick={() => {
+                  setWeekPlan('yes');
+                  try {
+                    localStorage.setItem('fashion-week-plan', 'yes');
+                  } catch {
+                    /* */
+                  }
+                }}
+              >
+                Yes — show ideas
+              </button>
+              <button
+                type="button"
+                className="ghost"
+                onClick={() => {
+                  setWeekPlan('later');
+                  try {
+                    localStorage.setItem('fashion-week-plan', 'later');
+                  } catch {
+                    /* */
+                  }
+                }}
+              >
+                Ask later
+              </button>
+              <button
+                type="button"
+                className="ghost"
+                onClick={() => {
+                  setWeekPlan('no');
+                  try {
+                    localStorage.setItem('fashion-week-plan', 'no');
+                  } catch {
+                    /* */
+                  }
+                }}
+              >
+                No thanks
+              </button>
+            </div>
+          </div>
+        )}
+        {weekPlan === 'yes' && (
+          <div className="fashion-week-ask">
+            <p>What&apos;s coming up? (weekend dinner, interview, club…)</p>
+            <div className="fashion-ask-row">
+              <input
+                value={weekNote}
+                onChange={(e) => setWeekNote(e.target.value)}
+                placeholder="e.g. Saturday dinner + Sunday brunch"
+              />
+              <button
+                type="button"
+                disabled={weekNote.trim().length < 2 || busy}
+                onClick={() => {
+                  setPrompt(weekNote.trim());
+                  void runStyle(weekNote.trim());
+                }}
+              >
+                Prep looks
+              </button>
+            </div>
+          </div>
+        )}
         <div className="fashion-ask-row">
           <input
             value={prompt}
@@ -592,6 +787,7 @@ export default function FashionDesk({
                 look={result.optionA}
                 personUrl={personUrl}
                 bodyUrl={bodyUrl}
+                bodyAvatar={bodyAvatar}
                 fitting={fitting}
                 label="A"
                 isWinner={result.critic.winner === 'A' || chosenId === result.optionA.id}
@@ -602,6 +798,7 @@ export default function FashionDesk({
                 look={result.optionB}
                 personUrl={personUrl}
                 bodyUrl={bodyUrl}
+                bodyAvatar={bodyAvatar}
                 fitting={fitting}
                 label="B"
                 isWinner={result.critic.winner === 'B' || chosenId === result.optionB.id}

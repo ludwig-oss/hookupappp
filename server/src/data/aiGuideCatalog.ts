@@ -579,6 +579,10 @@ export const AI_LESSONS: AiLesson[] = [
       'nike',
       'louboutin',
       'footwear',
+      'wren vale',
+      'vale rook',
+      'trent vale',
+      'ace riven',
     ],
     categoryIds: ['style-fashion', 'confidence-dating'],
     bestGuideIds: [

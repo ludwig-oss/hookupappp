@@ -393,7 +393,7 @@ export const FINANCE_REALIST_GUIDES: AiGuideCharacter[] = [
     tagline: 'You are undercharging because you are under-confident.',
     personality: 'Surgical consultant energy. Roleplay exposes weak pricing and soft boundaries.',
     thinking: 'Value-based fees. Say the number. Hold the frame.',
-    portrait: '/ai-guides/elena.png',
+    portrait: '/ai-guides/marcus.png',
     voice: { hint: 'male', pitch: 0.9, rate: 0.96 },
     ratings: { directness: 9, warmth: 6, datingIq: 3, texting: 4, style: 8, boundaries: 9, healing: 5, attraction: 4 },
     expertise: ['pricing', 'creative business', 'value based fees', 'client boundaries', 'confidence'],

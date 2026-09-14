@@ -25,6 +25,7 @@ export default function GuideProgramGate() {
   const [evalSaving, setEvalSaving] = useState(false);
   const [coupleSelected, setCoupleSelected] = useState<string[]>([]);
   const [humanPath, setHumanPath] = useState(false);
+  const [holdAiChat, setHoldAiChat] = useState(false);
 
   const refresh = useCallback(async () => {
     if (!user?.id || !user?.profileSetupComplete) return;
@@ -235,22 +236,23 @@ export default function GuideProgramGate() {
     );
   }
 
-  if (status.canUseApp) return null;
-
-  const onHome = location.pathname === '/home' || location.pathname === '/dashboard';
-  const showPickBanner = status.needsGuidePick && pickingGuide && onHome && humanPath;
-
-  if (!humanPath && (status.needsOnboarding || status.needsGuidePick) && !status.waitingOnEval) {
+  if (!humanPath && (status.needsOnboarding || status.needsGuidePick || holdAiChat) && !status.waitingOnEval) {
     return (
       <AiGuideStudio
         mode="gate"
         onUnlocked={() => {
+          setHoldAiChat(true);
+          void refresh();
+        }}
+        onClose={() => {
+          setHoldAiChat(false);
           void refresh();
         }}
         onChooseHuman={() => {
           // Still allow browsing humans, but keep AI as the unlock path — do not trap users on empty human lists
           setHumanPath(true);
           setPickingGuide(true);
+          setHoldAiChat(false);
           navigate('/home');
           window.setTimeout(() => {
             window.dispatchEvent(new CustomEvent('ai-guide:open', { detail: {} }));
@@ -260,6 +262,11 @@ export default function GuideProgramGate() {
       />
     );
   }
+
+  if (status.canUseApp && !holdAiChat) return null;
+
+  const onHome = location.pathname === '/home' || location.pathname === '/dashboard';
+  const showPickBanner = status.needsGuidePick && pickingGuide && onHome && humanPath;
 
   const toggle = (id: string) => {
     setSelected((prev) => {

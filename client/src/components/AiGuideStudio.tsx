@@ -6,6 +6,7 @@ import { guideHelpAPI, type GuideHelpKind, type GuideHelpStatus } from '../api/g
 import { getLanguageName } from '../constants/languages';
 import { speakGuideLine, translateGuideText } from '../lib/aiGuideSpeech';
 import AiGuideDemo from './AiGuideDemo';
+import AiGuideChat from './AiGuideChat';
 import FashionDesk from './fashion/FashionDesk';
 import AppearanceDesk from './appearance/AppearanceDesk';
 import IntimacyDesk from './intimacy/IntimacyDesk';
@@ -40,6 +41,8 @@ export default function AiGuideStudio({
   onClose,
   initialQuery = '',
   openTermAct = false,
+  initialGuideId,
+  startInChat = false,
 }: {
   mode?: 'gate' | 'app';
   onUnlocked?: () => void;
@@ -47,6 +50,9 @@ export default function AiGuideStudio({
   onClose?: () => void;
   initialQuery?: string;
   openTermAct?: boolean;
+  /** Jump straight into chat with this guide (Character.AI-style). */
+  initialGuideId?: string;
+  startInChat?: boolean;
 }) {
   const { user, updateUser } = useContext(AuthContext);
   const { language } = useTranslation();
@@ -68,6 +74,7 @@ export default function AiGuideStudio({
   const [showIntimacy, setShowIntimacy] = useState(false);
   const [startOnHair, setStartOnHair] = useState(false);
   const [startOnTermAct, setStartOnTermAct] = useState(openTermAct);
+  const [inChat, setInChat] = useState(Boolean(startInChat && initialGuideId));
   const [paywall, setPaywall] = useState<GuideHelpStatus | null>(null);
   const [helpStatus, setHelpStatus] = useState<GuideHelpStatus | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -289,13 +296,13 @@ export default function AiGuideStudio({
     setSelected(g);
     setBusy(true);
     try {
-      const r = await aiGuidesAPI.assign(g.id, lesson?.id);
+      await aiGuidesAPI.assign(g.id, lesson?.id);
       updateUser({ aiGuideId: g.id });
       window.dispatchEvent(new Event('guide-program:updated'));
-      const text = lesson
-        ? lesson.reply || `${lesson.solution} ${lesson.unknown}`
-        : `${g.tagline} Tell me what is going on. I will keep it under a minute.`;
-      speak(g, text, () => setSpeaking(true), () => setSpeaking(false));
+      setInChat(true);
+      setShowFashion(false);
+      setShowAppearance(false);
+      setShowIntimacy(false);
       if (mode === 'gate') onUnlocked?.();
     } catch {
       setError('Could not start with this guide.');
@@ -303,6 +310,16 @@ export default function AiGuideStudio({
       setBusy(false);
     }
   };
+
+  useEffect(() => {
+    if (!initialGuideId || !guides.length) return;
+    const g = guides.find((x) => x.id === initialGuideId);
+    if (g) {
+      setSelected(g);
+      setKind('ai');
+      if (startInChat) setInChat(true);
+    }
+  }, [initialGuideId, guides, startInChat]);
 
   if (kind === 'choose') {
     return (
@@ -354,6 +371,33 @@ export default function AiGuideStudio({
             )}
           </div>
         </div>
+      </div>
+    );
+  }
+
+  if (inChat && featured) {
+    return (
+      <div className="ai-studio-overlay">
+        <AiGuideChat
+          guide={featured}
+          lesson={lessonLocal || lesson}
+          onSpeaking={setSpeaking}
+          onBack={() => {
+            setInChat(false);
+            if (typeof window !== 'undefined' && window.speechSynthesis) window.speechSynthesis.cancel();
+            setSpeaking(false);
+          }}
+        />
+        {closeStudio && (
+          <button
+            type="button"
+            className="ai-pill ai-pill-ghost"
+            style={{ position: 'absolute', top: 12, right: 12, zIndex: 2 }}
+            onClick={() => closeStudio()}
+          >
+            Close
+          </button>
+        )}
       </div>
     );
   }
@@ -668,13 +712,7 @@ export default function AiGuideStudio({
                   type="button"
                   className={`ai-card ${featured?.id === g.id ? 'is-on' : ''}`}
                   onClick={() => {
-                    setSelected(g);
-                    if (g.desk === 'hair') {
-                      setStartOnHair(true);
-                      void tryHelp('appearance', () => setShowAppearance(true));
-                    } else if (g.desk === 'appearance') {
-                      setStartOnHair(false);
-                    }
+                    void pickGuide(g);
                   }}
                 >
                   <div className="ai-card-head">
@@ -740,12 +778,14 @@ export function AiGuideFab() {
   const [open, setOpen] = useState(false);
   const [initialQuery, setInitialQuery] = useState('');
   const [openTermAct, setOpenTermAct] = useState(false);
+  const [startInChat, setStartInChat] = useState(true);
 
   useEffect(() => {
     const onOpen = (e: Event) => {
-      const detail = (e as CustomEvent<{ query?: string; termact?: boolean }>).detail || {};
+      const detail = (e as CustomEvent<{ query?: string; termact?: boolean; chat?: boolean }>).detail || {};
       setInitialQuery(detail.query || '');
       setOpenTermAct(Boolean(detail.termact));
+      setStartInChat(detail.chat !== false);
       setOpen(true);
     };
     window.addEventListener('ai-guide:open', onOpen);
@@ -784,7 +824,14 @@ export function AiGuideFab() {
   if (!guide) return null;
   return (
     <>
-      <button type="button" className="ai-fab" onClick={() => setOpen(true)}>
+      <button
+        type="button"
+        className="ai-fab"
+        onClick={() => {
+          setStartInChat(true);
+          setOpen(true);
+        }}
+      >
         <img src={guide.portrait} alt="" />
         Ask {guide.name.split(' ')[0]}
       </button>
@@ -798,6 +845,8 @@ export function AiGuideFab() {
           }}
           initialQuery={initialQuery}
           openTermAct={openTermAct}
+          initialGuideId={guide.id}
+          startInChat={startInChat && !openTermAct}
         />
       )}
     </>

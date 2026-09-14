@@ -57,7 +57,12 @@ export function parseFashionIntent(raw: string, gender?: string): FashionIntent 
             : 'mid';
   const colors = COLOR_WORDS.filter((c) => q.includes(c));
   const g = (gender || '').toLowerCase();
-  const genderFit: FashionGenderFit = g === 'male' ? 'masc' : g === 'female' ? 'fem' : 'any';
+  const genderFit: FashionGenderFit =
+    g === 'male' || g === 'man' || g === 'm'
+      ? 'masc'
+      : g === 'female' || g === 'woman' || g === 'f' || g === 'w'
+        ? 'fem'
+        : 'any';
   let vibe = 'balanced';
   if (/\b(sexy|hot|tight)\b/.test(q)) vibe = 'sharp';
   else if (/\b(comfy|comfortable|easy|chill)\b/.test(q)) vibe = 'easy';

@@ -112,7 +112,11 @@ export function pickGuideVoice(hint: VoiceHint, langCode?: string): SpeechSynthe
   });
   const pool = inLang.length ? inLang : voices;
   const prefer = hint === 'female' ? FEMALE_RE : MALE_RE;
-  return pool.find((v) => prefer.test(`${v.name} ${v.lang}`)) || pool[0];
+  const avoid = hint === 'female' ? MALE_RE : FEMALE_RE;
+  const gendered = pool.filter((v) => prefer.test(`${v.name} ${v.lang}`));
+  if (gendered.length) return gendered[0];
+  const notOpposite = pool.filter((v) => !avoid.test(`${v.name} ${v.lang}`));
+  return notOpposite[0] || pool[0];
 }
 
 /** Translate English guide copy into the user's app language (cached). */
@@ -163,7 +167,8 @@ function utterNow(
   window.speechSynthesis.cancel();
   const utter = new SpeechSynthesisUtterance(text);
   utter.lang = speechLangFor(lang);
-  utter.pitch = guide.pitch;
+  // Hard gender: never let a "female" guide speak with a deep male pitch (or reverse)
+  utter.pitch = guide.hint === 'female' ? Math.max(guide.pitch, 1.05) : Math.min(guide.pitch, 0.95);
   utter.rate = rateCap != null ? Math.min(guide.rate, rateCap) : guide.rate;
   const match = pickGuideVoice(guide.hint, lang);
   if (match) utter.voice = match;

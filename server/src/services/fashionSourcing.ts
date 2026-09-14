@@ -66,15 +66,34 @@ export function mixWardrobeIntoLook(
 
 export async function sourceLooks(
   intent: FashionIntent,
-  opts?: { excludeIds?: string[]; diversify?: boolean }
+  opts?: {
+    excludeIds?: string[];
+    diversify?: boolean;
+    /** Nearby users should not get the same top picks; distant regions can share. */
+    geoKey?: string;
+  }
 ): Promise<FashionLook[]> {
   const pool = looksForGender(intent.genderFit);
   const exclude = new Set(opts?.excludeIds || []);
   let ranked = [...pool]
     .filter((l) => !exclude.has(l.id))
     .sort((a, b) => scoreLook(b, intent) - scoreLook(a, intent));
+
+  // Soft geo shuffle: hash city/country into a rotation so neighbors diverge, far users can overlap
+  if (opts?.geoKey && ranked.length > 2) {
+    let hash = 0;
+    for (let i = 0; i < opts.geoKey.length; i++) hash = (hash * 31 + opts.geoKey.charCodeAt(i)) >>> 0;
+    const rot = hash % Math.min(5, ranked.length);
+    ranked = [...ranked.slice(rot), ...ranked.slice(0, rot)];
+  }
+
+  // Prefer an era-mix look in the top pair when available
+  const era = ranked.find((l) => /era|archive|relic|vintage|historical|y2k|heritage/i.test(`${l.id} ${l.title} ${l.vibe}`));
+  if (era && ranked[0]?.id !== era.id) {
+    ranked = [ranked[0], era, ...ranked.filter((l) => l.id !== ranked[0].id && l.id !== era.id)];
+  }
+
   if (opts?.diversify && ranked.length > 3) {
-    // Prefer something different from the top hit so "shuffle" feels new
     const head = ranked.slice(0, 2);
     const rest = ranked.slice(2).sort(() => Math.random() - 0.5);
     ranked = [...rest.slice(0, 4), ...head];

@@ -521,3 +521,73 @@
     padding: 10px;
   }
 }
+
+.fashion-body-editor {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 10px;
+  margin: 10px 0 14px;
+  padding: 12px;
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.fashion-body-editor p {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: #e7c9a0;
+  font-size: 13px;
+}
+
+.fashion-body-editor label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #f59e0b;
+}
+
+.fashion-body-editor input[type='color'] {
+  width: 100%;
+  height: 36px;
+  border: none;
+  background: transparent;
+}
+
+.fashion-week-ask {
+  margin: 0 0 14px;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px dashed rgba(245, 158, 11, 0.45);
+  background: rgba(245, 158, 11, 0.08);
+}
+
+.fashion-week-ask p {
+  margin: 0 0 10px;
+  color: #fbbf24;
+}
+
+.fashion-week-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.fashion-week-actions button {
+  border: none;
+  border-radius: 999px;
+  padding: 8px 14px;
+  font-weight: 700;
+  cursor: pointer;
+  background: linear-gradient(135deg, #f59e0b, #ea580c);
+  color: #111;
+}
+
+.fashion-week-actions button.ghost {
+  background: transparent;
+  color: #e7c9a0;
+  border: 1px solid rgba(245, 158, 11, 0.4);
+}

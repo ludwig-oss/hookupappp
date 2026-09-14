@@ -43,6 +43,8 @@ export default function CompatibilityWidget() {
   const [guideSeekStep, setGuideSeekStep] = useState<GuideSeekStep>(() => (user?.aiGuideId ? 'skipped' : 'choose'));
   const [showAiCrew, setShowAiCrew] = useState(() => !user?.aiGuideId);
   const [aiCrewQuery, setAiCrewQuery] = useState('');
+  const [chatGuideId, setChatGuideId] = useState<string | undefined>();
+  const [startCrewChat, setStartCrewChat] = useState(false);
   const [aiGuides, setAiGuides] = useState<AiGuideCharacter[]>([]);
   const [pickingAiId, setPickingAiId] = useState('');
   const [clientRegion, setClientRegion] = useState('');
@@ -256,8 +258,10 @@ export default function CompatibilityWidget() {
       await aiGuidesAPI.assign(guide.id);
       updateUser({ aiGuideId: guide.id });
       window.dispatchEvent(new Event('guide-program:updated'));
-      setShowAiCrew(false);
-      setView('main');
+      setChatGuideId(guide.id);
+      setStartCrewChat(true);
+      setAiCrewQuery('');
+      setShowAiCrew(true);
       setGuideSeekStep('skipped');
     } catch (err: any) {
       setError(err.response?.data?.error || 'Could not choose this AI guide');
@@ -809,13 +813,19 @@ export default function CompatibilityWidget() {
         <AiGuideStudio
           mode="app"
           initialQuery={aiCrewQuery}
+          initialGuideId={chatGuideId}
+          startInChat={startCrewChat}
           onClose={() => {
             setShowAiCrew(false);
             setAiCrewQuery('');
+            setChatGuideId(undefined);
+            setStartCrewChat(false);
           }}
           onChooseHuman={() => {
             setShowAiCrew(false);
             setAiCrewQuery('');
+            setChatGuideId(undefined);
+            setStartCrewChat(false);
             setGuideSeekStep('ready');
           }}
         />

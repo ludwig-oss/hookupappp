@@ -49,6 +49,7 @@ async function buildStylePayload(
   let sourced = await sourceLooks(intent, {
     excludeIds: excludeLookIds,
     diversify: Boolean(opts.shuffle),
+    geoKey: [user?.city, user?.country, userId.slice(-4)].filter(Boolean).join('|'),
   });
 
   if (opts.mixWardrobe) {

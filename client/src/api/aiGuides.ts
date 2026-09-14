@@ -64,6 +64,8 @@ export const aiGuidesAPI = {
     guess: { id: string; title: string; confidence: number } | null;
     alternates: { id: string; title: string }[];
     needsClarify?: boolean;
+    /** Drop category chips — open freeform guide chat. */
+    openChat?: boolean;
   }> => {
     const response = await axios.post(`${API_URL}/interpret`, { query });
     return response.data;

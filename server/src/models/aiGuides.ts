@@ -11,7 +11,12 @@ import {
   buildChatTurn,
 } from '../data/aiGuideCatalog.js';
 import { buildTextingCoachAdvice, type ChatLine } from './textingCoach.js';
-import { buildPersonaSystemPrompt, callOpenAiChat } from '../services/llmChat.js';
+import {
+  buildPersonaSystemPrompt,
+  callOpenAiChat,
+  userResistsCategoryLoop,
+  guideAlreadyAskedCategories,
+} from '../services/llmChat.js';
 
 export async function listAiGuides() {
   return AI_GUIDES.map((g) => ({
@@ -23,6 +28,7 @@ export async function listAiGuides() {
 export async function interpretAiQuery(query: string) {
   const matches = interpretQuery(query);
   const top = matches[0];
+  const resists = userResistsCategoryLoop(query);
   return {
     query,
     guess: top
@@ -34,7 +40,9 @@ export async function interpretAiQuery(query: string) {
       : null,
     alternates: matches.slice(1).map((m) => ({ id: m.topic.id, title: m.topic.title })),
     /** When confidence is low, client should ask which specific — do not auto-open a desk. */
-    needsClarify: !top || top.score < 12,
+    needsClarify: resists ? false : !top || top.score < 12,
+    /** Client: drop chip UI and open freeform chat with a guide. */
+    openChat: resists,
   };
 }
 
@@ -50,8 +58,12 @@ export async function chatWithGuide(params: {
     history: params.history,
   });
 
-  // Clarifies (which problem?) stay local — chips need structured options
-  if (fallback.mode === 'clarify') return fallback;
+  const friction = userResistsCategoryLoop(params.message);
+  const alreadyAsked = guideAlreadyAskedCategories(params.history);
+  const financeDesk = guide?.desk === 'finance';
+
+  // Clarifies stay local for dating desks — except friction / already-asked / finance
+  if (fallback.mode === 'clarify' && !friction && !alreadyAsked && !financeDesk) return fallback;
 
   if (!guide) return fallback;
 
@@ -66,7 +78,21 @@ export async function chatWithGuide(params: {
         thinking: guide.thinking,
         mindset: guide.charStyle?.mindset,
         catchphrases: guide.charStyle?.catchphrases,
-        extra: `Tagline energy: ${guide.tagline}. Expertise: ${guide.expertise.join(', ')}.`,
+        desk: guide.desk,
+        extra: [
+          `Tagline energy: ${guide.tagline}.`,
+          `Expertise: ${guide.expertise.join(', ')}.`,
+          financeDesk
+            ? 'You are one of twenty financial/business realist modules. Stay in YOUR exact playbook (spending audit, debt snowball, SaaS math, agency sales, etc.). Never hand dating category chips.'
+            : '',
+          friction
+            ? 'The user resisted menus/categories. Do not list options. Talk open-ended and ask one real question.'
+            : alreadyAsked
+              ? 'You already asked them to pick a category once. Never ask again. Respond to what they said as a real conversation.'
+              : '',
+        ]
+          .filter(Boolean)
+          .join(' '),
       }),
     },
     ...history.map((m) => ({
@@ -79,10 +105,16 @@ export async function chatWithGuide(params: {
   const llm = await callOpenAiChat({
     messages,
     model: process.env.OPENAI_GUIDE_MODEL || 'gpt-4o',
-    max_tokens: 180,
+    max_tokens: financeDesk ? 200 : 180,
   });
 
-  if (!llm) return fallback;
+  if (!llm) {
+    // Finance / friction must never fall back into clarify chips
+    if (fallback.mode === 'clarify' && (financeDesk || friction || alreadyAsked)) {
+      return { ...fallback, mode: 'chat' as const, clarifyOptions: undefined };
+    }
+    return fallback;
+  }
 
   return {
     reply: llm,
@@ -129,7 +161,7 @@ export async function assignAiGuide(userId: string, guideId: string, topicId?: s
 
 export async function getAssignedAiGuide(userId: string) {
   const user = await getUserById(userId);
-  const guideId = (user as any)?.aiGuideId as string | undefined;
+  const guideId = (user as { aiGuideId?: string } | null)?.aiGuideId;
   if (!guideId) return { guide: null };
   return { guide: getGuide(guideId) };
 }

@@ -977,6 +977,36 @@ const THANKS_RE = /^(thanks|thank you|thx|ty|appreciate)\b/i;
 const YES_NO_SHORT = /^(yes|yeah|yep|yup|no|nah|ok|okay|sure|idk|i don'?t know)\.?$/i;
 const META_RE =
   /\b(do you (even )?understand|are you (a |an )?(bot|ai|npc|computer)|you (sound|keep|just) (like|repeating)|stop repeating|talk (like|normal)|say hi)\b/i;
+const FRICTION_RE =
+  /\b(can'?t|cannot|different|none of (those|these|them)|not (that|those|these)|just talk|in my own words|raw story|no (menu|list|categories|chips|options)|stop asking|something else|neither)\b/i;
+
+function openEndedPivot(guide: AiGuideCharacter, warmth: number): string {
+  if (guide.desk === 'finance') {
+    return spokenOnly(
+      guide,
+      warmth >= 5
+        ? `Alright — menus are dead. Give me the money or business mess in your own words. Numbers help, but honesty first.`
+        : `Got it. No categories. Income, debt, business — spit the real situation. One honest line.`
+    );
+  }
+  if (warmth >= 6) {
+    return spokenOnly(
+      guide,
+      `Alright — categories out the window. Tell me what's actually going on in your own words. I'm listening.`
+    );
+  }
+  return spokenOnly(
+    guide,
+    `Got it. No menu. Spill the raw situation. One honest sentence is enough.`
+  );
+}
+
+function lastGuideAskedCategories(history?: Array<{ from: 'me' | 'guide'; text: string }>): boolean {
+  const last = lastGuideText(history);
+  return /\b(which (of )?these|pick (one|the)|closest|specific problem|type it in one|short line|ghosting|overthinking|did you mean)\b/i.test(
+    last
+  );
+}
 
 function firstName(guide: AiGuideCharacter) {
   return guide.name.split(' ')[0];
@@ -1072,7 +1102,26 @@ export function buildChatTurn(params: {
     };
   }
 
+  const smashCategories = FRICTION_RE.test(q) || FRICTION_RE.test(raw);
+  const alreadyAskedOnce = lastGuideAskedCategories(params.history);
+
+  // User fighting the menu → drop chips immediately
+  if (smashCategories) {
+    return { reply: openEndedPivot(guide, warmth), mode: 'chat' };
+  }
+
   if (ALREADY_GOOD_RE.test(q)) {
+    if (guide.desk === 'finance' || alreadyAskedOnce) {
+      return {
+        reply: spokenOnly(
+          guide,
+          guide.desk === 'finance'
+            ? `Fine — that lane's closed. What's the actual money or business pressure then? Debt, income, spending, or the hustle that isn't paying?`
+            : `Cool — you're good there. Forget the list. What's the real mess in your own words?`
+        ),
+        mode: 'chat',
+      };
+    }
     return {
       reply: spokenOnly(
         guide,
@@ -1094,7 +1143,40 @@ export function buildChatTurn(params: {
     return {
       reply: spokenOnly(
         guide,
-        `I need more than yes/no. What happened — one concrete detail. What did they say, or what do you want next?`
+        guide.desk === 'finance'
+          ? `Yes/no doesn't audit numbers. Give me income, debt, or what you're building — one concrete detail.`
+          : `I need more than yes/no. What happened — one concrete detail. What did they say, or what do you want next?`
+      ),
+      mode: 'chat',
+    };
+  }
+
+  // Finance desk never dumps dating chips — talk money open-ended
+  if (guide.desk === 'finance') {
+    const finMatches = interpretQuery(raw).filter(
+      (m) =>
+        m.topic.categoryIds?.includes('financial-literacy') ||
+        m.topic.id === 'cash-flow-execution' ||
+        /money|debt|budget|income|business|saas|hustle|spend/i.test(m.topic.title + m.topic.id)
+    );
+    const finTop = finMatches[0] || interpretQuery(raw)[0];
+    if (finTop && finTop.score >= 6 && (finTop.topic.id === 'cash-flow-execution' || finTop.score >= 10)) {
+      const lesson = resolveLessonForGuide(finTop.topic, guide.id);
+      const spoken = [
+        warmth >= 5
+          ? `Alright — on ${lesson.title.toLowerCase()}, here's the cut:`
+          : `On ${lesson.title.toLowerCase()} — blunt move:`,
+        lesson.solution.endsWith('.') ? lesson.solution : `${lesson.solution}.`,
+        `What's the number that hurts most right now — income, debt, or burn?`,
+      ].join(' ');
+      return { reply: spokenOnly(guide, spoken), mode: 'lesson', topicId: lesson.id };
+    }
+    return {
+      reply: spokenOnly(
+        guide,
+        warmth >= 5
+          ? `I'm not here for dating chips. Tell me the money mess — paycheck, debt pile, side hustle, or the business idea. Raw.`
+          : `Skip the menu. Money or business — what's broken?`
       ),
       mode: 'chat',
     };
@@ -1103,8 +1185,12 @@ export function buildChatTurn(params: {
   const matches = interpretQuery(raw);
   const top = matches[0];
 
-  // Vague / low-confidence → ask which specific problem (don't jump into a lesson dump)
+  // Vague / low-confidence
   if (!top || top.score < 6) {
+    // Already asked once → never re-chip; talk open
+    if (alreadyAskedOnce) {
+      return { reply: openEndedPivot(guide, warmth), mode: 'chat' };
+    }
     return {
       reply: spokenOnly(
         guide,
@@ -1120,12 +1206,13 @@ export function buildChatTurn(params: {
         { id: 'appearance', title: 'Face / looks' },
         { id: 'couples-counseling', title: 'Couples / fighting' },
         { id: 'feminine-lens', title: 'What women want' },
+        { id: 'cash-flow-execution', title: 'Money / hustle' },
       ],
     };
   }
 
-  // Medium confidence with close alternates → clarify which one
-  if (top.score < 12 && matches.length > 1 && matches[1].score >= top.score - 2) {
+  // Medium confidence with close alternates → clarify once only
+  if (!alreadyAskedOnce && top.score < 12 && matches.length > 1 && matches[1].score >= top.score - 2) {
     return {
       reply: spokenOnly(
         guide,

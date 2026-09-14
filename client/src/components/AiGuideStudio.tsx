@@ -178,9 +178,34 @@ export default function AiGuideStudio({
     setError('');
     try {
       const r = await aiGuidesAPI.interpret(q);
+      setLesson(null);
+
+      // Friction / "can't" / "different" — kill category UI, open real chat
+      if (r.openChat) {
+        setGuess(null);
+        setAlternates([]);
+        setMiss(false);
+        const moneyCue = /\b(money|debt|budget|income|business|saas|hustle|broke|spend)\b/i.test(q);
+        const g =
+          (moneyCue
+            ? guides.find((x) => x.desk === 'finance')
+            : null) ||
+          selected ||
+          ranked[0] ||
+          guides[0] ||
+          null;
+        if (g) {
+          setSelected(g);
+          if (mode === 'gate') onUnlocked?.();
+          setInChat(true);
+        } else {
+          setError('Tell me in your own words — no menu. Pick any coach avatar and talk.');
+        }
+        return;
+      }
+
       setGuess(r.guess);
       setAlternates(r.alternates);
-      setLesson(null);
       setMiss(!r.guess);
       // Low confidence → ask which specific problem. Do not jump into a desk.
       if (r.needsClarify || !r.guess || (r.guess.confidence != null && r.guess.confidence < 0.7)) {
@@ -658,9 +683,17 @@ export default function AiGuideStudio({
                   className="ai-pill ai-pill-ghost"
                   onClick={() => {
                     setGuess(null);
+                    setAlternates([]);
                     setMiss(false);
                     setQuery('');
-                    setError("Cool — you're good there. Type the real problem in one short line.");
+                    const g = selected || ranked[0] || guides[0];
+                    if (g) {
+                      setSelected(g);
+                      if (mode === 'gate') onUnlocked?.();
+                      setInChat(true);
+                    } else {
+                      setError("Cool — you're good there. Type the real problem in your own words.");
+                    }
                   }}
                 >
                   I&apos;m good there — different problem
@@ -675,7 +708,28 @@ export default function AiGuideStudio({
           )}
           {miss && !lesson && (
             <div className="ai-confirm">
-              <p>I need the specific problem — not a vague vibe. Try: ghosting, first dates, lasting longer, what to wear, fighting with my partner…</p>
+              <p>
+                Say it in your own words — or open a coach and talk. Money, dating, style, whatever is actually broken.
+              </p>
+              <button
+                type="button"
+                className="ai-pill ai-pill-primary"
+                onClick={() => {
+                  const g =
+                    guides.find((x) => x.desk === 'finance') ||
+                    selected ||
+                    ranked[0] ||
+                    guides[0];
+                  if (!g) return;
+                  setMiss(false);
+                  setGuess(null);
+                  setSelected(g);
+                  if (mode === 'gate') onUnlocked?.();
+                  setInChat(true);
+                }}
+              >
+                Just talk — no menu
+              </button>
             </div>
           )}
           {lesson && (

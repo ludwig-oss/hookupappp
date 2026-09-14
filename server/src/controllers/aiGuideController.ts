@@ -6,6 +6,7 @@ import {
   assignAiGuide,
   getAssignedAiGuide,
   coachTextingHelp,
+  chatWithGuide,
 } from '../models/aiGuides.js';
 import { getLesson } from '../data/aiGuideCatalog.js';
 import { consumeGuideHelp } from '../models/guideHelp.js';
@@ -25,6 +26,20 @@ export const interpretAiQueryHandler = async (req: Request, res: Response) => {
     res.json(await interpretAiQuery(query));
   } catch (error) {
     console.error('Interpret AI query error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+export const chatAiGuideHandler = async (req: Request, res: Response) => {
+  try {
+    const guideId = String(req.body?.guideId || '');
+    const message = String(req.body?.message || '');
+    const history = Array.isArray(req.body?.history) ? req.body.history : [];
+    if (!guideId) return res.status(400).json({ error: 'guideId is required' });
+    const turn = await chatWithGuide({ guideId, message, history });
+    res.json(turn);
+  } catch (error) {
+    console.error('AI guide chat error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 };

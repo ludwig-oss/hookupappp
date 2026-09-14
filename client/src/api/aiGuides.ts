@@ -63,8 +63,22 @@ export const aiGuidesAPI = {
     query: string;
     guess: { id: string; title: string; confidence: number } | null;
     alternates: { id: string; title: string }[];
+    needsClarify?: boolean;
   }> => {
     const response = await axios.post(`${API_URL}/interpret`, { query });
+    return response.data;
+  },
+  chat: async (
+    guideId: string,
+    message: string,
+    history?: Array<{ from: 'me' | 'guide'; text: string }>
+  ): Promise<{
+    reply: string;
+    mode: 'chat' | 'clarify' | 'lesson';
+    topicId?: string;
+    clarifyOptions?: { id: string; title: string }[];
+  }> => {
+    const response = await axios.post(`${API_URL}/chat`, { guideId, message, history });
     return response.data;
   },
   lesson: async (topicId: string, guideId?: string): Promise<{ lesson: AiLesson; guides: AiGuideCharacter[] }> => {

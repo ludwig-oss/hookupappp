@@ -8,6 +8,7 @@ import {
   guidesForLesson,
   interpretQuery,
   resolveLessonForGuide,
+  buildChatTurn,
 } from '../data/aiGuideCatalog.js';
 import { buildTextingCoachAdvice, type ChatLine } from './textingCoach.js';
 
@@ -31,7 +32,21 @@ export async function interpretAiQuery(query: string) {
         }
       : null,
     alternates: matches.slice(1).map((m) => ({ id: m.topic.id, title: m.topic.title })),
+    /** When confidence is low, client should ask which specific — do not auto-open a desk. */
+    needsClarify: !top || top.score < 12,
   };
+}
+
+export async function chatWithGuide(params: {
+  guideId: string;
+  message: string;
+  history?: Array<{ from: 'me' | 'guide'; text: string }>;
+}) {
+  return buildChatTurn({
+    guideId: params.guideId,
+    userText: params.message,
+    history: params.history,
+  });
 }
 
 export async function lessonWithGuides(topicId: string, guideId?: string) {

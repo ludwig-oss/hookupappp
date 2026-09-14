@@ -9,19 +9,23 @@ function stripRoleplay(text: string) {
   return text.replace(/\*[^*]+\*/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
-function greetingFor(guide: AiGuideCharacter, lesson?: AiLesson | null) {
-  if (lesson?.reply) return stripRoleplay(lesson.reply).slice(0, 420);
-  const hook = guide.charStyle?.catchphrases?.[0] || guide.tagline;
-  return `${hook} What's on your mind — money, dating, style, or something else? Talk or type. I'm listening.`;
+function greetingFor(guide: AiGuideCharacter) {
+  const first = guide.name.split(' ')[0];
+  const warm = (guide.ratings?.warmth ?? 5) >= 6;
+  if (warm) {
+    return `Hey — it's ${first}. How's your day going? What's on your mind? Talk or type. I'm here.`;
+  }
+  return `Hey. ${first} here. What's the real situation — say it straight. I'm listening.`;
 }
 
 export default function AiGuideChat({
   guide,
-  lesson,
+  lesson: _lesson,
   onBack,
   onSpeaking,
   onOpenFashion,
   onOpenAppearance,
+  onOpenTopic,
 }: {
   guide: AiGuideCharacter;
   lesson?: AiLesson | null;
@@ -29,34 +33,36 @@ export default function AiGuideChat({
   onSpeaking: (on: boolean) => void;
   onOpenFashion?: () => void;
   onOpenAppearance?: () => void;
+  onOpenTopic?: (topicId: string) => void;
 }) {
   const [messages, setMessages] = useState<Msg[]>(() => [
-    { id: 'g0', from: 'guide', text: greetingFor(guide, lesson) },
+    { id: 'g0', from: 'guide', text: greetingFor(guide) },
   ]);
   const [draft, setDraft] = useState('');
   const [busy, setBusy] = useState(false);
   const [callOn, setCallOn] = useState(false);
   const [listening, setListening] = useState(false);
+  const [clarify, setClarify] = useState<{ id: string; title: string }[]>([]);
   const bottomRef = useRef<HTMLDivElement>(null);
   const recRef = useRef<{ stop: () => void } | null>(null);
   const guideRef = useRef(guide);
   guideRef.current = guide;
 
   useEffect(() => {
-    setMessages([{ id: `g-${guide.id}`, from: 'guide', text: greetingFor(guide, lesson) }]);
+    setMessages([{ id: `g-${guide.id}`, from: 'guide', text: greetingFor(guide) }]);
     setDraft('');
     setCallOn(false);
-  }, [guide.id, lesson?.id]);
+    setClarify([]);
+  }, [guide.id]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, callOn]);
+  }, [messages, callOn, clarify]);
 
   useEffect(() => {
     const first = messages[0];
     if (!first || first.from !== 'guide') return;
     void speakGuideLine(guide.voice, first.text, () => onSpeaking(true), () => onSpeaking(false));
-    // only on guide switch / first greet
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [guide.id]);
 
@@ -66,21 +72,21 @@ export default function AiGuideChat({
 
   const replyAsGuide = async (userText: string) => {
     setBusy(true);
+    setClarify([]);
     try {
-      const guess = await aiGuidesAPI.interpret(userText);
-      let text = '';
-      if (guess.guess?.id) {
-        const r = await aiGuidesAPI.lesson(guess.guess.id, guide.id);
-        text = stripRoleplay(r.lesson.reply || `${r.lesson.solution} ${r.lesson.unknown}`);
-      } else {
-        const hook = guide.charStyle?.catchphrases?.[0] || guide.tagline;
-        text = `${hook} I hear you. Give me one concrete detail — numbers, what they said, or what you want next — and I'll give you the next move.`;
-      }
+      const history = messages.slice(-12).map((m) => ({
+        from: (m.from === 'me' ? 'me' : 'guide') as 'me' | 'guide',
+        text: m.text,
+      }));
+      const turn = await aiGuidesAPI.chat(guideRef.current.id, userText, history);
+      const text = stripRoleplay(turn.reply || 'Say that again in one sentence.');
       setMessages((prev) => [...prev, { id: `g-${Date.now()}`, from: 'guide', text }]);
-      if (callOn) speak(text);
-      else speak(text);
+      if (turn.mode === 'clarify' && turn.clarifyOptions?.length) {
+        setClarify(turn.clarifyOptions);
+      }
+      speak(text);
     } catch {
-      const fallback = `${guide.tagline} Say that again shorter — one sentence.`;
+      const fallback = `Hey — say that again shorter. One sentence. What's actually going on?`;
       setMessages((prev) => [...prev, { id: `g-${Date.now()}`, from: 'guide', text: fallback }]);
       speak(fallback);
     } finally {
@@ -94,6 +100,15 @@ export default function AiGuideChat({
     setDraft('');
     setMessages((prev) => [...prev, { id: `m-${Date.now()}`, from: 'me', text }]);
     await replyAsGuide(text);
+  };
+
+  const pickClarify = async (opt: { id: string; title: string }) => {
+    setClarify([]);
+    setMessages((prev) => [...prev, { id: `m-${Date.now()}`, from: 'me', text: opt.title }]);
+    if (onOpenTopic && ['fashion', 'appearance', 'hair', 'intimacy-flow'].includes(opt.id)) {
+      onOpenTopic(opt.id);
+    }
+    await replyAsGuide(opt.title);
   };
 
   const stopMic = () => {
@@ -148,7 +163,7 @@ export default function AiGuideChat({
     <div className={`ai-chat${callOn ? ' is-call' : ''}`}>
       <header className="ai-chat-head">
         <button type="button" className="ai-chat-back" onClick={onBack}>
-          ← Crew
+          ← Back
         </button>
         <img src={guide.portrait} alt="" />
         <div>
@@ -174,7 +189,7 @@ export default function AiGuideChat({
             className={callOn ? 'is-on' : ''}
             onClick={() => {
               setCallOn(true);
-              speak(`Hey — it's ${guide.name.split(' ')[0]}. Talk to me.`);
+              speak(`Hey — it's ${guide.name.split(' ')[0]}. How's your day? Talk to me.`);
             }}
           >
             Voice call
@@ -212,6 +227,16 @@ export default function AiGuideChat({
               <p>{m.text}</p>
             </div>
           ))}
+          {clarify.length > 0 && (
+            <div className="ai-chat-clarify">
+              <span>Which one?</span>
+              {clarify.map((c) => (
+                <button key={c.id} type="button" disabled={busy} onClick={() => void pickClarify(c)}>
+                  {c.title}
+                </button>
+              ))}
+            </div>
+          )}
           <div ref={bottomRef} />
         </div>
       )}

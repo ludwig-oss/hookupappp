@@ -558,6 +558,7 @@ export default function FashionDesk({
       {tab === 'closet' && (
         <ClosetInterface
           faceUrl={faceUrl}
+          bodyUrl={bodyUrl}
           skinTone={bodyAvatar.skinTone}
           gender={bodyAvatar.gender === 'fem' ? 'fem' : bodyAvatar.gender === 'masc' ? 'masc' : 'masc'}
         />

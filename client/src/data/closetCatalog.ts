@@ -14,6 +14,8 @@ export interface ClosetItem {
   brand?: string;
   notes?: string;
   thumbUrl?: string;
+  /** Optional full-body / garment plate for local try-on preview before VTON returns. */
+  tryOnPreviewUrl?: string;
 }
 
 export type EquippedCloset = Partial<Record<ClosetCategory, ClosetItem | null>>;
@@ -42,8 +44,24 @@ export const CLOSET_ITEMS: ClosetItem[] = [
   { id: 'mask-soft', category: 'masks', title: 'Soft face cover', gender: 'any', color: '#2d3748' },
   { id: 'mask-bandana', category: 'masks', title: 'Neck bandana', gender: 'any', color: '#276749' },
   // Tops
-  { id: 'top-tee-white', category: 'tops', title: 'Heavy white tee', gender: 'masc', color: '#f7fafc' },
-  { id: 'top-tee-black', category: 'tops', title: 'Black fitted tee', gender: 'any', color: '#171923' },
+  {
+    id: 'top-tee-white',
+    category: 'tops',
+    title: 'Heavy white tee',
+    gender: 'masc',
+    color: '#f7fafc',
+    tryOnPreviewUrl:
+      'https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?auto=format&fit=crop&w=900&q=85',
+  },
+  {
+    id: 'top-tee-black',
+    category: 'tops',
+    title: 'Black fitted tee',
+    gender: 'any',
+    color: '#171923',
+    tryOnPreviewUrl:
+      'https://images.unsplash.com/photo-1618354691373-d851c5c3a990?auto=format&fit=crop&w=900&q=85',
+  },
   { id: 'top-knit', category: 'tops', title: 'Fine black knit', gender: 'fem', color: '#1a1a1a', accent: '#d69e2e' },
   { id: 'top-oxford', category: 'tops', title: 'White oxford', gender: 'masc', color: '#edf2f7' },
   { id: 'top-satin', category: 'tops', title: 'Satin cami', gender: 'fem', color: '#c0c0c0' },

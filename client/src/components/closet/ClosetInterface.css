@@ -1,36 +1,137 @@
 .closet-root {
   display: grid;
-  grid-template-columns: minmax(220px, 340px) 1fr;
+  grid-template-columns: minmax(240px, 380px) 1fr;
   gap: 14px;
   min-height: 420px;
 }
 
 .closet-stage {
   position: relative;
-  border-radius: 14px;
+  border-radius: 16px;
   border: 1px solid rgba(245, 158, 11, 0.35);
-  background: #0a0705;
+  background:
+    radial-gradient(ellipse at 50% 20%, rgba(245, 158, 11, 0.12), transparent 55%),
+    linear-gradient(165deg, #1a1410 0%, #0a0705 55%, #050403 100%);
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: stretch;
+  min-height: 520px;
 }
 
-.closet-canvas {
+.closet-tryon-frame {
+  position: relative;
+  flex: 1;
+  min-height: 460px;
+  margin: 0;
+  overflow: hidden;
+  background: #0a0705;
+}
+
+.closet-tryon-image {
+  position: absolute;
+  inset: 0;
   width: 100%;
-  max-height: 520px;
-  object-fit: contain;
-  cursor: grab;
-  touch-action: none;
+  height: 100%;
+  object-fit: cover;
+  object-position: center top;
   display: block;
+  transition: opacity 0.35s ease, filter 0.35s ease;
 }
 
-.closet-canvas.is-drag {
-  cursor: grabbing;
+.closet-tryon-image.is-dim {
+  opacity: 0.35;
+  filter: blur(6px) saturate(0.7);
+}
+
+.closet-tryon-skeleton {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  background: rgba(12, 10, 14, 0.28);
+  backdrop-filter: blur(18px) saturate(1.2);
+  -webkit-backdrop-filter: blur(18px) saturate(1.2);
+  z-index: 2;
+}
+
+.closet-tryon-skeleton-glow {
+  position: absolute;
+  inset: 12%;
+  border-radius: 24px;
+  background: linear-gradient(
+    120deg,
+    rgba(255, 255, 255, 0.04),
+    rgba(245, 158, 11, 0.14),
+    rgba(255, 255, 255, 0.05)
+  );
+  animation: closet-pulse 1.4s ease-in-out infinite;
+}
+
+.closet-tryon-skeleton-figure {
+  position: relative;
+  z-index: 1;
+  width: min(42%, 140px);
+  aspect-ratio: 9 / 16;
+  border-radius: 999px 999px 28px 28px;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.22),
+    rgba(255, 255, 255, 0.05)
+  );
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow: 0 0 40px rgba(245, 158, 11, 0.2);
+  animation: closet-pulse 1.4s ease-in-out infinite;
+}
+
+.closet-tryon-skeleton p {
+  position: relative;
+  z-index: 1;
+  margin: 0;
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #f5efe6;
+  font-weight: 700;
+}
+
+@keyframes closet-pulse {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.02);
+  }
+}
+
+.closet-tryon-badge {
+  position: absolute;
+  left: 12px;
+  top: 12px;
+  z-index: 3;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #111;
+  background: linear-gradient(135deg, #f59e0b, #ea580c);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
+  max-width: calc(100% - 100px);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .closet-hint {
-  margin: 6px 10px 10px;
+  margin: 8px 12px 12px;
   font-size: 11px;
   color: #9ca3af;
   text-align: center;
@@ -42,6 +143,7 @@
   right: 10px;
   display: flex;
   gap: 4px;
+  z-index: 4;
 }
 
 .closet-gender button,
@@ -91,7 +193,7 @@
   grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
   gap: 8px;
   overflow-y: auto;
-  max-height: 480px;
+  max-height: 520px;
   padding-right: 4px;
 }
 
@@ -106,6 +208,11 @@
   padding: 8px;
   cursor: pointer;
   color: #f5efe6;
+}
+
+.closet-card:disabled {
+  opacity: 0.55;
+  cursor: wait;
 }
 
 .closet-card img {
@@ -159,7 +266,8 @@
     grid-template-columns: 1fr;
   }
 
-  .closet-canvas {
-    max-height: 380px;
+  .closet-stage,
+  .closet-tryon-frame {
+    min-height: 380px;
   }
 }

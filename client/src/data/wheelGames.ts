@@ -60,8 +60,8 @@ export const ALL_WHEEL_GAMES: WheelGame[] = [...SET_A, ...SET_B, ...SET_C, ...SE
 
 const SETS = [SET_A, SET_B, SET_C, SET_D];
 
-/** Rotate ~every 40 minutes; mix primary set with 1–2 games from other sets. */
-const ROTATE_MS = 40 * 60 * 1000;
+/** Rotate ~every 5 minutes so the other games show up without waiting forever. */
+const ROTATE_MS = 5 * 60 * 1000;
 
 function mulberry32(seed: number) {
   return () => {
@@ -84,9 +84,10 @@ function shuffleWith<T>(arr: T[], rand: () => number): T[] {
 /**
  * Returns exactly 6 games for the current window.
  * Usually 4 from the active set + 2 from other sets (so classics mix into wild sets and vice versa).
+ * @param remixBump — add 1 each time the user taps “Remix” to force the next set mix immediately.
  */
-export function getActiveWheelGames(now = Date.now()): WheelGame[] {
-  const slot = Math.floor(now / ROTATE_MS);
+export function getActiveWheelGames(now = Date.now(), remixBump = 0): WheelGame[] {
+  const slot = Math.floor(now / ROTATE_MS) + Math.max(0, remixBump);
   const rand = mulberry32(slot * 9973 + 42);
   const primaryIdx = slot % SETS.length;
   const primary = SETS[primaryIdx];
@@ -96,7 +97,6 @@ export function getActiveWheelGames(now = Date.now()): WheelGame[] {
   const fromOthers = shuffleWith(others, rand).slice(0, 2);
   const mixed = shuffleWith([...fromPrimary, ...fromOthers], rand);
 
-  // Guarantee length 6
   while (mixed.length < 6) {
     const extra = ALL_WHEEL_GAMES[mixed.length % ALL_WHEEL_GAMES.length];
     if (!mixed.find((g) => g.id === extra.id)) mixed.push(extra);
@@ -112,4 +112,10 @@ export function getWheelGameById(id: string): WheelGame | undefined {
 export function minutesUntilWheelRotate(now = Date.now()): number {
   const next = (Math.floor(now / ROTATE_MS) + 1) * ROTATE_MS;
   return Math.max(1, Math.ceil((next - now) / 60000));
+}
+
+/** Games not on the wheel right now — for the “also in the pool” peek. */
+export function peekRestOfPool(active: WheelGame[], limit = 8): WheelGame[] {
+  const ids = new Set(active.map((g) => g.id));
+  return ALL_WHEEL_GAMES.filter((g) => !ids.has(g.id)).slice(0, limit);
 }

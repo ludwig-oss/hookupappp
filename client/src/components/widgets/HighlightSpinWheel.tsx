@@ -2,29 +2,54 @@ import { useState, useRef, useEffect } from 'react';
 import {
   getActiveWheelGames,
   minutesUntilWheelRotate,
+  peekRestOfPool,
   type WheelGame,
 } from '../../data/wheelGames';
 
 const SECTIONS = 6;
 const SLICE_ANGLE = 360 / SECTIONS;
+const REMIX_KEY = 'highlights:wheelRemixBump';
+
+function readRemixBump(): number {
+  try {
+    const n = Number(localStorage.getItem(REMIX_KEY) || '0');
+    return Number.isFinite(n) ? Math.max(0, Math.floor(n)) : 0;
+  } catch {
+    return 0;
+  }
+}
 
 interface HighlightSpinWheelProps {
   onOutcome?: (gameId: string) => void;
 }
 
 export default function HighlightSpinWheel({ onOutcome }: HighlightSpinWheelProps) {
-  const [games, setGames] = useState<WheelGame[]>(() => getActiveWheelGames());
+  const [remixBump, setRemixBump] = useState(() => readRemixBump());
+  const [games, setGames] = useState<WheelGame[]>(() => getActiveWheelGames(Date.now(), readRemixBump()));
   const [rotation, setRotation] = useState(0);
   const [spinning, setSpinning] = useState(false);
   const rotationRef = useRef(0);
   const rotateIn = minutesUntilWheelRotate();
+  const poolPeek = peekRestOfPool(games, 8);
 
   useEffect(() => {
-    const tick = () => setGames(getActiveWheelGames());
+    const tick = () => setGames(getActiveWheelGames(Date.now(), remixBump));
     tick();
-    const id = window.setInterval(tick, 60_000);
+    const id = window.setInterval(tick, 30_000);
     return () => window.clearInterval(id);
-  }, []);
+  }, [remixBump]);
+
+  const handleRemix = () => {
+    if (spinning) return;
+    const next = remixBump + 1;
+    setRemixBump(next);
+    try {
+      localStorage.setItem(REMIX_KEY, String(next));
+    } catch {
+      /* ignore */
+    }
+    setGames(getActiveWheelGames(Date.now(), next));
+  };
 
   const handleSpin = () => {
     if (spinning || games.length < 6) return;
@@ -87,16 +112,37 @@ export default function HighlightSpinWheel({ onOutcome }: HighlightSpinWheelProp
         <div className="highlight-spin-wheel-center" />
       </button>
       <p className="highlight-spin-wheel-hint">{spinning ? 'Spinning...' : 'Click the wheel to spin'}</p>
-      <p className="highlight-spin-wheel-how" style={{ maxWidth: 320, margin: '0.5rem auto', fontSize: '0.85rem', opacity: 0.9, lineHeight: 1.4 }}>
-        How it works: spin lands on a mini-game. Faces stay blurred on voice rounds. The 6 games on this wheel remix every ~{rotateIn} min from a pool of 24 crazy dating games.
+      <p className="highlight-spin-wheel-how" style={{ maxWidth: 340, margin: '0.5rem auto', fontSize: '0.85rem', opacity: 0.9, lineHeight: 1.4 }}>
+        Only <strong>6 of 24</strong> games sit on the wheel at once. They auto-remix about every {rotateIn} min — or tap Remix to swap in the wild ones now. Simulator restart is not needed.
       </p>
+      <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 10 }}>
+        <button
+          type="button"
+          className="wheel-outcome-btn"
+          onClick={handleRemix}
+          disabled={spinning}
+          style={{ padding: '8px 16px', fontSize: 13 }}
+        >
+          Remix games
+        </button>
+      </div>
       <div className="highlight-spin-wheel-legend" aria-label="Games on this wheel">
-        <p>Games on this wheel right now:</p>
+        <p>On the wheel right now:</p>
         <ul>
           {games.slice(0, SECTIONS).map((g, i) => (
             <li key={g.id}>{i + 1}. {g.name}</li>
           ))}
         </ul>
+        {poolPeek.length > 0 && (
+          <>
+            <p style={{ marginTop: 10 }}>Also in the 24-game pool (tap Remix to bring some on):</p>
+            <ul style={{ opacity: 0.85 }}>
+              {poolPeek.map((g) => (
+                <li key={g.id}>{g.name}</li>
+              ))}
+            </ul>
+          </>
+        )}
       </div>
     </div>
   );

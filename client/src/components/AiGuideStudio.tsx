@@ -378,16 +378,63 @@ export default function AiGuideStudio({
   if (inChat && featured) {
     return (
       <div className="ai-studio-overlay">
-        <AiGuideChat
-          guide={featured}
-          lesson={lessonLocal || lesson}
-          onSpeaking={setSpeaking}
-          onBack={() => {
-            setInChat(false);
-            if (typeof window !== 'undefined' && window.speechSynthesis) window.speechSynthesis.cancel();
-            setSpeaking(false);
-          }}
-        />
+        {showFashion ? (
+          <FashionDesk
+            guide={
+              featured.desk === 'fashion' || featured.id === 'elena'
+                ? featured
+                : guides.find((g) => g.id === 'elena') || fashionCrew[0] || featured
+            }
+            stylists={fashionCrew}
+            onPickStylist={(g) => setSelected(g)}
+            onClose={() => setShowFashion(false)}
+            onSpeaking={setSpeaking}
+          />
+        ) : showAppearance ? (
+          <AppearanceDesk
+            key={startOnHair ? 'hair' : 'face'}
+            guide={
+              featured.desk === 'appearance' || featured.desk === 'hair' || featured.id === 'elena'
+                ? featured
+                : startOnHair
+                  ? hairCrew.find((g) => g.id === 'kayra-theodore') || hairCrew[0] || featured
+                  : appearanceCrew[0] || featured
+            }
+            stylists={appearanceCrew}
+            hairStylists={hairCrew}
+            initialTab={startOnHair ? 'hair' : 'scan'}
+            onPickStylist={(g) => setSelected(g)}
+            onClose={() => {
+              setShowAppearance(false);
+              setStartOnHair(false);
+            }}
+            onSpeaking={setSpeaking}
+          />
+        ) : (
+          <AiGuideChat
+            guide={featured}
+            lesson={lessonLocal || lesson}
+            onSpeaking={setSpeaking}
+            onOpenFashion={() =>
+              void tryHelp('fashion', () => {
+                setShowFashion(true);
+                setShowAppearance(false);
+              })
+            }
+            onOpenAppearance={() =>
+              void tryHelp('appearance', () => {
+                setStartOnHair(featured.desk === 'hair');
+                setShowAppearance(true);
+                setShowFashion(false);
+              })
+            }
+            onBack={() => {
+              setInChat(false);
+              if (typeof window !== 'undefined' && window.speechSynthesis) window.speechSynthesis.cancel();
+              setSpeaking(false);
+            }}
+          />
+        )}
         {closeStudio && (
           <button
             type="button"

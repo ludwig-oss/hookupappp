@@ -20,11 +20,15 @@ export default function AiGuideChat({
   lesson,
   onBack,
   onSpeaking,
+  onOpenFashion,
+  onOpenAppearance,
 }: {
   guide: AiGuideCharacter;
   lesson?: AiLesson | null;
   onBack: () => void;
   onSpeaking: (on: boolean) => void;
+  onOpenFashion?: () => void;
+  onOpenAppearance?: () => void;
 }) {
   const [messages, setMessages] = useState<Msg[]>(() => [
     { id: 'g0', from: 'guide', text: greetingFor(guide, lesson) },
@@ -152,6 +156,16 @@ export default function AiGuideChat({
           <em>{guide.specialty}</em>
         </div>
         <div className="ai-chat-modes">
+          {(guide.desk === 'fashion' || guide.id === 'elena') && onOpenFashion && (
+            <button type="button" onClick={onOpenFashion}>
+              Outfits
+            </button>
+          )}
+          {(guide.desk === 'appearance' || guide.desk === 'hair' || guide.id === 'elena') && onOpenAppearance && (
+            <button type="button" onClick={onOpenAppearance}>
+              Face
+            </button>
+          )}
           <button type="button" className={!callOn ? 'is-on' : ''} onClick={() => setCallOn(false)}>
             Text
           </button>

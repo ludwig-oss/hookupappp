@@ -7,6 +7,7 @@ import { HAIR_STYLE_GUIDES } from './aiHairGuides.js';
 import { TEXTING_COACH_GUIDES } from './aiTextingGuides.js';
 import { RELATIONSHIP_COUNSELOR_GUIDES } from './aiRelationshipCounselors.js';
 import { FINANCE_LITERACY_GUIDES } from './aiFinanceGuides.js';
+import { FINANCE_REALIST_GUIDES } from './aiFinanceRealistGuides.js';
 
 export type AiVoiceHint = 'female' | 'male';
 export type AiGuideLens = 'feminine' | 'masculine' | 'neutral';
@@ -240,6 +241,7 @@ export const AI_GUIDES: AiGuideCharacter[] = [
   ...TEXTING_COACH_GUIDES,
   ...RELATIONSHIP_COUNSELOR_GUIDES,
   ...FINANCE_LITERACY_GUIDES,
+  ...FINANCE_REALIST_GUIDES,
 ];
 
 export const AI_LESSONS: AiLesson[] = [
@@ -633,6 +635,61 @@ export const AI_LESSONS: AiLesson[] = [
     demo: 'mirror',
   },
   {
+    id: 'cash-flow-execution',
+    title: 'Debt, spending leaks & business execution',
+    aliases: [
+      'debt snowball',
+      'doordash',
+      'eating out',
+      'car payment',
+      'lifestyle inflation',
+      'broke',
+      'side hustle',
+      'saas',
+      'micro saas',
+      'mrr',
+      'passive income',
+      'agency',
+      'ai agency',
+      'cursor',
+      'cursor ai',
+      'cold call',
+      'cold outreach',
+      'client acquisition',
+      'cash flow',
+      'business coach',
+      'financial realist',
+      'caleb hammer',
+      'dave ramsey',
+      'hormozi',
+      'marc lou',
+      'underpricing',
+      'high ticket',
+      'indie hacker',
+      'stripe revenue',
+      'survival budget',
+      'bank statement',
+    ],
+    categoryIds: ['financial-literacy'],
+    bestGuideIds: [
+      'caleb-hammer',
+      'dave-ramsey',
+      'alex-hormozi',
+      'kevin-oleary',
+      'marc-lou',
+      'brett-malinowski',
+      'george-kamel',
+      'chris-do',
+    ],
+    cause:
+      'You want a different life but you have no honest map — fuzzy income, hidden leaks, or a “business” that is really a hobby with no sales pipeline.',
+    solution:
+      'Pick one realist coach. Answer their numbers questions. Cut leaks or debt first, then match daily outreach or shipping volume to the revenue you claim you want.',
+    prevention: 'Weekly money date: statements, pipeline, and one metric that cannot lie (Stripe, calls logged, or debt balance).',
+    unknown: 'Motivation is not a strategy. The bank app and the CRM do not care about your podcast quotes.',
+    demo: 'wallet',
+  },
+  {
     id: 'flirting',
     title: 'I do not know how to flirt',
     aliases: ['flirt', 'awkward', 'signals', 'attraction', 'chemistry'],
@@ -944,6 +1001,10 @@ export function interpretQuery(query: string): { topic: AiLesson; score: number 
     /\b(money|finance|401k|roth|ira|invest|budget|saving|fire|index fund|debt|wealth|compound|financial literacy)\b/.test(
       q
     );
+  const cashFlowRealistCue =
+    /\b(doordash|debt snowball|snowball|side hustle|saas|micro saas|mrr|passive income|agency|ai agency|cursor|cold call|cold outreach|client acquisition|cash flow|caleb|ramsey|hormozi|marc lou|indie hacker|lifestyle inflation|car note|eating out|survival budget|underpric|high ticket|stripe|broke|financial coach|business coach)\b/.test(
+      q
+    );
   const scored = AI_LESSONS.map((lesson) => {
     const hay = norm([lesson.title, ...lesson.aliases].join(' '));
     let score = 0;
@@ -963,6 +1024,8 @@ export function interpretQuery(query: string): { topic: AiLesson; score: number 
     }
     if (feminineCue && lesson.id === 'feminine-lens') score += 18;
     if (financeCue && lesson.id === 'financial-literacy') score += 16;
+    if (cashFlowRealistCue && lesson.id === 'cash-flow-execution') score += 18;
+    if (cashFlowRealistCue && lesson.id === 'financial-literacy') score += 4;
     return { topic: lesson, score };
   }).filter((x) => x.score > 0);
   scored.sort((a, b) => b.score - a.score);
@@ -1025,8 +1088,19 @@ export function guidesForLesson(lesson: AiLesson) {
     const other = rest.filter((g) => g.desk !== 'relationship');
     return [...preferred, ...rel, ...other];
   }
-  if (lesson.id === 'financial-literacy' || lesson.categoryIds.includes('financial-literacy')) {
+  if (
+    lesson.id === 'financial-literacy' ||
+    lesson.id === 'cash-flow-execution' ||
+    lesson.categoryIds.includes('financial-literacy')
+  ) {
+    const realistIds = new Set(FINANCE_REALIST_GUIDES.map((g) => g.id));
     const fin = rest.filter((g) => g.desk === 'finance');
+    if (lesson.id === 'cash-flow-execution') {
+      const realists = fin.filter((g) => realistIds.has(g.id));
+      const literacy = fin.filter((g) => !realistIds.has(g.id));
+      const other = rest.filter((g) => g.desk !== 'finance');
+      return [...preferred, ...realists, ...literacy, ...other];
+    }
     const other = rest.filter((g) => g.desk !== 'finance');
     return [...preferred, ...fin, ...other];
   }

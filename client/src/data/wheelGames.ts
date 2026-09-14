@@ -1,4 +1,4 @@
-/** 24 dating mini-games: 4 themed sets of 6. Only 6 show on the wheel at a time; sets mix over time. */
+/** 24 dating mini-games: 4 themed sets of 6. Only 6 show on the wheel at a time; remix after every spin. */
 
 export type WheelMechanic =
   | 'blind_date'
@@ -60,62 +60,90 @@ export const ALL_WHEEL_GAMES: WheelGame[] = [...SET_A, ...SET_B, ...SET_C, ...SE
 
 const SETS = [SET_A, SET_B, SET_C, SET_D];
 
-/** Rotate ~every 5 minutes so the other games show up without waiting forever. */
-const ROTATE_MS = 5 * 60 * 1000;
+const RECENT_KEY = 'highlights:recentWheelGameIds';
 
-function mulberry32(seed: number) {
-  return () => {
-    let t = (seed += 0x6d2b79f5);
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-function shuffleWith<T>(arr: T[], rand: () => number): T[] {
+function shuffle<T>(arr: T[]): T[] {
   const out = [...arr];
   for (let i = out.length - 1; i > 0; i--) {
-    const j = Math.floor(rand() * (i + 1));
+    const j = Math.floor(Math.random() * (i + 1));
     [out[i], out[j]] = [out[j], out[i]];
   }
   return out;
 }
 
-/**
- * Returns exactly 6 games for the current window.
- * Usually 4 from the active set + 2 from other sets (so classics mix into wild sets and vice versa).
- * @param remixBump — add 1 each time the user taps “Remix” to force the next set mix immediately.
- */
-export function getActiveWheelGames(now = Date.now(), remixBump = 0): WheelGame[] {
-  const slot = Math.floor(now / ROTATE_MS) + Math.max(0, remixBump);
-  const rand = mulberry32(slot * 9973 + 42);
-  const primaryIdx = slot % SETS.length;
-  const primary = SETS[primaryIdx];
-  const others = SETS.filter((_, i) => i !== primaryIdx).flat();
-
-  const fromPrimary = shuffleWith(primary, rand).slice(0, 4);
-  const fromOthers = shuffleWith(others, rand).slice(0, 2);
-  const mixed = shuffleWith([...fromPrimary, ...fromOthers], rand);
-
-  while (mixed.length < 6) {
-    const extra = ALL_WHEEL_GAMES[mixed.length % ALL_WHEEL_GAMES.length];
-    if (!mixed.find((g) => g.id === extra.id)) mixed.push(extra);
-    else break;
+export function readRecentWheelIds(): string[] {
+  try {
+    const raw = localStorage.getItem(RECENT_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((x) => typeof x === 'string') : [];
+  } catch {
+    return [];
   }
-  return mixed.slice(0, 6);
+}
+
+export function writeRecentWheelIds(ids: string[]): void {
+  try {
+    localStorage.setItem(RECENT_KEY, JSON.stringify(ids.slice(-20)));
+  } catch {
+    /* ignore */
+  }
+}
+
+/**
+ * Pick 6 games for the wheel.
+ * Prefers games you haven't seen recently so all 24 rotate through.
+ * Mixes sets: never all from one set when avoidable.
+ */
+export function pickWheelBatch(recentIds: string[] = []): WheelGame[] {
+  const recent = new Set(recentIds);
+  const fresh = ALL_WHEEL_GAMES.filter((g) => !recent.has(g.id));
+  const pool = fresh.length >= 6 ? fresh : ALL_WHEEL_GAMES;
+
+  // Try to pull from different sets for variety
+  const bySet = SETS.map((set) => shuffle(set.filter((g) => pool.some((p) => p.id === g.id))));
+  const picked: WheelGame[] = [];
+  const used = new Set<string>();
+
+  // Round-robin one from each set first
+  for (let round = 0; round < 3 && picked.length < 6; round++) {
+    for (const set of bySet) {
+      if (picked.length >= 6) break;
+      const next = set.find((g) => !used.has(g.id));
+      if (next) {
+        picked.push(next);
+        used.add(next.id);
+      }
+    }
+  }
+
+  // Fill remainder from shuffled pool
+  for (const g of shuffle(pool)) {
+    if (picked.length >= 6) break;
+    if (!used.has(g.id)) {
+      picked.push(g);
+      used.add(g.id);
+    }
+  }
+
+  return shuffle(picked).slice(0, 6);
+}
+
+/** @deprecated use pickWheelBatch — kept for callers that pass bump */
+export function getActiveWheelGames(_now = Date.now(), _remixBump = 0): WheelGame[] {
+  return pickWheelBatch(readRecentWheelIds());
 }
 
 export function getWheelGameById(id: string): WheelGame | undefined {
   return ALL_WHEEL_GAMES.find((g) => g.id === id);
 }
 
-export function minutesUntilWheelRotate(now = Date.now()): number {
-  const next = (Math.floor(now / ROTATE_MS) + 1) * ROTATE_MS;
-  return Math.max(1, Math.ceil((next - now) / 60000));
+export function minutesUntilWheelRotate(_now = Date.now()): number {
+  return 0; // remixed after every spin now
 }
 
 /** Games not on the wheel right now — for the “also in the pool” peek. */
-export function peekRestOfPool(active: WheelGame[], limit = 8): WheelGame[] {
+export function peekRestOfPool(active: WheelGame[], limit = 12): WheelGame[] {
   const ids = new Set(active.map((g) => g.id));
   return ALL_WHEEL_GAMES.filter((g) => !ids.has(g.id)).slice(0, limit);
 }

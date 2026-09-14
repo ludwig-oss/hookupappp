@@ -1,71 +1,53 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef } from 'react';
 import {
-  getActiveWheelGames,
-  minutesUntilWheelRotate,
+  pickWheelBatch,
   peekRestOfPool,
+  readRecentWheelIds,
+  writeRecentWheelIds,
   type WheelGame,
 } from '../../data/wheelGames';
 
 const SECTIONS = 6;
 const SLICE_ANGLE = 360 / SECTIONS;
-const REMIX_KEY = 'highlights:wheelRemixBump';
-
-function readRemixBump(): number {
-  try {
-    const n = Number(localStorage.getItem(REMIX_KEY) || '0');
-    return Number.isFinite(n) ? Math.max(0, Math.floor(n)) : 0;
-  } catch {
-    return 0;
-  }
-}
 
 interface HighlightSpinWheelProps {
   onOutcome?: (gameId: string) => void;
 }
 
 export default function HighlightSpinWheel({ onOutcome }: HighlightSpinWheelProps) {
-  const [remixBump, setRemixBump] = useState(() => readRemixBump());
-  const [games, setGames] = useState<WheelGame[]>(() => getActiveWheelGames(Date.now(), readRemixBump()));
+  const [games, setGames] = useState<WheelGame[]>(() => pickWheelBatch(readRecentWheelIds()));
   const [rotation, setRotation] = useState(0);
   const [spinning, setSpinning] = useState(false);
   const rotationRef = useRef(0);
-  const rotateIn = minutesUntilWheelRotate();
-  const poolPeek = peekRestOfPool(games, 8);
+  const gamesRef = useRef(games);
+  gamesRef.current = games;
+  const poolPeek = peekRestOfPool(games, 12);
 
-  useEffect(() => {
-    const tick = () => setGames(getActiveWheelGames(Date.now(), remixBump));
-    tick();
-    const id = window.setInterval(tick, 30_000);
-    return () => window.clearInterval(id);
-  }, [remixBump]);
-
-  const handleRemix = () => {
-    if (spinning) return;
-    const next = remixBump + 1;
-    setRemixBump(next);
-    try {
-      localStorage.setItem(REMIX_KEY, String(next));
-    } catch {
-      /* ignore */
-    }
-    setGames(getActiveWheelGames(Date.now(), next));
+  const remixForNextSpin = (justPlayedId?: string) => {
+    const prevIds = gamesRef.current.map((g) => g.id);
+    const recent = [...readRecentWheelIds(), ...prevIds, ...(justPlayedId ? [justPlayedId] : [])];
+    writeRecentWheelIds(recent);
+    const next = pickWheelBatch(recent);
+    setGames(next);
+    gamesRef.current = next;
   };
 
   const handleSpin = () => {
-    if (spinning || games.length < 6) return;
+    if (spinning || gamesRef.current.length < 6) return;
     setSpinning(true);
+    const batch = gamesRef.current;
     const fullSpins = 4 + Math.floor(Math.random() * 4);
     const finalSlice = Math.floor(Math.random() * SECTIONS);
-    const landedId = games[finalSlice]?.id || games[0]?.id;
+    const landedId = batch[finalSlice]?.id || batch[0]?.id;
     const finalAngle = 360 - (finalSlice * SLICE_ANGLE + SLICE_ANGLE / 2);
     const totalDegrees = rotationRef.current + fullSpins * 360 + finalAngle;
     setRotation(totalDegrees);
     rotationRef.current = totalDegrees;
     window.setTimeout(() => {
       setSpinning(false);
-      if (landedId) {
-        onOutcome?.(landedId);
-      }
+      if (landedId) onOutcome?.(landedId);
+      // Auto-remix after every spin so the next wheel shows other games from the 24
+      remixForNextSpin(landedId);
     }, 4000);
   };
 
@@ -99,7 +81,7 @@ export default function HighlightSpinWheel({ onOutcome }: HighlightSpinWheelProp
             const angle = 30 + i * SLICE_ANGLE;
             return (
               <div
-                key={g.id}
+                key={`${g.id}-${i}`}
                 className="highlight-spin-wheel-label-pos"
                 style={{
                   transform: `rotate(${angle}deg) translateY(-58px)`,
@@ -116,17 +98,17 @@ export default function HighlightSpinWheel({ onOutcome }: HighlightSpinWheelProp
       </button>
       <p className="highlight-spin-wheel-hint">{spinning ? 'Spinning...' : 'Click the wheel to spin'}</p>
       <p className="highlight-spin-wheel-how" style={{ maxWidth: 340, margin: '0.5rem auto', fontSize: '0.85rem', opacity: 0.9, lineHeight: 1.4 }}>
-        Only <strong>6 of 24</strong> games sit on the wheel at once. They auto-remix about every {rotateIn} min — or tap Remix to swap in the wild ones now. Simulator restart is not needed.
+        <strong>6 of 24</strong> games on the wheel. After every spin the wheel auto-remixes so you can test the wild ones (Ex-Talk Ban, Ghost Protocol, First-Date Roulette, etc.).
       </p>
-      <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 10 }}>
+      <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
         <button
           type="button"
           className="wheel-outcome-btn"
-          onClick={handleRemix}
+          onClick={() => remixForNextSpin()}
           disabled={spinning}
           style={{ padding: '8px 16px', fontSize: 13 }}
         >
-          Remix games
+          Remix now
         </button>
       </div>
       <div className="highlight-spin-wheel-legend" aria-label="Games on this wheel">
@@ -138,7 +120,7 @@ export default function HighlightSpinWheel({ onOutcome }: HighlightSpinWheelProp
         </ul>
         {poolPeek.length > 0 && (
           <>
-            <p style={{ marginTop: 10 }}>Also in the 24-game pool (tap Remix to bring some on):</p>
+            <p style={{ marginTop: 10 }}>Coming up after spins (not on this wheel yet):</p>
             <ul style={{ opacity: 0.85 }}>
               {poolPeek.map((g) => (
                 <li key={g.id}>{g.name}</li>

@@ -8,6 +8,7 @@ import { TEXTING_COACH_GUIDES } from './aiTextingGuides.js';
 import { RELATIONSHIP_COUNSELOR_GUIDES } from './aiRelationshipCounselors.js';
 import { FINANCE_LITERACY_GUIDES } from './aiFinanceGuides.js';
 import { FINANCE_REALIST_GUIDES } from './aiFinanceRealistGuides.js';
+import { domainLaneForDesk } from '../services/llmChat.js';
 
 export type AiVoiceHint = 'female' | 'male';
 export type AiGuideLens = 'feminine' | 'masculine' | 'neutral';
@@ -980,7 +981,83 @@ const META_RE =
 const FRICTION_RE =
   /\b(can'?t|cannot|different|none of (those|these|them)|not (that|those|these)|just talk|in my own words|raw story|no (menu|list|categories|chips|options)|stop asking|something else|neither)\b/i;
 
+function topicFitsDesk(topic: AiLesson, desk?: AiGuideDesk): boolean {
+  if (!desk) return true;
+  const cats = topic.categoryIds || [];
+  const id = topic.id;
+  switch (desk) {
+    case 'finance':
+      return cats.includes('financial-literacy') || id === 'cash-flow-execution';
+    case 'fashion':
+      return cats.includes('style-fashion') || id === 'fashion';
+    case 'appearance':
+      return id === 'appearance' || /face|look|groom|skin/i.test(topic.title);
+    case 'hair':
+      return id === 'hair' || /hair/i.test(topic.title + id);
+    case 'intimacy':
+      return cats.includes('bedroom') || cats.includes('keeping-spark') || id === 'intimacy-flow';
+    case 'texting':
+      return cats.includes('texting') || cats.includes('communication') || /text|ghost|read/i.test(id);
+    case 'relationship':
+      return cats.includes('couples-relationship') || id === 'couples-counseling';
+    case 'dating':
+      return !cats.includes('financial-literacy') && id !== 'cash-flow-execution' && id !== 'fashion' && id !== 'appearance';
+    default:
+      return true;
+  }
+}
+
+function clarifyOptionsForDesk(desk?: AiGuideDesk): { id: string; title: string }[] {
+  switch (desk) {
+    case 'finance':
+      return [{ id: 'cash-flow-execution', title: 'Money / debt / hustle' }];
+    case 'fashion':
+      return [{ id: 'fashion', title: 'What to wear' }];
+    case 'appearance':
+      return [{ id: 'appearance', title: 'Face / looks' }];
+    case 'hair':
+      return [{ id: 'hair', title: 'Haircut / style' }];
+    case 'intimacy':
+      return [{ id: 'intimacy-flow', title: 'Bedroom / lasting longer' }];
+    case 'texting':
+      return [
+        { id: 'ghosted', title: 'Ghosting / left on read' },
+        { id: 'overthinking-texts', title: 'Overthinking texts' },
+        { id: 'date-talk', title: 'What to say next' },
+      ];
+    case 'relationship':
+      return [{ id: 'couples-counseling', title: 'Fighting / repair' }];
+    default:
+      return [
+        { id: 'ghosted', title: 'Ghosting / left on read' },
+        { id: 'overthinking-texts', title: 'Overthinking texts' },
+        { id: 'intimacy-flow', title: 'Bedroom / lasting longer / TermAct' },
+        { id: 'date-talk', title: 'What to say on a date' },
+        { id: 'fashion', title: 'Outfit / what to wear' },
+        { id: 'appearance', title: 'Face / looks' },
+        { id: 'couples-counseling', title: 'Couples / fighting' },
+        { id: 'feminine-lens', title: 'What women want' },
+        { id: 'cash-flow-execution', title: 'Money / hustle' },
+      ];
+  }
+}
+
+function stayInLaneDismiss(guide: AiGuideCharacter, warmth: number): string {
+  const lane = domainLaneForDesk(guide.desk, guide.specialty);
+  if (warmth >= 6) {
+    return spokenOnly(
+      guide,
+      `That's outside what I actually do. I'm locked on ${lane} — talk to me about that, or say the piece that touches my world.`
+    );
+  }
+  return spokenOnly(
+    guide,
+    `Wrong lane. I only handle ${lane}. Bring me that, or we're done spinning.`
+  );
+}
+
 function openEndedPivot(guide: AiGuideCharacter, warmth: number): string {
+  const lane = domainLaneForDesk(guide.desk, guide.specialty);
   if (guide.desk === 'finance') {
     return spokenOnly(
       guide,
@@ -992,12 +1069,12 @@ function openEndedPivot(guide: AiGuideCharacter, warmth: number): string {
   if (warmth >= 6) {
     return spokenOnly(
       guide,
-      `Alright — categories out the window. Tell me what's actually going on in your own words. I'm listening.`
+      `Alright — if you can't box it, just say what's going on in your own words. Keep it on ${lane}. I'm listening.`
     );
   }
   return spokenOnly(
     guide,
-    `Got it. No menu. Spill the raw situation. One honest sentence is enough.`
+    `Got it. No menu. Spill the raw situation around ${lane}. One honest sentence is enough.`
   );
 }
 
@@ -1088,10 +1165,11 @@ export function buildChatTurn(params: {
   }
 
   if (SMALL_TALK_RE.test(q)) {
+    const lane = domainLaneForDesk(guide.desk, guide.specialty);
     const soft =
       warmth >= 5
-        ? `Been around. Day's been alright. You? Tell me what's up — dating, money, style, bedroom — whatever's actually bothering you.`
-        : `I'm good. Don't waste the beat — what's the problem you're stuck on?`;
+        ? `Been around. Day's been alright. You? If something's stuck, keep it on ${lane} — that's my world.`
+        : `I'm good. Don't waste the beat — what's stuck in ${lane}?`;
     return { reply: spokenOnly(guide, soft), mode: 'chat' };
   }
 
@@ -1111,13 +1189,11 @@ export function buildChatTurn(params: {
   }
 
   if (ALREADY_GOOD_RE.test(q)) {
-    if (guide.desk === 'finance' || alreadyAskedOnce) {
+    if (guide.desk || alreadyAskedOnce) {
       return {
         reply: spokenOnly(
           guide,
-          guide.desk === 'finance'
-            ? `Fine — that lane's closed. What's the actual money or business pressure then? Debt, income, spending, or the hustle that isn't paying?`
-            : `Cool — you're good there. Forget the list. What's the real mess in your own words?`
+          `Cool — that one's closed. What's actually broken in ${domainLaneForDesk(guide.desk, guide.specialty)}? Say it raw.`
         ),
         mode: 'chat',
       };
@@ -1128,14 +1204,7 @@ export function buildChatTurn(params: {
         `Got it — you're solid there. So what *is* the problem? Ghosting, first dates, money, style, lasting longer, mixed signals — pick the real one.`
       ),
       mode: 'clarify',
-      clarifyOptions: [
-        { id: 'ghosted', title: 'Ghosting / texting' },
-        { id: 'first-date', title: 'First dates' },
-        { id: 'intimacy-flow', title: 'Bedroom / lasting longer' },
-        { id: 'fashion', title: 'What to wear' },
-        { id: 'feminine-lens', title: 'Understanding women' },
-        { id: 'cash-flow-execution', title: 'Money / hustle' },
-      ],
+      clarifyOptions: clarifyOptionsForDesk(undefined),
     };
   }
 
@@ -1151,16 +1220,11 @@ export function buildChatTurn(params: {
     };
   }
 
-  // Finance desk never dumps dating chips — talk money open-ended
+  // Specialist desks never dump cross-niche chips
   if (guide.desk === 'finance') {
-    const finMatches = interpretQuery(raw).filter(
-      (m) =>
-        m.topic.categoryIds?.includes('financial-literacy') ||
-        m.topic.id === 'cash-flow-execution' ||
-        /money|debt|budget|income|business|saas|hustle|spend/i.test(m.topic.title + m.topic.id)
-    );
-    const finTop = finMatches[0] || interpretQuery(raw)[0];
-    if (finTop && finTop.score >= 6 && (finTop.topic.id === 'cash-flow-execution' || finTop.score >= 10)) {
+    const finMatches = interpretQuery(raw).filter((m) => topicFitsDesk(m.topic, 'finance'));
+    const finTop = finMatches[0];
+    if (finTop && finTop.score >= 6) {
       const lesson = resolveLessonForGuide(finTop.topic, guide.id);
       const spoken = [
         warmth >= 5
@@ -1171,15 +1235,55 @@ export function buildChatTurn(params: {
       ].join(' ');
       return { reply: spokenOnly(guide, spoken), mode: 'lesson', topicId: lesson.id };
     }
+    const foreign = interpretQuery(raw)[0];
+    if (foreign && foreign.score >= 8 && !topicFitsDesk(foreign.topic, 'finance')) {
+      return { reply: stayInLaneDismiss(guide, warmth), mode: 'chat' };
+    }
     return {
       reply: spokenOnly(
         guide,
         warmth >= 5
-          ? `I'm not here for dating chips. Tell me the money mess — paycheck, debt pile, side hustle, or the business idea. Raw.`
+          ? `Tell me the money mess — paycheck, debt pile, side hustle, or the business idea. Raw. That's my lane.`
           : `Skip the menu. Money or business — what's broken?`
       ),
       mode: 'chat',
     };
+  }
+
+  if (guide.desk && guide.desk !== 'dating') {
+    const matchesDesk = interpretQuery(raw).filter((m) => topicFitsDesk(m.topic, guide.desk));
+    const topDesk = matchesDesk[0];
+    const foreign = interpretQuery(raw)[0];
+    if (foreign && foreign.score >= 8 && !topicFitsDesk(foreign.topic, guide.desk)) {
+      return { reply: stayInLaneDismiss(guide, warmth), mode: 'chat' };
+    }
+    if (!topDesk || topDesk.score < 6) {
+      if (alreadyAskedOnce) return { reply: openEndedPivot(guide, warmth), mode: 'chat' };
+      return {
+        reply: spokenOnly(
+          guide,
+          `I need the specific piece inside ${domainLaneForDesk(guide.desk, guide.specialty)}. Which of these — or type it short?`
+        ),
+        mode: 'clarify',
+        clarifyOptions: clarifyOptionsForDesk(guide.desk),
+      };
+    }
+    if (!alreadyAskedOnce && topDesk.score < 12 && matchesDesk.length > 1 && matchesDesk[1].score >= topDesk.score - 2) {
+      return {
+        reply: spokenOnly(guide, `Could be a few angles in my lane. Which one is it right now?`),
+        mode: 'clarify',
+        clarifyOptions: matchesDesk.slice(0, 4).map((m) => ({ id: m.topic.id, title: m.topic.title })),
+      };
+    }
+    const lesson = resolveLessonForGuide(topDesk.topic, guide.id);
+    const spoken = [
+      warmth >= 6
+        ? `Okay — on ${lesson.title.toLowerCase()}, here's what I'd do:`
+        : `On ${lesson.title.toLowerCase()} — the move:`,
+      lesson.solution.endsWith('.') ? lesson.solution : `${lesson.solution}.`,
+      warmth >= 6 ? `That match what you're dealing with?` : `That land, or did I miss it?`,
+    ].join(' ');
+    return { reply: spokenOnly(guide, spoken), mode: 'lesson', topicId: lesson.id };
   }
 
   const matches = interpretQuery(raw);
@@ -1197,17 +1301,7 @@ export function buildChatTurn(params: {
         `I hear you, but I need the *specific* problem. Which of these is closest — or type it in one short line?`
       ),
       mode: 'clarify',
-      clarifyOptions: [
-        { id: 'ghosted', title: 'Ghosting / left on read' },
-        { id: 'overthinking-texts', title: 'Overthinking texts' },
-        { id: 'intimacy-flow', title: 'Bedroom / lasting longer / TermAct' },
-        { id: 'date-talk', title: 'What to say on a date' },
-        { id: 'fashion', title: 'Outfit / what to wear' },
-        { id: 'appearance', title: 'Face / looks' },
-        { id: 'couples-counseling', title: 'Couples / fighting' },
-        { id: 'feminine-lens', title: 'What women want' },
-        { id: 'cash-flow-execution', title: 'Money / hustle' },
-      ],
+      clarifyOptions: clarifyOptionsForDesk(guide.desk),
     };
   }
 

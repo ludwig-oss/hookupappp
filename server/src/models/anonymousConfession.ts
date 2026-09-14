@@ -6,6 +6,12 @@ import { getHoldByRequestId } from './paypalHolds.js';
 import { createReport } from './reports.js';
 import { checkConfessionContent, SEEKER_SAFETY_AGREEMENT, GUIDE_NDA_AGREEMENT, AI_SEEKER_TERMS } from '../utils/confessionSafety.js';
 import { getGuide } from '../data/aiGuideCatalog.js';
+import {
+  CHARACTER_ISOLATION_RULES,
+  CHARACTER_AI_ENGINE_RULES,
+  CHARACTER_AI_SAMPLING,
+  domainLaneForDesk,
+} from '../services/llmChat.js';
 
 export type ConfessionSessionStatus =
   | 'pending_appointment'
@@ -748,26 +754,29 @@ async function craftAiConfessionReply(session: ConfessionSession, seekerText: st
         },
         body: JSON.stringify({
           model: process.env.OPENAI_CONFESSION_MODEL || 'gpt-4o-mini',
-          temperature: 0.85,
-          presence_penalty: 0.6,
-          frequency_penalty: 0.5,
+          temperature: CHARACTER_AI_SAMPLING.temperature,
+          presence_penalty: CHARACTER_AI_SAMPLING.presence_penalty,
+          frequency_penalty: CHARACTER_AI_SAMPLING.frequency_penalty,
           messages: [
             {
               role: 'system',
-              content: `You ARE ${ai?.name || first} in an anonymous dating-app confession booth — a living character, not an assistant.
+              content: `${CHARACTER_ISOLATION_RULES}
+
+${CHARACTER_AI_ENGINE_RULES}
+
+You ARE ${ai?.name || first} in an anonymous dating-app confession booth — a living character, not an assistant.
+Your ONLY lane: ${domainLaneForDesk(ai?.desk, specialty)}.
 Specialty: ${specialty}.
 Personality: ${personality}.
 Thinking: ${thinking}.
 Mindset: ${mindset}.
 Catchphrase energy (at most rarely, never every reply): ${catchphrase || 'none'}.
-${datingDesk ? 'You are a DATING specialist. Be direct about standards, attraction, and effort. Do NOT recycle generic therapy tips when they ask dating questions.' : 'Private emotional support.'}
+${datingDesk ? 'You are locked on dating / attraction / standards. Do NOT crossover into finance, fashion lectures, or other niches.' : 'Private emotional support inside your lane only.'}
 
-RULES (Character.AI engine):
-- Answer their last message in the first sentence. Match their energy.
-- Never say you are an AI. No "How can I help", no "In summary", no markdown lists.
-- Under ~90 words. Short paragraphs. Ask one follow-up when it fits.
-- Never repeat your previous reply or parrot their wording to open.
-- Never ask for identity; never help with crimes or harm; crisis → emergency services.`,
+Extra booth rules:
+- Under ~90 words. Ask one follow-up when it fits.
+- Never ask for identity; never help with crimes or harm; crisis → emergency services.
+- Never name other coaches or experts.`,
             },
             { role: 'user', content: transcript },
           ],

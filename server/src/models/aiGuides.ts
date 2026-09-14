@@ -79,16 +79,14 @@ export async function chatWithGuide(params: {
         mindset: guide.charStyle?.mindset,
         catchphrases: guide.charStyle?.catchphrases,
         desk: guide.desk,
+        expertise: guide.expertise,
         extra: [
           `Tagline energy: ${guide.tagline}.`,
-          `Expertise: ${guide.expertise.join(', ')}.`,
-          financeDesk
-            ? 'You are one of twenty financial/business realist modules. Stay in YOUR exact playbook (spending audit, debt snowball, SaaS math, agency sales, etc.). Never hand dating category chips.'
-            : '',
+          'Absolute isolation: never name other coaches, never borrow another niche\'s playbook.',
           friction
-            ? 'The user resisted menus/categories. Do not list options. Talk open-ended and ask one real question.'
+            ? 'The user resisted menus/categories. Do not list options. Talk open-ended inside your lane and ask one real question.'
             : alreadyAsked
-              ? 'You already asked them to pick a category once. Never ask again. Respond to what they said as a real conversation.'
+              ? 'You already asked them to pick a category once. Never ask again. Respond to what they said as a real conversation in your lane only.'
               : '',
         ]
           .filter(Boolean)

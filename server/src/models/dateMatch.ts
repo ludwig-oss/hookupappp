@@ -18,9 +18,12 @@ import { ensureMatchConversation } from './chat.js';
 export const FREE_SEARCHES_PER_MONTH = 3;
 export const FREE_ARENA_DATES = 4;
 export const CANCELLATION_FINE_EUR = 10;
+export const SCAM_CANCEL_FINE_EUR = 30;
 export const CANCEL_FREE_HOURS = 4;
 export const GUIDE_LAWYER_CUT_PERCENT = 80;
 export const GOLD_PLAN_PRICE_EUR = 114;
+/** Reveal name/photo + unlock chat when both check in within this distance (km). */
+export const DATE_PROXIMITY_KM = 0.25;
 
 export type DateMatchStatus =
   | 'searching'
@@ -31,8 +34,16 @@ export type DateMatchStatus =
   | 'scheduled'
   | 'completed'
   | 'cancelled'
+  | 'cancel_pending_proof'
   | 'declined'
   | 'expired';
+
+export interface DateCheckIn {
+  lat: number;
+  lon: number;
+  at: string;
+  lateNote?: string | null;
+}
 
 export interface PublicUserCard {
   id: string;
@@ -64,13 +75,21 @@ export interface DateMatch {
   ideaCategory: DateIdea['category'] | null;
   scheduledAt: string | null;
   chatUnlocked: boolean;
+  /** Name/photo stay hidden until both are near the meeting spot. */
+  identityRevealed: boolean;
+  user1CheckIn?: DateCheckIn | null;
+  user2CheckIn?: DateCheckIn | null;
   user1Continue: boolean | null;
   user2Continue: boolean | null;
   user1GoingWell: boolean | null;
   user2GoingWell: boolean | null;
+  user1ContinueReason?: string | null;
+  user2ContinueReason?: string | null;
   cancelledBy: string | null;
   cancelReason: string | null;
   cancelProofUrl: string | null;
+  /** Partner must accept doctor's notice / emergency proof. */
+  cancelProofStatus?: 'none' | 'pending' | 'accepted' | 'rejected' | null;
   finePaidTo: string | null;
   fineEur: number;
   /** Same-country distance between the pair (km), when known. */
@@ -240,6 +259,7 @@ export function catalog(city?: string | null, country?: string | null) {
     dateCount: ideas.filter((d) => d.category === 'date').length,
     freeSearchesPerMonth: FREE_SEARCHES_PER_MONTH,
     cancellationFineEur: CANCELLATION_FINE_EUR,
+    scamCancelFineEur: SCAM_CANCEL_FINE_EUR,
     farKm: DATE_ARENA_FAR_KM,
     city: city || null,
     country: country || null,
@@ -641,13 +661,19 @@ export async function startSearch(
     ideaCategory: null,
     scheduledAt: null,
     chatUnlocked: false,
+    identityRevealed: false,
+    user1CheckIn: null,
+    user2CheckIn: null,
     user1Continue: null,
     user2Continue: null,
     user1GoingWell: null,
     user2GoingWell: null,
+    user1ContinueReason: null,
+    user2ContinueReason: null,
     cancelledBy: null,
     cancelReason: null,
     cancelProofUrl: null,
+    cancelProofStatus: 'none',
     finePaidTo: null,
     fineEur: 0,
     distanceKm: travel.distanceKm,
@@ -705,7 +731,9 @@ export async function pollSearch(userId: string): Promise<{
     .filter(
       (m) =>
         (m.userId1 === userId || m.userId2 === userId) &&
-        ['pending', 'proposed', 'awaiting_accept', 'picking_idea', 'scheduled'].includes(m.status)
+        ['pending', 'proposed', 'awaiting_accept', 'picking_idea', 'scheduled', 'cancel_pending_proof'].includes(
+          m.status
+        )
     )
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
 
@@ -718,10 +746,13 @@ export async function pollSearch(userId: string): Promise<{
         await writeMatches(matches);
       }
     }
+    const card = await toCard(otherId(open, userId));
+    const hide =
+      (open.status === 'scheduled' || open.status === 'cancel_pending_proof') && !shouldRevealIdentity(open);
     return {
       searching: false,
       match: open,
-      other: await toCard(otherId(open, userId)),
+      other: hide ? maskCard(card) : card,
       me: await toCard(userId),
     };
   }
@@ -849,7 +880,7 @@ async function applyIdeaToMatch(m: DateMatch, idea: DateIdea): Promise<DateMatch
   await ensureMatchConversation(
     row.userId1,
     row.userId2,
-    `Date Arena: you're set up for “${localized.title}” on ${dateLabel}. Chat unlocks that day — show up.`
+    `Date Arena: you're set up for “${localized.title}” on ${dateLabel}. Name and photo stay hidden until you are near each other — then chat unlocks.`
   );
   return row;
 }
@@ -913,19 +944,19 @@ export async function getDateChatLock(userId: string, otherUserId: string): Prom
     return { locked: false, unlockAt: null, matchId: m.id, reason: '', scheduledAt: m.scheduledAt, ideaTitle: m.ideaTitle };
   }
 
-  if (m.scheduledAt && dayReached(m.scheduledAt)) {
+  if (m.chatUnlocked || m.identityRevealed) {
     return { locked: false, unlockAt: m.scheduledAt, matchId: m.id, reason: '', scheduledAt: m.scheduledAt, ideaTitle: m.ideaTitle };
   }
 
   const unlock = m.scheduledAt;
   const label = unlock
     ? new Date(unlock).toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })
-    : 'the date day';
+    : 'the date';
   return {
     locked: true,
     unlockAt: unlock,
     matchId: m.id,
-    reason: `Chat unlocks on ${label}. Show up to the date — backing out without a valid reason is a €${CANCELLATION_FINE_EUR} fine.`,
+    reason: `Chat unlocks when you are near each other on ${label}. Name and photo stay hidden until then. Backing out without valid proof is a €${CANCELLATION_FINE_EUR} fine (scam proof = €${SCAM_CANCEL_FINE_EUR}).`,
     scheduledAt: m.scheduledAt,
     ideaTitle: m.ideaTitle,
   };
@@ -936,26 +967,45 @@ export async function cancelScheduledDate(
   matchId: string,
   reason: string,
   proofUrl?: string
-): Promise<DateMatch> {
+): Promise<{ match: DateMatch; pendingProof: boolean; message: string }> {
   const matches = await readMatches();
   const m = matches.find((x) => x.id === matchId);
   if (!m || (m.userId1 !== userId && m.userId2 !== userId)) throw new Error('Match not found');
   if (m.status !== 'scheduled' && m.status !== 'picking_idea') throw new Error('Nothing to cancel');
 
-  const excused = Boolean(proofUrl) && /sick|ill|emergenc|hospital|doctor|family|death|funeral/i.test(reason || '');
+  const reasonText = (reason || '').trim().slice(0, 500);
+  if (!reasonText) throw new Error('Please say why you cannot make it.');
+
+  const hasProof = Boolean(proofUrl && String(proofUrl).trim());
+  const looksLikeExcuse = /sick|ill|emergenc|hospital|doctor|family|death|funeral|notice/i.test(reasonText);
   const hoursUntil =
     m.scheduledAt != null ? (new Date(m.scheduledAt).getTime() - Date.now()) / (60 * 60 * 1000) : 0;
   const earlyCancel = hoursUntil >= CANCEL_FREE_HOURS;
+  const other = otherId(m, userId);
 
-  m.status = 'cancelled';
   m.cancelledBy = userId;
-  m.cancelReason = (reason || '').slice(0, 500);
+  m.cancelReason = reasonText;
   m.cancelProofUrl = proofUrl || null;
   m.updatedAt = new Date().toISOString();
 
-  const other = otherId(m, userId);
-  // Free cancel: ≥4h before, or emergency/family with proof anytime
-  if (!excused && !earlyCancel) {
+  // Doctor's notice / emergency proof → other user must verify (valid = free cancel; invalid = €30 scam fine)
+  if (hasProof && looksLikeExcuse) {
+    m.status = 'cancel_pending_proof';
+    m.cancelProofStatus = 'pending';
+    m.fineEur = 0;
+    m.finePaidTo = null;
+    await writeMatches(matches);
+    return {
+      match: m,
+      pendingProof: true,
+      message: `Proof sent to your date partner to verify. If they mark it invalid (scam), you pay a €${SCAM_CANCEL_FINE_EUR} fine to them. Trying to scam costs €${SCAM_CANCEL_FINE_EUR}.`,
+    };
+  }
+
+  m.status = 'cancelled';
+  m.cancelProofStatus = hasProof ? 'accepted' : 'none';
+
+  if (!earlyCancel) {
     m.fineEur = CANCELLATION_FINE_EUR;
     m.finePaidTo = other;
     const { creditUserBalance } = await import('./guideWallet.js');
@@ -970,14 +1020,153 @@ export async function cancelScheduledDate(
   await writeMatches(matches);
   await unmatchUser(userId, other);
   await unmatchUser(other, userId);
-  return m;
+  return {
+    match: m,
+    pendingProof: false,
+    message: earlyCancel
+      ? 'Date cancelled (more than 4 hours ahead — no fine).'
+      : `Date cancelled. €${CANCELLATION_FINE_EUR} fine credited to the other person.`,
+  };
+}
+
+export async function verifyCancelProof(
+  userId: string,
+  matchId: string,
+  valid: boolean
+): Promise<{ match: DateMatch; message: string }> {
+  const matches = await readMatches();
+  const m = matches.find((x) => x.id === matchId);
+  if (!m || (m.userId1 !== userId && m.userId2 !== userId)) throw new Error('Match not found');
+  if (m.status !== 'cancel_pending_proof' || m.cancelProofStatus !== 'pending') {
+    throw new Error('No cancellation proof waiting for you');
+  }
+  if (m.cancelledBy === userId) throw new Error('You cannot verify your own proof — wait for your date partner');
+
+  const canceller = m.cancelledBy!;
+  const other = otherId(m, canceller);
+  if (userId !== other) throw new Error('Only the other person can verify this proof');
+
+  m.updatedAt = new Date().toISOString();
+  m.status = 'cancelled';
+
+  if (valid) {
+    m.cancelProofStatus = 'accepted';
+    m.fineEur = 0;
+    m.finePaidTo = null;
+    await writeMatches(matches);
+    await unmatchUser(m.userId1, m.userId2);
+    await unmatchUser(m.userId2, m.userId1);
+    return {
+      match: m,
+      message: 'Proof accepted as valid. Date cancelled with no fine.',
+    };
+  }
+
+  m.cancelProofStatus = 'rejected';
+  m.fineEur = SCAM_CANCEL_FINE_EUR;
+  m.finePaidTo = other;
+  const { creditUserBalance } = await import('./guideWallet.js');
+  await creditUserBalance({
+    userId: other,
+    amountEur: SCAM_CANCEL_FINE_EUR,
+    type: 'date_fine',
+    note: `Scam / invalid emergency proof fine (€${SCAM_CANCEL_FINE_EUR}) from Date Arena cancel`,
+  });
+  await writeMatches(matches);
+  await unmatchUser(m.userId1, m.userId2);
+  await unmatchUser(m.userId2, m.userId1);
+  return {
+    match: m,
+    message: `Proof marked invalid. The canceller owes a €${SCAM_CANCEL_FINE_EUR} scam fine (credited to you). Trying to scam costs €${SCAM_CANCEL_FINE_EUR}.`,
+  };
+}
+
+function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+export async function checkInForDate(
+  userId: string,
+  matchId: string,
+  lat: number,
+  lon: number,
+  lateNote?: string
+): Promise<{
+  match: DateMatch;
+  revealed: boolean;
+  lateNotified: boolean;
+  message: string;
+}> {
+  const matches = await readMatches();
+  const m = matches.find((x) => x.id === matchId);
+  if (!m || (m.userId1 !== userId && m.userId2 !== userId)) throw new Error('Match not found');
+  if (m.status !== 'scheduled') throw new Error('Date is not scheduled');
+
+  const note = (lateNote || '').trim().slice(0, 280) || null;
+  const check: DateCheckIn = { lat, lon, at: new Date().toISOString(), lateNote: note };
+  if (m.userId1 === userId) m.user1CheckIn = check;
+  else m.user2CheckIn = check;
+
+  let revealed = Boolean(m.identityRevealed);
+  let lateNotified = false;
+
+  if (m.user1CheckIn && m.user2CheckIn) {
+    const d = haversineKm(m.user1CheckIn.lat, m.user1CheckIn.lon, m.user2CheckIn.lat, m.user2CheckIn.lon);
+    if (d <= DATE_PROXIMITY_KM) {
+      m.identityRevealed = true;
+      m.chatUnlocked = true;
+      revealed = true;
+    }
+  }
+
+  // Past scheduled start and not yet revealed → late note notifies the other person
+  if (
+    note &&
+    m.scheduledAt &&
+    new Date(m.scheduledAt).getTime() <= Date.now() &&
+    !m.identityRevealed
+  ) {
+    lateNotified = true;
+    const other = otherId(m, userId);
+    const { sendPushToUser } = await import('../realtime/push.js');
+    sendPushToUser(
+      other,
+      {
+        title: 'Date partner update',
+        body: `They said: ${note}`,
+        data: { type: 'date_late_note', matchId: m.id },
+      },
+      'matches'
+    ).catch(() => {});
+  }
+
+  m.updatedAt = new Date().toISOString();
+  await writeMatches(matches);
+
+  return {
+    match: m,
+    revealed,
+    lateNotified,
+    message: revealed
+      ? 'You are near each other — name, photo, and chat are unlocked.'
+      : note
+        ? 'Location saved. Your partner was notified about the delay.'
+        : 'Location saved. Keep moving closer — identity unlocks when you are near each other.',
+  };
 }
 
 export async function reportHowItsGoing(
   userId: string,
   matchId: string,
   goingWell: boolean,
-  wantContinue: boolean
+  wantContinue: boolean,
+  reason?: string
 ): Promise<{ match: DateMatch; recommendGuide: boolean; continueTalking: boolean | null; removed: boolean }> {
   const matches = await readMatches();
   const m = matches.find((x) => x.id === matchId);
@@ -985,12 +1174,19 @@ export async function reportHowItsGoing(
   if (m.status !== 'scheduled' && m.status !== 'completed') throw new Error('Date is not ready to review');
   if (m.scheduledAt && !dayReached(m.scheduledAt)) throw new Error('You can review after the date day');
 
+  const why = (reason || '').trim().slice(0, 500);
+  if (!wantContinue && why.length < 3) {
+    throw new Error('If you do not want to keep chatting, say why — your date partner will see it.');
+  }
+
   if (m.userId1 === userId) {
     m.user1GoingWell = goingWell;
     m.user1Continue = wantContinue;
+    m.user1ContinueReason = wantContinue ? null : why;
   } else {
     m.user2GoingWell = goingWell;
     m.user2Continue = wantContinue;
+    m.user2ContinueReason = wantContinue ? null : why;
   }
   m.status = 'completed';
   m.updatedAt = new Date().toISOString();
@@ -1005,6 +1201,7 @@ export async function reportHowItsGoing(
       removed = true;
     } else {
       m.chatUnlocked = true;
+      m.identityRevealed = true;
     }
   }
   await writeMatches(matches);
@@ -1013,16 +1210,62 @@ export async function reportHowItsGoing(
   return { match: m, recommendGuide: mineGoing === false, continueTalking, removed };
 }
 
+function maskCard(card: PublicUserCard | null): PublicUserCard | null {
+  if (!card) return null;
+  return {
+    ...card,
+    name: 'Date partner',
+    username: 'hidden',
+    profilePicture: null,
+  };
+}
+
+function shouldRevealIdentity(m: DateMatch): boolean {
+  return Boolean(m.identityRevealed) || m.status === 'completed' || m.chatUnlocked;
+}
+
 export async function listMyMatches(userId: string): Promise<{
   active: Array<{ match: DateMatch; other: PublicUserCard | null }>;
   pending: Array<{ match: DateMatch; other: PublicUserCard | null }>;
   past: Array<{ match: DateMatch; other: PublicUserCard | null }>;
 }> {
   const matches = await readMatches();
+  // Refresh outdated idea titles (e.g. old "Repair café helper") from catalog
+  let dirty = false;
+  for (const m of matches) {
+    if (!m.ideaId) continue;
+    const fresh = getAnyIdeaById(m.ideaId, ideaPool()) || getIdeaById(m.ideaId);
+    if (fresh && (m.ideaTitle !== fresh.title || m.ideaDetail !== fresh.detail)) {
+      // Only rewrite clearly legacy / non-collaborative titles still stored on old matches
+      if (
+        /repair café helper|açaí or frozen-yogurt|blood-pressure booth|lost-tourist helper/i.test(
+          m.ideaTitle || ''
+        )
+      ) {
+        m.ideaTitle = fresh.title;
+        m.ideaDetail = fresh.detail;
+        dirty = true;
+      }
+    }
+    if (m.identityRevealed == null) {
+      (m as DateMatch).identityRevealed = false;
+    }
+  }
+  if (dirty) await writeMatches(matches);
+
   const mine = matches.filter((m) => m.userId1 === userId || m.userId2 === userId);
-  const wrap = async (m: DateMatch) => ({ match: m, other: await toCard(otherId(m, userId)) });
+  const wrap = async (m: DateMatch) => {
+    const card = await toCard(otherId(m, userId));
+    const hide =
+      (m.status === 'scheduled' || m.status === 'cancel_pending_proof') && !shouldRevealIdentity(m);
+    return { match: m, other: hide ? maskCard(card) : card };
+  };
   const active = await Promise.all(
-    mine.filter((m) => ['awaiting_accept', 'picking_idea', 'scheduled'].includes(m.status)).map(wrap)
+    mine
+      .filter((m) =>
+        ['awaiting_accept', 'picking_idea', 'scheduled', 'cancel_pending_proof'].includes(m.status)
+      )
+      .map(wrap)
   );
   const pending = await Promise.all(mine.filter((m) => m.status === 'pending').map(wrap));
   const past = await Promise.all(
@@ -1404,13 +1647,19 @@ export async function maybeAutoArenaDateForBuildingMan(userId: string): Promise<
     ideaCategory: null,
     scheduledAt: null,
     chatUnlocked: false,
+    identityRevealed: false,
+    user1CheckIn: null,
+    user2CheckIn: null,
     user1Continue: null,
     user2Continue: null,
     user1GoingWell: null,
     user2GoingWell: null,
+    user1ContinueReason: null,
+    user2ContinueReason: null,
     cancelledBy: null,
     cancelReason: null,
     cancelProofUrl: null,
+    cancelProofStatus: 'none',
     finePaidTo: null,
     fineEur: 0,
     distanceKm: travel.distanceKm,

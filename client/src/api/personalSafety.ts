@@ -87,4 +87,13 @@ export const personalSafetyAPI = {
     const res = await axios.post(`${API_URL}/check-phrase`, { phrase });
     return res.data as { match: boolean };
   },
+
+  /** Simulator only — mock nearby person calls for help so you can test receiving. */
+  simMockHelp: async (lat: number, lon: number) => {
+    const res = await axios.post(`${API_URL}/sim-mock-help`, { lat, lon });
+    return res.data as {
+      alert: { id: string; userName: string; lat: number; lon: number; appearanceDescription?: string };
+      message: string;
+    };
+  },
 };

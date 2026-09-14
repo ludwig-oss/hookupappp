@@ -133,10 +133,14 @@ export default function SafetyVoiceWatcher() {
           : 'Starting safety mic…';
 
   return (
-    <div
+    <button
+      type="button"
       role="status"
       aria-live="polite"
-      title={speechRecognitionSupportHint()}
+      title={`${speechRecognitionSupportHint()} Click to allow / restart microphone.`}
+      onClick={() => {
+        void ensureMicPermission().then(() => load());
+      }}
       style={{
         position: 'fixed',
         left: 12,
@@ -152,10 +156,13 @@ export default function SafetyVoiceWatcher() {
         background: 'rgba(10, 8, 14, 0.88)',
         border: `1px solid ${micStatus === 'listening' ? 'rgba(255, 107, 157, 0.55)' : 'rgba(251, 191, 36, 0.55)'}`,
         boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
-        pointerEvents: 'none',
+        pointerEvents: 'auto',
+        cursor: 'pointer',
+        textAlign: 'left',
       }}
     >
       {label}
-    </div>
+      {micStatus !== 'listening' ? ' · tap to enable mic' : ''}
+    </button>
   );
 }

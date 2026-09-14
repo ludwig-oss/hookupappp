@@ -209,7 +209,11 @@ export function useActivationWordListener(
           }
         }
         rec = new Ctor();
-        rec.continuous = true;
+        // Chrome desktop is more reliable with non-continuous + fast restart
+        const isDesktop =
+          !/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || '') &&
+          !((navigator as Navigator & { maxTouchPoints?: number }).maxTouchPoints! > 1 && /Macintosh/i.test(navigator.userAgent || ''));
+        rec.continuous = !isDesktop;
         rec.interimResults = true;
         rec.lang = navigator.language || 'en-US';
         if (typeof rec.maxAlternatives === 'number') rec.maxAlternatives = 3;

@@ -389,6 +389,19 @@
   margin-bottom: 8px;
 }
 
+.da-active-list {
+  margin-bottom: 16px;
+  padding-bottom: 8px;
+}
+
+.da-section-box {
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  padding: 12px;
+  margin-bottom: 12px;
+}
+
 .da-list-item img {
   width: 44px;
   height: 44px;

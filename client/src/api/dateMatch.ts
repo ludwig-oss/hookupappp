@@ -36,8 +36,16 @@ export type DateMatchStatus =
   | 'scheduled'
   | 'completed'
   | 'cancelled'
+  | 'cancel_pending_proof'
   | 'declined'
   | 'expired';
+
+export interface DateCheckIn {
+  lat: number;
+  lon: number;
+  at: string;
+  lateNote?: string | null;
+}
 
 export interface DateMatch {
   id: string;
@@ -58,13 +66,19 @@ export interface DateMatch {
   ideaCategory: DateIdea['category'] | null;
   scheduledAt: string | null;
   chatUnlocked: boolean;
+  identityRevealed?: boolean;
+  user1CheckIn?: DateCheckIn | null;
+  user2CheckIn?: DateCheckIn | null;
   user1Continue: boolean | null;
   user2Continue: boolean | null;
   user1GoingWell: boolean | null;
   user2GoingWell: boolean | null;
+  user1ContinueReason?: string | null;
+  user2ContinueReason?: string | null;
   cancelledBy: string | null;
   cancelReason: string | null;
   cancelProofUrl: string | null;
+  cancelProofStatus?: 'none' | 'pending' | 'accepted' | 'rejected' | null;
   finePaidTo: string | null;
   fineEur: number;
   distanceKm?: number | null;
@@ -125,6 +139,7 @@ export interface DateMatchCatalog {
   dateCount: number;
   freeSearchesPerMonth: number;
   cancellationFineEur: number;
+  scamCancelFineEur?: number;
   farKm?: number;
   city?: string | null;
   country?: string | null;
@@ -211,10 +226,18 @@ export const dateMatchAPI = {
   },
   cancelDate: async (matchId: string, reason: string, proofUrl?: string) => {
     const { data } = await axios.post(`${API_URL}/cancel`, { matchId, reason, proofUrl });
-    return data as { match: DateMatch };
+    return data as { match: DateMatch; pendingProof: boolean; message: string };
   },
-  howGoing: async (matchId: string, goingWell: boolean, wantContinue: boolean) => {
-    const { data } = await axios.post(`${API_URL}/how-going`, { matchId, goingWell, wantContinue });
+  verifyCancelProof: async (matchId: string, valid: boolean) => {
+    const { data } = await axios.post(`${API_URL}/cancel/verify`, { matchId, valid });
+    return data as { match: DateMatch; message: string };
+  },
+  checkIn: async (matchId: string, lat: number, lon: number, lateNote?: string) => {
+    const { data } = await axios.post(`${API_URL}/check-in`, { matchId, lat, lon, lateNote });
+    return data as { match: DateMatch; revealed: boolean; lateNotified: boolean; message: string };
+  },
+  howGoing: async (matchId: string, goingWell: boolean, wantContinue: boolean, reason?: string) => {
+    const { data } = await axios.post(`${API_URL}/how-going`, { matchId, goingWell, wantContinue, reason });
     return data as { match: DateMatch; recommendGuide: boolean; continueTalking: boolean | null; removed: boolean };
   },
   pitches: async () => {

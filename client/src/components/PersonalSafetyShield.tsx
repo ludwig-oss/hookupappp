@@ -4,9 +4,15 @@ import { personalSafetyAPI, ShieldSettings } from '../api/personalSafety';
 import { safetyAPI, type EmergencyContact } from '../api/safety';
 import { useVolumeTripleSOS } from '../hooks/useVolumeTripleSOS';
 import { useScreenTapSOS } from '../hooks/useScreenTapSOS';
-import { speechRecognitionSupported, speechRecognitionSupportHint, ensureMicPermission } from '../hooks/useActivationWordListener';
+import {
+  speechRecognitionSupported,
+  speechRecognitionSupportHint,
+  ensureMicPermission,
+} from '../hooks/useActivationWordListener';
 import { askWhatYouAreWearing } from './AppearanceSafetyPrompt';
 import './PersonalSafetyShield.css';
+
+const DEFAULT_FALLBACK = { lat: 52.3676, lon: 4.9041 };
 
 export default function PersonalSafetyShield({ visible = false }: { visible?: boolean }) {
   const { user } = useContext(AuthContext);
@@ -14,12 +20,41 @@ export default function PersonalSafetyShield({ visible = false }: { visible?: bo
   const [ready, setReady] = useState(false);
   const [missing, setMissing] = useState<string[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [nearby, setNearby] = useState<Array<{ id: string; userName: string; lat: number; lon: number; appearanceDescription?: string }>>([]);
+  const [nearby, setNearby] = useState<
+    Array<{ id: string; userName: string; lat: number; lon: number; appearanceDescription?: string }>
+  >([]);
   const [status, setStatus] = useState('');
   const [sending, setSending] = useState(false);
   const [showSetup, setShowSetup] = useState(false);
   const [activationSecret, setActivationSecret] = useState('');
   const [contacts, setContacts] = useState<EmergencyContact[]>([]);
+  const [simMode, setSimMode] = useState(false);
+
+  const getLocation = useCallback(async (): Promise<{ lat: number; lon: number; approx?: boolean }> => {
+    const fromUser = (user as { location?: { lat?: number; lon?: number } } | null)?.location;
+    const fallback =
+      settings?.lastLocation ||
+      (typeof fromUser?.lat === 'number' && typeof fromUser?.lon === 'number'
+        ? { lat: fromUser.lat, lon: fromUser.lon }
+        : DEFAULT_FALLBACK);
+
+    if (!navigator.geolocation) {
+      return { ...fallback, approx: true };
+    }
+    try {
+      const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: false,
+          timeout: 8000,
+          maximumAge: 120000,
+        });
+      });
+      return { lat: pos.coords.latitude, lon: pos.coords.longitude };
+    } catch {
+      // Never block Help / arm on GPS timeout — PC and denied permission still send a signal
+      return { ...fallback, approx: true };
+    }
+  }, [settings?.lastLocation, user]);
 
   const load = useCallback(async () => {
     if (!user?.id) return;
@@ -32,26 +67,47 @@ export default function PersonalSafetyShield({ visible = false }: { visible?: bo
       if (data.settings.activationSecret) setActivationSecret(data.settings.activationSecret);
       safetyAPI.getEmergencyContacts().then((r) => setContacts(r.contacts || [])).catch(() => {});
 
+      const fromUser = (user as { location?: { lat?: number; lon?: number } } | null)?.location;
+      const fallback =
+        data.settings.lastLocation ||
+        (typeof fromUser?.lat === 'number' && typeof fromUser?.lon === 'number'
+          ? { lat: fromUser.lat, lon: fromUser.lon }
+          : DEFAULT_FALLBACK);
+      let lat = fallback.lat;
+      let lon = fallback.lon;
       if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(
-          async (pos) => {
-            const poll = await personalSafetyAPI.poll(pos.coords.latitude, pos.coords.longitude);
-            setNearby(poll.nearbySignals || []);
-            if (poll.myActiveSignal) setActiveId(poll.myActiveSignal.id);
+        try {
+          const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
+            navigator.geolocation.getCurrentPosition(resolve, reject, {
+              enableHighAccuracy: false,
+              timeout: 6000,
+              maximumAge: 120000,
+            });
+          });
+          lat = pos.coords.latitude;
+          lon = pos.coords.longitude;
+        } catch {
+          /* keep fallback */
+        }
+      }
+      const poll = await personalSafetyAPI.poll(lat, lon);
+      setNearby(poll.nearbySignals || []);
+      if (poll.myActiveSignal) setActiveId(poll.myActiveSignal.id);
 
-            if (data.settings.autoArmWhenOutside && data.ready.ready && !data.settings.armed && !data.activeSignal) {
-              await personalSafetyAPI.arm(pos.coords.latitude, pos.coords.longitude);
-              const refreshed = await personalSafetyAPI.getSettings();
-              setSettings(refreshed.settings);
-            }
-          },
-          () => {}
-        );
+      if (
+        data.settings.autoArmWhenOutside &&
+        data.ready.ready &&
+        !data.settings.armed &&
+        !data.activeSignal
+      ) {
+        await personalSafetyAPI.arm(lat, lon);
+        const refreshed = await personalSafetyAPI.getSettings();
+        setSettings(refreshed.settings);
       }
     } catch {
       /* silent */
     }
-  }, [user?.id]);
+  }, [user]);
 
   useEffect(() => {
     load();
@@ -66,56 +122,43 @@ export default function PersonalSafetyShield({ visible = false }: { visible?: bo
     };
   }, [load]);
 
-  const getLocation = () =>
-    new Promise<{ lat: number; lon: number }>((resolve, reject) => {
-      const fromUser = (user as { location?: { lat?: number; lon?: number } } | null)?.location;
-      const fallback =
-        settings?.lastLocation ||
-        (typeof fromUser?.lat === 'number' && typeof fromUser?.lon === 'number'
-          ? { lat: fromUser.lat, lon: fromUser.lon }
-          : null);
-      if (!navigator.geolocation) {
-        if (fallback) return resolve(fallback);
-        reject(new Error('Turn on location to arm the shield.'));
-        return;
-      }
-      navigator.geolocation.getCurrentPosition(
-        (p) => resolve({ lat: p.coords.latitude, lon: p.coords.longitude }),
-        (err) => {
-          if (fallback) resolve(fallback);
-          else reject(new Error(err.message || 'Could not get GPS. Allow location and try again.'));
-        },
-        { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 }
-      );
-    });
+  useEffect(() => {
+    // Detect local simulator so we can offer “mock calling for help”
+    const host = typeof window !== 'undefined' ? window.location.hostname : '';
+    setSimMode(host === 'localhost' || host === '127.0.0.1');
+  }, []);
 
   const triggerSignal = useCallback(
     async (via: 'help_button' | 'secret_word' | 'screen_taps' | 'volume_taps' | 'custom_phrase', phrase?: string) => {
       if (!user?.id || sending) return;
       setSending(true);
-      setStatus('');
+      setStatus('Sending safety signal…');
       try {
-        const { lat, lon } = await getLocation();
+        const { lat, lon, approx } = await getLocation();
         const res = await personalSafetyAPI.trigger(lat, lon, via, phrase);
         setActiveId(res.alert.id);
-        setStatus(
+        const base =
           res.nearbyNotified > 0
             ? `Help is on the way — ${res.nearbyNotified} nearby people got your exact location. They can text you to check in. False alarm cancels the alert.`
-            : `Help signal sent. Nearby helpers will see your pin when they are online. Keep the app open.`
-        );
+            : `Help signal sent. Nearby helpers will see your pin when they are online. Keep the app open.`;
+        setStatus(approx ? `${base} (Used last known / approx location — GPS timed out on this device.)` : base);
         window.dispatchEvent(new CustomEvent('safety:signal-changed'));
-        // Do not auto-dial emergency services — user can call from the alert screen if needed
+        await load();
       } catch (e: unknown) {
-        setStatus((e as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Could not send safety signal.');
+        const msg =
+          (e as { response?: { data?: { error?: string } }; message?: string })?.response?.data?.error ||
+          (e as { message?: string })?.message ||
+          'Could not send safety signal.';
+        setStatus(msg);
       } finally {
         setSending(false);
       }
     },
-    [user?.id, sending, settings?.lastLocation, user]
+    [user?.id, sending, getLocation, load]
   );
 
   const armed = settings?.armed ?? false;
-  const canTrigger = ready && (armed || settings?.enableHelpButton);
+  const canTrigger = ready && (armed || settings?.enableHelpButton !== false);
 
   useVolumeTripleSOS(() => {
     if (settings?.enableVolumeTaps && canTrigger) triggerSignal('volume_taps');
@@ -152,9 +195,9 @@ export default function PersonalSafetyShield({ visible = false }: { visible?: bo
       if (!speechRecognitionSupported()) {
         setStatus(`Word saved. ${speechRecognitionSupportHint()} Use the Help button if you need it.`);
       } else if (!micOk) {
-        setStatus('Word saved. Allow the microphone when asked so voice detection can stay on.');
+        setStatus('Word saved. Click “Enable mic on this PC” below and allow the microphone when asked.');
       } else {
-        setStatus('Word saved. Voice detector is on for this device (PC or phone) while the app is open — shout your word to activate.');
+        setStatus('Word saved. Voice detector is on while this tab is open — shout your word, or use Help.');
       }
     } finally {
       setSending(false);
@@ -170,7 +213,41 @@ export default function PersonalSafetyShield({ visible = false }: { visible?: bo
       window.dispatchEvent(new CustomEvent('safety:signal-changed'));
       await load();
     } catch (e: unknown) {
-      setStatus((e as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Could not cancel.');
+      setStatus(
+        (e as { response?: { data?: { error?: string } }; message?: string })?.response?.data?.error ||
+          (e as { message?: string })?.message ||
+          'Could not cancel.'
+      );
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const enableMic = async () => {
+    const ok = await ensureMicPermission();
+    window.dispatchEvent(new CustomEvent('safety:settings-changed'));
+    if (ok) {
+      setStatus('Microphone allowed. Voice detector should show “listening” in the bottom-left chip. Shout your word to test.');
+    } else {
+      setStatus('Microphone blocked. In Chrome/Edge: click the lock icon in the address bar → allow Microphone, then try again.');
+    }
+  };
+
+  const spawnMockHelp = async () => {
+    setSending(true);
+    setStatus('');
+    try {
+      const { lat, lon } = await getLocation();
+      const res = await personalSafetyAPI.simMockHelp(lat, lon);
+      setStatus(res.message);
+      window.dispatchEvent(new CustomEvent('safety:signal-changed'));
+      await load();
+    } catch (e: unknown) {
+      setStatus(
+        (e as { response?: { data?: { error?: string } }; message?: string })?.response?.data?.error ||
+          (e as { message?: string })?.message ||
+          'Mock help only works with SIMULATOR=1 (npm run dev:sim).'
+      );
     } finally {
       setSending(false);
     }
@@ -193,7 +270,9 @@ export default function PersonalSafetyShield({ visible = false }: { visible?: bo
       <div className="pss-panel" role="dialog">
         <h3>Personal safety shield</h3>
         <p className="pss-hint">
-          Not an amber alert — your <strong>safety signal</strong>. Share exact location with nearby users, your emergency contact, and police. Shout your secret word to activate. False alarm is a button that tells everyone who got the alert.
+          Not an amber alert — your <strong>safety signal</strong>. Share exact location with nearby users, your
+          emergency contact, and police. Shout your secret word to activate. False alarm is a button that tells
+          everyone who got the alert.
         </p>
 
         {!ready && !showSetup && (
@@ -208,14 +287,18 @@ export default function PersonalSafetyShield({ visible = false }: { visible?: bo
         {showSetup && (
           <div className="pss-section">
             <div className="pss-section-title">Your activation word (only you know)</div>
-            <label className="pss-hint">Shout this word to turn the shield on. Listening stays on while the app is open (PC or phone).</label>
+            <label className="pss-hint">
+              Shout this word to turn the shield on. Listening stays on while the app is open (PC or phone).
+            </label>
             <input
               className="pss-input"
               value={activationSecret}
               onChange={(e) => setActivationSecret(e.target.value)}
               placeholder="e.g. red bicycle"
             />
-            <p className="pss-hint" style={{ marginTop: 8 }}>{speechRecognitionSupportHint()}</p>
+            <p className="pss-hint" style={{ marginTop: 8 }}>
+              {speechRecognitionSupportHint()}
+            </p>
             {!speechRecognitionSupported() && (
               <p className="pss-setup-warn">Voice detection needs Chrome or Edge with a microphone.</p>
             )}
@@ -237,6 +320,11 @@ export default function PersonalSafetyShield({ visible = false }: { visible?: bo
                   Change activation word
                 </button>
               )}
+              {speechRecognitionSupported() && (
+                <button type="button" className="pss-btn ghost" onClick={() => void enableMic()}>
+                  Enable mic on this PC / restart voice detector
+                </button>
+              )}
               {!settings?.armed ? (
                 <button
                   type="button"
@@ -246,22 +334,25 @@ export default function PersonalSafetyShield({ visible = false }: { visible?: bo
                     setSending(true);
                     setStatus('');
                     try {
-                      // Optional appearance prompt — never block arming if skipped/timed out
                       await Promise.race([
                         askWhatYouAreWearing(),
                         new Promise<null>((r) => setTimeout(() => r(null), 25000)),
                       ]);
-                      const { lat, lon } = await getLocation();
+                      const { lat, lon, approx } = await getLocation();
                       const res = await personalSafetyAPI.arm(lat, lon);
                       setSettings(res.settings);
-                      setStatus(res.message || 'Shield armed. Shout your word or tap Help if you need it.');
+                      setStatus(
+                        approx
+                          ? `${res.message || 'Shield armed.'} (Approx location — GPS timed out.)`
+                          : res.message || 'Shield armed. Shout your word or tap Help if you need it.'
+                      );
                       window.dispatchEvent(new CustomEvent('safety:settings-changed'));
                     } catch (e: unknown) {
                       const msg =
                         (e as { response?: { data?: { error?: string } }; message?: string })?.response?.data
                           ?.error ||
                         (e as { message?: string })?.message ||
-                        'Could not arm — allow location and set your activation word.';
+                        'Could not arm — set your activation word first.';
                       setStatus(msg);
                     } finally {
                       setSending(false);
@@ -280,8 +371,8 @@ export default function PersonalSafetyShield({ visible = false }: { visible?: bo
             <div className="pss-section">
               <div className="pss-section-title">Emergency contact (Hook Up user)</div>
               <p className="pss-hint">
-                Paste a friend&apos;s account user id so they get your pin in-app. Phone contacts from Safety plans still
-                work for meetup check-ins.
+                Paste a friend&apos;s account user id so they get your pin in-app. Phone contacts from Safety plans
+                still work for meetup check-ins.
                 {contacts.length > 0 ? ` You have ${contacts.length} phone contact(s) on file.` : ''}
               </p>
               <input
@@ -305,13 +396,23 @@ export default function PersonalSafetyShield({ visible = false }: { visible?: bo
 
             <div className="pss-section">
               <div className="pss-section-title">Need help now</div>
-              <button type="button" className="pss-btn primary" disabled={sending || !canTrigger} onClick={() => triggerSignal('help_button')}>
+              <button
+                type="button"
+                className="pss-btn primary"
+                disabled={sending || !canTrigger}
+                onClick={() => void triggerSignal('help_button')}
+              >
                 Help — send safety signal
               </button>
               {!armed && (
                 <p className="pss-hint" style={{ marginTop: 8 }}>
                   Tip: arm the shield when you go out, or tap Help anytime if the help button is enabled.
                 </p>
+              )}
+              {simMode && (
+                <button type="button" className="pss-btn ghost" disabled={sending} onClick={() => void spawnMockHelp()}>
+                  Test: mock nearby person calling for help
+                </button>
               )}
             </div>
           </>
@@ -321,16 +422,19 @@ export default function PersonalSafetyShield({ visible = false }: { visible?: bo
           <div className="pss-section">
             <div className="pss-section-title">Help is on the way</div>
             <p className="pss-hint">
-              Nearby people and your emergency contact can see your exact pin and may text to ask if you are OK. Stay where you can reply if it is safe.
+              Nearby people and your emergency contact can see your exact pin and may text to ask if you are OK. Stay
+              where you can reply if it is safe.
             </p>
             <div className="pss-section-title">False alarm?</div>
-            <p className="pss-hint">
-              Tap below if you are safe. Everyone who received your alert gets an all-clear.
-            </p>
+            <p className="pss-hint">Tap below if you are safe. Everyone who received your alert gets an all-clear.</p>
             <button type="button" className="pss-btn safe" disabled={sending} onClick={cancelFalseAlarm}>
               False alarm — notify everyone
             </button>
-            <a className="pss-btn primary" style={{ display: 'block', textAlign: 'center', marginTop: 10, textDecoration: 'none' }} href="tel:112">
+            <a
+              className="pss-btn primary"
+              style={{ display: 'block', textAlign: 'center', marginTop: 10, textDecoration: 'none' }}
+              href="tel:112"
+            >
               Call local emergency (optional)
             </a>
           </div>
@@ -351,7 +455,11 @@ export default function PersonalSafetyShield({ visible = false }: { visible?: bo
           </div>
         )}
 
-        {status && <p className="pss-hint" style={{ color: '#86efac', marginTop: 10 }}>{status}</p>}
+        {status && (
+          <p className="pss-hint" style={{ color: '#86efac', marginTop: 10 }}>
+            {status}
+          </p>
+        )}
       </div>
     </div>
   );

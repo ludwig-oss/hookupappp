@@ -266,12 +266,14 @@ html.theme-night .dashboard-container {
   margin: 0 auto;
   position: relative;
   z-index: 1;
-  padding: 20px 0;
+  padding: 20px 0 48px;
 }
 
 .widget-open-panel .holographic-panel {
-  max-height: calc(100vh - 180px);
+  max-height: calc(100vh - 160px);
   overflow-y: auto;
+  overflow-x: hidden;
+  padding-bottom: 32px;
 }
 
 /* Holographic Panel Base (love theme) */

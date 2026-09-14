@@ -13,6 +13,7 @@ type View =
   | 'arena'
   | 'scheduled'
   | 'cancel'
+  | 'verify_cancel'
   | 'review'
   | 'lawyer'
   | 'pitch'
@@ -37,8 +38,24 @@ function upcomingSlots() {
   return out.slice(0, 16);
 }
 
-function avatar(u?: PublicUserCard | null) {
+const HIDDEN_AVATAR =
+  'data:image/svg+xml,' +
+  encodeURIComponent(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96"><rect width="96" height="96" fill="#1f2937"/><circle cx="48" cy="38" r="18" fill="#4b5563"/><ellipse cx="48" cy="78" rx="28" ry="20" fill="#4b5563"/></svg>`
+  );
+
+function avatar(u?: PublicUserCard | null, revealed = true) {
+  if (!revealed) return HIDDEN_AVATAR;
   return u?.profilePicture || '/default-avatar.png';
+}
+
+function displayName(u?: PublicUserCard | null, revealed = true) {
+  if (!revealed) return 'Date partner';
+  return u?.name || 'Match';
+}
+
+function identityOpen(m: DateMatch | null | undefined) {
+  return Boolean(m?.identityRevealed || m?.chatUnlocked || m?.status === 'completed');
 }
 
 function iAccepted(m: DateMatch, userId: string) {
@@ -80,8 +97,11 @@ export default function DateMatchWidget({
   const [lists, setLists] = useState<{ active: any[]; pending: any[]; past: any[] }>({ active: [], pending: [], past: [] });
   const [cancelReason, setCancelReason] = useState('');
   const [cancelProof, setCancelProof] = useState('');
+  const [cancelStatus, setCancelStatus] = useState('');
+  const [lateNote, setLateNote] = useState('');
   const [reviewGoing, setReviewGoing] = useState<boolean | null>(null);
   const [reviewContinue, setReviewContinue] = useState<boolean | null>(null);
+  const [reviewReason, setReviewReason] = useState('');
   const [recommendGuide, setRecommendGuide] = useState(false);
   const [pitches, setPitches] = useState<{ toWrite: PitchOffer[]; incoming: PitchOffer[] }>({ toWrite: [], incoming: [] });
   const [pitchText, setPitchText] = useState('');
@@ -135,6 +155,7 @@ export default function DateMatchWidget({
     if (mine) setMe(mine);
     if (m.status === 'picking_idea') setView('arena');
     else if (m.status === 'scheduled') setView('scheduled');
+    else if (m.status === 'cancel_pending_proof') setView('verify_cancel');
     else if (m.status === 'completed') setView('review');
     else setView('versus');
   };
@@ -248,13 +269,76 @@ export default function DateMatchWidget({
 
   const submitCancel = async () => {
     if (!match) return;
+    if (!cancelReason.trim()) {
+      setError('Please say why you cannot make it.');
+      return;
+    }
     setLoading(true);
+    setError('');
+    setCancelStatus('');
     try {
-      await dateMatchAPI.cancelDate(match.id, cancelReason, cancelProof || undefined);
-      setView('home');
-      loadAll();
+      const r = await dateMatchAPI.cancelDate(match.id, cancelReason.trim(), cancelProof || undefined);
+      setCancelStatus(r.message);
+      setMatch(r.match);
+      if (r.pendingProof) {
+        setView('home');
+        await loadAll();
+      } else {
+        setView('home');
+        await loadAll();
+      }
     } catch (e: any) {
-      setError(e.response?.data?.error || 'Cancel failed');
+      setError(e.response?.data?.error || e.message || 'Cancel failed — try again');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const submitVerifyCancel = async (valid: boolean) => {
+    if (!match) return;
+    setLoading(true);
+    setError('');
+    try {
+      const r = await dateMatchAPI.verifyCancelProof(match.id, valid);
+      setCancelStatus(r.message);
+      setView('home');
+      await loadAll();
+    } catch (e: any) {
+      setError(e.response?.data?.error || 'Could not verify proof');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const resolveCoords = async (): Promise<{ lat: number; lon: number }> => {
+    const fallback = { lat: 52.3676, lon: 4.9041 };
+    if (!navigator.geolocation) return fallback;
+    try {
+      const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: true,
+          timeout: 10000,
+          maximumAge: 60000,
+        });
+      });
+      return { lat: pos.coords.latitude, lon: pos.coords.longitude };
+    } catch {
+      return fallback;
+    }
+  };
+
+  const submitCheckIn = async (withLate: boolean) => {
+    if (!match) return;
+    setLoading(true);
+    setError('');
+    try {
+      const { lat, lon } = await resolveCoords();
+      const r = await dateMatchAPI.checkIn(match.id, lat, lon, withLate ? lateNote.trim() || undefined : undefined);
+      setMatch(r.match);
+      setCancelStatus(r.message);
+      if (r.revealed) await loadAll();
+    } catch (e: any) {
+      setError(e.response?.data?.error || 'Check-in failed');
     } finally {
       setLoading(false);
     }
@@ -262,17 +346,23 @@ export default function DateMatchWidget({
 
   const submitReview = async () => {
     if (!match || reviewGoing === null || reviewContinue === null) return;
+    if (reviewContinue === false && reviewReason.trim().length < 3) {
+      setError('Say why you do not want to keep chatting — they will see it.');
+      return;
+    }
     setLoading(true);
     try {
-      const r = await dateMatchAPI.howGoing(match.id, reviewGoing, reviewContinue);
+      const r = await dateMatchAPI.howGoing(
+        match.id,
+        reviewGoing,
+        reviewContinue,
+        reviewContinue === false ? reviewReason.trim() : undefined
+      );
       setRecommendGuide(r.recommendGuide);
       if (r.removed) setError('They did not want to keep talking. The chat was removed.');
       else if (r.continueTalking) setError('');
       setView('home');
       loadAll();
-      if (r.recommendGuide) {
-        /* stay on home with banner */
-      }
     } catch (e: any) {
       setError(e.response?.data?.error || 'Could not save');
     } finally {
@@ -409,16 +499,35 @@ export default function DateMatchWidget({
           {lists.active.length > 0 && (
             <>
               <h3 style={{ marginTop: 18, fontSize: 14 }}>Active</h3>
-              {lists.active.map((row) => (
-                <div key={row.match.id} className="da-list-item">
-                  <img src={avatar(row.other)} alt="" />
-                  <div style={{ flex: 1 }}>
-                    <strong>{row.other?.name || 'Match'}</strong>
-                    <div style={{ fontSize: 12, color: '#9ca3af' }}>{row.match.status}{row.match.ideaTitle ? ` · ${row.match.ideaTitle}` : ''}</div>
-                  </div>
-                  <button type="button" className="da-btn da-btn-primary" onClick={() => applyMatch(row.match, row.other)}>Continue</button>
-                </div>
-              ))}
+              <p className="da-sub" style={{ marginBottom: 8 }}>
+                Name and photo stay hidden until you are near each other for the date.
+              </p>
+              <div className="da-active-list">
+                {lists.active.map((row) => {
+                  const revealed = identityOpen(row.match);
+                  return (
+                    <div key={row.match.id} className="da-list-item">
+                      <img src={avatar(row.other, revealed)} alt="" />
+                      <div style={{ flex: 1 }}>
+                        <strong>{displayName(row.other, revealed)}</strong>
+                        <div style={{ fontSize: 12, color: '#9ca3af' }}>
+                          {row.match.status === 'cancel_pending_proof'
+                            ? 'Cancel proof waiting'
+                            : row.match.status}
+                          {row.match.ideaTitle ? ` · ${row.match.ideaTitle}` : ''}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        className="da-btn da-btn-primary"
+                        onClick={() => applyMatch(row.match, row.other)}
+                      >
+                        {row.match.status === 'cancel_pending_proof' ? 'Review proof' : 'Continue'}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
             </>
           )}
         </>
@@ -429,8 +538,9 @@ export default function DateMatchWidget({
           <div className="da-warn">
             <strong>Before you search</strong>
             <p>You have to appear at the date you get set up for. You cannot back out for convenience. Cancelling without a sick/emergency proof is a €{catalog?.cancellationFineEur ?? 10} fine paid to the other person.</p>
+            <p>If you upload a doctor&apos;s notice or emergency proof, your date partner verifies it. If they mark it invalid (scam), you pay a €{catalog?.scamCancelFineEur ?? 30} fine to them. Trying to scam costs €{catalog?.scamCancelFineEur ?? 30}.</p>
             <p>Who you match with is decided quietly by how much interest you get on the app — including when you are out. Higher interest meets higher interest. Sometimes you will be matched with someone who has more than you.</p>
-            <p>Chat stays locked until the day of the date. After the date, both of you choose whether to keep talking.</p>
+            <p>Name, photo, and chat stay locked until you are near each other on the date. After the date, both of you choose whether to keep talking — if not, say why and you unmatch.</p>
           </div>
           <button type="button" className="da-btn da-btn-primary" onClick={startSearch}>I understand — find a match</button>
           <button type="button" className="da-btn da-btn-ghost" style={{ marginLeft: 8 }} onClick={() => setView('home')}>Back</button>
@@ -578,31 +688,100 @@ export default function DateMatchWidget({
             <strong>{match.ideaTitle}</strong>
             <p>{match.ideaDetail}</p>
             {match.scheduledAt && <p>Show up: {new Date(match.scheduledAt).toLocaleString()}</p>}
-            <p>You are in Communications, but you cannot text until the day of the date.</p>
+            <p>
+              {identityOpen(match)
+                ? 'You are near each other — chat is unlocked.'
+                : 'Name and photo stay hidden until location detects you near each other. Then you can start talking.'}
+            </p>
           </div>
+          {!identityOpen(match) && (
+            <div className="da-list-item" style={{ marginBottom: 12 }}>
+              <img src={avatar(other, false)} alt="" />
+              <div>
+                <strong>Date partner</strong>
+                <div style={{ fontSize: 12, color: '#9ca3af' }}>Hidden until you meet nearby</div>
+              </div>
+            </div>
+          )}
+          {identityOpen(match) && other && (
+            <div className="da-list-item" style={{ marginBottom: 12 }}>
+              <img src={avatar(other, true)} alt="" />
+              <div>
+                <strong>{other.name}</strong>
+                <div style={{ fontSize: 12, color: '#9ca3af' }}>Revealed — you can chat</div>
+              </div>
+            </div>
+          )}
           <div className="da-warn">
             Before the date, a guide can check what to wear and what to talk about so the night goes better.
             <div style={{ marginTop: 8 }}>
               <button type="button" className="da-btn da-btn-gold" onClick={() => onOpenGuides?.()}>Talk to a guide</button>
             </div>
           </div>
-          <div className="da-row">
-            {other && <button type="button" className="da-btn da-btn-ghost" onClick={() => onOpenChat?.(other.id)}>Open chat (locked until date day)</button>}
-            <button type="button" className="da-btn da-btn-ghost" onClick={() => setView('cancel')}>I cannot make it</button>
-            {match.scheduledAt && new Date(match.scheduledAt).getTime() <= Date.now() && (
-              <button type="button" className="da-btn da-btn-primary" onClick={() => setView('review')}>We went / how did it go?</button>
+          <div className="da-section-box">
+            <p className="da-sub">Share your location so the app can unlock identity when you are near.</p>
+            <button type="button" className="da-btn da-btn-primary" disabled={loading} onClick={() => void submitCheckIn(false)}>
+              I&apos;m here — check in with location
+            </button>
+            {match.scheduledAt && new Date(match.scheduledAt).getTime() <= Date.now() && !identityOpen(match) && (
+              <div style={{ marginTop: 10 }}>
+                <p className="da-sub">Running late? Say where you are (bus late, train broke down…) — they get notified.</p>
+                <textarea
+                  className="da-textarea"
+                  placeholder="e.g. Bus is 15 min late / train broke down"
+                  value={lateNote}
+                  onChange={(e) => setLateNote(e.target.value)}
+                />
+                <button type="button" className="da-btn da-btn-ghost" disabled={loading || !lateNote.trim()} onClick={() => void submitCheckIn(true)}>
+                  Send delay update
+                </button>
+              </div>
             )}
           </div>
-          <button type="button" className="da-btn da-btn-ghost" style={{ marginTop: 8 }} onClick={() => setView('home')}>Back</button>
+          {cancelStatus && <p className="da-ok">{cancelStatus}</p>}
+          <div className="da-row">
+            {identityOpen(match) && other && (
+              <button type="button" className="da-btn da-btn-ghost" onClick={() => onOpenChat?.(other.id)}>
+                Open chat
+              </button>
+            )}
+            {!identityOpen(match) && (
+              <button type="button" className="da-btn da-btn-ghost" disabled title="Chat unlocks when you are near each other">
+                Chat locked until nearby
+              </button>
+            )}
+            <button type="button" className="da-btn da-btn-ghost" onClick={() => { setCancelStatus(''); setView('cancel'); }}>
+              I cannot make it
+            </button>
+            {match.scheduledAt && new Date(match.scheduledAt).getTime() <= Date.now() && (
+              <button type="button" className="da-btn da-btn-primary" onClick={() => setView('review')}>
+                We went / how did it go?
+              </button>
+            )}
+          </div>
+          <button type="button" className="da-btn da-btn-ghost" style={{ marginTop: 8 }} onClick={() => setView('home')}>
+            Back
+          </button>
         </div>
       )}
 
       {view === 'cancel' && match && (
         <div>
           <div className="da-warn">
-            Cancelling without proof of sickness or emergency charges €{catalog?.cancellationFineEur ?? 10} to the other person’s withdrawable balance.
+            Cancelling without proof of sickness or emergency charges €{catalog?.cancellationFineEur ?? 10} to the other
+            person&apos;s withdrawable balance.
+            <br />
+            <strong>
+              If you upload a doctor&apos;s notice / valid emergency proof, they must verify it. If they say it is a scam,
+              you pay €{catalog?.scamCancelFineEur ?? 30}. Trying to scam costs €{catalog?.scamCancelFineEur ?? 30}.
+            </strong>
           </div>
-          <textarea className="da-textarea" placeholder="Why? If sick or emergency, say so and upload proof." value={cancelReason} onChange={(e) => setCancelReason(e.target.value)} />
+          <textarea
+            className="da-textarea"
+            placeholder="Why? If sick or emergency, say so and upload proof (doctor’s notice, etc.)."
+            value={cancelReason}
+            onChange={(e) => setCancelReason(e.target.value)}
+          />
           <input
             type="file"
             accept="image/*"
@@ -611,18 +790,65 @@ export default function DateMatchWidget({
               const file = e.target.files?.[0];
               if (!file) return;
               try {
+                setError('');
                 const url = await prepareAndUploadFile(file, 'date-cancel');
                 setCancelProof(url);
+                setCancelStatus('Proof uploaded.');
               } catch (err: any) {
                 setError(err.message || 'Upload failed');
               }
             }}
           />
           {cancelProof && <p className="da-ok">Proof uploaded.</p>}
+          {cancelStatus && !cancelProof && <p className="da-ok">{cancelStatus}</p>}
           <div className="da-row">
-            <button type="button" className="da-btn da-btn-primary" onClick={submitCancel} disabled={loading || !cancelReason.trim()}>Submit</button>
-            <button type="button" className="da-btn da-btn-ghost" onClick={() => setView('scheduled')}>Back</button>
+            <button
+              type="button"
+              className="da-btn da-btn-primary"
+              onClick={() => void submitCancel()}
+              disabled={loading || !cancelReason.trim()}
+            >
+              {loading ? 'Submitting…' : 'Submit'}
+            </button>
+            <button type="button" className="da-btn da-btn-ghost" onClick={() => setView('scheduled')}>
+              Back
+            </button>
           </div>
+        </div>
+      )}
+
+      {view === 'verify_cancel' && match && (
+        <div>
+          <div className="da-warn">
+            <strong>They cannot make the date</strong>
+            <p>Reason: {match.cancelReason || '—'}</p>
+            <p>
+              Review their doctor&apos;s notice / emergency proof. If valid → cancel with no fine. If not valid (scam) →
+              they pay €{catalog?.scamCancelFineEur ?? 30} to you.
+            </p>
+          </div>
+          {match.cancelProofUrl && (
+            <p className="da-ok">
+              <a href={match.cancelProofUrl} target="_blank" rel="noopener noreferrer">
+                Open uploaded proof
+              </a>
+            </p>
+          )}
+          {match.cancelledBy === user?.id ? (
+            <p className="da-sub">Waiting for your date partner to verify your proof…</p>
+          ) : (
+            <div className="da-row">
+              <button type="button" className="da-btn da-btn-primary" disabled={loading} onClick={() => void submitVerifyCancel(true)}>
+                Proof is valid — OK
+              </button>
+              <button type="button" className="da-btn da-btn-ghost" disabled={loading} onClick={() => void submitVerifyCancel(false)}>
+                Not valid — charge €{catalog?.scamCancelFineEur ?? 30} scam fine
+              </button>
+            </div>
+          )}
+          <button type="button" className="da-btn da-btn-ghost" style={{ marginTop: 8 }} onClick={() => setView('home')}>
+            Back
+          </button>
         </div>
       )}
 
@@ -630,16 +856,39 @@ export default function DateMatchWidget({
         <div>
           <h3>How did the date go?</h3>
           <div className="da-row">
-            <button type="button" className={`da-chip ${reviewGoing === true ? 'on' : ''}`} onClick={() => setReviewGoing(true)}>Going well</button>
-            <button type="button" className={`da-chip ${reviewGoing === false ? 'on' : ''}`} onClick={() => setReviewGoing(false)}>Not going well / not enough dates</button>
+            <button type="button" className={`da-chip ${reviewGoing === true ? 'on' : ''}`} onClick={() => setReviewGoing(true)}>
+              Going well
+            </button>
+            <button type="button" className={`da-chip ${reviewGoing === false ? 'on' : ''}`} onClick={() => setReviewGoing(false)}>
+              Not going well / not enough dates
+            </button>
           </div>
           <h3>Keep talking?</h3>
-          <p className="da-sub">Both of you must say yes. If one says no, the chat is removed and they are told.</p>
+          <p className="da-sub">Both of you must say yes. If one says no, they state why — the other sees it — then you unmatch.</p>
           <div className="da-row">
-            <button type="button" className={`da-chip ${reviewContinue === true ? 'on' : ''}`} onClick={() => setReviewContinue(true)}>Yes, keep chatting</button>
-            <button type="button" className={`da-chip ${reviewContinue === false ? 'on' : ''}`} onClick={() => setReviewContinue(false)}>No</button>
+            <button type="button" className={`da-chip ${reviewContinue === true ? 'on' : ''}`} onClick={() => setReviewContinue(true)}>
+              Yes, keep chatting
+            </button>
+            <button type="button" className={`da-chip ${reviewContinue === false ? 'on' : ''}`} onClick={() => setReviewContinue(false)}>
+              No
+            </button>
           </div>
-          <button type="button" className="da-btn da-btn-primary" disabled={reviewGoing === null || reviewContinue === null || loading} onClick={submitReview}>Send</button>
+          {reviewContinue === false && (
+            <textarea
+              className="da-textarea"
+              placeholder="Why not? They will see this reason."
+              value={reviewReason}
+              onChange={(e) => setReviewReason(e.target.value)}
+            />
+          )}
+          <button
+            type="button"
+            className="da-btn da-btn-primary"
+            disabled={reviewGoing === null || reviewContinue === null || loading}
+            onClick={() => void submitReview()}
+          >
+            Send
+          </button>
         </div>
       )}
 

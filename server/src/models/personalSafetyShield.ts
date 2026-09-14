@@ -375,6 +375,40 @@ export async function getNearbyActiveSignals(lat: number, lon: number): Promise<
   );
 }
 
+/** Sim-only: create an active nearby alert so a real user can test receiving help. */
+export async function createMockNearbyHelpAlert(params: {
+  mockUserId: string;
+  mockUserName: string;
+  lat: number;
+  lon: number;
+  notifyUserId: string;
+}): Promise<SafetySignalAlert> {
+  const now = new Date();
+  const alert: SafetySignalAlert = {
+    id: `sig-mock-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`,
+    userId: params.mockUserId,
+    userName: params.mockUserName,
+    lat: params.lat,
+    lon: params.lon,
+    appearanceDescription: 'Mock test alert — dark jacket, looking around for help.',
+    triggeredVia: 'help_button',
+    status: 'active',
+    serverPersisted: true,
+    notifyCount: 1,
+    lastNotifyAt: now.toISOString(),
+    nextNotifyAt: new Date(now.getTime() + NOTIFY_INTERVAL_MS).toISOString(),
+    createdAt: now.toISOString(),
+    notifiedUserIds: [params.notifyUserId],
+  };
+  const signals = await readSignals();
+  const cleaned = signals.filter(
+    (s) => !(s.id.startsWith('sig-mock-') && (s.notifiedUserIds || []).includes(params.notifyUserId))
+  );
+  cleaned.push(alert);
+  await writeSignals(cleaned);
+  return alert;
+}
+
 export async function matchActivationPhrase(userId: string, phrase: string): Promise<boolean> {
   const settings = await getShieldSettings(userId);
   const p = phrase.trim().toLowerCase();

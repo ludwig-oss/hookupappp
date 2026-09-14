@@ -13,6 +13,8 @@ import {
   postSpin,
   postSelectIdea,
   postCancelDate,
+  postVerifyCancelProof,
+  postDateCheckIn,
   postHowGoing,
   getPitches,
   postDirectPitch,
@@ -43,6 +45,8 @@ router.post('/travel-ok', postTravelOk);
 router.post('/spin', postSpin);
 router.post('/select-idea', postSelectIdea);
 router.post('/cancel', postCancelDate);
+router.post('/cancel/verify', postVerifyCancelProof);
+router.post('/check-in', postDateCheckIn);
 router.post('/how-going', postHowGoing);
 
 router.get('/pitches', getPitches);

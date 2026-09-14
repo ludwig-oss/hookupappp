@@ -10,6 +10,8 @@ import {
   spinDateIdea,
   selectDateIdea,
   cancelScheduledDate,
+  verifyCancelProof,
+  checkInForDate,
   reportHowItsGoing,
   listMyMatches,
   getSearchQuota,
@@ -222,8 +224,93 @@ export async function postCancelDate(req: Request, res: Response) {
   try {
     const { matchId, reason, proofUrl } = req.body || {};
     if (!matchId) return res.status(400).json({ error: 'matchId is required' });
-    const match = await cancelScheduledDate(uid(req), matchId, String(reason || ''), proofUrl || undefined);
-    res.json({ match });
+    if (!String(reason || '').trim()) return res.status(400).json({ error: 'Please say why you cannot make it.' });
+    const result = await cancelScheduledDate(uid(req), matchId, String(reason || ''), proofUrl || undefined);
+    const other = result.match.userId1 === uid(req) ? result.match.userId2 : result.match.userId1;
+    if (result.pendingProof) {
+      notifyDateMatch(other, {
+        matchId: result.match.id,
+        fromUserId: uid(req),
+        status: result.match.status,
+        ideaTitle: result.match.ideaTitle,
+      });
+      sendPushToUser(
+        other,
+        {
+          title: 'Cancel proof to verify',
+          body: `They cannot make the date and uploaded proof (“${String(reason).slice(0, 80)}”). Open Date Arena — mark valid or invalid. Invalid = €30 scam fine to you.`,
+          data: { type: 'date_cancel_proof', matchId: result.match.id },
+        },
+        'matches'
+      ).catch(() => {});
+    } else {
+      sendPushToUser(
+        other,
+        {
+          title: 'Date cancelled',
+          body: result.message,
+          data: { type: 'date_cancelled', matchId: result.match.id },
+        },
+        'matches'
+      ).catch(() => {});
+    }
+    res.json(result);
+  } catch (e: any) {
+    res.status(400).json({ error: e.message });
+  }
+}
+
+export async function postVerifyCancelProof(req: Request, res: Response) {
+  try {
+    const { matchId, valid } = req.body || {};
+    if (!matchId) return res.status(400).json({ error: 'matchId is required' });
+    if (typeof valid !== 'boolean') return res.status(400).json({ error: 'valid true/false is required' });
+    const result = await verifyCancelProof(uid(req), matchId, valid);
+    const canceller = result.match.cancelledBy;
+    if (canceller) {
+      sendPushToUser(
+        canceller,
+        {
+          title: valid ? 'Proof accepted' : 'Proof rejected — €30 fine',
+          body: result.message,
+          data: { type: 'date_cancel_verified', matchId: result.match.id, valid: valid ? '1' : '0' },
+        },
+        'matches'
+      ).catch(() => {});
+    }
+    res.json(result);
+  } catch (e: any) {
+    res.status(400).json({ error: e.message });
+  }
+}
+
+export async function postDateCheckIn(req: Request, res: Response) {
+  try {
+    const { matchId, lat, lon, lateNote } = req.body || {};
+    if (!matchId) return res.status(400).json({ error: 'matchId is required' });
+    if (typeof lat !== 'number' || typeof lon !== 'number') {
+      return res.status(400).json({ error: 'lat and lon required' });
+    }
+    const result = await checkInForDate(uid(req), matchId, lat, lon, lateNote ? String(lateNote) : undefined);
+    if (result.revealed) {
+      const other = result.match.userId1 === uid(req) ? result.match.userId2 : result.match.userId1;
+      notifyDateMatch(other, {
+        matchId: result.match.id,
+        fromUserId: uid(req),
+        status: result.match.status,
+        ideaTitle: result.match.ideaTitle,
+      });
+      sendPushToUser(
+        other,
+        {
+          title: 'You are near your date',
+          body: 'Name, photo, and chat are unlocked — you can start talking.',
+          data: { type: 'date_revealed', matchId: result.match.id },
+        },
+        'matches'
+      ).catch(() => {});
+    }
+    res.json(result);
   } catch (e: any) {
     res.status(400).json({ error: e.message });
   }
@@ -231,16 +318,40 @@ export async function postCancelDate(req: Request, res: Response) {
 
 export async function postHowGoing(req: Request, res: Response) {
   try {
-    const { matchId, goingWell, wantContinue } = req.body || {};
+    const { matchId, goingWell, wantContinue, reason } = req.body || {};
     if (!matchId) return res.status(400).json({ error: 'matchId is required' });
-    const result = await reportHowItsGoing(uid(req), matchId, Boolean(goingWell), Boolean(wantContinue));
+    const result = await reportHowItsGoing(
+      uid(req),
+      matchId,
+      Boolean(goingWell),
+      Boolean(wantContinue),
+      reason ? String(reason) : undefined
+    );
     const other = result.match.userId1 === uid(req) ? result.match.userId2 : result.match.userId1;
     if (result.removed) {
-      sendPushToUser(other, {
-        title: 'Date chat ended',
-        body: 'They did not want to keep talking after the date. The chat was removed.',
-        data: { type: 'date_continue_no', matchId: result.match.id },
-      }, 'matches').catch(() => {});
+      const why =
+        (result.match.userId1 === uid(req)
+          ? result.match.user1ContinueReason
+          : result.match.user2ContinueReason) ||
+        (result.match.userId1 === other
+          ? result.match.user1ContinueReason
+          : result.match.user2ContinueReason) ||
+        '';
+      // Prefer the reason from whoever said no
+      const r1 = result.match.user1Continue === false ? result.match.user1ContinueReason : null;
+      const r2 = result.match.user2Continue === false ? result.match.user2ContinueReason : null;
+      const noReason = [r1, r2].filter(Boolean).join(' · ') || why;
+      sendPushToUser(
+        other,
+        {
+          title: 'Date chat ended',
+          body: noReason
+            ? `They do not want to keep talking: ${noReason}`
+            : 'They did not want to keep talking after the date. The chat was removed.',
+          data: { type: 'date_continue_no', matchId: result.match.id },
+        },
+        'matches'
+      ).catch(() => {});
     }
     res.json(result);
   } catch (e: any) {

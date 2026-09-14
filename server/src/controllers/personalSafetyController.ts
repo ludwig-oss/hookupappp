@@ -214,3 +214,33 @@ export const checkActivationPhraseHandler = async (req: Request, res: Response) 
     res.status(500).json({ error: 'Internal server error' });
   }
 };
+
+/** Simulator: spawn a mock person calling for help near you so you can test receiving. */
+export const simMockNeedsHelpHandler = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).userId;
+    const { lat, lon } = req.body as { lat?: number; lon?: number };
+    if (typeof lat !== 'number' || typeof lon !== 'number') {
+      return res.status(400).json({ error: 'lat and lon required' });
+    }
+    const { isSimulatorEnabled } = await import('../simulator/runtime.js');
+    if (!isSimulatorEnabled()) {
+      return res.status(403).json({ error: 'Simulator only — run with SIMULATOR=1 to test mock help.' });
+    }
+    const { spawnSimulatorMockNeedsHelp } = await import('../simulator/safetyResponders.js');
+    const alert = await spawnSimulatorMockNeedsHelp({ viewerUserId: userId, lat, lon });
+    if (!alert) return res.status(400).json({ error: 'Could not spawn mock help alert.' });
+    res.json({
+      alert: {
+        id: alert.id,
+        userName: alert.userName,
+        lat: alert.lat,
+        lon: alert.lon,
+        appearanceDescription: alert.appearanceDescription,
+      },
+      message: `${alert.userName} is calling for help nearby — check Nearby safety signals below.`,
+    });
+  } catch (error: any) {
+    res.status(400).json({ error: error.message || 'Could not spawn mock help' });
+  }
+};

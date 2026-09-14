@@ -1,6 +1,7 @@
 import { isSimulatorEnabled, isSimulatorUserId, getSimulatorUsers } from './runtime.js';
 import { createMessage } from '../models/chat.js';
 import type { SafetySignalAlert } from '../models/personalSafetyShield.js';
+import { sendPushToUser } from '../realtime/push.js';
 
 function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6371;
@@ -18,6 +19,12 @@ const CHECK_INS = [
   'Checking in from the app. Are you safe? Tell me if you want me to come or call someone.',
   'Got your location pin. Are you alright? Reply when you can.',
   'Help is looking out for you. Are you OK right now?',
+];
+
+const MOCK_HELP_LINES = [
+  'I need help — please check my pin if you are nearby.',
+  'Safety signal from me. Can someone check in?',
+  'I pressed Help. Location is shared — are you close?',
 ];
 
 function mapsLink(lat: number, lon: number): string {
@@ -66,4 +73,48 @@ export async function spawnSimulatorSafetyResponders(alert: SafetySignalAlert): 
     }, delay);
   }
   return ids;
+}
+
+/**
+ * Simulator test: a mock user is the one calling for help near you,
+ * so you can see a nearby safety signal and practice checking in.
+ */
+export async function spawnSimulatorMockNeedsHelp(params: {
+  viewerUserId: string;
+  lat: number;
+  lon: number;
+}): Promise<SafetySignalAlert | null> {
+  if (!isSimulatorEnabled()) return null;
+  if (isSimulatorUserId(params.viewerUserId)) return null;
+
+  const mocks = getSimulatorUsers();
+  if (!mocks.length) return null;
+  const actor = mocks[Math.floor(Math.random() * Math.min(12, mocks.length))];
+  const lat = params.lat + (Math.random() - 0.5) * 0.004;
+  const lon = params.lon + (Math.random() - 0.5) * 0.004;
+
+  const { createMockNearbyHelpAlert } = await import('../models/personalSafetyShield.js');
+  const alert = await createMockNearbyHelpAlert({
+    mockUserId: actor.id,
+    mockUserName: actor.name || 'Nearby person',
+    lat,
+    lon,
+    notifyUserId: params.viewerUserId,
+  });
+
+  sendPushToUser(params.viewerUserId, {
+    title: '⚠ Nearby safety signal',
+    body: `${alert.userName} needs help near you. Open Personal safety shield for their pin.`,
+    data: { type: 'safety_signal_nearby', alertId: alert.id },
+  }).catch(() => {});
+
+  setTimeout(() => {
+    void createMessage({
+      fromUserId: actor.id,
+      toUserId: params.viewerUserId,
+      content: `${MOCK_HELP_LINES[Math.floor(Math.random() * MOCK_HELP_LINES.length)]} Pin: ${lat.toFixed(5)}, ${lon.toFixed(5)} — ${mapsLink(lat, lon)}`,
+    }).catch(() => {});
+  }, 600);
+
+  return alert;
 }

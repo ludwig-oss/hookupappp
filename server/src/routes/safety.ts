@@ -65,6 +65,7 @@ import {
   resolveSignalHandler,
   pollSafetySignalsHandler,
   checkActivationPhraseHandler,
+  simMockNeedsHelpHandler,
 } from '../controllers/personalSafetyController.js';
 import { authenticateToken } from '../middleware/auth.js';
 import type { AuthRequest } from '../middleware/auth.js';
@@ -138,6 +139,7 @@ router.post('/shield/cancel-false-alarm', cancelFalseAlarmHandler);
 router.post('/shield/resolve', resolveSignalHandler);
 router.get('/shield/poll', pollSafetySignalsHandler);
 router.post('/shield/check-phrase', checkActivationPhraseHandler);
+router.post('/shield/sim-mock-help', simMockNeedsHelpHandler);
 
 // Date Sharing
 router.post('/share-date', shareDateWithContacts);

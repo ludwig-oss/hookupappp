@@ -14,15 +14,47 @@ export interface GuideHelpStatus {
   priceEur: number;
   code?: 'OK' | 'GUIDE_HELP_REQUIRED';
   stripeConfigured?: boolean;
+  testingFree?: boolean;
   error?: string;
+}
+
+/** Local browser testing — never block on Stripe/paywall even if API is production. */
+export function isClientTestingFree(): boolean {
+  if (typeof window === 'undefined') return false;
+  const h = window.location.hostname;
+  return h === 'localhost' || h === '127.0.0.1' || h === '0.0.0.0' || h.endsWith('.local');
 }
 
 export const guideHelpAPI = {
   status: async (): Promise<GuideHelpStatus> => {
+    if (isClientTestingFree()) {
+      return {
+        allowed: true,
+        isPremium: true,
+        freeUsed: 0,
+        freeRemaining: 999,
+        paidCredits: 0,
+        priceEur: 9.9,
+        code: 'OK',
+        testingFree: true,
+      };
+    }
     const response = await axios.get(`${API_URL}/status`);
     return response.data;
   },
   consume: async (kind: GuideHelpKind): Promise<GuideHelpStatus> => {
+    if (isClientTestingFree()) {
+      return {
+        allowed: true,
+        isPremium: true,
+        freeUsed: 0,
+        freeRemaining: 999,
+        paidCredits: 0,
+        priceEur: 9.9,
+        code: 'OK',
+        testingFree: true,
+      };
+    }
     const response = await axios.post(`${API_URL}/consume`, { kind });
     return response.data;
   },

@@ -1,12 +1,24 @@
 .ai-studio-overlay {
   position: fixed;
   inset: 0;
-  z-index: 12100;
-  background: radial-gradient(ellipse at 30% 20%, #3a1a08 0%, #0b0705 45%, #000 100%);
+  z-index: 13000;
+  background: #0b0705;
+  background: radial-gradient(ellipse at 30% 20%, #3a1a08 0%, #0b0705 45%, #050304 100%);
   color: #f5efe6;
   overflow: hidden;
   display: flex;
   flex-direction: column;
+}
+
+.ai-studio-overlay--chat {
+  background: #0a0a0c;
+}
+
+.ai-studio-overlay--chat > .ai-chat {
+  flex: 1;
+  min-height: 0;
+  height: auto;
+  width: 100%;
 }
 
 .ai-studio-overlay.embedded {

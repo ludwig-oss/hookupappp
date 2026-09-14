@@ -26,6 +26,21 @@ export interface GuideHelpStatus {
   paidCredits: number;
   priceEur: number;
   code?: 'OK' | 'GUIDE_HELP_REQUIRED';
+  testingFree?: boolean;
+}
+
+/** Local / simulator / explicit test flag — never charge for crew help. */
+export async function isTestingFreeGuides(): Promise<boolean> {
+  const flag = (process.env.FREE_GUIDE_HELPS || process.env.TESTING_FREE_GUIDES || '').trim().toLowerCase();
+  if (flag === '1' || flag === 'true' || flag === 'yes' || flag === 'on') return true;
+  if (process.env.NODE_ENV !== 'production') return true;
+  try {
+    const { isSimulatorEnabled } = await import('../simulator/runtime.js');
+    if (isSimulatorEnabled()) return true;
+  } catch {
+    /* ignore */
+  }
+  return false;
 }
 
 async function readAll(): Promise<GuideHelpAccount[]> {
@@ -66,6 +81,18 @@ export async function isGuideHelpPremium(userId: string): Promise<boolean> {
 }
 
 export async function getGuideHelpStatus(userId: string): Promise<GuideHelpStatus> {
+  if (await isTestingFreeGuides()) {
+    return {
+      allowed: true,
+      isPremium: true,
+      freeUsed: 0,
+      freeRemaining: 999,
+      paidCredits: 0,
+      priceEur: AI_HELP_PRICE_EUR,
+      code: 'OK',
+      testingFree: true,
+    };
+  }
   const isPremium = await isGuideHelpPremium(userId);
   const acc = await getGuideHelpAccount(userId);
   const freeRemaining = Math.max(0, FREE_GUIDE_HELPS - acc.freeUsed);
@@ -78,6 +105,7 @@ export async function getGuideHelpStatus(userId: string): Promise<GuideHelpStatu
     paidCredits: acc.paidCredits,
     priceEur: AI_HELP_PRICE_EUR,
     code: allowed ? 'OK' : 'GUIDE_HELP_REQUIRED',
+    testingFree: false,
   };
 }
 
@@ -85,6 +113,10 @@ export async function consumeGuideHelp(
   userId: string,
   kind: GuideHelpKind
 ): Promise<GuideHelpStatus> {
+  if (await isTestingFreeGuides()) {
+    // Testing / local / simulator — never burn free tries or show Stripe
+    return getGuideHelpStatus(userId);
+  }
   const isPremium = await isGuideHelpPremium(userId);
   const acc = await getGuideHelpAccount(userId);
   if (isPremium) {
@@ -115,6 +147,7 @@ export async function consumeGuideHelp(
     paidCredits: 0,
     priceEur: AI_HELP_PRICE_EUR,
     code: 'GUIDE_HELP_REQUIRED',
+    testingFree: false,
   };
 }
 

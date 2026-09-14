@@ -137,7 +137,7 @@ export const AI_GUIDES: AiGuideCharacter[] = [
     specialty: 'Red flags & situationships',
     tagline: 'If it is confusing, it is a no.',
     personality: 'No-BS. He will not let you romanticize mixed signals.',
-    thinking: 'Looks at pattern, not potential. Names the cost of staying.',
+    thinking: 'Names mixed signals early. Still greets like a person before the hard truth.',
     portrait: '/ai-guides/marcus.png',
     voice: { hint: 'male', pitch: 0.85, rate: 0.97 },
     ratings: { directness: 10, warmth: 4, datingIq: 9, texting: 5, style: 4, boundaries: 10, healing: 6, attraction: 5 },
@@ -146,8 +146,8 @@ export const AI_GUIDES: AiGuideCharacter[] = [
     lens: 'masculine',
     charStyle: {
       actionCue: '*Shakes his head once — no soft landing.*',
-      catchphrases: ['Pattern not potential', 'Confusing is a no', 'Mixed signals cost'],
-      mindset: 'No romanticizing red flags. Exit when confused.',
+      catchphrases: ['If it is confusing, it is a no', 'Mixed signals cost'],
+      mindset: 'No romanticizing red flags. Exit when confused. Talk like a real person first.',
     },
   },
   {
@@ -955,20 +955,208 @@ export function buildCharacterReply(guide: AiGuideCharacter, lesson: AiLesson): 
   const mind = style?.mindset
     ? `\n*${guide.name.split(' ')[0]} thinks: ${style.mindset.split('.')[0]}.*`
     : '';
-  const hook = style?.catchphrases?.[0];
 
+  // Do NOT lead with the same catchphrase every time — sounds like an NPC loop
   const lines: string[] = [];
-  if (hook) lines.push(`${hook}.`);
   lines.push(lesson.cause.endsWith('.') ? lesson.cause : `${lesson.cause}.`);
   lines.push(lesson.solution.endsWith('.') ? lesson.solution : `${lesson.solution}.`);
   lines.push(
     `Most people miss this — ${lesson.unknown.endsWith('.') ? lesson.unknown : `${lesson.unknown}.`}`
   );
-  lines.push(
-    `Lock it in early: ${lesson.prevention.endsWith('.') ? lesson.prevention : `${lesson.prevention}.`}`
-  );
 
   return `${cue}${mind}\n${lines.join(' ')}`.trim();
+}
+
+const GREETING_RE =
+  /^(hi+|hey+|hello+|yo+|sup|what'?s up|how are you|how'?s it going|good (morning|afternoon|evening)|hola|wassup)\b/i;
+const SMALL_TALK_RE =
+  /\b(how (was|is|are) (your|ur) day|what (are|r) you doing|wyd|how you doing|missed you|just checking in)\b/i;
+const ALREADY_GOOD_RE =
+  /\b(i('?m| am) (good|fine|ok|okay|solid)|already (good|fine|got it)|that('?s| is) (not|no) (my|a) problem|not my issue|i('?m| am) fine (there|with that)|no problem (there|with that)|i'?m good there)\b/i;
+const THANKS_RE = /^(thanks|thank you|thx|ty|appreciate)\b/i;
+const YES_NO_SHORT = /^(yes|yeah|yep|yup|no|nah|ok|okay|sure|idk|i don'?t know)\.?$/i;
+const META_RE =
+  /\b(do you (even )?understand|are you (a |an )?(bot|ai|npc|computer)|you (sound|keep|just) (like|repeating)|stop repeating|talk (like|normal)|say hi)\b/i;
+
+function firstName(guide: AiGuideCharacter) {
+  return guide.name.split(' ')[0];
+}
+
+function lastGuideText(history?: Array<{ from: 'me' | 'guide'; text: string }>): string {
+  const lines = (history || []).filter((m) => m.from === 'guide').map((m) => m.text);
+  return lines[lines.length - 1] || '';
+}
+
+function rareCatchphrase(guide: AiGuideCharacter, salt: string, lastGuide: string): string {
+  const list = guide.charStyle?.catchphrases || [];
+  if (!list.length) return '';
+  // Very rare — Character.AI vibe, not a slogan machine
+  let h = 0;
+  for (let i = 0; i < salt.length; i++) h = (h + salt.charCodeAt(i) * (i + 1)) % 97;
+  if (h % 10 !== 0) return '';
+  const pick = list[h % list.length];
+  if (pick && lastGuide.toLowerCase().includes(pick.toLowerCase())) return '';
+  return pick;
+}
+
+function spokenOnly(guide: AiGuideCharacter, spoken: string): string {
+  const cue = guide.charStyle?.actionCue || `*${firstName(guide)} looks at you.*`;
+  return `${cue}\n${spoken}`.trim();
+}
+
+/**
+ * Real chat turn — greets back, clarifies vague asks, stays in character.
+ * Never dumps the same catchphrase + full lesson block every message.
+ */
+export function buildChatTurn(params: {
+  guideId: string;
+  userText: string;
+  history?: Array<{ from: 'me' | 'guide'; text: string }>;
+}): { reply: string; mode: 'chat' | 'clarify' | 'lesson'; topicId?: string; clarifyOptions?: { id: string; title: string }[] } {
+  const guide = getGuide(params.guideId);
+  if (!guide) {
+    return { reply: 'Pick a guide first, then talk to me.', mode: 'chat' };
+  }
+  const raw = (params.userText || '').trim();
+  const q = norm(raw);
+  const name = firstName(guide);
+  const warmth = guide.ratings.warmth;
+  const priorMe = (params.history || []).filter((m) => m.from === 'me').length;
+  const lastGuide = lastGuideText(params.history);
+  const mindset = guide.charStyle?.mindset || guide.personality;
+
+  if (!q) {
+    return {
+      reply: spokenOnly(
+        guide,
+        warmth >= 6
+          ? `Hey — it's ${name}. How's your day going? What's on your mind?`
+          : `Hey. ${name} here. What do you need — say it straight.`
+      ),
+      mode: 'chat',
+    };
+  }
+
+  if (META_RE.test(q) || META_RE.test(raw)) {
+    return {
+      reply: spokenOnly(
+        guide,
+        warmth >= 6
+          ? `Yeah I hear you — I'm ${name}, not a script. ${mindset} So: hi. How was your day, and what's actually going on?`
+          : `I hear you. I'm ${name}. ${mindset} Say the situation in one line — I'm listening.`
+      ),
+      mode: 'chat',
+    };
+  }
+
+  if (GREETING_RE.test(raw) || GREETING_RE.test(q)) {
+    const soft =
+      warmth >= 6
+        ? `Hey — good to hear from you. How was your day? What are you doing right now, and what's on your mind?`
+        : `Hey. I'm listening. How's the day — and what's the real situation?`;
+    return { reply: spokenOnly(guide, soft), mode: 'chat' };
+  }
+
+  if (SMALL_TALK_RE.test(q)) {
+    const soft =
+      warmth >= 5
+        ? `Been around. Day's been alright. You? Tell me what's up — dating, money, style, bedroom — whatever's actually bothering you.`
+        : `I'm good. Don't waste the beat — what's the problem you're stuck on?`;
+    return { reply: spokenOnly(guide, soft), mode: 'chat' };
+  }
+
+  if (THANKS_RE.test(raw)) {
+    return {
+      reply: spokenOnly(guide, warmth >= 6 ? `Anytime. You good, or is there another piece?` : `Cool. Next.`),
+      mode: 'chat',
+    };
+  }
+
+  if (ALREADY_GOOD_RE.test(q)) {
+    return {
+      reply: spokenOnly(
+        guide,
+        `Got it — you're solid there. So what *is* the problem? Ghosting, first dates, money, style, lasting longer, mixed signals — pick the real one.`
+      ),
+      mode: 'clarify',
+      clarifyOptions: [
+        { id: 'ghosted', title: 'Ghosting / texting' },
+        { id: 'first-date', title: 'First dates' },
+        { id: 'intimacy-flow', title: 'Bedroom / lasting longer' },
+        { id: 'fashion', title: 'What to wear' },
+        { id: 'feminine-lens', title: 'Understanding women' },
+        { id: 'cash-flow-execution', title: 'Money / hustle' },
+      ],
+    };
+  }
+
+  if (YES_NO_SHORT.test(q) && priorMe < 2) {
+    return {
+      reply: spokenOnly(
+        guide,
+        `I need more than yes/no. What happened — one concrete detail. What did they say, or what do you want next?`
+      ),
+      mode: 'chat',
+    };
+  }
+
+  const matches = interpretQuery(raw);
+  const top = matches[0];
+
+  // Vague / low-confidence → ask which specific problem (don't jump into a lesson dump)
+  if (!top || top.score < 6) {
+    return {
+      reply: spokenOnly(
+        guide,
+        `I hear you, but I need the *specific* problem. Which of these is closest — or type it in one short line?`
+      ),
+      mode: 'clarify',
+      clarifyOptions: [
+        { id: 'ghosted', title: 'Ghosting / left on read' },
+        { id: 'overthinking-texts', title: 'Overthinking texts' },
+        { id: 'intimacy-flow', title: 'Bedroom / lasting longer / TermAct' },
+        { id: 'date-talk', title: 'What to say on a date' },
+        { id: 'fashion', title: 'Outfit / what to wear' },
+        { id: 'appearance', title: 'Face / looks' },
+        { id: 'couples-counseling', title: 'Couples / fighting' },
+        { id: 'feminine-lens', title: 'What women want' },
+      ],
+    };
+  }
+
+  // Medium confidence with close alternates → clarify which one
+  if (top.score < 12 && matches.length > 1 && matches[1].score >= top.score - 2) {
+    return {
+      reply: spokenOnly(
+        guide,
+        `Could be a few things. Which one is it for you right now?`
+      ),
+      mode: 'clarify',
+      clarifyOptions: matches.slice(0, 4).map((m) => ({ id: m.topic.id, title: m.topic.title })),
+    };
+  }
+
+  const lesson = resolveLessonForGuide(top.topic, guide.id);
+  const hook = rareCatchphrase(guide, q + String(priorMe), lastGuide);
+  // Conversational first — one move + a question, not a lecture dump
+  const spoken = [
+    hook && priorMe > 1 ? `${hook}.` : '',
+    warmth >= 6
+      ? `Okay — on ${lesson.title.toLowerCase()}, here's what I'd do:`
+      : `On ${lesson.title.toLowerCase()} — the move:`,
+    lesson.solution.endsWith('.') ? lesson.solution : `${lesson.solution}.`,
+    warmth >= 6
+      ? `Does that match what you're dealing with, or is it different?`
+      : `That land, or did I miss it?`,
+  ]
+    .filter(Boolean)
+    .join(' ');
+
+  return {
+    reply: spokenOnly(guide, spoken),
+    mode: 'lesson',
+    topicId: lesson.id,
+  };
 }
 
 export function interpretQuery(query: string): { topic: AiLesson; score: number }[] {

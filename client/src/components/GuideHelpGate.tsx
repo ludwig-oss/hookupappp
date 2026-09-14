@@ -44,6 +44,9 @@ export default function GuideHelpGate({
           (unlimited on every AI guide) or pay €{price} once with Stripe. That one-time amount goes to the app
           account — same idea as paying for a human session, but 100% stays with the app, not a person.
         </p>
+        <p className="guide-help-hint">
+          Testing on localhost / simulator? Payments stay off — refresh and open the desk again.
+        </p>
         {status.paidCredits > 0 && (
           <p>
             You still have {status.paidCredits} paid help{status.paidCredits === 1 ? '' : 's'} left.

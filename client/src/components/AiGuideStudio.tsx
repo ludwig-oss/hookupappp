@@ -85,8 +85,15 @@ export default function AiGuideStudio({
     try {
       const r = await guideHelpAPI.consume(kindHelp);
       setHelpStatus(r);
+      setPaywall(null);
       then();
     } catch (e: any) {
+      // Local testing never blocks — even if a remote API returns 402
+      if (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
+        setPaywall(null);
+        then();
+        return;
+      }
       if (e.response?.status === 402) {
         setPaywall(e.response.data);
         return;
@@ -175,6 +182,12 @@ export default function AiGuideStudio({
       setAlternates(r.alternates);
       setLesson(null);
       setMiss(!r.guess);
+      // Low confidence → ask which specific problem. Do not jump into a desk.
+      if (r.needsClarify || !r.guess || (r.guess.confidence != null && r.guess.confidence < 0.7)) {
+        setMiss(false);
+        if (!r.guess && !r.alternates.length) setMiss(true);
+        return;
+      }
       const termCue = /\b(termact|foreplay|boy to girl|girl to boy)\b/i.test(q);
       if (r.guess?.id === 'fashion') {
         await tryHelp('fashion', () => setShowFashion(true));
@@ -296,6 +309,8 @@ export default function AiGuideStudio({
     setSelected(g);
     setBusy(true);
     try {
+      // Keep studio mounted over the gate (holdAiChat) so area chips don't flash under chat
+      if (mode === 'gate') onUnlocked?.();
       await aiGuidesAPI.assign(g.id, lesson?.id);
       updateUser({ aiGuideId: g.id });
       window.dispatchEvent(new Event('guide-program:updated'));
@@ -303,7 +318,6 @@ export default function AiGuideStudio({
       setShowFashion(false);
       setShowAppearance(false);
       setShowIntimacy(false);
-      if (mode === 'gate') onUnlocked?.();
     } catch {
       setError('Could not start with this guide.');
     } finally {
@@ -377,7 +391,7 @@ export default function AiGuideStudio({
 
   if (inChat && featured) {
     return (
-      <div className="ai-studio-overlay">
+      <div className="ai-studio-overlay ai-studio-overlay--chat">
         {showFashion ? (
           <FashionDesk
             guide={
@@ -440,7 +454,10 @@ export default function AiGuideStudio({
             type="button"
             className="ai-pill ai-pill-ghost"
             style={{ position: 'absolute', top: 12, right: 12, zIndex: 2 }}
-            onClick={() => closeStudio()}
+            onClick={() => {
+              if (mode === 'gate') onUnlocked?.();
+              closeStudio();
+            }}
           >
             Close
           </button>
@@ -464,8 +481,10 @@ export default function AiGuideStudio({
       <div className="ai-studio-top">
         <span className="ai-studio-brand">
           Crew
-          {helpStatus?.isPremium
-            ? ' · premium unlimited'
+          {helpStatus?.testingFree || helpStatus?.isPremium
+            ? helpStatus?.testingFree
+              ? ' · testing · unlimited'
+              : ' · premium unlimited'
             : helpStatus
               ? ` · ${helpStatus.freeRemaining} free left`
               : ''}
@@ -626,10 +645,25 @@ export default function AiGuideStudio({
             <>
           {guess && !lesson && (
             <div className="ai-confirm">
-              <p>Did you mean <strong>{guess.title}</strong>?</p>
+              <p>
+                Which specific problem? Closest guess: <strong>{guess.title}</strong>
+              </p>
+              <p className="ai-confirm-hint">If you&apos;re already good there, pick another — or say what&apos;s actually wrong.</p>
               <div className="ai-confirm-actions">
                 <button type="button" className="ai-pill ai-pill-primary" onClick={() => void confirmTopic(guess.id)}>
-                  Yes, help me
+                  Yes — help with this
+                </button>
+                <button
+                  type="button"
+                  className="ai-pill ai-pill-ghost"
+                  onClick={() => {
+                    setGuess(null);
+                    setMiss(false);
+                    setQuery('');
+                    setError("Cool — you're good there. Type the real problem in one short line.");
+                  }}
+                >
+                  I&apos;m good there — different problem
                 </button>
                 {alternates.map((a) => (
                   <button key={a.id} type="button" className="ai-pill ai-pill-ghost" onClick={() => void confirmTopic(a.id)}>
@@ -641,7 +675,7 @@ export default function AiGuideStudio({
           )}
           {miss && !lesson && (
             <div className="ai-confirm">
-              <p>I did not catch that. Try a short line like ghosting, what women want, what to talk about on a date, or what to wear.</p>
+              <p>I need the specific problem — not a vague vibe. Try: ghosting, first dates, lasting longer, what to wear, fighting with my partner…</p>
             </div>
           )}
           {lesson && (
@@ -871,17 +905,19 @@ export function AiGuideFab() {
   if (!guide) return null;
   return (
     <>
-      <button
-        type="button"
-        className="ai-fab"
-        onClick={() => {
-          setStartInChat(true);
-          setOpen(true);
-        }}
-      >
-        <img src={guide.portrait} alt="" />
-        Ask {guide.name.split(' ')[0]}
-      </button>
+      {!open && (
+        <button
+          type="button"
+          className="ai-fab"
+          onClick={() => {
+            setStartInChat(true);
+            setOpen(true);
+          }}
+        >
+          <img src={guide.portrait} alt="" />
+          Ask {guide.name.split(' ')[0]}
+        </button>
+      )}
       {open && (
         <AiGuideStudio
           mode="app"

@@ -10,6 +10,7 @@ import {
   type TermActTactic,
 } from '../../api/intimacy';
 import { speakGuideLine } from '../../lib/aiGuideSpeech';
+import InstructionalVisual from './InstructionalVisual';
 import './IntimacyDesk.css';
 
 function speakLine(guide: AiGuideCharacter, text: string, onStart: () => void, onEnd: () => void) {
@@ -285,7 +286,8 @@ export default function IntimacyDesk({
                 <p>{extraTip.line}</p>
               </article>
             )}
-            <p className="intimacy-media">Guide clip for {pos.name} — Mei talks you through this shape. No video file; follow the text and the timer.</p>
+            <InstructionalVisual label={pos.name} vibe={pos.vibe} />
+            <p className="intimacy-media">Watch the motion above — Mei talks you through it. Stop if it hurts.</p>
           </aside>
         </div>
       )}
@@ -392,12 +394,12 @@ export default function IntimacyDesk({
                     Pause timer
                   </button>
                 </div>
-                <div className="termact-video" aria-label="Instructional video window (simulated)">
-                  <span>Instructional video window (simulated)</span>
+                <div className="termact-video" aria-label="Instructional how-to visual">
+                  <InstructionalVisual label={tactic.name} category={tactic.category} vibe={tactic.category} />
                   <div className="termact-video-bar">
                     <div style={{ width: `${termPct}%` }} />
                   </div>
-                  <small>{Math.round(termPct)}% remaining · no film, just the timer</small>
+                  <small>{Math.round(termPct)}% of this step left</small>
                 </div>
               </aside>
             </div>

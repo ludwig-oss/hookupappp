@@ -12,6 +12,7 @@ import { paintFashionTryOn, renderBodyAvatarDataUrl, type BodyAvatarOpts } from 
 import { speakGuideLine, speechLangFor } from '../../lib/aiGuideSpeech';
 import { checkFaceInPhoto } from '../../lib/fashionFaceCheck';
 import { prepareAndUploadFile } from '../../lib/uploadMedia';
+import ClosetInterface from '../closet/ClosetInterface';
 import './FashionDesk.css';
 
 function stripRoleplay(text: string) {
@@ -138,7 +139,7 @@ export default function FashionDesk({
   const [error, setError] = useState('');
   const [result, setResult] = useState<FashionStyleResponse | null>(null);
   const [seenIds, setSeenIds] = useState<string[]>([]);
-  const [tab, setTab] = useState<'compare' | 'wardrobe' | 'drafts'>('compare');
+  const [tab, setTab] = useState<'compare' | 'wardrobe' | 'drafts' | 'closet'>('closet');
   const [wardrobe, setWardrobe] = useState<WardrobeItem[]>([]);
   const [drafts, setDrafts] = useState<WardrobeItem[]>([]);
   const [pieces, setPieces] = useState<WardrobeItem[]>([]);
@@ -519,6 +520,9 @@ export default function FashionDesk({
       <div className="fashion-desk-bar">
         <strong>Outfit desk · {first}</strong>
         <div className="fashion-desk-tabs">
+          <button type="button" className={tab === 'closet' ? 'is-on' : ''} onClick={() => setTab('closet')}>
+            Closet
+          </button>
           <button type="button" className={tab === 'compare' ? 'is-on' : ''} onClick={() => setTab('compare')}>
             Compare
           </button>
@@ -551,6 +555,16 @@ export default function FashionDesk({
         </div>
       )}
 
+      {tab === 'closet' && (
+        <ClosetInterface
+          faceUrl={faceUrl}
+          skinTone={bodyAvatar.skinTone}
+          gender={bodyAvatar.gender === 'fem' ? 'fem' : bodyAvatar.gender === 'masc' ? 'masc' : 'masc'}
+        />
+      )}
+
+      {tab !== 'closet' && (
+      <>
       <form
         className="fashion-ask"
         onSubmit={(e) => {
@@ -1056,6 +1070,8 @@ export default function FashionDesk({
             </div>
           </div>
         </div>
+      )}
+      </>
       )}
     </div>
   );

@@ -25,7 +25,7 @@ export default function AddPasswordPrompt() {
       setOpen(false);
       return;
     }
-    if (user.hasBackupPassword === true) {
+    if (user.hasBackupPassword === true || user.hasGoogleAuth === true) {
       setOpen(false);
       return;
     }
@@ -35,8 +35,9 @@ export default function AddPasswordPrompt() {
       .then((p) => {
         if (cancelled) return;
         const hasPw = Boolean(p.hasBackupPassword);
-        updateUser({ hasBackupPassword: hasPw });
-        if (!hasPw && !dismissedThisSession()) setOpen(true);
+        const hasGoogle = Boolean(p.hasGoogleAuth);
+        updateUser({ hasBackupPassword: hasPw, hasGoogleAuth: hasGoogle });
+        if (!hasPw && !hasGoogle && !dismissedThisSession()) setOpen(true);
         else setOpen(false);
       })
       .catch(() => {
@@ -50,7 +51,7 @@ export default function AddPasswordPrompt() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  if (!open || !user?.id || user.hasBackupPassword) return null;
+  if (!open || !user?.id || user.hasBackupPassword || user.hasGoogleAuth) return null;
 
   const later = () => {
     try {

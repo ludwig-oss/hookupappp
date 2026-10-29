@@ -10,6 +10,7 @@ import { normalizeUsernameInput, USERNAME_HINT, USERNAME_MAX, USERNAME_MIN } fro
 import LookingForChips from '../components/LookingForChips';
 import { dateMatchAPI } from '../api/dateMatch';
 import PasswordInput from '../components/PasswordInput';
+import GoogleContinueButton from '../components/GoogleContinueButton';
 import './Auth.css';
 import './Legal.css';
 
@@ -53,6 +54,7 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [oauthBusy, setOauthBusy] = useState(false);
 
   const { login } = useContext(AuthContext);
   const navigate = useNavigate();
@@ -60,6 +62,8 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
   useEffect(() => {
     const m = searchParams.get('mode');
     if (m === 'login') setMode('login');
+    const oauthErr = searchParams.get('oauth_error');
+    if (oauthErr) setError(oauthErr);
   }, [searchParams]);
 
   useEffect(() => {
@@ -202,11 +206,30 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
         <h1 className="auth-title">{mode === 'signup' ? 'Join Hook Up' : 'Welcome Back'}</h1>
         <p className="auth-subtitle">
           {mode === 'signup'
-            ? 'Username is yours forever. PIN is required now. Password and the details after it are optional — skip them and fill them later. We will ask you to add a password after you join.'
-            : 'Same username as sign-up. Use your 6-digit PIN or a password if you already added one.'}
+            ? 'Fastest way in: Continue with Google. We pull your Gmail and Google profile — no password or code. Or create an account with a username and PIN.'
+            : 'Continue with Google, or sign in with your username and PIN / password.'}
         </p>
 
         {error && <div className="error-message">{error}</div>}
+        {oauthBusy && (
+          <div className="oauth-wait-banner">
+            <div className="oauth-spinner" aria-hidden />
+            <span>Connecting to Google…</span>
+          </div>
+        )}
+
+        <div className="google-continue-wrap">
+          <GoogleContinueButton
+            label={mode === 'signup' ? 'Continue with Google' : 'Sign in with Google'}
+            disabled={loading}
+            onBusy={setOauthBusy}
+            onError={setError}
+          />
+          <p className="google-continue-hint">
+            Uses your Gmail and Google profile automatically. No password, PIN, or one-time code.
+          </p>
+        </div>
+        <div className="auth-or-divider">or</div>
 
         <div className="auth-method-tabs">
           <button type="button" className={`auth-button auth-tab ${mode === 'signup' ? 'is-active' : ''}`} onClick={() => setMode('signup')}>Sign up</button>

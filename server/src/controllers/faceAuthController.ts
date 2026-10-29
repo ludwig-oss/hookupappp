@@ -51,6 +51,7 @@ function toClientUser(user: Awaited<ReturnType<typeof getUserById>>) {
     profileSetupComplete: Boolean(user.profileSetupComplete),
     emailVerified: Boolean(user.emailVerified),
     hasBackupPassword: Boolean(user.backupPasswordHash),
+    hasGoogleAuth: Boolean(user.googleId),
   };
 }
 

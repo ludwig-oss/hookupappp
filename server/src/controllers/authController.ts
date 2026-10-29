@@ -34,6 +34,7 @@ function toClientUser(user: User) {
     qualifiedCoach: Boolean(user.qualifiedCoach),
     coachStarRating: typeof user.coachStarRating === 'number' ? user.coachStarRating : undefined,
     hasBackupPassword: Boolean(user.backupPasswordHash),
+    hasGoogleAuth: Boolean(user.googleId),
   };
 }
 

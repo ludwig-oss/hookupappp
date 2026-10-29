@@ -258,6 +258,7 @@ export const getUserProfile = async (req: Request, res: Response) => {
       createdAt: viewingOwnProfile ? photoLockStatusForUser(user).createdAt : undefined,
       photoLock: viewingOwnProfile ? photoLockStatusForUser(user) : undefined,
       hasBackupPassword: viewingOwnProfile ? Boolean(backupPasswordHash) : undefined,
+      hasGoogleAuth: viewingOwnProfile ? Boolean((user as { googleId?: string | null }).googleId) : undefined,
     };
     if (!viewingOwnProfile) {
       delete profile.closeFriendIds;

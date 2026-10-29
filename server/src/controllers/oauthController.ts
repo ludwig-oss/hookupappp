@@ -74,6 +74,7 @@ function toClientUser(user: User) {
     country: user.country,
     city: user.city,
     hasBackupPassword: Boolean(user.backupPasswordHash),
+    hasGoogleAuth: Boolean(user.googleId),
   };
 }
 
@@ -175,6 +176,7 @@ async function upsertOAuthUser(opts: {
         : ({ appleId: providerId } as any);
   await updateUserProfile(user.id, {
     emailVerified: true,
+    pinAuth: false,
     profileSetupComplete: false,
     profilePicture: picture || null,
     ...idPatch,
@@ -204,6 +206,7 @@ export function startGoogle(req: Request, res: Response) {
   url.searchParams.set('response_type', 'code');
   url.searchParams.set('scope', 'openid email profile');
   url.searchParams.set('access_type', 'online');
+  url.searchParams.set('include_granted_scopes', 'true');
   url.searchParams.set('prompt', 'select_account');
   url.searchParams.set('state', state);
   res.redirect(302, url.toString());
@@ -250,10 +253,14 @@ export async function googleCallback(req: Request, res: Response) {
     };
     if (!profile.id) return redirectError(res, 'Could not read Google profile');
 
+    if (!profile.email) {
+      return redirectError(res, 'Google did not share your Gmail. Allow email access and try again.');
+    }
+
     const user = await upsertOAuthUser({
       provider: 'google',
       providerId: profile.id,
-      email: (profile.email || '').toLowerCase(),
+      email: profile.email.toLowerCase(),
       name: profile.name || 'Google User',
       picture: profile.picture || null,
     });

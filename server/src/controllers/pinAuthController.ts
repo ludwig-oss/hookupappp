@@ -54,6 +54,7 @@ function toClientUser(user: Awaited<ReturnType<typeof getUserById>>) {
     emailVerified: Boolean(user.emailVerified),
     improvementCategories: Array.isArray(user.improvementCategories) ? user.improvementCategories : [],
     hasBackupPassword: Boolean(user.backupPasswordHash),
+    hasGoogleAuth: Boolean(user.googleId),
   };
 }
 

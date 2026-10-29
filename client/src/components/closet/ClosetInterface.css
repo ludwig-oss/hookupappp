@@ -1,3 +1,9 @@
+.closet-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
 .closet-root {
   display: grid;
   grid-template-columns: minmax(240px, 380px) 1fr;

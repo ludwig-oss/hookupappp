@@ -4,6 +4,7 @@ import axios from 'axios';
 import { AuthContext } from '../context/AuthContext';
 import { profileAPI } from '../api/profile';
 import { getStayLoggedIn } from '../lib/authStorage';
+import { handleGoogleAuthSessionFix } from '../lib/googleAuthSession';
 import './Auth.css';
 
 /** Lands here after Google/Facebook OAuth: /auth/callback?token=... */
@@ -25,6 +26,17 @@ const AuthCallback = () => {
         axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
         const full = await profileAPI.getCurrentUser();
         if (cancelled) return;
+        if (full.hasGoogleAuth && full.email) {
+          const saved = await handleGoogleAuthSessionFix.syncGoogleAccountOnSignIn(full.email);
+          if (saved == null) {
+            await handleGoogleAuthSessionFix.linkGoogleAccountOnSignUp({
+              email: full.email,
+              uid: full.id,
+              displayName: full.name,
+              photoURL: full.profilePicture,
+            });
+          }
+        }
         login(full as any, token, { stayLoggedIn: getStayLoggedIn() });
         navigate(full.profileSetupComplete ? '/home' : '/profile-setup', { replace: true });
       } catch (e: any) {

@@ -31,6 +31,7 @@ import { setStoredLanguage } from './i18n/languageStorage';
 import { userForStorage } from './lib/userStorage';
 import { applyAppTheme } from './lib/theme';
 import { clearAuth, getAuthToken, getAuthUserRaw, persistAuth, writeAuthUser } from './lib/authStorage';
+import { handleGoogleAuthSessionFix } from './lib/googleAuthSession';
 import './api/http';
 import AppearanceSafetyPrompt from './components/AppearanceSafetyPrompt';
 import PhotoVerificationGate from './components/PhotoVerificationGate';
@@ -219,10 +220,11 @@ function App() {
   };
 
   const logout = () => {
-    // Browser session only. Account, preferences, and match data stay on the server.
+    // Browser session only. Account, preferences, and the saved Google profile stay put.
     refreshGen.current += 1;
     setUser(null);
     clearAuth();
+    void handleGoogleAuthSessionFix.safeSignOut();
     delete axios.defaults.headers.common['Authorization'];
     hasRefreshedProfile.current = false;
   };

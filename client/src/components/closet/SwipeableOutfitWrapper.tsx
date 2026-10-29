@@ -7,7 +7,7 @@ const IDLE: Drag = { x: 0, y: 0, transition: 'none' };
 
 /**
  * Web stand-in for the outfit card swipe.
- * Right past 120px saves the look. Left past 120px shuffles. A short drag springs back.
+ * Right past 120px tries the look on. Left past 120px shuffles. A short drag springs back.
  */
 export default function SwipeableOutfitWrapper({
   children,
@@ -114,7 +114,7 @@ export default function SwipeableOutfitWrapper({
       onPointerCancel={onPointerUp}
     >
       <span className="swipe-stamp swipe-stamp-save" style={{ opacity: rightStamp }} aria-hidden={rightStamp < 0.4}>
-        ROCK IT
+        TRY ON
       </span>
       <span className="swipe-stamp swipe-stamp-skip" style={{ opacity: leftStamp }} aria-hidden={leftStamp < 0.4}>
         AS IF!

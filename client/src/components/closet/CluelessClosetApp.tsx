@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { fashionAPI } from '../../api/fashion';
 import { inspirationContextLine, type InspirationMatch } from '../../lib/inspirationBadge';
 import { itemsFor, type ClosetGender, type ClosetItem } from '../../data/closetCatalog';
@@ -32,8 +32,6 @@ export default function CluelessClosetApp({
   const [bottomIndex, setBottomIndex] = useState(0);
   const [showMatchOverlay, setShowMatchOverlay] = useState(false);
   const [trendMatches, setTrendMatches] = useState<InspirationMatch[]>([]);
-  const [saveNote, setSaveNote] = useState('');
-  const saveGen = useRef(0);
 
   useEffect(() => {
     setTopIndex(0);
@@ -71,34 +69,6 @@ export default function CluelessClosetApp({
     if (bottoms.length) setBottomIndex(Math.floor(Math.random() * bottoms.length));
   };
 
-  const handleRockIt = () => {
-    if (!top || !bottom) return;
-    const imageUrl = garmentSrc(top);
-    const title = `${top.title} + ${bottom.title}`;
-    const pieces = [top.title, bottom.title];
-    const gen = ++saveGen.current;
-    handleShuffle();
-    if (!imageUrl) {
-      setSaveNote('That look has no photo to save.');
-      return;
-    }
-    void fashionAPI
-      .saveUpload({
-        title,
-        imageUrl,
-        kind: 'look',
-        group: 'Saved looks',
-        event: 'date',
-        pieces,
-      })
-      .then(() => {
-        if (saveGen.current === gen) setSaveNote('Rocked it — saved to your wardrobe.');
-      })
-      .catch(() => {
-        if (saveGen.current === gen) setSaveNote('Could not save that look.');
-      });
-  };
-
   const handleTryOn = () => {
     if (!top || !bottom) return;
     setShowMatchOverlay(true);
@@ -121,9 +91,9 @@ export default function CluelessClosetApp({
           </button>
         </aside>
 
-        <SwipeableOutfitWrapper onSwipeLeft={handleShuffle} onSwipeRight={handleRockIt}>
+        <SwipeableOutfitWrapper onSwipeLeft={handleShuffle} onSwipeRight={handleTryOn}>
           <div className="clueless-stage" data-closet-tour="carousel">
-            <p className="clueless-swipe-hint">Swipe right to rock it · swipe left for as if</p>
+            <p className="clueless-swipe-hint">Swipe right to try on · swipe left to shuffle</p>
             <div className="clueless-inspiration-badge" role="note">
               {inspirationLine}
             </div>
@@ -156,7 +126,6 @@ export default function CluelessClosetApp({
               </button>
             </div>
             {bottom && <p className="clueless-name">{bottom.title}</p>}
-            {saveNote && <p className="clueless-save-note">{saveNote}</p>}
           </div>
         </SwipeableOutfitWrapper>
 

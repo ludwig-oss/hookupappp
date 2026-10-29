@@ -63,6 +63,8 @@ export default function ClosetInterface({
   const [brand, setBrand] = useState<'Jordan' | 'Nike' | 'Adidas' | 'All'>('All');
   const [tryOnLoading, setTryOnLoading] = useState(false);
   const [tryOnLabel, setTryOnLabel] = useState<string | null>(null);
+  const [occasion, setOccasion] = useState<'everyday' | 'special_event' | 'work' | 'night_out'>('everyday');
+  const [cluelessLine, setCluelessLine] = useState<string | null>(null);
 
   const initialModelUrl = useMemo(() => {
     if (bodyUrl) return bodyUrl;
@@ -177,6 +179,24 @@ export default function ClosetInterface({
     }
   };
 
+  const runCluelessMatch = async () => {
+    setTryOnLoading(true);
+    setCluelessLine(null);
+    try {
+      const match = await fashionAPI.clutchMatch({ occasion });
+      setCluelessLine(match.guideLine);
+      const first = match.outfit.top || match.outfit.bottom || match.outfit.outerwear;
+      if (first?.imageUrl) {
+        setTryOnImage(first.imageUrl);
+        setTryOnLabel(match.context.isShoppingAssisted ? 'Clueless · shop assist' : 'Clueless · closet match');
+      }
+    } catch {
+      setCluelessLine('Could not compose that look yet. Save closet pieces first, then try again.');
+    } finally {
+      setTryOnLoading(false);
+    }
+  };
+
   const equip = (item: ClosetItem) => {
     setEquipped((prev) => {
       const cur = prev[item.category];
@@ -219,6 +239,17 @@ export default function ClosetInterface({
           </div>
         </div>
         <p className="closet-hint">Tap a piece to run virtual try-on on the full-body model</p>
+        <div className="closet-gender" aria-label="Occasion">
+          {(['everyday', 'work', 'night_out', 'special_event'] as const).map((id) => (
+            <button key={id} type="button" className={occasion === id ? 'is-on' : ''} onClick={() => setOccasion(id)}>
+              {id === 'special_event' ? 'Special' : id === 'night_out' ? 'Night out' : id === 'work' ? 'Work' : 'Everyday'}
+            </button>
+          ))}
+        </div>
+        <button type="button" className="closet-gender" style={{ marginTop: 8 }} onClick={() => void runCluelessMatch()} disabled={tryOnLoading}>
+          Clueless match
+        </button>
+        {cluelessLine && <p className="closet-hint">{cluelessLine}</p>}
         <div className="closet-gender">
           <button type="button" className={gender === 'masc' ? 'is-on' : ''} onClick={() => setGender('masc')}>
             Man

@@ -1,3 +1,12 @@
+function abortAfter(ms: number): AbortSignal {
+  if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') {
+    return AbortSignal.timeout(ms);
+  }
+  const ctrl = new AbortController();
+  window.setTimeout(() => ctrl.abort(), ms);
+  return ctrl.signal;
+}
+
 /** Ping /api/health until the real JSON API responds (not Render's cold-start HTML). */
 export async function warmBackend(maxWaitMs = 60000): Promise<boolean> {
   if (typeof window === 'undefined') return false;
@@ -8,7 +17,8 @@ export async function warmBackend(maxWaitMs = 60000): Promise<boolean> {
     try {
       const res = await fetch(`${origin}/api/health`, {
         cache: 'no-store',
-        signal: AbortSignal.timeout(12000),
+        credentials: 'same-origin',
+        signal: abortAfter(12000),
       });
       const ct = res.headers.get('content-type') || '';
       if (res.ok && ct.includes('application/json')) {

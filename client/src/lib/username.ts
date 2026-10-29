@@ -11,3 +11,10 @@ export function normalizeUsernameInput(value: string): string {
 export function isValidUsername(value: string): boolean {
   return USERNAME_REGEX.test(value.trim().toLowerCase());
 }
+
+/** Login field: keep Gmail intact; usernames still strip to a–z / 0–9 / _. */
+export function normalizeLoginIdentifier(value: string): string {
+  const v = value.trim();
+  if (v.includes('@')) return v.toLowerCase().slice(0, 254);
+  return normalizeUsernameInput(value);
+}

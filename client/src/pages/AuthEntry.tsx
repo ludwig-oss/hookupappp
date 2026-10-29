@@ -6,7 +6,7 @@ import { discoverAPI } from '../api/discover';
 import { walkMatchAPI } from '../api/walkMatch';
 import { formatAxiosError } from '../lib/apiError';
 import { normalizePinDigits } from '../lib/pin';
-import { normalizeUsernameInput, USERNAME_HINT, USERNAME_MAX, USERNAME_MIN } from '../lib/username';
+import { normalizeLoginIdentifier, normalizeUsernameInput, USERNAME_HINT, USERNAME_MAX, USERNAME_MIN } from '../lib/username';
 import LookingForChips from '../components/LookingForChips';
 import { dateMatchAPI } from '../api/dateMatch';
 import PasswordInput from '../components/PasswordInput';
@@ -64,11 +64,29 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
     const m = searchParams.get('mode');
     if (m === 'login') setMode('login');
     const oauthErr = searchParams.get('oauth_error');
-    if (oauthErr) setError(oauthErr);
-    fetch('/api/auth/oauth/status')
+    fetch('/api/auth/oauth/status', { cache: 'no-store', credentials: 'same-origin' })
       .then((r) => r.json())
-      .then((d: { google?: boolean }) => setGoogleReady(Boolean(d.google)))
-      .catch(() => setGoogleReady(null));
+      .then((d: { google?: boolean }) => {
+        const ready = Boolean(d.google);
+        setGoogleReady(ready);
+        if (oauthErr && ready && /not configured/i.test(oauthErr)) {
+          setError('');
+        } else if (oauthErr) {
+          setError(oauthErr);
+        }
+      })
+      .catch(() => {
+        setGoogleReady(null);
+        if (oauthErr) setError(oauthErr);
+      })
+      .finally(() => {
+        if (!oauthErr || typeof window === 'undefined') return;
+        const next = new URL(window.location.href);
+        if (!next.searchParams.has('oauth_error')) return;
+        next.searchParams.delete('oauth_error');
+        const qs = next.searchParams.toString();
+        window.history.replaceState({}, '', `${next.pathname}${qs ? `?${qs}` : ''}${next.hash}`);
+      });
   }, [searchParams]);
 
   useEffect(() => {
@@ -178,9 +196,9 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
     setError('');
     setLoading(true);
     try {
-      const id = normalizeUsernameInput(loginIdentifier.trim());
+      const id = normalizeLoginIdentifier(loginIdentifier);
       const secret = loginSecret.trim();
-      if (!id) throw new Error('Enter your username');
+      if (!id) throw new Error('Enter your username or Gmail');
       if (!secret) throw new Error(loginMethod === 'pin' ? 'Enter your 6-digit PIN' : 'Enter your password');
 
       let response;
@@ -212,7 +230,7 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
         <p className="auth-subtitle">
           {mode === 'signup'
             ? 'Fastest way in: Continue with Google. We pull your Gmail and Google profile — no password or code. Or create an account with a username and PIN.'
-            : 'Continue with Google, or sign in with your username and PIN / password.'}
+            : 'Continue with Google (your Gmail), or sign in with username, Gmail, PIN, or password.'}
         </p>
 
         {error && <div className="error-message">{error}</div>}
@@ -233,7 +251,7 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
           <p className="google-continue-hint">
             {googleReady === false
               ? `Google sign-in needs GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in server/.env (this computer) or on Render (live). Authorized redirect URI: ${typeof window !== 'undefined' ? window.location.origin : ''}/auth/oauth-return/google`
-              : 'Uses your Gmail and Google profile automatically. No password, PIN, or one-time code.'}
+              : 'Uses your Gmail. Same button to sign up and to log back in — pick that Google account again.'}
           </p>
         </div>
         <div className="auth-or-divider">or</div>
@@ -368,11 +386,12 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
             </div>
             <form onSubmit={handleLogin} className="auth-form" autoComplete="off">
                 <div className="form-group">
-                  <label>Username</label>
+                  <label>Username or Gmail</label>
                   <input
                     name="aswp-login-username"
                     value={loginIdentifier}
-                    onChange={(e) => setLoginIdentifier(normalizeUsernameInput(e.target.value))}
+                    onChange={(e) => setLoginIdentifier(normalizeLoginIdentifier(e.target.value))}
+                    placeholder="username or you@gmail.com"
                     autoComplete="off"
                     autoCorrect="off"
                     autoCapitalize="none"

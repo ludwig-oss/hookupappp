@@ -132,4 +132,27 @@ export const fashionAPI = {
   remove: async (id: string): Promise<void> => {
     await axios.delete(`${API_URL}/wardrobe/${id}`);
   },
+  clutchMatch: async (body?: {
+    occasion?: 'everyday' | 'special_event' | 'work' | 'night_out';
+    prompt?: string;
+    destination?: string;
+    budget?: number;
+  }) => {
+    const response = await axios.post(`${API_URL}/clutch-match`, body || {});
+    return response.data as {
+      matchStatus: string;
+      guideLine: string;
+      context: { occasion: string; destination: string | null; isShoppingAssisted: boolean };
+      outfit: {
+        top: { id: string; imageUrl: string; pattern: string } | null;
+        bottom: { id: string; imageUrl: string; pattern: string } | null;
+        outerwear: { id: string; imageUrl: string; pattern: string } | null;
+      };
+      shuffleOptions: { availableTopsCount: number; availableBottomsCount: number };
+    };
+  },
+  monthlyCheckIn: async (month?: string) => {
+    const response = await axios.post(`${API_URL}/monthly-check-in`, { month });
+    return response.data as { message: string; requiresInput: boolean; inputType: string };
+  },
 };

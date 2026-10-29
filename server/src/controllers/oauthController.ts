@@ -279,6 +279,8 @@ export function startGoogle(req: Request, res: Response) {
   url.searchParams.set('include_granted_scopes', 'true');
   url.searchParams.set('prompt', 'select_account');
   url.searchParams.set('state', encodeOAuthState(origin));
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+  res.setHeader('Referrer-Policy', 'no-referrer-when-downgrade');
   res.redirect(302, url.toString());
 }
 

@@ -7,6 +7,13 @@ import { critiqueLooks } from '../services/fashionCritic.js';
 import { categoryForLook, runVirtualTryOn } from '../services/fashionTryOn.js';
 import { deleteWardrobeItem, listWardrobe, saveWardrobeItem, type PieceSlot } from '../models/fashionWardrobe.js';
 import type { FashionLook } from '../data/fashionCatalog.js';
+import {
+  catalogAsRetail,
+  cluelessStylist,
+  fromSavedWardrobe,
+  occasionFromText,
+  type OccasionType,
+} from '../services/cluelessOutfitComposer.js';
 
 function serializeLook(look: FashionLook) {
   return {
@@ -202,6 +209,45 @@ export const saveWardrobeHandler = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Fashion wardrobe save error:', error);
     res.status(500).json({ error: 'Could not save look' });
+  }
+};
+
+export const monthlyCheckInHandler = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).userId as string | undefined;
+    if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+    const month =
+      String(req.body?.month || req.query.month || '').trim() ||
+      new Date().toLocaleString('en-US', { month: 'long' });
+    res.json(cluelessStylist.getMonthlyCheckIn(month));
+  } catch (error) {
+    console.error('Fashion monthly check-in error:', error);
+    res.status(500).json({ error: 'Could not start the monthly style check-in' });
+  }
+};
+
+export const clutchMatchHandler = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).userId as string | undefined;
+    if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+    const closet = await listWardrobe(userId);
+    const occasion = (String(req.body?.occasion || occasionFromText(String(req.body?.prompt || ''))).trim() ||
+      'everyday') as OccasionType;
+    const match = cluelessStylist.generateOutfitMatch(
+      {
+        userId,
+        date: String(req.body?.date || new Date().toISOString()),
+        occasion,
+        destinationDetails: req.body?.destination ? String(req.body.destination) : null,
+        budgetForShopping: Number(req.body?.budget || 0) || 0,
+      },
+      closet.map(fromSavedWardrobe),
+      catalogAsRetail()
+    );
+    res.json(match);
+  } catch (error) {
+    console.error('Fashion clutch match error:', error);
+    res.status(500).json({ error: 'Could not compose that outfit' });
   }
 };
 

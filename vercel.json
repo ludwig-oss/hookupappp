@@ -22,6 +22,7 @@
       "source": "/(.*)",
       "headers": [
         { "key": "Permissions-Policy", "value": "geolocation=*, camera=*, microphone=*" },
+        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
         { "key": "x-vercel-skip-toolbar", "value": "1" }
       ]
     }

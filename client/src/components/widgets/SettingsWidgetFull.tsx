@@ -1682,10 +1682,16 @@ const SettingsWidgetFull = () => {
           </div>
 
           <div style={{ marginBottom: '30px', padding: '20px', background: '#fff', border: '2px solid #e5e7eb', borderRadius: '12px' }}>
-            <h4 style={{ marginBottom: '16px' }}>Change Password</h4>
+            <h4 style={{ marginBottom: '16px' }}>{user?.hasBackupPassword ? 'Change Password' : 'Add a password'}</h4>
+            {!user?.hasBackupPassword && (
+              <p style={{ fontSize: 13, color: '#6b7280', marginBottom: 12 }}>
+                You skipped this at sign-up. Add a password so you can sign in if you forget your PIN.
+              </p>
+            )}
             {passwordError && <div className="error-message" style={{ marginBottom: '12px' }}>{passwordError}</div>}
             {passwordSuccess && <div style={{ padding: '12px', background: '#d1fae5', color: '#065f46', borderRadius: '8px', marginBottom: '12px', fontSize: '14px' }}>{passwordSuccess}</div>}
             
+            {user?.hasBackupPassword && (
             <div className="form-group" style={{ marginBottom: '16px' }}>
               <label style={{ display: 'block', marginBottom: '8px', fontWeight: 600 }}>Current Password</label>
               <input
@@ -1696,6 +1702,7 @@ const SettingsWidgetFull = () => {
                 style={{ width: '100%', padding: '12px', border: '2px solid #e5e7eb', borderRadius: '8px', fontSize: '16px' }}
               />
             </div>
+            )}
 
             <div className="form-group" style={{ marginBottom: '16px' }}>
               <label style={{ display: 'block', marginBottom: '8px', fontWeight: 600 }}>New Password</label>
@@ -1730,7 +1737,7 @@ const SettingsWidgetFull = () => {
                 setPasswordError('');
                 setPasswordSuccess('');
                 
-                if (!currentPassword || !newPassword || !confirmNewPassword) {
+                if ((!user?.hasBackupPassword ? !newPassword || !confirmNewPassword : !currentPassword || !newPassword || !confirmNewPassword)) {
                   setPasswordError('All fields are required');
                   return;
                 }
@@ -1764,8 +1771,9 @@ const SettingsWidgetFull = () => {
 
                 setLoading(true);
                 try {
-                  await authAPI.changePassword(currentPassword, newPassword);
-                  setPasswordSuccess('Password changed successfully!');
+                  await authAPI.changePassword(user?.hasBackupPassword ? currentPassword : null, newPassword);
+                  setPasswordSuccess(user?.hasBackupPassword ? 'Password changed successfully!' : 'Password saved. You can use it to sign in.');
+                  if (!user?.hasBackupPassword) updateUser({ hasBackupPassword: true });
                   setCurrentPassword('');
                   setNewPassword('');
                   setConfirmNewPassword('');
@@ -1780,7 +1788,7 @@ const SettingsWidgetFull = () => {
               disabled={loading}
               style={{ width: '100%' }}
             >
-              {loading ? 'Changing Password...' : 'Change Password'}
+              {loading ? 'Saving...' : user?.hasBackupPassword ? 'Change Password' : 'Save password'}
             </button>
           </div>
 

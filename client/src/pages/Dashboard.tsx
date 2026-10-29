@@ -27,7 +27,9 @@ import ConnectionsBuzzPopup from '../components/ConnectionsBuzzPopup';
 import BuzzResultPopup from '../components/BuzzResultPopup';
 import NearbyMatchPopup from '../components/NearbyMatchPopup';
 import { useDashboardLocation } from '../hooks/useDashboardLocation';
+import AddPasswordPrompt from '../components/AddPasswordPrompt';
 import { askNotifyPermission } from '../lib/deviceNotify';
+import { NEARBY_POPUP_VISIBLE_EVENT, requestNearbyCheckNow, setConnectionsStartView } from '../lib/proximitySession';
 import { useGuideApplicationNotifications } from '../hooks/useGuideApplicationNotifications';
 import { textingHelpAPI } from '../api/textingHelp';
 import { guideHelpAPI } from '../api/guideHelp';
@@ -77,6 +79,22 @@ const Dashboard = () => {
     if (mustPickGuide && id !== 'compatibility') return;
     setReturnToWidget(null);
     setOpenWidget(id);
+  };
+
+  const checkNearbyNow = () => {
+    if (mustPickGuide || inRelationship) return;
+    askNotifyPermission();
+    setConnectionsStartView('nearby');
+    let popupShown = false;
+    const onShown = () => {
+      popupShown = true;
+    };
+    window.addEventListener(NEARBY_POPUP_VISIBLE_EVENT, onShown);
+    requestNearbyCheckNow();
+    window.setTimeout(() => {
+      window.removeEventListener(NEARBY_POPUP_VISIBLE_EVENT, onShown);
+      if (!popupShown) openWidgetFromHome('connections');
+    }, 1600);
   };
 
   const handleBackFromWidget = () => {
@@ -171,6 +189,9 @@ const Dashboard = () => {
     try {
       const profile = await profileAPI.getCurrentUser();
       setHighlights(profile.highlights || []);
+      if (typeof profile.hasBackupPassword === 'boolean' && profile.hasBackupPassword !== user.hasBackupPassword) {
+        updateUser({ hasBackupPassword: profile.hasBackupPassword });
+      }
     } catch (error: unknown) {
       const ax = error as { response?: { status?: number; data?: { error?: string } }; message?: string };
       const status = ax.response?.status;
@@ -432,7 +453,9 @@ const Dashboard = () => {
       />
       <ConnectionsBuzzPopup onOpenConnections={() => setOpenWidget('connections')} />
       <BuzzResultPopup />
-      <NearbyMatchPopup onOpenConnections={() => setOpenWidget('connections')} />
+      {!inRelationship && (
+        <NearbyMatchPopup onOpenConnections={() => setOpenWidget('connections')} />
+      )}
       <TextingHelpSosPopup />
       <InterestPitchPopup
         onOpenChat={(userId) => {
@@ -466,6 +489,15 @@ const Dashboard = () => {
       )}
       {!openWidget ? (
         <div className="widget-grid">
+          {!inRelationship && (
+            <button
+              type="button"
+              className="nearby-now-btn nearby-now-btn-grid"
+              onClick={checkNearbyNow}
+            >
+              People nearby (50m)
+            </button>
+          )}
           <div className="widget-card" onClick={() => navigate('/profile')} role="button" tabIndex={0} onKeyDown={(e) => e.key === 'Enter' && navigate('/profile')}>
             <div className="widget-card-icon">👤</div>
             <div className="widget-card-title">{t('profile')}</div>
@@ -600,6 +632,12 @@ const Dashboard = () => {
         </div>
       )}
 
+      {!inRelationship && openWidget && (
+        <button type="button" className="nearby-now-btn nearby-now-btn-fixed" onClick={checkNearbyNow}>
+          Nearby 50m
+        </button>
+      )}
+
       {/* Console Controls */}
       <div className="console-controls">
         <button
@@ -647,6 +685,8 @@ const Dashboard = () => {
           </p>
         </button>
       )}
+
+      <AddPasswordPrompt />
 
       {showPhotoVerification && user?.id && createPortal(
         <PhotoVerificationModal

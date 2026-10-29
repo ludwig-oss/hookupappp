@@ -25,5 +25,6 @@ export function userForStorage(user: Record<string, unknown>): Record<string, un
     dateLookingFor: Array.isArray(user.dateLookingFor)
       ? user.dateLookingFor.filter((x): x is string => typeof x === 'string')
       : [],
+    ...(typeof user.hasBackupPassword === 'boolean' ? { hasBackupPassword: user.hasBackupPassword } : {}),
   };
 }

@@ -45,6 +45,7 @@ export interface AuthResponse {
     profilePicture: string | null;
     profileSetupComplete: boolean;
     emailVerified?: boolean;
+    hasBackupPassword?: boolean;
   };
   requiresVerification?: boolean;
 }
@@ -70,10 +71,10 @@ export const authAPI = {
     email?: string;
     phoneNumber?: string;
     improvementCategories?: string[];
-    password: string;
-    passwordHint1: string;
-    passwordHint2: string;
-    passwordHint3: string;
+    password?: string;
+    passwordHint1?: string;
+    passwordHint2?: string;
+    passwordHint3?: string;
   }): Promise<AuthResponse> => {
     const response = await authPost<AuthResponse>('/signup-pin', data);
     return response.data;
@@ -172,7 +173,7 @@ export const authAPI = {
     return response.data;
   },
 
-  changePassword: async (currentPassword: string, newPassword: string): Promise<{ message: string }> => {
+  changePassword: async (currentPassword: string | null, newPassword: string): Promise<{ message: string }> => {
     const response = await authPost<{ message: string }>('/change-password', { currentPassword, newPassword });
     return response.data;
   },

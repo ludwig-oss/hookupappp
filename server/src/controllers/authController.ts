@@ -33,6 +33,7 @@ function toClientUser(user: User) {
     city: user.city,
     qualifiedCoach: Boolean(user.qualifiedCoach),
     coachStarRating: typeof user.coachStarRating === 'number' ? user.coachStarRating : undefined,
+    hasBackupPassword: Boolean(user.backupPasswordHash),
   };
 }
 
@@ -436,8 +437,8 @@ export const changePassword = async (req: Request, res: Response) => {
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    if (!currentPassword || !newPassword) {
-      return res.status(400).json({ error: 'Current password and new password are required' });
+    if (!newPassword) {
+      return res.status(400).json({ error: 'New password is required' });
     }
 
     const user = await getUserById(userId);
@@ -445,15 +446,23 @@ export const changePassword = async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    let currentOk = false;
-    if (user.backupPasswordHash) {
-      currentOk = await bcrypt.compare(currentPassword, user.backupPasswordHash);
-    }
-    if (!currentOk) {
-      currentOk = await bcrypt.compare(currentPassword, user.password);
-    }
-    if (!currentOk) {
-      return res.status(401).json({ error: 'Current password is incorrect' });
+    const addingFirstPassword =
+      !user.backupPasswordHash &&
+      (user.pinAuth === true || Boolean(user.passwordHint1 && user.passwordHint2 && user.passwordHint3));
+    if (!addingFirstPassword) {
+      if (!currentPassword) {
+        return res.status(400).json({ error: 'Current password and new password are required' });
+      }
+      let currentOk = false;
+      if (user.backupPasswordHash) {
+        currentOk = await bcrypt.compare(currentPassword, user.backupPasswordHash);
+      }
+      if (!currentOk) {
+        currentOk = await bcrypt.compare(currentPassword, user.password);
+      }
+      if (!currentOk) {
+        return res.status(401).json({ error: 'Current password is incorrect' });
+      }
     }
 
     const passwordValidation = validateStrongPassword(newPassword);

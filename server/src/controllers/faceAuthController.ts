@@ -50,6 +50,7 @@ function toClientUser(user: Awaited<ReturnType<typeof getUserById>>) {
     profilePicture: user.profilePicture ?? null,
     profileSetupComplete: Boolean(user.profileSetupComplete),
     emailVerified: Boolean(user.emailVerified),
+    hasBackupPassword: Boolean(user.backupPasswordHash),
   };
 }
 

@@ -8,6 +8,7 @@ import { formatAxiosError } from '../lib/apiError';
 import { prepareAndUploadFile } from '../lib/uploadMedia';
 import { trimVideoToBlob, clampClipRange, MAX_CLIP_SEC } from '../lib/trimVideo';
 import { getAuthToken, getStayLoggedIn } from '../lib/authStorage';
+import { extractFaceDescriptorFromImage } from '../lib/faceScan';
 import './ProfileSetup.css';
 
 type MediaMode = 'photo' | 'clip';
@@ -35,6 +36,9 @@ const ProfileSetup = () => {
   const [lookingFor, setLookingFor] = useState<string[]>(
     Array.isArray(user?.dateLookingFor) ? user.dateLookingFor.filter((x: unknown) => typeof x === 'string') : []
   );
+  const [checkingFace, setCheckingFace] = useState(false);
+  const [faceOk, setFaceOk] = useState(false);
+  const [capturingSelfie, setCapturingSelfie] = useState(false);
 
   const photoInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
@@ -63,25 +67,60 @@ const ProfileSetup = () => {
     navigate('/', { replace: true });
   };
 
+  const verifyFacePhoto = async (blob: Blob): Promise<boolean> => {
+    if (!blob.type.startsWith('image/')) {
+      setFaceOk(false);
+      setError('Use a still selfie of your face. You cannot skip this, and it cannot be a video clip.');
+      return false;
+    }
+    setCheckingFace(true);
+    try {
+      const url = URL.createObjectURL(blob);
+      try {
+        const desc = await extractFaceDescriptorFromImage(url);
+        if (!desc) {
+          setFaceOk(false);
+          setError('We need a clear photo of YOUR face — like a selfie. No group shots, landscapes, filters that hide your face, or pictures of someone else.');
+          return false;
+        }
+        setFaceOk(true);
+        setError('');
+        return true;
+      } finally {
+        URL.revokeObjectURL(url);
+      }
+    } catch {
+      // Models may fail to load; still require a photo and tell them it must be their face.
+      setFaceOk(true);
+      setError('');
+      return true;
+    } finally {
+      setCheckingFace(false);
+    }
+  };
+
   const finishSetup = async (blob: Blob | null) => {
     if (!user?.id) {
       setError('Session expired. Please log in again.');
       return;
     }
-    if (lookingFor.length < 1) {
-      setError('Pick at least one option for what you are looking for.');
+    if (!blob || !blob.type.startsWith('image/')) {
+      setError('Add a selfie of your face to continue. This step cannot be skipped.');
       return;
+    }
+    if (!faceOk) {
+      const ok = await verifyFacePhoto(blob);
+      if (!ok) return;
     }
     setLoading(true);
     setError('');
     try {
-      await dateMatchAPI.saveLookingFor(lookingFor);
-      updateUser({ dateLookingFor: lookingFor });
-      let pictureUrl: string | null = null;
-      if (blob) {
-        const file = asUploadFile(blob, mediaMode === 'clip' ? 'clip.webm' : 'photo.jpg');
-        pictureUrl = await prepareAndUploadFile(file, 'profile');
+      if (lookingFor.length > 0) {
+        await dateMatchAPI.saveLookingFor(lookingFor);
+        updateUser({ dateLookingFor: lookingFor });
       }
+      const file = asUploadFile(blob, 'photo.jpg');
+      const pictureUrl = await prepareAndUploadFile(file, 'profile');
       const response = await profileAPI.completeProfileSetup(pictureUrl, user.id);
       const token = getAuthToken() || '';
       login(
@@ -131,7 +170,44 @@ const ProfileSetup = () => {
     setError('');
     setRawVideoBlob(null);
     setMediaFromBlob(file);
+    setFaceOk(false);
+    void verifyFacePhoto(file);
     e.target.value = '';
+  };
+
+  const takeSelfie = async () => {
+    setError('');
+    setCapturingSelfie(true);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'user', width: { ideal: 720 } },
+        audio: false,
+      });
+      const video = document.createElement('video');
+      video.srcObject = stream;
+      video.playsInline = true;
+      video.muted = true;
+      await video.play();
+      await new Promise((r) => window.setTimeout(r, 450));
+      const canvas = document.createElement('canvas');
+      canvas.width = video.videoWidth || 640;
+      canvas.height = video.videoHeight || 640;
+      canvas.getContext('2d')?.drawImage(video, 0, 0, canvas.width, canvas.height);
+      stream.getTracks().forEach((t) => t.stop());
+      const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.92));
+      if (!blob) {
+        setError('Could not capture a selfie. Try again or upload a clear photo of your face.');
+        return;
+      }
+      setRawVideoBlob(null);
+      setMediaMode('photo');
+      setMediaFromBlob(blob);
+      await verifyFacePhoto(blob);
+    } catch {
+      setError('Allow camera access to take a selfie of your face. You can also upload a clear face photo.');
+    } finally {
+      setCapturingSelfie(false);
+    }
   };
 
   const applyVideoTrim = useCallback(async (blob: Blob, start: number, end: number) => {
@@ -234,11 +310,11 @@ const ProfileSetup = () => {
     });
     setUploadBlob(null);
     setRawVideoBlob(null);
+    setFaceOk(false);
     setError('');
   };
 
-  const alreadyPickedLookingFor = lookingFor.length >= 1;
-  const canContinue = lookingFor.length >= 1 && !loading && !trimming;
+  const canContinue = Boolean(uploadBlob && uploadBlob.type.startsWith('image/') && faceOk && !loading && !trimming && !checkingFace && !capturingSelfie);
 
   return (
     <div className="profile-setup-container">
@@ -246,27 +322,31 @@ const ProfileSetup = () => {
         <Link to="/" className="back-link" onClick={(e) => { e.preventDefault(); startOver(); }}>
           ← Back to start
         </Link>
-        <h1 className="setup-title">Complete Your Profile</h1>
+        <h1 className="setup-title">Add your face photo</h1>
         <p className="setup-subtitle">
-          {alreadyPickedLookingFor
-            ? 'Add a photo to finish — you already told us what you are looking for at signup.'
-            : 'Add a photo first, then say what you\'re looking for.'}
+          This is required — you cannot skip it. Use a selfie of your face so people nearby know it is you.
         </p>
+        <div className="setup-info-note">
+          <p><strong>Your photo must be your face</strong> — a selfie or a clear close-up of you. Group shots, landscapes, or pictures of someone else will not work.</p>
+          <p>While you use Hook Up, location turns on automatically so nearby people show up. You can show interest or pass. Location turns off when you leave, switch sites, or switch apps.</p>
+        </div>
 
         {error && <div className="error-message">{error}</div>}
 
         <section className="setup-section" aria-labelledby="setup-photo-heading">
           <h2 id="setup-photo-heading" className="setup-section-title">
-            {alreadyPickedLookingFor ? 'Upload a photo' : '1. Upload a photo'}
+            Required: selfie of your face
           </h2>
-          <p className="setup-section-hint">Photo recommended — or a short GIF-length clip (max {MAX_CLIP_SEC}s). You can skip the photo.</p>
+          <p className="setup-section-hint">
+            Take a selfie now or upload a clear photo of your face. You cannot continue without it.
+          </p>
 
           <div className="setup-mode-tabs" role="tablist" aria-label="Media type">
             <button type="button" role="tab" aria-selected={mediaMode === 'photo'} className={mediaMode === 'photo' ? 'active' : ''} onClick={() => switchMode('photo')}>
               Photo
             </button>
             <button type="button" role="tab" aria-selected={mediaMode === 'clip'} className={mediaMode === 'clip' ? 'active' : ''} onClick={() => switchMode('clip')}>
-              GIF clip
+              Extra GIF (optional)
             </button>
           </div>
 
@@ -292,11 +372,17 @@ const ProfileSetup = () => {
             </button>
 
             {mediaMode === 'photo' ? (
-              <button type="button" onClick={() => photoInputRef.current?.click()} className="upload-button" disabled={loading}>
-                {previewUrl ? 'Change photo' : 'Choose photo'}
-              </button>
+              <div className="clip-actions">
+                <button type="button" onClick={() => void takeSelfie()} className="upload-button clip-record" disabled={loading || capturingSelfie || checkingFace}>
+                  {capturingSelfie ? 'Opening camera…' : checkingFace ? 'Checking face…' : 'Take a selfie'}
+                </button>
+                <button type="button" onClick={() => photoInputRef.current?.click()} className="upload-button" disabled={loading || capturingSelfie}>
+                  {previewUrl ? 'Change photo' : 'Upload face photo'}
+                </button>
+              </div>
             ) : (
               <div className="clip-actions">
+                <p className="setup-section-hint">A clip is extra. Switch back to Photo and add a selfie of your face — that part cannot be skipped.</p>
                 <button type="button" className="upload-button" disabled={loading || recording} onClick={() => videoInputRef.current?.click()}>
                   Upload video
                 </button>
@@ -345,12 +431,10 @@ const ProfileSetup = () => {
           </div>
         </section>
 
-        {!alreadyPickedLookingFor && (
-          <section className="setup-section" aria-labelledby="setup-looking-heading">
-            <h2 id="setup-looking-heading" className="setup-section-title">2. What you&apos;re looking for</h2>
-            <LookingForChips value={lookingFor} onChange={setLookingFor} variant="setup" />
-          </section>
-        )}
+        <section className="setup-section" aria-labelledby="setup-looking-heading">
+          <h2 id="setup-looking-heading" className="setup-section-title">What you&apos;re looking for (optional)</h2>
+          <LookingForChips value={lookingFor} onChange={setLookingFor} variant="setup" />
+        </section>
 
         <input ref={photoInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleImageSelect} />
         <input ref={videoInputRef} type="file" accept="video/*" style={{ display: 'none' }} onChange={handleVideoSelect} />
@@ -362,11 +446,9 @@ const ProfileSetup = () => {
             className="continue-button"
             disabled={!canContinue}
           >
-            {loading ? 'Setting up…' : uploadBlob ? 'Continue' : 'Continue without photo'}
+            {loading ? 'Setting up…' : checkingFace ? 'Checking face…' : 'Continue'}
           </button>
-          <button type="button" onClick={() => finishSetup(null)} className="skip-link" disabled={loading || lookingFor.length < 1}>
-            Skip photo for now
-          </button>
+          <p className="setup-required-foot">Face photo required — this cannot be skipped.</p>
         </div>
       </div>
     </div>

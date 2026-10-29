@@ -238,7 +238,7 @@ export const getUserProfile = async (req: Request, res: Response) => {
     });
 
     // Don't send password and sensitive data
-    const { password, resetToken, resetTokenExpiry, ...userProfile } = user;
+    const { password, resetToken, resetTokenExpiry, backupPasswordHash, ...userProfile } = user;
     
     // Ensure all required fields exist with defaults
     const profile: Record<string, unknown> = {
@@ -257,6 +257,7 @@ export const getUserProfile = async (req: Request, res: Response) => {
       photoVerifiedAt: userProfile.photoVerifiedAt ?? null,
       createdAt: viewingOwnProfile ? photoLockStatusForUser(user).createdAt : undefined,
       photoLock: viewingOwnProfile ? photoLockStatusForUser(user) : undefined,
+      hasBackupPassword: viewingOwnProfile ? Boolean(backupPasswordHash) : undefined,
     };
     if (!viewingOwnProfile) {
       delete profile.closeFriendIds;
@@ -504,15 +505,21 @@ export const completeProfileSetup = async (req: Request, res: Response) => {
     }
 
     const { profilePicture } = req.body;
-    const updates: Record<string, unknown> = { profileSetupComplete: true };
-
-    if (profilePicture && typeof profilePicture === 'string') {
-      const isVideo =
-        profilePicture.startsWith('data:video') || /\.(mp4|webm|mov)(\?|#|$)/i.test(profilePicture);
-      updates.profilePicture = isVideo
-        ? await uploadMedia(profilePicture, 'profile')
-        : await uploadImage(profilePicture, 'profile');
+    if (!profilePicture || typeof profilePicture !== 'string') {
+      return res.status(400).json({
+        error: 'A photo of your face is required. Take a selfie — you cannot skip this step.',
+      });
     }
+
+    const updates: Record<string, unknown> = { profileSetupComplete: true };
+    const isVideo =
+      profilePicture.startsWith('data:video') || /\.(mp4|webm|mov)(\?|#|$)/i.test(profilePicture);
+    if (isVideo) {
+      return res.status(400).json({
+        error: 'Use a still selfie of your face as your profile photo. Clips can be added later.',
+      });
+    }
+    updates.profilePicture = await uploadImage(profilePicture, 'profile');
 
     const user = await runWithSystem(() => updateUserProfile(existing.id, updates));
     if (!user) {
@@ -655,14 +662,14 @@ export const updateUserProfileInfo = async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    const { password, resetToken, resetTokenExpiry, ...userProfile } = user;
+    const { password, resetToken, resetTokenExpiry, backupPasswordHash, ...userProfile } = user;
     res.json({
       message: celebrityVerification
         ? celebrityVerification.approved
           ? 'Public figure verified'
           : 'Public figure application reviewed — not verified yet'
         : 'Profile updated successfully',
-      user: userProfile,
+      user: { ...userProfile, hasBackupPassword: Boolean(backupPasswordHash) },
       celebrityVerification: celebrityVerification || undefined,
     });
   } catch (error) {

@@ -311,6 +311,31 @@
   text-decoration: underline;
 }
 
+.auth-later-note,
+.auth-info-note {
+  font-size: 12px;
+  line-height: 1.45;
+  color: #c4d4e0;
+  background: rgba(0, 212, 255, 0.08);
+  border: 1px solid rgba(0, 212, 255, 0.28);
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin: 0;
+  font-family: 'Orbitron', monospace;
+}
+
+.auth-info-note p {
+  margin: 0 0 8px;
+}
+
+.auth-info-note p:last-child {
+  margin-bottom: 0;
+}
+
+.auth-info-note strong {
+  color: #7ee8ff;
+}
+
 .error-message {
   padding: 12px 16px;
   background-color: rgba(239, 68, 68, 0.2);

@@ -48,7 +48,7 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
   const [loginSecret, setLoginSecret] = useState('');
   const [age, setAge] = useState('');
   const [gender, setGender] = useState('');
-  const [orientation, setOrientation] = useState<'straight' | 'gay' | 'lesbian' | 'bisexual' | 'pansexual'>('straight');
+  const [orientation, setOrientation] = useState<'' | 'straight' | 'gay' | 'lesbian' | 'bisexual' | 'pansexual'>('');
   const [lookingFor, setLookingFor] = useState<string[]>([]);
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [error, setError] = useState('');
@@ -109,28 +109,14 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
       setError('Add 3 PIN hints to help you remember — do not write the PIN itself');
       return;
     }
-    if (!password.trim()) {
-      setError('A password is required');
-      return;
-    }
-    if (!pwHint1.trim() || !pwHint2.trim() || !pwHint3.trim()) {
-      setError('Add 3 password hints to help you remember — do not write the password itself');
-      return;
+    if (password.trim()) {
+      if (!pwHint1.trim() || !pwHint2.trim() || !pwHint3.trim()) {
+        setError('If you set a password now, add 3 hints — or leave the password blank and we will ask later');
+        return;
+      }
     }
     if (!agreedToTerms) {
       setError('Agree to Terms and Privacy to continue');
-      return;
-    }
-    if (lookingFor.length === 0) {
-      setError('Pick at least one option for what you are looking for');
-      return;
-    }
-    if (!gender) {
-      setError('Select your gender so we can match dating advice to your group');
-      return;
-    }
-    if (!orientation) {
-      setError('Select your orientation so dating advice reaches the right people');
       return;
     }
     setError('');
@@ -144,23 +130,31 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
         pinHint2: passwordHint2.trim(),
         pinHint3: passwordHint3.trim(),
         improvementCategories: [DEFAULT_SIGNUP_CATEGORY],
-        password: password.trim(),
-        passwordHint1: pwHint1.trim(),
-        passwordHint2: pwHint2.trim(),
-        passwordHint3: pwHint3.trim(),
+        password: password.trim() || undefined,
+        passwordHint1: password.trim() ? pwHint1.trim() : undefined,
+        passwordHint2: password.trim() ? pwHint2.trim() : undefined,
+        passwordHint3: password.trim() ? pwHint3.trim() : undefined,
       });
       const id = coerceUserId(response.user?.id);
       if (!response.token || !id) throw new Error('Invalid server response');
-      login({ ...response.user, id, dateLookingFor: lookingFor }, response.token, { stayLoggedIn });
+      login(
+        { ...response.user, id, dateLookingFor: lookingFor, hasBackupPassword: Boolean(password.trim()) },
+        response.token,
+        { stayLoggedIn }
+      );
       const ageNum = parseInt(age, 10);
       if (!Number.isNaN(ageNum) && gender) {
         walkMatchAPI.updateSettings({ age: ageNum, gender }).catch(() => {});
       }
-      dateMatchAPI.saveLookingFor(lookingFor).catch(() => {});
-      discoverAPI.setPreference({
-        orientation,
-        userId: id,
-      }).catch(() => {});
+      if (lookingFor.length > 0) {
+        dateMatchAPI.saveLookingFor(lookingFor).catch(() => {});
+      }
+      if (orientation) {
+        discoverAPI.setPreference({
+          orientation,
+          userId: id,
+        }).catch(() => {});
+      }
       navigate('/profile-setup', { replace: true });
       return;
     } catch (err: unknown) {
@@ -208,8 +202,8 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
         <h1 className="auth-title">{mode === 'signup' ? 'Join Hook Up' : 'Welcome Back'}</h1>
         <p className="auth-subtitle">
           {mode === 'signup'
-            ? 'Username is yours forever. PIN + password are both required. Hints help you remember — never write the real PIN or password.'
-            : 'Same username as sign-up. Use your 6-digit PIN or the password you set at sign-up.'}
+            ? 'Username is yours forever. PIN is required now. Password and the details after it are optional — skip them and fill them later. We will ask you to add a password after you join.'
+            : 'Same username as sign-up. Use your 6-digit PIN or a password if you already added one.'}
         </p>
 
         {error && <div className="error-message">{error}</div>}
@@ -266,32 +260,34 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
               <input type="text" value={passwordHint2} onChange={(e) => setPasswordHint2(e.target.value)} placeholder="Hint 2" maxLength={200} style={{ marginBottom: 6 }} required />
               <input type="text" value={passwordHint3} onChange={(e) => setPasswordHint3(e.target.value)} placeholder="Hint 3" maxLength={200} required />
             </div>
+            <p className="auth-later-note">
+              Password and everything below can wait. Skip them now — we will remind you to add a password later, and you can fill age, gender, orientation, and what you are looking for in Settings.
+            </p>
             <div className="form-group">
-              <label htmlFor="backup-password">Password (required)</label>
+              <label htmlFor="backup-password">Password (optional — add later)</label>
               <PasswordInput
                 id="backup-password"
                 value={password}
                 onChange={setPassword}
                 autoComplete="new-password"
-                placeholder="8+ chars, upper, lower, number, symbol"
-                required
+                placeholder="Leave blank to add later. If you set one: 8+ chars, upper, lower, number, symbol"
               />
             </div>
             <div className="form-group">
-              <label>Password hints (help you remember — do not write the password)</label>
-              <input type="text" value={pwHint1} onChange={(e) => setPwHint1(e.target.value)} placeholder="Hint 1" maxLength={200} style={{ marginBottom: 6 }} required />
-              <input type="text" value={pwHint2} onChange={(e) => setPwHint2(e.target.value)} placeholder="Hint 2" maxLength={200} style={{ marginBottom: 6 }} required />
-              <input type="text" value={pwHint3} onChange={(e) => setPwHint3(e.target.value)} placeholder="Hint 3" maxLength={200} required />
+              <label>Password hints (only if you set a password now)</label>
+              <input type="text" value={pwHint1} onChange={(e) => setPwHint1(e.target.value)} placeholder="Hint 1" maxLength={200} style={{ marginBottom: 6 }} />
+              <input type="text" value={pwHint2} onChange={(e) => setPwHint2(e.target.value)} placeholder="Hint 2" maxLength={200} style={{ marginBottom: 6 }} />
+              <input type="text" value={pwHint3} onChange={(e) => setPwHint3(e.target.value)} placeholder="Hint 3" maxLength={200} />
             </div>
             <div className="auth-age-gender">
               <div className="form-group">
-                <label htmlFor="age">Age</label>
+                <label htmlFor="age">Age (optional)</label>
                 <input id="age" type="number" min={18} max={99} value={age} onChange={(e) => setAge(e.target.value)} />
               </div>
               <div className="form-group">
-                <label htmlFor="gender">Gender</label>
-                <select id="gender" value={gender} onChange={(e) => setGender(e.target.value)} style={{ width: '100%', padding: 10 }} required>
-                  <option value="">Select…</option>
+                <label htmlFor="gender">Gender (optional)</label>
+                <select id="gender" value={gender} onChange={(e) => setGender(e.target.value)} style={{ width: '100%', padding: 10 }}>
+                  <option value="">Skip for now…</option>
                   <option value="female">Female</option>
                   <option value="male">Male</option>
                   <option value="other">Other</option>
@@ -299,14 +295,14 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
               </div>
             </div>
             <div className="form-group">
-              <label htmlFor="orientation">Orientation</label>
+              <label htmlFor="orientation">Orientation (optional)</label>
               <select
                 id="orientation"
                 value={orientation}
                 onChange={(e) => setOrientation(e.target.value as typeof orientation)}
                 style={{ width: '100%', padding: 10 }}
-                required
               >
+                <option value="">Skip for now…</option>
                 <option value="straight">Straight — advice with straight guys / girls</option>
                 <option value="gay">Gay — advice with gay guys</option>
                 <option value="lesbian">Lesbian — advice with lesbians</option>
@@ -318,6 +314,10 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
               </p>
             </div>
             <LookingForChips value={lookingFor} onChange={setLookingFor} />
+            <div className="auth-info-note">
+              <p><strong>Next step — your face photo is required.</strong> You cannot skip it. It has to be a selfie of your face, not a group shot or someone else.</p>
+              <p>While you are in the app, location turns on automatically so people nearby can show up. You can show interest or pass. Location turns off when you leave the app, switch sites, or switch apps.</p>
+            </div>
             <div className="legal-agree-wrap">
               <input type="checkbox" id="agree-terms" checked={agreedToTerms} onChange={(e) => setAgreedToTerms(e.target.checked)} />
               <label htmlFor="agree-terms">I agree to the <Link to="/terms">Terms</Link> and <Link to="/privacy">Privacy</Link>. 18+.</label>

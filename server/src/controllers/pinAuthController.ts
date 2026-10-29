@@ -53,6 +53,7 @@ function toClientUser(user: Awaited<ReturnType<typeof getUserById>>) {
     profileSetupComplete: Boolean(user.profileSetupComplete),
     emailVerified: Boolean(user.emailVerified),
     improvementCategories: Array.isArray(user.improvementCategories) ? user.improvementCategories : [],
+    hasBackupPassword: Boolean(user.backupPasswordHash),
   };
 }
 
@@ -156,15 +157,14 @@ export async function signupWithPin(req: Request, res: Response) {
     }
 
     const passwordStr = password ? String(password).trim() : '';
-    if (!passwordStr) {
-      return res.status(400).json({ error: 'A password is required' });
-    }
-    const passwordCheck = validateStrongPassword(passwordStr);
-    if (!passwordCheck.valid) {
-      return res.status(400).json({ error: passwordCheck.error });
-    }
-    if (!passwordHint1?.trim() || !passwordHint2?.trim() || !passwordHint3?.trim()) {
-      return res.status(400).json({ error: 'Add 3 password hints to help you remember — never write the password itself' });
+    if (passwordStr) {
+      const passwordCheck = validateStrongPassword(passwordStr);
+      if (!passwordCheck.valid) {
+        return res.status(400).json({ error: passwordCheck.error });
+      }
+      if (!passwordHint1?.trim() || !passwordHint2?.trim() || !passwordHint3?.trim()) {
+        return res.status(400).json({ error: 'If you set a password now, add 3 hints — or skip the password and we will ask later' });
+      }
     }
 
     const usernameRegex = /^[a-zA-Z0-9_]{3,20}$/;
@@ -196,7 +196,7 @@ export async function signupWithPin(req: Request, res: Response) {
       return res.status(400).json({ error: 'Phone number is already registered' });
     }
 
-    const backupPasswordHash = await bcrypt.hash(passwordStr, BCRYPT_ROUNDS);
+    const backupPasswordHash = passwordStr ? await bcrypt.hash(passwordStr, BCRYPT_ROUNDS) : null;
     const hashedPin = await bcrypt.hash(pinStr, BCRYPT_ROUNDS);
     const user = await runWithSystem(async () => {
       const created = await createUser({
@@ -211,14 +211,17 @@ export async function signupWithPin(req: Request, res: Response) {
         backupPasswordHash,
       });
       await reserveUsername(username, created.id);
-      await updateUserProfile(created.id, {
+      const profilePatch: Record<string, unknown> = {
         emailVerified: false,
         pinAuth: true,
-        backupPasswordHash,
-        backupPasswordHint1: sanitizeForStorage(passwordHint1, LIMITS.PASSWORD_HINT),
-        backupPasswordHint2: sanitizeForStorage(passwordHint2, LIMITS.PASSWORD_HINT),
-        backupPasswordHint3: sanitizeForStorage(passwordHint3, LIMITS.PASSWORD_HINT),
-      });
+      };
+      if (backupPasswordHash) {
+        profilePatch.backupPasswordHash = backupPasswordHash;
+        profilePatch.backupPasswordHint1 = sanitizeForStorage(passwordHint1, LIMITS.PASSWORD_HINT);
+        profilePatch.backupPasswordHint2 = sanitizeForStorage(passwordHint2, LIMITS.PASSWORD_HINT);
+        profilePatch.backupPasswordHint3 = sanitizeForStorage(passwordHint3, LIMITS.PASSWORD_HINT);
+      }
+      await updateUserProfile(created.id, profilePatch);
       if (normalizedPhone) {
         await updateUserProfile(created.id, { phoneNumber: normalizedPhone });
       }

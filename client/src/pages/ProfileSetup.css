@@ -71,6 +71,36 @@
   letter-spacing: 0.03em;
 }
 
+.setup-info-note {
+  text-align: left;
+  font-size: 13px;
+  line-height: 1.45;
+  color: #e5e7eb;
+  background: rgba(255, 107, 157, 0.1);
+  border: 1px solid rgba(255, 143, 171, 0.35);
+  border-radius: 12px;
+  padding: 12px 14px;
+  margin: 0 0 22px;
+}
+
+.setup-info-note p {
+  margin: 0 0 8px;
+}
+
+.setup-info-note p:last-child {
+  margin-bottom: 0;
+}
+
+.setup-info-note strong {
+  color: #fecdd3;
+}
+
+.setup-required-foot {
+  margin: 0;
+  font-size: 12px;
+  color: #f9a8d4;
+}
+
 .setup-section-hint {
   margin: 0 0 16px;
   font-size: 12px;

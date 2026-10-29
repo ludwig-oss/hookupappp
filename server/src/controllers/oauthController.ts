@@ -73,6 +73,7 @@ function toClientUser(user: User) {
     age: user.age,
     country: user.country,
     city: user.city,
+    hasBackupPassword: Boolean(user.backupPasswordHash),
   };
 }
 

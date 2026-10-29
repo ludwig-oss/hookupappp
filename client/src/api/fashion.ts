@@ -160,6 +160,34 @@ export const fashionAPI = {
     const response = await axios.post(`${API_URL}/match-score`, body || {});
     return response.data;
   },
+  internetTrends: async (body?: { age?: number; stylePreference?: string[]; limit?: number }) => {
+    const response = await axios.post(`${API_URL}/internet-trends`, body || {});
+    return response.data as {
+      ageGroup: 'teen' | 'twenty_thirty' | 'forty_plus';
+      stylePreference: string[];
+      matches: Array<{
+        id?: string;
+        sourceUrl: string;
+        sourcePlatform: string;
+        celebrityOrBoardName?: string | null;
+        extractedTags: string[];
+        targetAgeGroups: string[];
+        imageUrl?: string;
+      }>;
+    };
+  },
+  internetTrendCloset: async (trend: {
+    extractedTags: string[];
+    sourcePlatform: 'pinterest' | 'fashion_show' | 'celebrity_streetwear';
+    celebrityOrBoardName?: string | null;
+  }) => {
+    const response = await axios.post(`${API_URL}/internet-trends/closet`, { trend });
+    return response.data as {
+      trendMetadata: { source: string; inspiredBy: string | null };
+      closetPiecesToUse: Array<{ tag: string; source: 'user_closet' }>;
+      shoppingListToCompleteLook: Array<{ tag: string; source: 'retail_search'; query: string }>;
+    };
+  },
   monthlyCheckIn: async (month?: string) => {
     const response = await axios.post(`${API_URL}/monthly-check-in`, { month });
     return response.data as { message: string; requiresInput: boolean; inputType: string };

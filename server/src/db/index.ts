@@ -289,4 +289,5 @@ export async function runSchema(): Promise<void> {
   await p.query(RLS_SQL);
   await p.query(loadClosetSchemaSql());
   await p.query(loadSqlFile('migrations/001_user_age_segments.sql'));
+  await p.query(loadSqlFile('migrations/002_ingested_trends.sql'));
 }

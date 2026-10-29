@@ -36,6 +36,7 @@ import AppearanceSafetyPrompt from './components/AppearanceSafetyPrompt';
 import PhotoVerificationGate from './components/PhotoVerificationGate';
 import GuideProgramGate from './components/GuideProgramGate';
 import SafetyVoiceWatcher from './components/SafetyVoiceWatcher';
+import InteractiveOnboardingWrapper from './components/closet/InteractiveOnboardingWrapper';
 
 function isPlainObject(v: unknown): v is Record<string, any> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -263,6 +264,8 @@ function App() {
   return (
     <LanguageProvider>
       <AuthContext.Provider value={{ user, login, logout, updateUser }}>
+        <InteractiveOnboardingWrapper>
+        <div className="app-workspace">
         <Routes>
           <Route path="/login" element={<GuestOnly><AuthEntry initialMode="login" /></GuestOnly>} />
           <Route path="/auth/callback" element={<AuthCallback />} />
@@ -290,6 +293,8 @@ function App() {
         <PhotoVerificationGate />
         <GuideProgramGate />
         <SafetyVoiceWatcher />
+        </div>
+        </InteractiveOnboardingWrapper>
       </AuthContext.Provider>
     </LanguageProvider>
   );

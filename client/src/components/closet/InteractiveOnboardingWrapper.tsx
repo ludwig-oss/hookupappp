@@ -1,7 +1,11 @@
 import { useEffect, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
+import { AsyncStorage } from '../../lib/asyncStorage';
 import './InteractiveOnboardingWrapper.css';
 
-const STORAGE_KEY = '@has_completed_closet_tour';
+/** Matches the RN tour keys so first-time installs only see this once. */
+export const CLOSET_TOUR_COMPLETED_KEY = '@has_completed_closet_tour';
+export const CLOSET_FIRST_INSTALL_KEY = '@closet_first_install';
 
 const TUTORIAL_STEPS = [
   {
@@ -27,62 +31,97 @@ const TUTORIAL_STEPS = [
 export default function InteractiveOnboardingWrapper({
   children,
   onTourComplete,
+  workspaceSelector = '.clueless-workspace',
 }: {
   children: ReactNode;
   onTourComplete?: () => void;
+  /** Tour only while this workspace node is mounted (closet mixer). */
+  workspaceSelector?: string;
 }) {
   const [currentStep, setCurrentStep] = useState(0);
   const [isVisible, setIsVisible] = useState(false);
 
   useEffect(() => {
-    try {
-      if (localStorage.getItem(STORAGE_KEY) !== 'true') setIsVisible(true);
-    } catch {
-      setIsVisible(true);
-    }
-  }, []);
+    let cancelled = false;
 
-  const handleNext = () => {
+    const syncTour = async () => {
+      const completed = await AsyncStorage.getItem(CLOSET_TOUR_COMPLETED_KEY);
+      if (completed === 'true') {
+        if (!cancelled) setIsVisible(false);
+        return;
+      }
+      const installed = await AsyncStorage.getItem(CLOSET_FIRST_INSTALL_KEY);
+      if (!installed) {
+        await AsyncStorage.setItem(CLOSET_FIRST_INSTALL_KEY, String(Date.now()));
+      }
+      const workspaceReady =
+        typeof document === 'undefined' || !workspaceSelector
+          ? true
+          : Boolean(document.querySelector(workspaceSelector));
+      if (!cancelled) setIsVisible(workspaceReady);
+    };
+
+    void syncTour();
+    const root = typeof document !== 'undefined' ? document.body : null;
+    if (!root || typeof MutationObserver === 'undefined') {
+      return () => {
+        cancelled = true;
+      };
+    }
+    const observer = new MutationObserver(() => {
+      void syncTour();
+    });
+    observer.observe(root, { childList: true, subtree: true });
+    return () => {
+      cancelled = true;
+      observer.disconnect();
+    };
+  }, [workspaceSelector]);
+
+  const handleNext = async () => {
     if (currentStep < TUTORIAL_STEPS.length - 1) {
       setCurrentStep((prev) => prev + 1);
       return;
     }
     setIsVisible(false);
-    try {
-      localStorage.setItem(STORAGE_KEY, 'true');
-    } catch {
-      /* ignore */
-    }
+    await AsyncStorage.setItem(CLOSET_TOUR_COMPLETED_KEY, 'true');
     onTourComplete?.();
   };
 
   const activeStep = TUTORIAL_STEPS[currentStep];
+  const host =
+    typeof document !== 'undefined'
+      ? document.querySelector('.clueless-root') || document.querySelector('.closet-stack')
+      : null;
+
+  const overlay =
+    isVisible && activeStep ? (
+      <>
+        <div className="closet-tour-dim" aria-hidden />
+        <div
+          className={`closet-tour-tooltip ${activeStep.boxClass}`}
+          role="dialog"
+          aria-labelledby="closet-tour-step"
+          aria-describedby="closet-tour-copy"
+        >
+          <span className={`closet-tour-caret ${activeStep.arrowClass}`} aria-hidden />
+          <p className="closet-tour-counter" id="closet-tour-step">
+            STEP {currentStep + 1} OF {TUTORIAL_STEPS.length}
+          </p>
+          <p className="closet-tour-copy" id="closet-tour-copy">
+            {activeStep.text}
+          </p>
+          <button type="button" className="closet-tour-next" onClick={() => void handleNext()}>
+            {currentStep === TUTORIAL_STEPS.length - 1 ? "GOT IT, LET'S DRESS! 🎉" : 'NEXT GUIDANCE ➔'}
+          </button>
+        </div>
+      </>
+    ) : null;
 
   return (
     <div className="closet-tour-root">
       {children}
-      {isVisible && activeStep && (
-        <>
-          <div className="closet-tour-dim" aria-hidden />
-          <div
-            className={`closet-tour-tooltip ${activeStep.boxClass}`}
-            role="dialog"
-            aria-labelledby="closet-tour-step"
-            aria-describedby="closet-tour-copy"
-          >
-            <span className={`closet-tour-caret ${activeStep.arrowClass}`} aria-hidden />
-            <p className="closet-tour-counter" id="closet-tour-step">
-              STEP {currentStep + 1} OF {TUTORIAL_STEPS.length}
-            </p>
-            <p className="closet-tour-copy" id="closet-tour-copy">
-              {activeStep.text}
-            </p>
-            <button type="button" className="closet-tour-next" onClick={handleNext}>
-              {currentStep === TUTORIAL_STEPS.length - 1 ? "GOT IT, LET'S DRESS! 🎉" : 'NEXT GUIDANCE ➔'}
-            </button>
-          </div>
-        </>
-      )}
+      {overlay && host ? createPortal(overlay, host) : overlay}
     </div>
   );
 }

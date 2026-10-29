@@ -504,7 +504,7 @@ const ConnectionsWidget = () => {
 
     if (buzz) {
       return (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+        <div className="nearby-person-actions">
           <button type="button" onClick={() => handleSendBuzz(personId)} className="send-btn" disabled={loading} style={{ background: 'rgba(16, 185, 129, 0.2)', border: '2px solid #10b981', color: '#10b981', fontSize: '11px', padding: '6px 10px', fontFamily: 'Orbitron, monospace', fontWeight: 'bold' }}>Show interest too</button>
           <button type="button" onClick={() => handleRespondBuzz(buzz.id, 'rejected')} className="send-btn" disabled={loading} style={{ background: 'rgba(239, 68, 68, 0.2)', border: '2px solid #ef4444', color: '#ef4444', fontSize: '11px', padding: '6px 10px', fontFamily: 'Orbitron, monospace', fontWeight: 'bold' }}>No</button>
         </div>
@@ -514,7 +514,7 @@ const ConnectionsWidget = () => {
       return <span style={{ fontSize: '12px', color: '#9ca3af', fontFamily: 'Orbitron, monospace' }}>Interest sent</span>;
     }
     return (
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+      <div className="nearby-person-actions">
         <button type="button" onClick={() => handleSendBuzz(personId)} className="send-btn" disabled={loading} style={{ background: 'rgba(0, 0, 0, 0.4)', border: '2px solid #ff00ff', color: '#ff00ff', fontSize: '12px', padding: '8px 14px', fontFamily: 'Orbitron, monospace', fontWeight: 'bold', boxShadow: '0 0 10px rgba(255, 0, 255, 0.3)' }}>
           Show interest
         </button>
@@ -702,28 +702,23 @@ const ConnectionsWidget = () => {
           {pageIncoming.map((buzz) => (
             <div
               key={buzz.id}
-              style={{
-                padding: '12px',
-                border: '2px solid rgba(255, 0, 255, 0.45)',
-                borderRadius: '12px',
-                display: 'flex',
-                gap: '12px',
-                alignItems: 'center',
-                background: 'rgba(0, 0, 0, 0.4)',
-              }}
+              className="nearby-person"
+              style={{ border: '2px solid rgba(255, 0, 255, 0.45)' }}
             >
-              <div style={{ width: '48px', height: '48px', borderRadius: '50%', overflow: 'hidden', border: '2px solid rgba(255, 0, 255, 0.5)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(255, 0, 255, 0.1)' }}>
-                {buzz.fromUserProfilePicture ? (
-                  <img src={buzz.fromUserProfilePicture} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                ) : (
-                  <span style={{ fontSize: '20px', color: '#ff00ff' }}>?</span>
-                )}
-              </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#fff', fontFamily: 'Orbitron, monospace' }}>
-                  {buzz.fromUsername ? `@${buzz.fromUsername}` : buzz.fromUserName || 'Someone interested'}
+              <div className="nearby-person-main">
+                <div style={{ width: '48px', height: '48px', borderRadius: '50%', overflow: 'hidden', border: '2px solid rgba(255, 0, 255, 0.5)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(255, 0, 255, 0.1)' }}>
+                  {buzz.fromUserProfilePicture ? (
+                    <img src={buzz.fromUserProfilePicture} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  ) : (
+                    <span style={{ fontSize: '20px', color: '#ff00ff' }}>?</span>
+                  )}
                 </div>
-                <div style={{ fontSize: '11px', color: '#ff00ff', marginTop: 4 }}>Show interest too for Communications — skip if not</div>
+                <div className="nearby-person-copy">
+                  <div className="nearby-person-name" style={{ fontSize: '14px', fontWeight: 'bold', color: '#fff', fontFamily: 'Orbitron, monospace' }}>
+                    {buzz.fromUsername ? `@${buzz.fromUsername}` : buzz.fromUserName || 'Someone interested'}
+                  </div>
+                  <div className="nearby-person-status" style={{ fontSize: '11px', color: '#ff00ff', marginTop: 4 }}>Show interest too for Communications — skip if not</div>
+                </div>
               </div>
               {renderPersonActions(buzz.fromUserId, buzz)}
             </div>
@@ -731,43 +726,40 @@ const ConnectionsWidget = () => {
           {pageNearby.map((nearbyUser) => (
             <div
               key={nearbyUser.id}
+              className="nearby-person"
               style={{
-                padding: '12px',
                 border: '2px solid rgba(0, 212, 255, 0.3)',
-                borderRadius: '12px',
-                display: 'flex',
-                gap: '12px',
-                alignItems: 'center',
-                background: 'rgba(0, 0, 0, 0.4)',
                 boxShadow: '0 0 15px rgba(0, 212, 255, 0.2)',
               }}
             >
-              <div className="user-avatar" style={{ width: '56px', height: '56px', flexShrink: 0, borderRadius: '50%', overflow: 'hidden', border: '2px solid rgba(255, 0, 255, 0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', background: 'rgba(255, 0, 255, 0.1)' }}>
-                {nearbyUser.profilePicture ? (
-                  <img src={nearbyUser.profilePicture} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                ) : (
-                  <span style={{ fontSize: '24px', color: '#ff00ff' }}>?</span>
-                )}
-                {nearbyUser.isOnline && (
-                  <div style={{
-                    position: 'absolute',
-                    bottom: 0,
-                    right: 0,
-                    width: '12px',
-                    height: '12px',
-                    background: '#10b981',
-                    border: '2px solid #0a0a1a',
-                    borderRadius: '50%',
-                    boxShadow: '0 0 10px rgba(16, 185, 129, 0.6)',
-                  }} />
-                )}
-              </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: '15px', fontWeight: 'bold', color: '#fff', fontFamily: 'Orbitron, monospace' }}>
-                  {nearbyUser.username ? `@${nearbyUser.username}` : nearbyUser.name || 'Nearby match'}
+              <div className="nearby-person-main">
+                <div className="user-avatar" style={{ width: '56px', height: '56px', flexShrink: 0, borderRadius: '50%', overflow: 'hidden', border: '2px solid rgba(255, 0, 255, 0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', background: 'rgba(255, 0, 255, 0.1)' }}>
+                  {nearbyUser.profilePicture ? (
+                    <img src={nearbyUser.profilePicture} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  ) : (
+                    <span style={{ fontSize: '24px', color: '#ff00ff' }}>?</span>
+                  )}
+                  {nearbyUser.isOnline && (
+                    <div style={{
+                      position: 'absolute',
+                      bottom: 0,
+                      right: 0,
+                      width: '12px',
+                      height: '12px',
+                      background: '#10b981',
+                      border: '2px solid #0a0a1a',
+                      borderRadius: '50%',
+                      boxShadow: '0 0 10px rgba(16, 185, 129, 0.6)',
+                    }} />
+                  )}
                 </div>
-                <div style={{ fontSize: '11px', color: nearbyUser.isOnline ? '#10b981' : '#9ca3af', marginTop: 4 }}>
-                  {nearbyUser.isOnline ? 'Active nearby · your type' : 'Recently nearby · your type'}
+                <div className="nearby-person-copy">
+                  <div className="nearby-person-name" style={{ fontSize: '15px', fontWeight: 'bold', color: '#fff', fontFamily: 'Orbitron, monospace' }}>
+                    {nearbyUser.username ? `@${nearbyUser.username}` : nearbyUser.name || 'Nearby match'}
+                  </div>
+                  <div className="nearby-person-status" style={{ fontSize: '11px', color: nearbyUser.isOnline ? '#10b981' : '#9ca3af', marginTop: 4 }}>
+                    {nearbyUser.isOnline ? 'Active nearby · your type' : 'Recently nearby · your type'}
+                  </div>
                 </div>
               </div>
               {renderPersonActions(nearbyUser.id)}
@@ -1217,19 +1209,21 @@ const ConnectionsWidget = () => {
                           </p>
                         )}
                         {rows.map((buzz) => (
-                    <div key={buzz.id} style={{ padding: '12px', border: '2px solid rgba(0, 212, 255, 0.3)', borderRadius: '12px', background: 'rgba(0, 0, 0, 0.4)', display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-                      <div style={{ width: '48px', height: '48px', borderRadius: '50%', overflow: 'hidden', border: '2px solid rgba(255, 0, 255, 0.5)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(255, 0, 255, 0.1)' }}>
-                        {buzz.fromUserProfilePicture ? (
-                          <img src={buzz.fromUserProfilePicture} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                        ) : (
-                          <span style={{ fontSize: '20px', color: '#ff00ff' }}>?</span>
-                        )}
-                      </div>
-                      <div style={{ flex: 1, minWidth: 80, fontSize: 12, color: '#fff', fontFamily: 'Orbitron, monospace' }}>
-                        {buzz.fromUsername ? `@${buzz.fromUsername}` : buzz.status === 'pending' ? 'Pending interest' : buzz.status}
+                    <div key={buzz.id} className="nearby-person" style={{ border: '2px solid rgba(0, 212, 255, 0.3)' }}>
+                      <div className="nearby-person-main">
+                        <div style={{ width: '48px', height: '48px', borderRadius: '50%', overflow: 'hidden', border: '2px solid rgba(255, 0, 255, 0.5)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(255, 0, 255, 0.1)' }}>
+                          {buzz.fromUserProfilePicture ? (
+                            <img src={buzz.fromUserProfilePicture} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                          ) : (
+                            <span style={{ fontSize: '20px', color: '#ff00ff' }}>?</span>
+                          )}
+                        </div>
+                        <div className="nearby-person-copy nearby-person-name" style={{ fontSize: 12, color: '#fff', fontFamily: 'Orbitron, monospace' }}>
+                          {buzz.fromUsername ? `@${buzz.fromUsername}` : buzz.status === 'pending' ? 'Pending interest' : buzz.status}
+                        </div>
                       </div>
                       {buzz.status === 'pending' ? (
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                      <div className="nearby-person-actions">
                         <button onClick={() => handleRespondBuzz(buzz.id, 'accepted')} className="send-btn" disabled={loading} style={{ background: 'rgba(16, 185, 129, 0.2)', border: '2px solid #10b981', color: '#10b981', fontSize: '11px', padding: '6px 10px', fontFamily: 'Orbitron, monospace', fontWeight: 'bold' }}>Yes</button>
                         <button onClick={() => handleRespondBuzz(buzz.id, 'rejected')} className="send-btn" disabled={loading} style={{ background: 'rgba(239, 68, 68, 0.2)', border: '2px solid #ef4444', color: '#ef4444', fontSize: '11px', padding: '6px 10px', fontFamily: 'Orbitron, monospace', fontWeight: 'bold' }}>No</button>
                         <button onClick={() => handleRespondBuzz(buzz.id, 'talk_later')} className="send-btn" disabled={loading} style={{ background: 'rgba(245, 158, 11, 0.2)', border: '2px solid #f59e0b', color: '#f59e0b', fontSize: '11px', padding: '6px 10px', fontFamily: 'Orbitron, monospace', fontWeight: 'bold' }}>Talk later</button>

@@ -1,8 +1,13 @@
 .widget {
   width: 100%;
+  max-width: 100%;
+  min-width: 0;
   height: 100%;
   display: flex;
   flex-direction: column;
+  box-sizing: border-box;
+  container-type: inline-size;
+  container-name: hookwidget;
 }
 
 /* Widget Preview Styles - iOS App Icon Style */
@@ -653,6 +658,8 @@
 }
 
 .select-user-btn {
+  box-sizing: border-box;
+  max-width: 100%;
   padding: 12px 24px;
   background: linear-gradient(135deg, #ff6b9d 0%, #c44569 100%);
   color: white;
@@ -831,6 +838,8 @@
 }
 
 .send-btn {
+  box-sizing: border-box;
+  max-width: 100%;
   padding: 10px 20px;
   background: linear-gradient(135deg, #ff6b9d 0%, #c44569 100%);
   color: white;
@@ -846,6 +855,88 @@
 .send-btn:hover {
   transform: translateY(-2px);
   box-shadow: 0 5px 15px rgba(255, 107, 157, 0.4);
+}
+
+/* Person rows: name stays readable, actions drop below when the window is narrow. */
+.nearby-person {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 12px;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 12px;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.4);
+}
+
+.nearby-person-main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1 1 auto;
+  min-width: min(100%, 168px);
+}
+
+.nearby-person-copy {
+  flex: 1;
+  min-width: 0;
+}
+
+.nearby-person-name,
+.nearby-person-status {
+  overflow-wrap: anywhere;
+  line-height: 1.35;
+}
+
+.nearby-person-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  flex: 1 0 auto;
+  justify-content: flex-end;
+  margin-left: auto;
+  max-width: 100%;
+}
+
+.nearby-person-actions .send-btn {
+  white-space: nowrap;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+@media (max-width: 560px) {
+  .nearby-person-actions {
+    flex: 1 1 100%;
+    margin-left: 0;
+    justify-content: stretch;
+  }
+
+  .nearby-person-actions .send-btn {
+    flex: 1 1 120px;
+    text-align: center;
+  }
+}
+
+@container hookwidget (max-width: 560px) {
+  .nearby-person-actions {
+    flex: 1 1 100%;
+    margin-left: 0;
+    justify-content: stretch;
+  }
+
+  .nearby-person-actions .send-btn {
+    flex: 1 1 120px;
+    text-align: center;
+  }
+}
+
+@media (max-width: 380px) {
+  .nearby-person-actions .send-btn {
+    flex: 1 1 100%;
+    white-space: normal;
+  }
 }
 
 .confession-booth-hero {

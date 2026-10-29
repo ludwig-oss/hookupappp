@@ -1,7 +1,7 @@
 import pg from 'pg';
 import { getDbContext } from './context.js';
 import { RLS_SQL } from './rls.js';
-import { loadClosetSchemaSql } from './closet-schema.js';
+import { loadClosetSchemaSql, loadSqlFile } from './closet-schema.js';
 
 const { Pool } = pg;
 
@@ -288,4 +288,5 @@ export async function runSchema(): Promise<void> {
   await p.query(SCHEMA_SQL);
   await p.query(RLS_SQL);
   await p.query(loadClosetSchemaSql());
+  await p.query(loadSqlFile('migrations/001_user_age_segments.sql'));
 }

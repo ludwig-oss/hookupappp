@@ -3,6 +3,8 @@
  * Age-gates Pinterest / runway / celebrity looks, then maps tags to closet vs shop.
  */
 
+import { ageSegmentFromAge, partitionOutfitFeed } from './ageSegmentFeed.js';
+
 export type AgeGroup = 'teen' | 'twenty_thirty' | 'forty_plus';
 export type TrendSource = 'pinterest' | 'fashion_show' | 'celebrity_streetwear';
 
@@ -55,12 +57,21 @@ export class InternetTrendOutfitMatcher {
     limit = 5
   ): IngestedTrendOutfit[] {
     const group = ageGroupFromAge(user.age);
-    const appropriate: IngestedTrendOutfit[] = [];
+    const segment = ageSegmentFromAge(user.age);
+    const ageGated: IngestedTrendOutfit[] = [];
     for (const look of trendPool) {
       if (!look.targetAgeGroups.includes(group)) continue;
       if (!tagHits(user.stylePreference, look.extractedTags)) continue;
-      appropriate.push(look);
+      ageGated.push(look);
     }
+    const records = ageGated.map((look) => ({
+      id: look.id || look.sourceUrl,
+      title: look.celebrityOrBoardName || '',
+      tags: look.extractedTags,
+    }));
+    const partitioned = partitionOutfitFeed(records, segment, user.stylePreference);
+    const keptIds = new Set(partitioned.kept.map((k) => k.id));
+    const appropriate = ageGated.filter((look) => keptIds.has(look.id || look.sourceUrl));
     return appropriate.slice(0, Math.min(Math.max(limit, 1), 24));
   }
 

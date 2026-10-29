@@ -4,16 +4,20 @@ import { fileURLToPath } from 'url';
 
 const here = dirname(fileURLToPath(import.meta.url));
 
-/** Load closet-schema.sql from src or dist so startup and `psql -f` stay in sync. */
-export function loadClosetSchemaSql(): string {
+export function loadSqlFile(relativeFromDb: string): string {
   const candidates = [
-    join(here, 'closet-schema.sql'),
-    join(process.cwd(), 'src/db/closet-schema.sql'),
-    join(process.cwd(), 'server/src/db/closet-schema.sql'),
-    join(process.cwd(), 'dist/db/closet-schema.sql'),
+    join(here, relativeFromDb),
+    join(process.cwd(), 'src/db', relativeFromDb),
+    join(process.cwd(), 'server/src/db', relativeFromDb),
+    join(process.cwd(), 'dist/db', relativeFromDb),
   ];
   for (const path of candidates) {
     if (existsSync(path)) return readFileSync(path, 'utf8');
   }
-  throw new Error('closet-schema.sql not found — copy server/src/db/closet-schema.sql next to the compiled db module');
+  throw new Error(`${relativeFromDb} not found — copy server/src/db SQL next to the compiled db module`);
+}
+
+/** Load closet-schema.sql from src or dist so startup and `psql -f` stay in sync. */
+export function loadClosetSchemaSql(): string {
+  return loadSqlFile('closet-schema.sql');
 }

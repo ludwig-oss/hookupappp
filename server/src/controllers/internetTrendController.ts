@@ -2,6 +2,8 @@ import { Request, Response } from 'express';
 import { getUserById } from '../models/user.js';
 import { listWardrobe } from '../models/fashionWardrobe.js';
 import { defaultTrendPool } from '../data/internetTrendPool.js';
+import { upsertUserAgeProfile } from '../db/pg-age-segments.js';
+import { ageSegmentFromAge, partitionOutfitFeed } from '../services/ageSegmentFeed.js';
 import {
   ageGroupFromAge,
   internetTrendMatcher,
@@ -35,16 +37,28 @@ export const internetTrendsHandler = async (req: Request, res: Response) => {
       ? (req.body.trendPool as IngestedTrendOutfit[])
       : defaultTrendPool();
 
+    await upsertUserAgeProfile(userId, age, stylePreference).catch(() => null);
     const matches = internetTrendMatcher.matchInternetTrends(
       profileFromUser(userId, age, stylePreference),
       pool,
       limit
     );
+    const audit = partitionOutfitFeed(
+      pool.map((look) => ({
+        id: look.id || look.sourceUrl,
+        title: look.celebrityOrBoardName || '',
+        tags: look.extractedTags,
+      })),
+      ageSegmentFromAge(age),
+      stylePreference
+    );
 
     res.json({
       ageGroup: ageGroupFromAge(age),
+      ageSegment: ageSegmentFromAge(age),
       stylePreference,
       matches,
+      droppedForSegment: audit.dropped.map((d) => ({ id: d.item.id, reason: d.reason })),
     });
   } catch (error) {
     console.error('Internet trends error:', error);

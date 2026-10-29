@@ -256,21 +256,25 @@ export async function getNearbyUsers(
       if (user.blockedUsers?.includes(otherUser.id)) continue;
       if (user.unmatchedUsers?.includes(otherUser.id)) continue;
       if (!otherUser.location) continue;
-      if (!Number.isFinite(otherUser.location.lat) || !Number.isFinite(otherUser.location.lon)) continue;
+      const otherLat = Number(otherUser.location.lat);
+      const otherLon = Number(otherUser.location.lon);
+      if (!Number.isFinite(otherLat) || !Number.isFinite(otherLon)) continue;
 
       const updatedAt = otherUser.location.updatedAt
         ? new Date(otherUser.location.updatedAt).getTime()
         : 0;
       if (updatedAt && Date.now() - updatedAt > 24 * 60 * 60 * 1000) continue;
 
-      const distance = calculateDistance(
-        lat, lon,
-        otherUser.location.lat, otherUser.location.lon
-      );
+      const distance = calculateDistance(lat, lon, otherLat, otherLon);
 
       if (distance <= radius) {
         const otherPref = await getUserPreference(otherUser.id);
-        if (!usersMatchPreferences(user, otherUser, userPref, otherPref)) continue;
+        // Missing prefs must not hide someone who is physically nearby.
+        // Orientation still applies once both people have it and a gender.
+        const canFilter = Boolean(
+          userPref?.orientation && otherPref?.orientation && user.gender && otherUser.gender
+        );
+        if (canFilter && !usersMatchPreferences(user, otherUser, userPref, otherPref)) continue;
 
         const lastActive = otherUser.location.updatedAt
           ? new Date(otherUser.location.updatedAt).getTime()

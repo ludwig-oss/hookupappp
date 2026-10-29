@@ -37,6 +37,39 @@ function isRenderHost(url: string): boolean {
   }
 }
 
+function parseHttpOrigin(raw: string): string {
+  try {
+    const u = new URL(raw.includes('://') ? raw : `https://${raw}`);
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') return '';
+    return `${u.protocol}//${u.host}`.replace(/\/+$/, '');
+  } catch {
+    return '';
+  }
+}
+
+function isAllowedOAuthOrigin(origin: string): boolean {
+  try {
+    const u = new URL(origin);
+    const host = u.hostname.toLowerCase();
+    if (host === 'localhost' || host === '127.0.0.1') return true;
+    if (host === 'hookupapp.dev' || host.endsWith('.hookupapp.dev')) return true;
+    if (host.endsWith('.vercel.app')) return true;
+    const frontend = parseHttpOrigin(process.env.FRONTEND_URL || '');
+    if (frontend && origin === frontend) return true;
+    const extra = parseHttpOrigin(process.env.OAUTH_CALLBACK_BASE || '');
+    if (extra && origin === extra) return true;
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+function safeAppOrigin(origin: string | undefined, fallback: string): string {
+  const parsed = parseHttpOrigin(origin || '');
+  if (parsed && isAllowedOAuthOrigin(parsed) && !isRenderHost(parsed)) return parsed;
+  return fallback.replace(/\/+$/, '');
+}
+
 /** Public app URL — never send users to Render's cold-start splash for OAuth. */
 function oauthCallbackBase(req: Request): string {
   const frontend = (process.env.FRONTEND_URL || '').replace(/\/+$/, '');
@@ -54,9 +87,44 @@ function oauthCallbackBase(req: Request): string {
   return inferred || frontend || frontendBase();
 }
 
-/** OAuth providers redirect here (Vercel app) — bridge page wakes API then hits /api/auth/.../callback */
-function oauthReturnRedirectUri(provider: 'google' | 'facebook' | 'apple', req: Request): string {
-  return `${oauthCallbackBase(req)}/auth/oauth-return/${provider}`;
+function originFromRequest(req: Request): string {
+  const candidates = [
+    String(req.query.return_origin || ''),
+    String(req.headers.origin || ''),
+    String(req.headers.referer || ''),
+  ];
+  for (const c of candidates) {
+    if (!c) continue;
+    const origin = parseHttpOrigin(c);
+    if (origin && isAllowedOAuthOrigin(origin) && !isRenderHost(origin)) return origin;
+  }
+  return oauthCallbackBase(req);
+}
+
+function encodeOAuthState(origin: string): string {
+  return Buffer.from(JSON.stringify({ n: uuidv4(), o: origin }), 'utf8').toString('base64url');
+}
+
+function originFromOAuthState(state: string, req: Request): string {
+  try {
+    const parsed = JSON.parse(Buffer.from(String(state || ''), 'base64url').toString('utf8')) as { o?: string };
+    return safeAppOrigin(parsed?.o, originFromRequest(req));
+  } catch {
+    return originFromRequest(req);
+  }
+}
+
+/** OAuth providers redirect here (Vercel / localhost app) — bridge page wakes API then hits /api/auth/.../callback */
+function oauthReturnRedirectUri(provider: 'google' | 'facebook' | 'apple', origin: string): string {
+  return `${origin.replace(/\/+$/, '')}/auth/oauth-return/${provider}`;
+}
+
+function missingOAuthVarsMessage(label: string, vars: string[]): string {
+  const onRender = Boolean(process.env.RENDER);
+  const where = onRender
+    ? `Set ${vars.join(' and ')} on Render, then redeploy.`
+    : `Add ${vars.join(' and ')} to server/.env and restart the API.`;
+  return `${label} is not configured yet. ${where}`;
 }
 
 function toClientUser(user: User) {
@@ -78,16 +146,18 @@ function toClientUser(user: User) {
   };
 }
 
-function issueTokenAndRedirect(res: Response, user: User) {
+function issueTokenAndRedirect(res: Response, user: User, origin?: string) {
   const token = jwt.sign({ userId: user.id, email: user.email }, getJwtSecret(), {
     expiresIn: JWT_EXPIRES_IN,
   });
-  const dest = `${frontendBase()}/auth/callback?token=${encodeURIComponent(token)}&setup=${user.profileSetupComplete ? '1' : '0'}`;
+  const base = safeAppOrigin(origin, frontendBase());
+  const dest = `${base}/auth/callback?token=${encodeURIComponent(token)}&setup=${user.profileSetupComplete ? '1' : '0'}`;
   res.redirect(302, dest);
 }
 
-function redirectError(res: Response, message: string) {
-  res.redirect(302, `${frontendBase()}/login?oauth_error=${encodeURIComponent(message)}`);
+function redirectError(res: Response, message: string, origin?: string) {
+  const base = safeAppOrigin(origin, frontendBase());
+  res.redirect(302, `${base}/login?oauth_error=${encodeURIComponent(message)}`);
 }
 
 async function findByGoogleId(googleId: string): Promise<User | null> {
@@ -193,13 +263,13 @@ export function oauthStatus(_req: Request, res: Response) {
 }
 
 export function startGoogle(req: Request, res: Response) {
+  const origin = originFromRequest(req);
   const clientId = process.env.GOOGLE_CLIENT_ID?.trim();
   const secret = process.env.GOOGLE_CLIENT_SECRET?.trim();
   if (!clientId || !secret) {
-    return redirectError(res, 'Google sign-in is not configured yet. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET on Render.');
+    return redirectError(res, missingOAuthVarsMessage('Google sign-in', ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET']), origin);
   }
-  const redirectUri = oauthReturnRedirectUri('google', req);
-  const state = uuidv4();
+  const redirectUri = oauthReturnRedirectUri('google', origin);
   const url = new URL('https://accounts.google.com/o/oauth2/v2/auth');
   url.searchParams.set('client_id', clientId);
   url.searchParams.set('redirect_uri', redirectUri);
@@ -208,23 +278,24 @@ export function startGoogle(req: Request, res: Response) {
   url.searchParams.set('access_type', 'online');
   url.searchParams.set('include_granted_scopes', 'true');
   url.searchParams.set('prompt', 'select_account');
-  url.searchParams.set('state', state);
+  url.searchParams.set('state', encodeOAuthState(origin));
   res.redirect(302, url.toString());
 }
 
 export async function googleCallback(req: Request, res: Response) {
+  const origin = originFromOAuthState(String(req.query.state || ''), req);
   try {
     const clientId = process.env.GOOGLE_CLIENT_ID?.trim();
     const secret = process.env.GOOGLE_CLIENT_SECRET?.trim();
     if (!clientId || !secret) {
-      return redirectError(res, 'Google sign-in is not configured.');
+      return redirectError(res, 'Google sign-in is not configured.', origin);
     }
     const code = String(req.query.code || '');
     const err = String(req.query.error || '');
-    if (err) return redirectError(res, err);
-    if (!code) return redirectError(res, 'Google did not return a code.');
+    if (err) return redirectError(res, err, origin);
+    if (!code) return redirectError(res, 'Google did not return a code.', origin);
 
-    const redirectUri = oauthReturnRedirectUri('google', req);
+    const redirectUri = oauthReturnRedirectUri('google', origin);
     const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -238,7 +309,7 @@ export async function googleCallback(req: Request, res: Response) {
     });
     const tokenJson = (await tokenRes.json()) as { access_token?: string; error?: string };
     if (!tokenRes.ok || !tokenJson.access_token) {
-      return redirectError(res, tokenJson.error || 'Google token exchange failed');
+      return redirectError(res, tokenJson.error || 'Google token exchange failed', origin);
     }
 
     const profileRes = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
@@ -251,10 +322,10 @@ export async function googleCallback(req: Request, res: Response) {
       picture?: string;
       verified_email?: boolean;
     };
-    if (!profile.id) return redirectError(res, 'Could not read Google profile');
+    if (!profile.id) return redirectError(res, 'Could not read Google profile', origin);
 
     if (!profile.email) {
-      return redirectError(res, 'Google did not share your Gmail. Allow email access and try again.');
+      return redirectError(res, 'Google did not share your Gmail. Allow email access and try again.', origin);
     }
 
     const user = await upsertOAuthUser({
@@ -264,41 +335,43 @@ export async function googleCallback(req: Request, res: Response) {
       name: profile.name || 'Google User',
       picture: profile.picture || null,
     });
-    issueTokenAndRedirect(res, user);
+    issueTokenAndRedirect(res, user, origin);
   } catch (e: any) {
     console.error('Google OAuth error:', e);
-    redirectError(res, e.message || 'Google sign-in failed');
+    redirectError(res, e.message || 'Google sign-in failed', origin);
   }
 }
 
 export function startFacebook(req: Request, res: Response) {
+  const origin = originFromRequest(req);
   const appId = process.env.FACEBOOK_APP_ID?.trim();
   const secret = process.env.FACEBOOK_APP_SECRET?.trim();
   if (!appId || !secret) {
-    return redirectError(res, 'Facebook sign-in is not configured yet. Set FACEBOOK_APP_ID and FACEBOOK_APP_SECRET on Render.');
+    return redirectError(res, missingOAuthVarsMessage('Facebook sign-in', ['FACEBOOK_APP_ID', 'FACEBOOK_APP_SECRET']), origin);
   }
-  const redirectUri = oauthReturnRedirectUri('facebook', req);
+  const redirectUri = oauthReturnRedirectUri('facebook', origin);
   const url = new URL('https://www.facebook.com/v19.0/dialog/oauth');
   url.searchParams.set('client_id', appId);
   url.searchParams.set('redirect_uri', redirectUri);
-  url.searchParams.set('state', uuidv4());
+  url.searchParams.set('state', encodeOAuthState(origin));
   url.searchParams.set('scope', 'email,public_profile');
   res.redirect(302, url.toString());
 }
 
 export async function facebookCallback(req: Request, res: Response) {
+  const origin = originFromOAuthState(String(req.query.state || ''), req);
   try {
     const appId = process.env.FACEBOOK_APP_ID?.trim();
     const secret = process.env.FACEBOOK_APP_SECRET?.trim();
     if (!appId || !secret) {
-      return redirectError(res, 'Facebook sign-in is not configured.');
+      return redirectError(res, 'Facebook sign-in is not configured.', origin);
     }
     const code = String(req.query.code || '');
     const err = String(req.query.error_description || req.query.error || '');
-    if (err) return redirectError(res, err);
-    if (!code) return redirectError(res, 'Facebook did not return a code.');
+    if (err) return redirectError(res, err, origin);
+    if (!code) return redirectError(res, 'Facebook did not return a code.', origin);
 
-    const redirectUri = oauthReturnRedirectUri('facebook', req);
+    const redirectUri = oauthReturnRedirectUri('facebook', origin);
     const tokenUrl = new URL('https://graph.facebook.com/v19.0/oauth/access_token');
     tokenUrl.searchParams.set('client_id', appId);
     tokenUrl.searchParams.set('client_secret', secret);
@@ -307,7 +380,7 @@ export async function facebookCallback(req: Request, res: Response) {
     const tokenRes = await fetch(tokenUrl.toString());
     const tokenJson = (await tokenRes.json()) as { access_token?: string; error?: { message?: string } };
     if (!tokenRes.ok || !tokenJson.access_token) {
-      return redirectError(res, tokenJson.error?.message || 'Facebook token exchange failed');
+      return redirectError(res, tokenJson.error?.message || 'Facebook token exchange failed', origin);
     }
 
     const profileUrl = new URL('https://graph.facebook.com/me');
@@ -320,7 +393,7 @@ export async function facebookCallback(req: Request, res: Response) {
       email?: string;
       picture?: { data?: { url?: string } };
     };
-    if (!profile.id) return redirectError(res, 'Could not read Facebook profile');
+    if (!profile.id) return redirectError(res, 'Could not read Facebook profile', origin);
 
     const user = await upsertOAuthUser({
       provider: 'facebook',
@@ -329,50 +402,52 @@ export async function facebookCallback(req: Request, res: Response) {
       name: profile.name || 'Facebook User',
       picture: profile.picture?.data?.url || null,
     });
-    issueTokenAndRedirect(res, user);
+    issueTokenAndRedirect(res, user, origin);
   } catch (e: any) {
     console.error('Facebook OAuth error:', e);
-    redirectError(res, e.message || 'Facebook sign-in failed');
+    redirectError(res, e.message || 'Facebook sign-in failed', origin);
   }
 }
 
 export function startApple(req: Request, res: Response) {
+  const origin = originFromRequest(req);
   const clientId = process.env.APPLE_CLIENT_ID?.trim();
   const teamId = process.env.APPLE_TEAM_ID?.trim();
   if (!clientId || !teamId) {
-    return redirectError(res, 'Apple Sign-In is not configured yet. Set APPLE_CLIENT_ID and APPLE_TEAM_ID on Render.');
+    return redirectError(res, missingOAuthVarsMessage('Apple Sign-In', ['APPLE_CLIENT_ID', 'APPLE_TEAM_ID']), origin);
   }
-  const redirectUri = oauthReturnRedirectUri('apple', req);
+  const redirectUri = oauthReturnRedirectUri('apple', origin);
   const url = new URL('https://appleid.apple.com/auth/authorize');
   url.searchParams.set('client_id', clientId);
   url.searchParams.set('redirect_uri', redirectUri);
   url.searchParams.set('response_type', 'code');
   url.searchParams.set('response_mode', 'query');
   url.searchParams.set('scope', 'name email');
-  url.searchParams.set('state', uuidv4());
+  url.searchParams.set('state', encodeOAuthState(origin));
   res.redirect(302, url.toString());
 }
 
 export async function appleCallback(req: Request, res: Response) {
+  const origin = originFromOAuthState(String(req.query.state || ''), req);
   try {
     const clientId = process.env.APPLE_CLIENT_ID?.trim();
     if (!clientId) {
-      return redirectError(res, 'Apple Sign-In is not configured.');
+      return redirectError(res, 'Apple Sign-In is not configured.', origin);
     }
     const code = String(req.query.code || '');
     const err = String(req.query.error || '');
-    if (err) return redirectError(res, err);
-    if (!code) return redirectError(res, 'Apple did not return a code.');
+    if (err) return redirectError(res, err, origin);
+    if (!code) return redirectError(res, 'Apple did not return a code.', origin);
 
     // Production Apple token exchange requires a signed client_secret JWT (ES256).
     // When APPLE_KEY_ID + APPLE_PRIVATE_KEY are set, exchange the code; otherwise guide setup.
     const keyId = process.env.APPLE_KEY_ID?.trim();
     const privateKey = process.env.APPLE_PRIVATE_KEY?.replace(/\\n/g, '\n');
     if (!keyId || !privateKey) {
-      return redirectError(res, 'Apple Sign-In needs APPLE_KEY_ID and APPLE_PRIVATE_KEY on the server. See OAUTH-SETUP.md.');
+      return redirectError(res, 'Apple Sign-In needs APPLE_KEY_ID and APPLE_PRIVATE_KEY on the server. See OAUTH-SETUP.md.', origin);
     }
 
-    const redirectUri = oauthReturnRedirectUri('apple', req);
+    const redirectUri = oauthReturnRedirectUri('apple', origin);
     const clientSecret = jwt.sign({}, privateKey, {
       algorithm: 'ES256',
       expiresIn: '5m',
@@ -395,11 +470,11 @@ export async function appleCallback(req: Request, res: Response) {
     });
     const tokenJson = (await tokenRes.json()) as { id_token?: string; error?: string };
     if (!tokenRes.ok || !tokenJson.id_token) {
-      return redirectError(res, tokenJson.error || 'Apple token exchange failed');
+      return redirectError(res, tokenJson.error || 'Apple token exchange failed', origin);
     }
 
     const payload = jwt.decode(tokenJson.id_token) as { sub?: string; email?: string } | null;
-    if (!payload?.sub) return redirectError(res, 'Could not read Apple profile');
+    if (!payload?.sub) return redirectError(res, 'Could not read Apple profile', origin);
 
     const user = await upsertOAuthUser({
       provider: 'apple',
@@ -408,9 +483,9 @@ export async function appleCallback(req: Request, res: Response) {
       name: 'Apple User',
       picture: null,
     });
-    issueTokenAndRedirect(res, user);
+    issueTokenAndRedirect(res, user, origin);
   } catch (e: any) {
     console.error('Apple OAuth error:', e);
-    redirectError(res, e.message || 'Apple sign-in failed');
+    redirectError(res, e.message || 'Apple sign-in failed', origin);
   }
 }

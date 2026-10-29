@@ -55,6 +55,7 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [oauthBusy, setOauthBusy] = useState(false);
+  const [googleReady, setGoogleReady] = useState<boolean | null>(null);
 
   const { login } = useContext(AuthContext);
   const navigate = useNavigate();
@@ -64,6 +65,10 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
     if (m === 'login') setMode('login');
     const oauthErr = searchParams.get('oauth_error');
     if (oauthErr) setError(oauthErr);
+    fetch('/api/auth/oauth/status')
+      .then((r) => r.json())
+      .then((d: { google?: boolean }) => setGoogleReady(Boolean(d.google)))
+      .catch(() => setGoogleReady(null));
   }, [searchParams]);
 
   useEffect(() => {
@@ -226,7 +231,9 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
             onError={setError}
           />
           <p className="google-continue-hint">
-            Uses your Gmail and Google profile automatically. No password, PIN, or one-time code.
+            {googleReady === false
+              ? `Google sign-in needs GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in server/.env (this computer) or on Render (live). Authorized redirect URI: ${typeof window !== 'undefined' ? window.location.origin : ''}/auth/oauth-return/google`
+              : 'Uses your Gmail and Google profile automatically. No password, PIN, or one-time code.'}
           </p>
         </div>
         <div className="auth-or-divider">or</div>

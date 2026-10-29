@@ -8,5 +8,6 @@ export async function redirectToOAuth(provider: OAuthProvider): Promise<void> {
   if (!ready) {
     throw new Error('Server is waking up — please try again in a moment.');
   }
-  window.location.href = `${window.location.origin}/api/auth/${provider}`;
+  const origin = encodeURIComponent(window.location.origin);
+  window.location.href = `${window.location.origin}/api/auth/${provider}?return_origin=${origin}`;
 }

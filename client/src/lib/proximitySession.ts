@@ -43,6 +43,24 @@ export function takeConnectionsStartView(): 'nearby' | 'buzzes' | null {
 
 /** Mark this person as handled — they will not pop up or reappear in Nearby. */
 export const NEARBY_HANDLED_EVENT = 'hookup:nearby-handled';
+export const NEARBY_CHECK_NOW_EVENT = 'hookup:check-nearby-now';
+export const NEARBY_POPUP_VISIBLE_EVENT = 'hookup:nearby-popup-visible';
+
+export function requestNearbyCheckNow(): void {
+  try {
+    window.dispatchEvent(new Event(NEARBY_CHECK_NOW_EVENT));
+  } catch {
+    /* ignore */
+  }
+}
+
+export function markNearbyPopupVisible(): void {
+  try {
+    window.dispatchEvent(new Event(NEARBY_POPUP_VISIBLE_EVENT));
+  } catch {
+    /* ignore */
+  }
+}
 
 export function markProximityBannerShown(
   kind: 'walk-suggest' | 'walk-incoming' | 'buzz-incoming' | 'nearby-match',

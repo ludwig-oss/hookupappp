@@ -78,6 +78,17 @@ export function nearbyRadiusForCoords(coords: StoredCoords | null): number {
   return Math.min(250, NEARBY_TARGET_M + pad);
 }
 
+/** People-around-me matching is always ~50 m, including city pins (not city-wide). */
+export function nearbyPeopleRadiusMeters(coords: StoredCoords | null): number {
+  if (!coords) return NEARBY_TARGET_M;
+  if (coords.source === 'profile' || coords.source === 'server') return NEARBY_TARGET_M;
+  const pad =
+    typeof coords.accuracy === 'number' && Number.isFinite(coords.accuracy)
+      ? Math.min(40, Math.max(0, coords.accuracy))
+      : 0;
+  return NEARBY_TARGET_M + pad;
+}
+
 export function startGpsWatch(onFix: (coords: StoredCoords) => void): () => void {
   if (typeof navigator === 'undefined' || !navigator.geolocation) return () => {};
   let lastAt = 0;

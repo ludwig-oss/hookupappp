@@ -91,7 +91,6 @@ CREATE POLICY users_update ON users FOR UPDATE USING (
 DROP POLICY IF EXISTS users_delete ON users;
 CREATE POLICY users_delete ON users FOR DELETE USING (
   app_rls_bypass()
-  OR id = app_current_user_id()
 );
 
 -- ========== profile_stories ==========

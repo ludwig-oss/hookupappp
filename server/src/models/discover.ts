@@ -1,5 +1,6 @@
 import { readFile, writeFile } from 'fs/promises';
 import { join } from 'path';
+import { writeMergedRows } from '../utils/writeJsonFile.js';
 
 export interface Interest {
   id: string;
@@ -99,7 +100,10 @@ export async function readPreferences(): Promise<UserPreference[]> {
 async function writePreferences(prefs: UserPreference[]): Promise<void> {
   const { splitPreferencesForWrite } = await import('../simulator/runtime.js');
   const { disk } = splitPreferencesForWrite(prefs);
-  await writeFile(PREFERENCES_PATH, JSON.stringify(disk, null, 2));
+  await writeMergedRows(PREFERENCES_PATH, disk, (row) => {
+    if (!row || typeof row !== 'object' || !('userId' in row) || (row as { userId?: unknown }).userId == null) return null;
+    return String((row as { userId: unknown }).userId);
+  });
 }
 
 export async function createInterest(interest: Omit<Interest, 'id' | 'createdAt' | 'expiresAt' | 'status'>): Promise<Interest> {

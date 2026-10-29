@@ -1,5 +1,6 @@
-import { readFile, writeFile } from 'fs/promises';
+import { readFile } from 'fs/promises';
 import { join } from 'path';
+import { writeMergedRows } from '../utils/writeJsonFile.js';
 
 export interface UserSettings {
   userId: string;
@@ -71,9 +72,10 @@ async function readSettings(): Promise<UserSettings[]> {
 }
 
 async function writeSettings(settings: UserSettings[]): Promise<void> {
-  const dir = join(process.cwd(), 'server', 'data');
-  await import('fs/promises').then(fs => fs.mkdir(dir, { recursive: true }));
-  await writeFile(SETTINGS_PATH, JSON.stringify(settings, null, 2));
+  await writeMergedRows(SETTINGS_PATH, settings, (row) => {
+    if (!row || typeof row !== 'object' || !('userId' in row) || (row as { userId?: unknown }).userId == null) return null;
+    return String((row as { userId: unknown }).userId);
+  });
 }
 
 const defaultSettings: Omit<UserSettings, 'userId'> = {

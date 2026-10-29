@@ -1,10 +1,11 @@
-import { readFile, writeFile } from 'fs/promises';
+import { readFile } from 'fs/promises';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { usePostgres } from '../db/index.js';
 import * as pgUsers from '../db/pg-users.js';
 import { inferMediaTypeFromUrl } from '../utils/mediaType.js';
 import { STORY_TTL_MS } from '../constants/socialMedia.js';
+import { writeMergedRows } from '../utils/writeJsonFile.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -210,13 +211,9 @@ export interface User {
 const DB_PATH = join(__dirname, '..', 'data', 'users.json');
 
 function parseUsersJson(data: string): User[] {
-  try {
-    return JSON.parse(data);
-  } catch {
-    const end = data.indexOf('\n]');
-    if (end === -1) throw new Error('users.json is not valid JSON');
-    return JSON.parse(data.slice(0, end + 2));
-  }
+  const parsed = JSON.parse(data);
+  if (!Array.isArray(parsed)) throw new Error('users.json is not valid JSON');
+  return parsed;
 }
 
 async function readUsers(): Promise<User[]> {
@@ -321,15 +318,13 @@ async function readUsers(): Promise<User[]> {
 }
 
 async function writeUsers(users: User[]): Promise<void> {
-  const { splitUsersForWrite, isSimulatorEnabled } = await import('../simulator/runtime.js');
-  const { disk, mockTouched } = splitUsersForWrite(users);
-  if (isSimulatorEnabled() && mockTouched > 0) {
-    // Mock rows stay in RAM only — never touch users.json for them.
-  }
-  const dir = join(__dirname, '..', 'data');
-  const { mkdir } = await import('fs/promises');
-  await mkdir(dir, { recursive: true });
-  await writeFile(DB_PATH, `${JSON.stringify(disk, null, 2)}\n`, 'utf-8');
+  const { splitUsersForWrite } = await import('../simulator/runtime.js');
+  const { disk } = splitUsersForWrite(users);
+  // Session updates rewrite this file. Merge so a partial list cannot drop accounts.
+  await writeMergedRows(DB_PATH, disk, (row) => {
+    if (!row || typeof row !== 'object' || !('id' in row) || (row as { id?: unknown }).id == null) return null;
+    return String((row as { id: unknown }).id);
+  });
 }
 
 export async function createUser(userData: Omit<User, 'id' | 'resetToken' | 'resetTokenExpiry' | 'profilePicture' | 'highlights' | 'disappearingPhotos' | 'profileSetupComplete' | 'improvementCategories' | 'blockedUsers' | 'mutedUsers' | 'unmatchedUsers' | 'profiles' | 'activeProfileId' | 'emailVerified' | 'emailVerificationToken' | 'emailVerificationTokenExpiry' | 'emailVerificationCode' | 'emailVerificationCodeExpiry' | 'phoneNumber'> & { improvementCategories?: string[]; passwordHint1?: string; passwordHint2?: string; passwordHint3?: string }): Promise<User> {

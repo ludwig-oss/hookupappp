@@ -219,6 +219,7 @@ function App() {
   };
 
   const logout = () => {
+    // Browser session only. Account, preferences, and match data stay on the server.
     refreshGen.current += 1;
     setUser(null);
     clearAuth();

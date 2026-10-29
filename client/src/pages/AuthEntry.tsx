@@ -55,7 +55,6 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [oauthBusy, setOauthBusy] = useState(false);
-  const [googleReady, setGoogleReady] = useState<boolean | null>(null);
 
   const { login } = useContext(AuthContext);
   const navigate = useNavigate();
@@ -66,18 +65,16 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
     const oauthErr = searchParams.get('oauth_error');
     fetch('/api/auth/oauth/status', { cache: 'no-store', credentials: 'same-origin' })
       .then((r) => r.json())
-      .then((d: { google?: boolean }) => {
-        const ready = Boolean(d.google);
-        setGoogleReady(ready);
-        if (oauthErr && ready && /not configured/i.test(oauthErr)) {
+      .then(() => {
+        if (oauthErr && /not configured|GOOGLE_CLIENT/i.test(oauthErr)) {
           setError('');
         } else if (oauthErr) {
           setError(oauthErr);
         }
       })
       .catch(() => {
-        setGoogleReady(null);
-        if (oauthErr) setError(oauthErr);
+        if (oauthErr && /not configured|GOOGLE_CLIENT/i.test(oauthErr)) setError('');
+        else if (oauthErr) setError(oauthErr);
       })
       .finally(() => {
         if (!oauthErr || typeof window === 'undefined') return;
@@ -249,9 +246,7 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
             onError={setError}
           />
           <p className="google-continue-hint">
-            {googleReady === false
-              ? `Google sign-in needs GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in server/.env (this computer) or on Render (live). Authorized redirect URI: ${typeof window !== 'undefined' ? window.location.origin : ''}/auth/oauth-return/google`
-              : 'Uses your Gmail. Same button to sign up and to log back in — pick that Google account again.'}
+            Uses your Gmail. Same button to sign up and to log back in — pick that Google account again.
           </p>
         </div>
         <div className="auth-or-divider">or</div>

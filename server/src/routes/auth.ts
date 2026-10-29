@@ -4,6 +4,7 @@ import {
   oauthStatus,
   startGoogle,
   googleCallback,
+  googleIdToken,
   startFacebook,
   facebookCallback,
   startApple,
@@ -63,6 +64,7 @@ router.post('/change-password', authenticateToken, changePassword);
 
 router.get('/oauth/status', oauthStatus);
 router.get('/google', startGoogle);
+router.post('/google/id-token', loginLimiter, googleIdToken);
 router.get('/google/callback', googleCallback);
 router.get('/facebook', startFacebook);
 router.get('/facebook/callback', facebookCallback);

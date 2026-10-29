@@ -19,10 +19,34 @@ const OAuthReturn = () => {
     }
     let cancelled = false;
     (async () => {
+      const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+      const hashError = hashParams.get('error_description') || hashParams.get('error');
+      if (hashError) {
+        setError(hashError);
+        return;
+      }
+      const idToken = hashParams.get('id_token');
       const ok = await warmBackend(75000);
       if (cancelled) return;
       if (!ok) {
         setError('Could not reach the server. Wait a few seconds and try signing in again.');
+        return;
+      }
+      if (provider === 'google' && idToken) {
+        const res = await fetch(`${window.location.origin}/api/auth/google/id-token`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ idToken, state: hashParams.get('state') || '' }),
+        });
+        const data = (await res.json().catch(() => ({}))) as { token?: string; setup?: string; error?: string };
+        if (!res.ok || !data.token) {
+          setError(data.error || 'Google sign-in failed. Try again.');
+          return;
+        }
+        const setup = data.setup === '1' ? '1' : '0';
+        window.location.replace(
+          `${window.location.origin}/auth/callback?token=${encodeURIComponent(data.token)}&setup=${setup}`
+        );
         return;
       }
       const qs = searchParams.toString();

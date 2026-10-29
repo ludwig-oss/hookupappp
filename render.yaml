@@ -21,6 +21,8 @@ services:
         generateValue: true
       - key: FRONTEND_URL
         value: https://hookupapp.dev
+      - key: GOOGLE_CLIENT_ID
+        value: "20879117427-ksgnef8b8dlnmv8h2d9a2403ihcrb18f.apps.googleusercontent.com"
       - key: STRIPE_SECRET_KEY
         sync: false
       - key: DATABASE_URL

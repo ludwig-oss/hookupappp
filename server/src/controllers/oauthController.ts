@@ -101,17 +101,33 @@ function originFromRequest(req: Request): string {
   return oauthCallbackBase(req);
 }
 
-function encodeOAuthState(origin: string): string {
-  return Buffer.from(JSON.stringify({ n: uuidv4(), o: origin }), 'utf8').toString('base64url');
+/** Public Web client ID — not a secret. Used when Render env is missing so phones can still sign in. */
+const PUBLIC_GOOGLE_WEB_CLIENT_ID =
+  '20879117427-ksgnef8b8dlnmv8h2d9a2403ihcrb18f.apps.googleusercontent.com';
+
+function googleWebClientId(): string {
+  return process.env.GOOGLE_CLIENT_ID?.trim() || PUBLIC_GOOGLE_WEB_CLIENT_ID;
+}
+
+function parseOAuthState(state: string): { o?: string; nonce?: string } {
+  try {
+    return JSON.parse(Buffer.from(String(state || ''), 'base64url').toString('utf8')) as {
+      o?: string;
+      nonce?: string;
+    };
+  } catch {
+    return {};
+  }
+}
+
+function encodeOAuthState(origin: string, nonce?: string): string {
+  return Buffer.from(JSON.stringify({ n: uuidv4(), o: origin, nonce: nonce || uuidv4() }), 'utf8').toString(
+    'base64url'
+  );
 }
 
 function originFromOAuthState(state: string, req: Request): string {
-  try {
-    const parsed = JSON.parse(Buffer.from(String(state || ''), 'base64url').toString('utf8')) as { o?: string };
-    return safeAppOrigin(parsed?.o, originFromRequest(req));
-  } catch {
-    return originFromRequest(req);
-  }
+  return safeAppOrigin(parseOAuthState(state).o, originFromRequest(req));
 }
 
 /** OAuth providers redirect here (Vercel / localhost app) — bridge page wakes API then hits /api/auth/.../callback */
@@ -256,7 +272,7 @@ async function upsertOAuthUser(opts: {
 
 export function oauthStatus(_req: Request, res: Response) {
   res.json({
-    google: Boolean(process.env.GOOGLE_CLIENT_ID?.trim() && process.env.GOOGLE_CLIENT_SECRET?.trim()),
+    google: Boolean(googleWebClientId()),
     facebook: Boolean(process.env.FACEBOOK_APP_ID?.trim() && process.env.FACEBOOK_APP_SECRET?.trim()),
     apple: Boolean(process.env.APPLE_CLIENT_ID?.trim() && process.env.APPLE_TEAM_ID?.trim()),
   });
@@ -264,33 +280,128 @@ export function oauthStatus(_req: Request, res: Response) {
 
 export function startGoogle(req: Request, res: Response) {
   const origin = originFromRequest(req);
-  const clientId = process.env.GOOGLE_CLIENT_ID?.trim();
+  const clientId = googleWebClientId();
   const secret = process.env.GOOGLE_CLIENT_SECRET?.trim();
-  if (!clientId || !secret) {
-    return redirectError(res, missingOAuthVarsMessage('Google sign-in', ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET']), origin);
+  if (!clientId) {
+    return redirectError(res, 'Google sign-in is unavailable. Try username + PIN.', origin);
   }
   const redirectUri = oauthReturnRedirectUri('google', origin);
+  const nonce = uuidv4();
   const url = new URL('https://accounts.google.com/o/oauth2/v2/auth');
   url.searchParams.set('client_id', clientId);
   url.searchParams.set('redirect_uri', redirectUri);
-  url.searchParams.set('response_type', 'code');
   url.searchParams.set('scope', 'openid email profile');
-  url.searchParams.set('access_type', 'online');
-  url.searchParams.set('include_granted_scopes', 'true');
   url.searchParams.set('prompt', 'select_account');
-  url.searchParams.set('state', encodeOAuthState(origin));
+  url.searchParams.set('state', encodeOAuthState(origin, nonce));
+  if (secret) {
+    url.searchParams.set('response_type', 'code');
+    url.searchParams.set('access_type', 'online');
+    url.searchParams.set('include_granted_scopes', 'true');
+  } else {
+    // No client secret on the host (typical Render miss). ID token in the URL hash still works on phones.
+    url.searchParams.set('response_type', 'id_token');
+    url.searchParams.set('nonce', nonce);
+    url.searchParams.set('response_mode', 'fragment');
+  }
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
   res.setHeader('Referrer-Policy', 'no-referrer-when-downgrade');
   res.redirect(302, url.toString());
 }
 
+async function googleProfileFromIdToken(idToken: string, expectedNonce?: string) {
+  const clientId = googleWebClientId();
+  const tokenRes = await fetch(
+    `https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`
+  );
+  const payload = (await tokenRes.json()) as {
+    error?: string;
+    aud?: string;
+    iss?: string;
+    sub?: string;
+    email?: string;
+    email_verified?: string | boolean;
+    name?: string;
+    picture?: string;
+    nonce?: string;
+  };
+  if (!tokenRes.ok || payload.error || !payload.sub) {
+    throw new Error('Google sign-in expired. Tap Sign in with Google again.');
+  }
+  if (payload.aud !== clientId) {
+    throw new Error('Google sign-in did not match this app.');
+  }
+  const iss = String(payload.iss || '');
+  if (iss !== 'https://accounts.google.com' && iss !== 'accounts.google.com') {
+    throw new Error('Google sign-in did not match this app.');
+  }
+  if (expectedNonce && payload.nonce && payload.nonce !== expectedNonce) {
+    throw new Error('Google sign-in expired. Tap Sign in with Google again.');
+  }
+  const verified = payload.email_verified === true || payload.email_verified === 'true';
+  if (!payload.email || !verified) {
+    throw new Error('Google did not share a verified Gmail. Allow email access and try again.');
+  }
+  return {
+    id: payload.sub,
+    email: payload.email.toLowerCase(),
+    name: payload.name || 'Google User',
+    picture: payload.picture || null,
+  };
+}
+
+export async function googleIdToken(req: Request, res: Response) {
+  try {
+    const idToken = String(req.body?.idToken || req.body?.credential || req.query.id_token || '').trim();
+    if (!idToken) {
+      return res.status(400).json({ error: 'Google did not return a sign-in token.' });
+    }
+    const nonce = parseOAuthState(String(req.body?.state || req.query.state || '')).nonce;
+    const profile = await googleProfileFromIdToken(idToken, nonce);
+    const user = await upsertOAuthUser({
+      provider: 'google',
+      providerId: profile.id,
+      email: profile.email,
+      name: profile.name,
+      picture: profile.picture,
+    });
+    const token = jwt.sign({ userId: user.id, email: user.email }, getJwtSecret(), {
+      expiresIn: JWT_EXPIRES_IN,
+    });
+    return res.json({
+      token,
+      setup: user.profileSetupComplete ? '1' : '0',
+      user: toClientUser(user),
+    });
+  } catch (e: any) {
+    console.error('Google ID token error:', e);
+    return res.status(400).json({ error: e.message || 'Google sign-in failed' });
+  }
+}
+
 export async function googleCallback(req: Request, res: Response) {
   const origin = originFromOAuthState(String(req.query.state || ''), req);
   try {
-    const clientId = process.env.GOOGLE_CLIENT_ID?.trim();
+    const idToken = String(req.query.id_token || '').trim();
+    if (idToken) {
+      const nonce = parseOAuthState(String(req.query.state || '')).nonce;
+      const profile = await googleProfileFromIdToken(idToken, nonce);
+      const user = await upsertOAuthUser({
+        provider: 'google',
+        providerId: profile.id,
+        email: profile.email,
+        name: profile.name,
+        picture: profile.picture,
+      });
+      return issueTokenAndRedirect(res, user, origin);
+    }
+
+    const clientId = googleWebClientId();
     const secret = process.env.GOOGLE_CLIENT_SECRET?.trim();
-    if (!clientId || !secret) {
-      return redirectError(res, 'Google sign-in is not configured.', origin);
+    if (!clientId) {
+      return redirectError(res, 'Google sign-in is unavailable. Try username + PIN.', origin);
+    }
+    if (!secret) {
+      return redirectError(res, 'Google sign-in needs another tap. Use Sign in with Google again.', origin);
     }
     const code = String(req.query.code || '');
     const err = String(req.query.error || '');

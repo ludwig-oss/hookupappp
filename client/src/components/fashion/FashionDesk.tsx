@@ -12,6 +12,7 @@ import { paintFashionTryOn, renderBodyAvatarDataUrl, type BodyAvatarOpts } from 
 import { speakGuideLine, speechLangFor } from '../../lib/aiGuideSpeech';
 import { checkFaceInPhoto } from '../../lib/fashionFaceCheck';
 import { prepareAndUploadFile } from '../../lib/uploadMedia';
+import { restoredRecordsForEmail } from '../../lib/googleAuthSession';
 import ClosetInterface from '../closet/ClosetInterface';
 import './FashionDesk.css';
 
@@ -200,21 +201,36 @@ export default function FashionDesk({
     speakLine(guide, opener, () => onSpeaking(true), () => onSpeaking(false));
   }, [guide, opener, onSpeaking]);
 
+  const applyWardrobeItems = (items: WardrobeItem[]) => {
+    setWardrobe(items.filter((i) => i.kind !== 'piece' && i.kind !== 'draft' && !i.group.toLowerCase().includes('draft')));
+    setDrafts(items.filter((i) => i.kind === 'draft' || i.group.toLowerCase().includes('draft')));
+    setPieces(items.filter((i) => i.kind === 'piece'));
+    const groups = [...new Set(items.map((i) => i.group).filter(Boolean))];
+    if (groups[0]) setGroup(groups[0]);
+  };
+
   const loadWardrobe = async () => {
+    const email = String(user?.email || '');
     try {
       const r = await fashionAPI.wardrobe();
-      setWardrobe(r.looks?.length ? r.looks : r.items.filter((i) => i.kind !== 'piece' && i.kind !== 'draft'));
-      setDrafts(r.drafts || r.items.filter((i) => i.kind === 'draft' || i.group.toLowerCase().includes('draft')));
-      setPieces(r.pieces || r.items.filter((i) => i.kind === 'piece'));
-      if (r.groups[0]) setGroup(r.groups[0]);
+      if (r.items?.length) {
+        setWardrobe(r.looks?.length ? r.looks : r.items.filter((i) => i.kind !== 'piece' && i.kind !== 'draft'));
+        setDrafts(r.drafts || r.items.filter((i) => i.kind === 'draft' || i.group.toLowerCase().includes('draft')));
+        setPieces(r.pieces || r.items.filter((i) => i.kind === 'piece'));
+        if (r.groups[0]) setGroup(r.groups[0]);
+        return;
+      }
     } catch {
-      /* empty wardrobe is fine */
+      /* fall through to the device closet */
     }
+    if (!email) return;
+    const saved = await restoredRecordsForEmail(email);
+    if (saved?.wardrobe.length) applyWardrobeItems(saved.wardrobe);
   };
 
   useEffect(() => {
     void loadWardrobe();
-  }, []);
+  }, [user?.email]);
 
   useEffect(() => {
     let cancelled = false;

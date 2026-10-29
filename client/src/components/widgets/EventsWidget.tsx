@@ -9,6 +9,7 @@ import {
   EVENT_TYPE_LABELS,
   EventType,
 } from '../../api/events';
+import { restoredRecordsForEmail } from '../../lib/googleAuthSession';
 import './Widget.css';
 import '../../pages/Dashboard.css';
 
@@ -89,10 +90,26 @@ export default function EventsWidget() {
 
   const loadMyEvents = () => {
     setLoading(true);
+    const email = String(user?.email || '');
     eventsAPI
       .myEvents()
-      .then((r) => setMyEvents(r.events || []))
-      .catch(() => setMyEvents([]))
+      .then(async (r) => {
+        const events = r.events || [];
+        if (events.length || !email) {
+          setMyEvents(events);
+          return;
+        }
+        const saved = await restoredRecordsForEmail(email);
+        setMyEvents(saved?.calendar.length ? saved.calendar : []);
+      })
+      .catch(async () => {
+        if (!email) {
+          setMyEvents([]);
+          return;
+        }
+        const saved = await restoredRecordsForEmail(email);
+        setMyEvents(saved?.calendar || []);
+      })
       .finally(() => setLoading(false));
   };
 

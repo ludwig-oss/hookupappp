@@ -32,10 +32,14 @@ async function readAll(): Promise<WardrobeFile> {
   try {
     const raw = await readFile(DB_PATH, 'utf-8');
     const parsed = JSON.parse(raw) as WardrobeFile;
-    if (!Array.isArray(parsed.items)) return { items: [] };
+    if (!parsed || !Array.isArray(parsed.items)) {
+      throw new Error('fashion wardrobe file is not a list');
+    }
     return parsed;
-  } catch {
-    return { items: [] };
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException)?.code;
+    if (code === 'ENOENT') return { items: [] };
+    throw error;
   }
 }
 

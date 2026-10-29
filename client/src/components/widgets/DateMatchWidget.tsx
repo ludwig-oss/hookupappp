@@ -2,6 +2,7 @@ import { useContext, useEffect, useMemo, useState } from 'react';
 import { AuthContext } from '../../context/AuthContext';
 import { dateMatchAPI, DateMatch, DateMatchCatalog, LawyerSession, PitchOffer, PublicUserCard } from '../../api/dateMatch';
 import { prepareAndUploadFile } from '../../lib/uploadMedia';
+import { restoredRecordsForEmail } from '../../lib/googleAuthSession';
 import './DateMatchWidget.css';
 import './Widget.css';
 
@@ -113,14 +114,23 @@ export default function DateMatchWidget({
   const slots = useMemo(() => upcomingSlots(), []);
 
   const loadAll = async () => {
-    const [c, mine, p, sess] = await Promise.all([
-      dateMatchAPI.catalog(),
+    const email = String(user?.email || '');
+    const [mineResult, p, sess] = await Promise.all([
       dateMatchAPI.mine().catch(() => ({ active: [], pending: [], past: [] })),
       dateMatchAPI.pitches().catch(() => ({ toWrite: [], incoming: [] })),
       dateMatchAPI.lawyerSessions().catch(() => ({ sessions: [] })),
     ]);
-    setCatalog(c);
+    let mine = mineResult;
+    const empty = !mine.active?.length && !mine.pending?.length && !mine.past?.length;
+    if (empty && email) {
+      const saved = await restoredRecordsForEmail(email);
+      if (saved && (saved.matching.active.length || saved.matching.pending.length || saved.matching.past.length)) {
+        mine = saved.matching as typeof mine;
+      }
+    }
     setLists(mine);
+    const c = await dateMatchAPI.catalog();
+    setCatalog(c);
     setPitches(p);
     setLawyerSessions(sess.sessions || []);
     if (!looking.length && Array.isArray(c.savedLookingFor) && c.savedLookingFor.length) {

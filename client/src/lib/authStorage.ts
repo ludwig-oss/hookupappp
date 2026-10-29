@@ -93,6 +93,7 @@ export function writeAuthUser(user: unknown): void {
   }
 }
 
+/** Session token and cached user only. Saved Google profiles stay under their own keys. */
 export function clearAuth(): void {
   ls()?.removeItem(TOKEN_KEY);
   ls()?.removeItem(USER_KEY);

@@ -35,6 +35,7 @@ const AuthCallback = () => {
               displayName: full.name,
               photoURL: full.profilePicture,
             });
+            await handleGoogleAuthSessionFix.archiveLiveRecords(full.email);
           }
         }
         login(full as any, token, { stayLoggedIn: getStayLoggedIn() });

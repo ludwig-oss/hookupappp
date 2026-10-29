@@ -220,13 +220,20 @@ function App() {
   };
 
   const logout = () => {
-    // Browser session only. Account, preferences, and the saved Google profile stay put.
+    // Browser session only. Account rows and the email-keyed Google closet stay put.
+    const email = String(user?.email || '').trim();
+    const google = Boolean(user?.hasGoogleAuth);
     refreshGen.current += 1;
     setUser(null);
-    clearAuth();
-    void handleGoogleAuthSessionFix.safeSignOut();
-    delete axios.defaults.headers.common['Authorization'];
     hasRefreshedProfile.current = false;
+    void (async () => {
+      if (google && email) {
+        await handleGoogleAuthSessionFix.archiveLiveRecords(email);
+      }
+      clearAuth();
+      await handleGoogleAuthSessionFix.safeSignOut();
+      delete axios.defaults.headers.common['Authorization'];
+    })();
   };
 
   const updateUser = (updates: Partial<Record<string, any>>) => {

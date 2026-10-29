@@ -1,6 +1,7 @@
 import pg from 'pg';
 import { getDbContext } from './context.js';
 import { RLS_SQL } from './rls.js';
+import { loadClosetSchemaSql } from './closet-schema.js';
 
 const { Pool } = pg;
 
@@ -286,4 +287,5 @@ export async function runSchema(): Promise<void> {
   if (!p) return;
   await p.query(SCHEMA_SQL);
   await p.query(RLS_SQL);
+  await p.query(loadClosetSchemaSql());
 }

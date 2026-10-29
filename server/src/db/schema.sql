@@ -132,5 +132,7 @@ CREATE TABLE IF NOT EXISTS paypal_authorizations (
 CREATE INDEX IF NOT EXISTS idx_paypal_auth_user ON paypal_authorizations(user_id, status);
 CREATE INDEX IF NOT EXISTS idx_paypal_auth_request ON paypal_authorizations(request_id);
 
+-- Closet / itinerary tables: server/src/db/closet-schema.sql (applied in runSchema).
+
 -- Row Level Security is enabled at runtime via server/src/db/rls.ts (runSchema on startup).
 -- Policies use session vars app.current_user_id and app.bypass_rls set per request.

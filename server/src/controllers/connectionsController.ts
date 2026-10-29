@@ -61,11 +61,11 @@ export const sendBuzz = async (req: Request, res: Response) => {
 
     sendPushToUser(toUserId, {
       title: 'Someone nearby is interested',
-      body: 'Open Connections — just Accept or Decline. You do not need to send interest back.',
+      body: 'Show interest back if you want to talk. You only join Communications if it is mutual.',
       data: { type: 'buzz_incoming', vibrate: '1' },
     }, 'interest').catch(() => {});
 
-    res.json({ message: 'Interest sent — they only need to accept.', buzz });
+    res.json({ message: 'Interest sent. You join Communications only if they show interest too.', buzz });
   } catch (error: any) {
     console.error('Send buzz error:', error);
     res.status(500).json({ error: error.message || 'Internal server error' });
@@ -88,6 +88,8 @@ export const getMyBuzzes = async (req: Request, res: Response) => {
         return {
           ...b,
           fromUserProfilePicture: fromUser?.profilePicture ?? null,
+          fromUserName: fromUser?.name ?? null,
+          fromUsername: fromUser?.username ?? null,
         };
       })
     );

@@ -3,7 +3,7 @@ import { AuthContext } from '../../context/AuthContext';
 import { connectionsAPI, NearbyUser, VenueCount, Buzz } from '../../api/connections';
 import { openChatWithUser } from '../../lib/openChat';
 import { formatAxiosError } from '../../lib/apiError';
-import { markLocationGranted, clearLocationGranted, isLocationGranted, readStoredCoords, nearbyRadiusForCoords, resolveWorkingCoords, requestGpsFromUserTap, startGpsWatch } from '../../lib/locationSession';
+import { markLocationGranted, clearLocationGranted, isLocationGranted, readStoredCoords, nearbyPeopleRadiusMeters, resolveWorkingCoords, requestGpsFromUserTap, startGpsWatch } from '../../lib/locationSession';
 import { askNotifyPermission, notifyDevice } from '../../lib/deviceNotify';
 import { hasHandledNearbyPerson, markProximityBannerShown, NEARBY_HANDLED_EVENT, takeConnectionsStartView } from '../../lib/proximitySession';
 import './Widget.css';
@@ -28,6 +28,19 @@ export interface PlaceCountOnly {
   location: { lat: number; lon: number };
   count: number;
   preferenceHits?: number;
+}
+
+const NEARBY_PAGE_SIZE = 10;
+
+function isCrowdedPlaceLabel(label: string | null | undefined): boolean {
+  if (!label) return false;
+  return /club|nightclub|disco|lounge|train|station|subway|metro|tram|platform|transit|bus\s*(stop|station)|airport/i.test(label);
+}
+
+function personMatchesQuery(q: string, name?: string | null, username?: string | null): boolean {
+  const s = q.trim().toLowerCase();
+  if (!s) return true;
+  return [name, username].some((v) => String(v || '').toLowerCase().includes(s));
 }
 
 const PLACE_TYPES = [
@@ -78,6 +91,9 @@ const ConnectionsWidget = () => {
   const [placeCity, setPlaceCity] = useState(() => String((user as { city?: string } | null)?.city || ''));
   const [placeCountry, setPlaceCountry] = useState(() => String((user as { country?: string } | null)?.country || ''));
   const [handledRev, setHandledRev] = useState(0);
+  const [personSearch, setPersonSearch] = useState('');
+  const [listPage, setListPage] = useState(0);
+  const [buzzPage, setBuzzPage] = useState(0);
 
   useEffect(() => {
     const onHandled = () => setHandledRev((n) => n + 1);
@@ -205,7 +221,7 @@ const ConnectionsWidget = () => {
       const response = await connectionsAPI.getNearby({
         lat: loc.lat,
         lon: loc.lon,
-        radius: nearbyRadiusForCoords(radiusCoords),
+        radius: nearbyPeopleRadiusMeters(radiusCoords),
         userId: user.id,
       });
       setNearbyUsers(response.users);
@@ -370,7 +386,8 @@ const ConnectionsWidget = () => {
 
   const handleSendBuzz = async (toUserId: string) => {
     if (!user?.id) return;
-    if (!location) {
+    const incoming = buzzes.received.some((b) => b.fromUserId === toUserId && b.status === 'pending');
+    if (!location && !incoming) {
       setError('Turn on location (or wait a moment for GPS) to show interest to nearby people.');
       return;
     }
@@ -379,10 +396,12 @@ const ConnectionsWidget = () => {
     try {
       const result = await connectionsAPI.sendBuzz({
         toUserId,
-        location: {
-          lat: location.lat,
-          lon: location.lon,
-        },
+        location: location
+          ? {
+              lat: location.lat,
+              lon: location.lon,
+            }
+          : undefined,
         userId: user.id,
       });
       markProximityBannerShown('nearby-match', toUserId);
@@ -394,8 +413,8 @@ const ConnectionsWidget = () => {
         openChatWithUser(chatId);
         setComfortingMessage("It's a match! They're in your Communications — start chatting.");
       } else {
-        notifyDevice('Hook Up', 'Interest sent. You will be notified when they answer.', 'interest');
-        setComfortingMessage("Interest sent! They only need to Accept — then you're both in Communications.");
+        notifyDevice('Hook Up', 'Interest sent. You join Communications only if they show interest too.', 'interest');
+        setComfortingMessage('Interest sent. You both join Communications only if they show interest too.');
       }
       setTimeout(() => setComfortingMessage(null), 4000);
     } catch (err: any) {
@@ -403,6 +422,12 @@ const ConnectionsWidget = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handlePassNearby = (personId: string) => {
+    markProximityBannerShown('nearby-match', personId);
+    setComfortingMessage('Passed. The next person nearby can fill this slot.');
+    setTimeout(() => setComfortingMessage(null), 2500);
   };
 
   const handleRespondBuzz = async (buzzId: string, response: 'accepted' | 'rejected' | 'talk_later') => {
@@ -450,6 +475,28 @@ const ConnectionsWidget = () => {
     return true;
   });
   const pendingBuzzNotNearby = buzzes.received.filter((b) => b.status === 'pending');
+  const searchedIncoming = pendingBuzzNotNearby.filter((b) =>
+    personMatchesQuery(personSearch, b.fromUserName, b.fromUsername)
+  );
+  const searchedNearby = visibleNearbyUsers.filter((u) =>
+    personMatchesQuery(personSearch, u.name, u.username)
+  );
+  const remainingCount = searchedIncoming.length + searchedNearby.length;
+  const crowdedVenue = isCrowdedPlaceLabel(placeLabel);
+  const isCrowded = remainingCount > NEARBY_PAGE_SIZE || crowdedVenue;
+  const maxListPage = Math.max(0, Math.ceil(remainingCount / NEARBY_PAGE_SIZE) - 1);
+  const safeListPage = Math.min(listPage, maxListPage);
+  const pageIncoming = searchedIncoming.slice(
+    safeListPage * NEARBY_PAGE_SIZE,
+    Math.min(searchedIncoming.length, safeListPage * NEARBY_PAGE_SIZE + NEARBY_PAGE_SIZE)
+  );
+  const nearbyStart = Math.max(0, safeListPage * NEARBY_PAGE_SIZE - searchedIncoming.length);
+  const nearbySlots = NEARBY_PAGE_SIZE - pageIncoming.length;
+  const pageNearby = searchedNearby.slice(nearbyStart, nearbyStart + nearbySlots);
+
+  useEffect(() => {
+    if (listPage > maxListPage) setListPage(maxListPage);
+  }, [listPage, maxListPage]);
 
   const renderPersonActions = (personId: string, receivedBuzz?: Buzz) => {
     const buzz = receivedBuzz || buzzes.received.find((b) => b.fromUserId === personId && b.status === 'pending');
@@ -458,9 +505,8 @@ const ConnectionsWidget = () => {
     if (buzz) {
       return (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-          <button type="button" onClick={() => handleRespondBuzz(buzz.id, 'accepted')} className="send-btn" disabled={loading} style={{ background: 'rgba(16, 185, 129, 0.2)', border: '2px solid #10b981', color: '#10b981', fontSize: '11px', padding: '6px 10px', fontFamily: 'Orbitron, monospace', fontWeight: 'bold' }}>Yes</button>
+          <button type="button" onClick={() => handleSendBuzz(personId)} className="send-btn" disabled={loading} style={{ background: 'rgba(16, 185, 129, 0.2)', border: '2px solid #10b981', color: '#10b981', fontSize: '11px', padding: '6px 10px', fontFamily: 'Orbitron, monospace', fontWeight: 'bold' }}>Show interest too</button>
           <button type="button" onClick={() => handleRespondBuzz(buzz.id, 'rejected')} className="send-btn" disabled={loading} style={{ background: 'rgba(239, 68, 68, 0.2)', border: '2px solid #ef4444', color: '#ef4444', fontSize: '11px', padding: '6px 10px', fontFamily: 'Orbitron, monospace', fontWeight: 'bold' }}>No</button>
-          <button type="button" onClick={() => handleRespondBuzz(buzz.id, 'talk_later')} className="send-btn" disabled={loading} style={{ background: 'rgba(245, 158, 11, 0.2)', border: '2px solid #f59e0b', color: '#f59e0b', fontSize: '11px', padding: '6px 10px', fontFamily: 'Orbitron, monospace', fontWeight: 'bold' }}>Talk later</button>
         </div>
       );
     }
@@ -468,9 +514,14 @@ const ConnectionsWidget = () => {
       return <span style={{ fontSize: '12px', color: '#9ca3af', fontFamily: 'Orbitron, monospace' }}>Interest sent</span>;
     }
     return (
-      <button type="button" onClick={() => handleSendBuzz(personId)} className="send-btn" disabled={loading} style={{ background: 'rgba(0, 0, 0, 0.4)', border: '2px solid #ff00ff', color: '#ff00ff', fontSize: '12px', padding: '8px 14px', fontFamily: 'Orbitron, monospace', fontWeight: 'bold', boxShadow: '0 0 10px rgba(255, 0, 255, 0.3)' }}>
-        Show interest
-      </button>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+        <button type="button" onClick={() => handleSendBuzz(personId)} className="send-btn" disabled={loading} style={{ background: 'rgba(0, 0, 0, 0.4)', border: '2px solid #ff00ff', color: '#ff00ff', fontSize: '12px', padding: '8px 14px', fontFamily: 'Orbitron, monospace', fontWeight: 'bold', boxShadow: '0 0 10px rgba(255, 0, 255, 0.3)' }}>
+          Show interest
+        </button>
+        <button type="button" onClick={() => handlePassNearby(personId)} className="send-btn" disabled={loading} style={{ background: 'rgba(239, 68, 68, 0.15)', border: '2px solid #ef4444', color: '#ef4444', fontSize: '11px', padding: '8px 12px', fontFamily: 'Orbitron, monospace', fontWeight: 'bold' }}>
+          Pass
+        </button>
+      </div>
     );
   };
 
@@ -611,80 +662,166 @@ const ConnectionsWidget = () => {
         </p>
       );
     }
+    const pageCount = maxListPage + 1;
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', maxHeight: '420px', overflowY: 'auto' }}>
-        {pendingBuzzNotNearby.map((buzz) => (
-          <div
-            key={buzz.id}
-            style={{
-              padding: '12px',
-              border: '2px solid rgba(255, 0, 255, 0.45)',
-              borderRadius: '12px',
-              display: 'flex',
-              gap: '12px',
-              alignItems: 'center',
-              background: 'rgba(0, 0, 0, 0.4)',
+      <div>
+        <p style={{ margin: '0 0 10px', fontSize: 11, color: '#9ca3af', fontFamily: 'Orbitron, monospace', lineHeight: 1.45 }}>
+          Showing {Math.min(NEARBY_PAGE_SIZE, remainingCount)} of {remainingCount} here
+          {crowdedVenue ? ' — packed spot (club, train, station).' : '.'}
+          {' '}Respond (interest or pass) and the next person fills this list. Scroll this page, then react to anyone you want.
+        </p>
+        {remainingCount > 0 && (
+          <input
+            type="search"
+            value={personSearch}
+            onChange={(e) => {
+              setPersonSearch(e.target.value);
+              setListPage(0);
             }}
-          >
-            <div style={{ width: '48px', height: '48px', borderRadius: '50%', overflow: 'hidden', border: '2px solid rgba(255, 0, 255, 0.5)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(255, 0, 255, 0.1)' }}>
-              {buzz.fromUserProfilePicture ? (
-                <img src={buzz.fromUserProfilePicture} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-              ) : (
-                <span style={{ fontSize: '20px', color: '#ff00ff' }}>?</span>
-              )}
-            </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#fff', fontFamily: 'Orbitron, monospace' }}>Someone interested</div>
-              <div style={{ fontSize: '11px', color: '#ff00ff', marginTop: 4 }}>Wants to connect — respond below</div>
-            </div>
-            {renderPersonActions(buzz.fromUserId, buzz)}
-          </div>
-        ))}
-        {visibleNearbyUsers.map((nearbyUser) => (
-          <div
-            key={nearbyUser.id}
+            placeholder="Search that person (name or username)"
             style={{
-              padding: '12px',
-              border: '2px solid rgba(0, 212, 255, 0.3)',
-              borderRadius: '12px',
-              display: 'flex',
-              gap: '12px',
-              alignItems: 'center',
-              background: 'rgba(0, 0, 0, 0.4)',
-              boxShadow: '0 0 15px rgba(0, 212, 255, 0.2)',
+              width: '100%',
+              boxSizing: 'border-box',
+              marginBottom: 10,
+              padding: '10px 12px',
+              borderRadius: 8,
+              border: '2px solid rgba(0, 212, 255, 0.45)',
+              background: 'rgba(0,0,0,0.45)',
+              color: '#fff',
+              fontFamily: 'Orbitron, monospace',
+              fontSize: 12,
             }}
-          >
-            <div className="user-avatar" style={{ width: '56px', height: '56px', flexShrink: 0, borderRadius: '50%', overflow: 'hidden', border: '2px solid rgba(255, 0, 255, 0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', background: 'rgba(255, 0, 255, 0.1)' }}>
-              {nearbyUser.profilePicture ? (
-                <img src={nearbyUser.profilePicture} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-              ) : (
-                <span style={{ fontSize: '24px', color: '#ff00ff' }}>?</span>
-              )}
-              {nearbyUser.isOnline && (
-                <div style={{
-                  position: 'absolute',
-                  bottom: 0,
-                  right: 0,
-                  width: '12px',
-                  height: '12px',
-                  background: '#10b981',
-                  border: '2px solid #0a0a1a',
-                  borderRadius: '50%',
-                  boxShadow: '0 0 10px rgba(16, 185, 129, 0.6)',
-                }} />
-              )}
-            </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: '15px', fontWeight: 'bold', color: '#fff', fontFamily: 'Orbitron, monospace' }}>
-                Nearby match
+          />
+        )}
+        {personSearch.trim() && remainingCount === 0 && (
+          <p style={{ color: '#f59e0b', fontSize: 12, fontFamily: 'Orbitron, monospace', textAlign: 'center', padding: '8px 0' }}>
+            No match for that search. Try another name or username.
+          </p>
+        )}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', maxHeight: '420px', overflowY: 'auto' }}>
+          {pageIncoming.map((buzz) => (
+            <div
+              key={buzz.id}
+              style={{
+                padding: '12px',
+                border: '2px solid rgba(255, 0, 255, 0.45)',
+                borderRadius: '12px',
+                display: 'flex',
+                gap: '12px',
+                alignItems: 'center',
+                background: 'rgba(0, 0, 0, 0.4)',
+              }}
+            >
+              <div style={{ width: '48px', height: '48px', borderRadius: '50%', overflow: 'hidden', border: '2px solid rgba(255, 0, 255, 0.5)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(255, 0, 255, 0.1)' }}>
+                {buzz.fromUserProfilePicture ? (
+                  <img src={buzz.fromUserProfilePicture} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                ) : (
+                  <span style={{ fontSize: '20px', color: '#ff00ff' }}>?</span>
+                )}
               </div>
-              <div style={{ fontSize: '11px', color: nearbyUser.isOnline ? '#10b981' : '#9ca3af', marginTop: 4 }}>
-                {nearbyUser.isOnline ? 'Active nearby · your type' : 'Recently nearby · your type'}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#fff', fontFamily: 'Orbitron, monospace' }}>
+                  {buzz.fromUsername ? `@${buzz.fromUsername}` : buzz.fromUserName || 'Someone interested'}
+                </div>
+                <div style={{ fontSize: '11px', color: '#ff00ff', marginTop: 4 }}>Show interest too for Communications — skip if not</div>
               </div>
+              {renderPersonActions(buzz.fromUserId, buzz)}
             </div>
-            {renderPersonActions(nearbyUser.id)}
+          ))}
+          {pageNearby.map((nearbyUser) => (
+            <div
+              key={nearbyUser.id}
+              style={{
+                padding: '12px',
+                border: '2px solid rgba(0, 212, 255, 0.3)',
+                borderRadius: '12px',
+                display: 'flex',
+                gap: '12px',
+                alignItems: 'center',
+                background: 'rgba(0, 0, 0, 0.4)',
+                boxShadow: '0 0 15px rgba(0, 212, 255, 0.2)',
+              }}
+            >
+              <div className="user-avatar" style={{ width: '56px', height: '56px', flexShrink: 0, borderRadius: '50%', overflow: 'hidden', border: '2px solid rgba(255, 0, 255, 0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', background: 'rgba(255, 0, 255, 0.1)' }}>
+                {nearbyUser.profilePicture ? (
+                  <img src={nearbyUser.profilePicture} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                ) : (
+                  <span style={{ fontSize: '24px', color: '#ff00ff' }}>?</span>
+                )}
+                {nearbyUser.isOnline && (
+                  <div style={{
+                    position: 'absolute',
+                    bottom: 0,
+                    right: 0,
+                    width: '12px',
+                    height: '12px',
+                    background: '#10b981',
+                    border: '2px solid #0a0a1a',
+                    borderRadius: '50%',
+                    boxShadow: '0 0 10px rgba(16, 185, 129, 0.6)',
+                  }} />
+                )}
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: '15px', fontWeight: 'bold', color: '#fff', fontFamily: 'Orbitron, monospace' }}>
+                  {nearbyUser.username ? `@${nearbyUser.username}` : nearbyUser.name || 'Nearby match'}
+                </div>
+                <div style={{ fontSize: '11px', color: nearbyUser.isOnline ? '#10b981' : '#9ca3af', marginTop: 4 }}>
+                  {nearbyUser.isOnline ? 'Active nearby · your type' : 'Recently nearby · your type'}
+                </div>
+              </div>
+              {renderPersonActions(nearbyUser.id)}
+            </div>
+          ))}
+        </div>
+        {(isCrowded || remainingCount > NEARBY_PAGE_SIZE) && pageCount > 1 && (
+          <div style={{ display: 'flex', gap: 8, marginTop: 12, alignItems: 'center' }}>
+            <button
+              type="button"
+              disabled={safeListPage <= 0}
+              onClick={() => setListPage((p) => Math.max(0, p - 1))}
+              style={{
+                flex: 1,
+                padding: '10px 12px',
+                borderRadius: 8,
+                border: '2px solid rgba(0, 212, 255, 0.45)',
+                background: 'rgba(0, 0, 0, 0.4)',
+                color: '#00d4ff',
+                fontFamily: 'Orbitron, monospace',
+                fontWeight: 700,
+                fontSize: 12,
+                opacity: safeListPage <= 0 ? 0.4 : 1,
+              }}
+            >
+              Previous
+            </button>
+            <button
+              type="button"
+              disabled={safeListPage >= maxListPage}
+              onClick={() => setListPage((p) => Math.min(maxListPage, p + 1))}
+              style={{
+                flex: 1,
+                padding: '10px 12px',
+                borderRadius: 8,
+                border: '2px solid #ff00ff',
+                background: 'rgba(255, 0, 255, 0.18)',
+                color: '#ff6bff',
+                fontFamily: 'Orbitron, monospace',
+                fontWeight: 700,
+                fontSize: 12,
+                boxShadow: '0 0 14px rgba(255, 0, 255, 0.25)',
+                opacity: safeListPage >= maxListPage ? 0.4 : 1,
+              }}
+            >
+              Next page
+            </button>
           </div>
-        ))}
+        )}
+        {(isCrowded || remainingCount > NEARBY_PAGE_SIZE) && pageCount > 1 && (
+          <p style={{ margin: '8px 0 0', textAlign: 'center', fontSize: 11, color: '#9ca3af', fontFamily: 'Orbitron, monospace' }}>
+            Page {safeListPage + 1} of {pageCount}
+          </p>
+        )}
       </div>
     );
   };
@@ -743,8 +880,8 @@ const ConnectionsWidget = () => {
           )}
           <div style={{ marginBottom: 14 }}>
             <strong style={{ color: '#00d4ff', fontSize: 13, fontFamily: 'Orbitron, monospace', display: 'block', marginBottom: 8 }}>
-              Nearby now{buzzes.received.filter((b) => b.status === 'pending').length > 0 || visibleNearbyUsers.length > 0
-                ? ` · ${visibleNearbyUsers.length} visible${buzzes.received.filter((b) => b.status === 'pending').length > 0 ? ` · ${buzzes.received.filter((b) => b.status === 'pending').length} buzz` : ''}`
+              Nearby now{remainingCount > 0
+                ? ` · ${Math.min(NEARBY_PAGE_SIZE, remainingCount)} on this list${remainingCount > NEARBY_PAGE_SIZE ? ` · ${remainingCount} total` : ''}${pendingBuzzNotNearby.length > 0 ? ` · ${pendingBuzzNotNearby.length} showed interest` : ''}`
                 : ''}
             </strong>
             {renderNearbyList()}
@@ -1048,7 +1185,7 @@ const ConnectionsWidget = () => {
             <h3 style={{ margin: 0, fontSize: '18px', color: '#00d4ff', fontFamily: 'Orbitron, monospace' }}>People nearby</h3>
           </div>
           <p style={{ margin: '0 0 14px', fontSize: '12px', color: '#9ca3af', fontFamily: 'Orbitron, monospace' }}>
-            Scroll the list, tap <strong style={{ color: '#ff00ff' }}>Show interest</strong>, then wait for Accept. They do not send interest back — Accept opens Communications.
+            Ten people at a time. Scroll, show interest or pass, and the next person fills in. In a packed club or train, use Next page or search.
           </p>
           {renderNearbyList()}
         </div>
@@ -1065,7 +1202,21 @@ const ConnectionsWidget = () => {
               <div>
                 <h4 style={{ fontSize: '14px', marginBottom: '8px', color: '#00d4ff', fontFamily: 'Orbitron, monospace' }}>Received ({buzzes.received.length})</h4>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                  {buzzes.received.map((buzz) => (
+                  {(() => {
+                    const pending = buzzes.received.filter((b) => b.status === 'pending');
+                    const settled = buzzes.received.filter((b) => b.status !== 'pending');
+                    const maxP = Math.max(0, Math.ceil(pending.length / NEARBY_PAGE_SIZE) - 1);
+                    const page = Math.min(buzzPage, maxP);
+                    const shownPending = pending.slice(page * NEARBY_PAGE_SIZE, page * NEARBY_PAGE_SIZE + NEARBY_PAGE_SIZE);
+                    const rows = [...shownPending, ...settled];
+                    return (
+                      <>
+                        {pending.length > NEARBY_PAGE_SIZE && (
+                          <p style={{ margin: 0, fontSize: 11, color: '#9ca3af', fontFamily: 'Orbitron, monospace' }}>
+                            Pending interest: 10 at a time. Respond and the next person fills in, or Next page.
+                          </p>
+                        )}
+                        {rows.map((buzz) => (
                     <div key={buzz.id} style={{ padding: '12px', border: '2px solid rgba(0, 212, 255, 0.3)', borderRadius: '12px', background: 'rgba(0, 0, 0, 0.4)', display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
                       <div style={{ width: '48px', height: '48px', borderRadius: '50%', overflow: 'hidden', border: '2px solid rgba(255, 0, 255, 0.5)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(255, 0, 255, 0.1)' }}>
                         {buzz.fromUserProfilePicture ? (
@@ -1074,13 +1225,40 @@ const ConnectionsWidget = () => {
                           <span style={{ fontSize: '20px', color: '#ff00ff' }}>?</span>
                         )}
                       </div>
+                      <div style={{ flex: 1, minWidth: 80, fontSize: 12, color: '#fff', fontFamily: 'Orbitron, monospace' }}>
+                        {buzz.fromUsername ? `@${buzz.fromUsername}` : buzz.status === 'pending' ? 'Pending interest' : buzz.status}
+                      </div>
+                      {buzz.status === 'pending' ? (
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                         <button onClick={() => handleRespondBuzz(buzz.id, 'accepted')} className="send-btn" disabled={loading} style={{ background: 'rgba(16, 185, 129, 0.2)', border: '2px solid #10b981', color: '#10b981', fontSize: '11px', padding: '6px 10px', fontFamily: 'Orbitron, monospace', fontWeight: 'bold' }}>Yes</button>
                         <button onClick={() => handleRespondBuzz(buzz.id, 'rejected')} className="send-btn" disabled={loading} style={{ background: 'rgba(239, 68, 68, 0.2)', border: '2px solid #ef4444', color: '#ef4444', fontSize: '11px', padding: '6px 10px', fontFamily: 'Orbitron, monospace', fontWeight: 'bold' }}>No</button>
                         <button onClick={() => handleRespondBuzz(buzz.id, 'talk_later')} className="send-btn" disabled={loading} style={{ background: 'rgba(245, 158, 11, 0.2)', border: '2px solid #f59e0b', color: '#f59e0b', fontSize: '11px', padding: '6px 10px', fontFamily: 'Orbitron, monospace', fontWeight: 'bold' }}>Talk later</button>
                       </div>
+                      ) : null}
                     </div>
-                  ))}
+                        ))}
+                        {pending.length > NEARBY_PAGE_SIZE && (
+                          <button
+                            type="button"
+                            disabled={page >= maxP}
+                            onClick={() => setBuzzPage((p) => Math.min(maxP, p + 1))}
+                            style={{
+                              padding: '10px',
+                              borderRadius: 8,
+                              border: '2px solid #ff00ff',
+                              background: 'rgba(255, 0, 255, 0.18)',
+                              color: '#ff6bff',
+                              fontFamily: 'Orbitron, monospace',
+                              fontWeight: 700,
+                              fontSize: 12,
+                            }}
+                          >
+                            Next page
+                          </button>
+                        )}
+                      </>
+                    );
+                  })()}
                 </div>
               </div>
             )}

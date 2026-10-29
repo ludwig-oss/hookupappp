@@ -19,6 +19,8 @@ export interface Buzz {
     venueType?: string;
   };
   fromUserProfilePicture?: string | null;
+  fromUserName?: string | null;
+  fromUsername?: string | null;
   /** When this is a sent buzz with status rejected, server may include an uplifting message for the sender */
   comfortingMessageForSender?: string;
 }
@@ -26,6 +28,7 @@ export interface Buzz {
 export interface NearbyUser {
   id: string;
   name: string;
+  username?: string;
   profilePicture: string | null;
   isOnline: boolean;
 }

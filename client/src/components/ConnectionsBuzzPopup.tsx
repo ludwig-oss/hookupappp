@@ -3,6 +3,7 @@ import { AuthContext } from '../context/AuthContext';
 import { connectionsAPI, Buzz } from '../api/connections';
 import { openChatWithUser } from '../lib/openChat';
 import { markProximityBannerShown, setConnectionsStartView, shouldShowProximityBanner } from '../lib/proximitySession';
+import { resolveWorkingCoords } from '../lib/locationSession';
 import { formatAxiosError } from '../lib/apiError';
 import { notifyDevice } from '../lib/deviceNotify';
 import './WalkingPartnerPopup.css';
@@ -36,8 +37,8 @@ export default function ConnectionsBuzzPopup({ onOpenConnections }: Props) {
       notifyDevice(
         'Hook Up — interest',
         fresh.length > 1
-          ? `${fresh.length} people want to connect. Just Accept or Decline.`
-          : 'Someone nearby sent interest. Just Accept or Decline — you do not need to send interest back.',
+          ? `${fresh.length} people nearby showed interest. Show interest back only if you want to talk.`
+          : 'Someone nearby showed interest. Show interest back to join Communications — otherwise you will not be added.',
         'interest'
       );
       fresh.forEach((b) => {
@@ -65,17 +66,47 @@ export default function ConnectionsBuzzPopup({ onOpenConnections }: Props) {
     setError('');
   };
 
-  const respond = async (response: 'accepted' | 'rejected' | 'talk_later') => {
+  const sendInterestBack = async () => {
+    if (!incoming || !user?.id) return;
+    setLoading(true);
+    setError('');
+    try {
+      const coords = await resolveWorkingCoords(
+        {
+          userId: user.id,
+          city: (user as { city?: string }).city,
+          country: (user as { country?: string }).country,
+        },
+        {
+          getMyLocation: () => connectionsAPI.getMyLocation(),
+          forwardGeocode: (q) => connectionsAPI.forwardGeocode(q),
+          updateLocation: (data) => connectionsAPI.updateLocation(data),
+        }
+      );
+      const result = await connectionsAPI.sendBuzz({
+        toUserId: incoming.fromUserId,
+        location: coords ? { lat: coords.lat, lon: coords.lon } : undefined,
+        userId: user.id,
+      });
+      dropCurrent(true);
+      if (result.chatUserId) {
+        notifyDevice('Hook Up', "It's a match — they're in Communications.", 'matches');
+        openChatWithUser(result.chatUserId);
+      }
+    } catch (err: unknown) {
+      setError(formatAxiosError(err, 'Could not send interest'));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const decline = async () => {
     if (!incoming) return;
     setLoading(true);
     setError('');
     try {
-      const result = await connectionsAPI.respondBuzz({ buzzId: incoming.id, response });
+      await connectionsAPI.respondBuzz({ buzzId: incoming.id, response: 'rejected' });
       dropCurrent(true);
-      if (response === 'accepted' || response === 'talk_later') {
-        const chatId = (result as { chatUserId?: string }).chatUserId || incoming.fromUserId;
-        if (chatId) openChatWithUser(chatId);
-      }
     } catch (err: unknown) {
       setError(formatAxiosError(err, 'Could not respond'));
     } finally {
@@ -90,10 +121,12 @@ export default function ConnectionsBuzzPopup({ onOpenConnections }: Props) {
       <div className="walk-popup-card">
         <p className="walk-popup-badge">Nearby · your type</p>
         <h2>Someone nearby is interested</h2>
-        <p className="walk-popup-sub">They already showed interest — just Accept or Decline. You do not need to send interest back.</p>
+        <p className="walk-popup-sub">
+          Show interest back to join Communications. If you do not, you will not be added to chat.
+        </p>
         {moreCount > 0 && (
           <p className="walk-popup-sub" style={{ color: '#00d4ff' }}>
-            {moreCount} more waiting — Open list to see everyone.
+            {moreCount} more waiting. The list shows 10 at a time — respond and the next fills in, or open the list to search / Next page.
           </p>
         )}
         <div className="walk-popup-avatar" style={{ overflow: 'hidden', padding: 0, border: '3px solid rgba(255, 0, 255, 0.6)' }}>
@@ -117,11 +150,11 @@ export default function ConnectionsBuzzPopup({ onOpenConnections }: Props) {
           >
             Open list
           </button>
-          <button type="button" className="walk-btn-secondary" disabled={loading} onClick={() => respond('rejected')}>
-            Decline
+          <button type="button" className="walk-btn-secondary" disabled={loading} onClick={decline}>
+            Not interested
           </button>
-          <button type="button" className="walk-btn-primary" disabled={loading} onClick={() => respond('accepted')}>
-            {loading ? '…' : 'Accept — talk'}
+          <button type="button" className="walk-btn-primary" disabled={loading} onClick={sendInterestBack}>
+            {loading ? '…' : 'Show interest too'}
           </button>
         </div>
       </div>

@@ -1,8 +1,14 @@
 import { useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { AuthContext } from '../context/AuthContext';
 import { connectionsAPI, NearbyUser } from '../api/connections';
-import { markProximityBannerShown, setConnectionsStartView, shouldShowProximityBanner } from '../lib/proximitySession';
-import { nearbyRadiusForCoords, resolveWorkingCoords } from '../lib/locationSession';
+import {
+  markProximityBannerShown,
+  setConnectionsStartView,
+  shouldShowProximityBanner,
+  NEARBY_CHECK_NOW_EVENT,
+  markNearbyPopupVisible,
+} from '../lib/proximitySession';
+import { nearbyPeopleRadiusMeters, resolveWorkingCoords } from '../lib/locationSession';
 import { formatAxiosError } from '../lib/apiError';
 import { openChatWithUser } from '../lib/openChat';
 import { notifyDevice } from '../lib/deviceNotify';
@@ -19,27 +25,33 @@ const locationApi = {
     connectionsAPI.updateLocation(data),
 };
 
-/** Proactive popup when someone matching your preferences is nearby (profile only). */
+/** Proactive popup when someone matching your orientation is within ~50 m. */
 export default function NearbyMatchPopup({ onOpenConnections }: Props) {
   const { user } = useContext(AuthContext);
   const [queue, setQueue] = useState<NearbyUser[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [emptyHint, setEmptyHint] = useState('');
   const queuedIdsRef = useRef<Set<string>>(new Set());
+  const queueLenRef = useRef(0);
+  queueLenRef.current = queue.length;
 
-  const poll = useCallback(async () => {
+  const poll = useCallback(async (opts?: { force?: boolean }) => {
     if (!user?.id) return;
     const coords = await resolveWorkingCoords(
       { userId: user.id, city: (user as { city?: string }).city, country: (user as { country?: string }).country },
       locationApi
     );
-    if (!coords) return;
+    if (!coords) {
+      if (opts?.force) setEmptyHint('Turn on location (or save your city) to see people within 50 meters.');
+      return;
+    }
     try {
       const [{ users }, buzzes] = await Promise.all([
         connectionsAPI.getNearby({
           lat: coords.lat,
           lon: coords.lon,
-          radius: nearbyRadiusForCoords(coords),
+          radius: nearbyPeopleRadiusMeters(coords),
           userId: user.id,
         }),
         connectionsAPI.getMyBuzzes(user.id).catch(() => ({ received: [], sent: [] })),
@@ -58,33 +70,61 @@ export default function NearbyMatchPopup({ onOpenConnections }: Props) {
           !queuedIdsRef.current.has(u.id) &&
           shouldShowProximityBanner('nearby-match', u.id)
       );
-      if (!fresh.length) return;
+      if (!fresh.length) {
+        if (opts?.force && queue.length === 0) {
+          setEmptyHint(
+            users.length
+              ? 'People nearby are already in your list — open it if the popup did not appear.'
+              : 'Nobody matching your orientation within 50 meters right now.'
+          );
+        }
+        return;
+      }
+      setEmptyHint('');
       fresh.forEach((u) => queuedIdsRef.current.add(u.id));
       setQueue((prev) => {
         const have = new Set(prev.map((p) => p.id));
         const add = fresh.filter((u) => !have.has(u.id) && !blockedIds.has(u.id));
         return add.length ? [...prev, ...add] : prev;
       });
+      markNearbyPopupVisible();
       notifyDevice(
         'Hook Up — nearby',
         fresh.length > 1
-          ? `${fresh.length} people matching you are nearby.`
-          : 'Someone matching you is nearby. Tap Show interest if you want.',
+          ? `${fresh.length} people matching your orientation are within 50 meters.`
+          : 'Someone matching your orientation is within 50 meters. Show interest if you want.',
         'interest'
       );
     } catch {
-      /* offline */
+      if (opts?.force) setEmptyHint('Could not check nearby people. Open the list to try again.');
     }
-  }, [user?.id, user?.city, user?.country]);
+  }, [user?.id, user?.city, user?.country, queue.length]);
 
   useEffect(() => {
     if (!user?.id) return;
     poll();
-    const t = window.setInterval(poll, 12000);
-    return () => window.clearInterval(t);
+    const t = window.setInterval(() => poll(), 5000);
+    const onVis = () => {
+      if (document.visibilityState === 'visible') void poll();
+    };
+    const onForce = () => {
+      if (queueLenRef.current > 0) markNearbyPopupVisible();
+      void poll({ force: true });
+    };
+    document.addEventListener('visibilitychange', onVis);
+    window.addEventListener(NEARBY_CHECK_NOW_EVENT, onForce);
+    return () => {
+      window.clearInterval(t);
+      document.removeEventListener('visibilitychange', onVis);
+      window.removeEventListener(NEARBY_CHECK_NOW_EVENT, onForce);
+    };
   }, [user?.id, poll]);
 
-  // Drop anyone who already sent you interest (accept flow owns that person)
+  useEffect(() => {
+    if (queue.length > 0) markNearbyPopupVisible();
+  }, [queue.length]);
+
+  // Drop anyone who already sent you interest (they show on the incoming-interest popup)
   useEffect(() => {
     if (!user?.id || queue.length === 0) return;
     let cancelled = false;
@@ -138,7 +178,12 @@ export default function NearbyMatchPopup({ onOpenConnections }: Props) {
       });
       const chatId = result.chatUserId;
       dropCurrent(true);
-      if (chatId) openChatWithUser(chatId);
+      if (chatId) {
+        notifyDevice('Hook Up', "It's a match — they're in Communications.", 'matches');
+        openChatWithUser(chatId);
+      } else {
+        notifyDevice('Hook Up', 'Interest sent. You join Communications only if they show interest too.', 'interest');
+      }
     } catch (err: unknown) {
       setError(formatAxiosError(err, 'Could not send interest'));
     } finally {
@@ -150,20 +195,43 @@ export default function NearbyMatchPopup({ onOpenConnections }: Props) {
     setConnectionsStartView('nearby');
     setQueue([]);
     setError('');
+    setEmptyHint('');
     onOpenConnections?.();
   };
+
+  if (!match && emptyHint) {
+    return (
+      <div className="walk-popup-overlay" role="dialog" aria-modal="true">
+        <div className="walk-popup-card">
+          <p className="walk-popup-badge">Nearby · 50 m · your type</p>
+          <h2>Nearby check</h2>
+          <p className="walk-popup-sub">{emptyHint}</p>
+          <div className="walk-popup-actions">
+            <button type="button" className="walk-btn-secondary" onClick={() => setEmptyHint('')}>
+              Close
+            </button>
+            <button type="button" className="walk-btn-primary" onClick={openList}>
+              Open list
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (!match) return null;
 
   return (
     <div className="walk-popup-overlay" role="dialog" aria-modal="true">
       <div className="walk-popup-card">
-        <p className="walk-popup-badge">Nearby · your type</p>
+        <p className="walk-popup-badge">Nearby · 50 m · your type</p>
         <h2>Someone matching you is nearby</h2>
-        <p className="walk-popup-sub">Show interest once — they only need to accept. No need for them to send interest back.</p>
+        <p className="walk-popup-sub">
+          Show interest if you want. You both land in Communications only if they show interest too.
+        </p>
         {moreCount > 0 && (
           <p className="walk-popup-sub" style={{ color: '#00d4ff' }}>
-            {moreCount} more nearby — Open list to see everyone.
+            {moreCount} more nearby. The list shows 10 at a time — respond and the next person fills in, or open the list for Next page / search.
           </p>
         )}
         <div

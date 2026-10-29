@@ -40,6 +40,7 @@ export interface VenueCount {
 export interface NearbyUser {
   id: string;
   name: string;
+  username?: string;
   profilePicture: string | null;
   isOnline: boolean;
 }
@@ -232,7 +233,7 @@ export async function getNearbyUsers(
   userId: string,
   lat: number,
   lon: number,
-  radius: number = 500
+  radius: number = 50
 ): Promise<NearbyUser[]> {
   const users = await getAllUsers();
   const user = await getUserById(userId);
@@ -279,6 +280,7 @@ export async function getNearbyUsers(
         nearby.push({
           id: otherUser.id,
           name: otherUser.name,
+          username: otherUser.username,
           profilePicture: otherUser.profilePicture,
           isOnline,
         });

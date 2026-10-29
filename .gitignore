@@ -20,3 +20,5 @@ server/server/data/
 
 
 .vercel
+__pycache__/
+*.pyc

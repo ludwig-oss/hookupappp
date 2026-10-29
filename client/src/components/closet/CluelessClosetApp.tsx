@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
+import { fashionAPI } from '../../api/fashion';
+import { inspirationContextLine, type InspirationMatch } from '../../lib/inspirationBadge';
 import { itemsFor, type ClosetGender, type ClosetItem } from '../../data/closetCatalog';
 import './CluelessClosetApp.css';
 
@@ -28,14 +30,33 @@ export default function CluelessClosetApp({
   const [topIndex, setTopIndex] = useState(0);
   const [bottomIndex, setBottomIndex] = useState(0);
   const [showMatchOverlay, setShowMatchOverlay] = useState(false);
+  const [trendMatches, setTrendMatches] = useState<InspirationMatch[]>([]);
 
   useEffect(() => {
     setTopIndex(0);
     setBottomIndex(0);
   }, [gender]);
 
+  useEffect(() => {
+    let cancelled = false;
+    fashionAPI
+      .internetTrends({ limit: 8 })
+      .then((res) => {
+        if (!cancelled) setTrendMatches(res.matches || []);
+      })
+      .catch(() => {
+        if (!cancelled) setTrendMatches([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const top = tops[topIndex] || tops[0];
   const bottom = bottoms[bottomIndex] || bottoms[0];
+  const garmentHint = `${top?.title || ''} ${bottom?.title || ''}`;
+  const trendForLook = trendMatches[topIndex % Math.max(trendMatches.length, 1)] || null;
+  const inspirationLine = inspirationContextLine(trendForLook, garmentHint);
 
   const nextTop = () => tops.length && setTopIndex((prev) => (prev + 1) % tops.length);
   const prevTop = () => tops.length && setTopIndex((prev) => (prev - 1 + tops.length) % tops.length);
@@ -70,6 +91,9 @@ export default function CluelessClosetApp({
         </aside>
 
         <div className="clueless-stage">
+          <div className="clueless-inspiration-badge" role="note">
+            {inspirationLine}
+          </div>
           <div className="clueless-row">
             <button type="button" className="clueless-arrow" onClick={prevTop} aria-label="Previous top">
               {'<'}

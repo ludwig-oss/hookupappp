@@ -23,6 +23,26 @@ function platformFor(event: string, i: number): TrendSource {
 
 const EXTRA: IngestedTrendOutfit[] = [
   {
+    id: 'trend-hailey-street',
+    sourceUrl: 'https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?auto=format&fit=crop&w=900&q=80',
+    sourcePlatform: 'celebrity_streetwear',
+    celebrityOrBoardName: 'Hailey Bieber',
+    extractedTags: ['streetwear', 'crop', 'velvet', 'shimmer'],
+    targetAgeGroups: ['teen', 'twenty_thirty'],
+    imageEmbeddingVector: hashEmbedding(['streetwear', 'hailey bieber']),
+    imageUrl: 'https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?auto=format&fit=crop&w=900&q=80',
+  },
+  {
+    id: 'trend-pinterest-autumn',
+    sourceUrl: 'https://images.unsplash.com/photo-1445205170230-053b83016050?auto=format&fit=crop&w=900&q=80',
+    sourcePlatform: 'pinterest',
+    celebrityOrBoardName: 'Autumn Styles',
+    extractedTags: ['autumn', 'layer', 'knit', 'plaid'],
+    targetAgeGroups: ['teen', 'twenty_thirty', 'forty_plus'],
+    imageEmbeddingVector: hashEmbedding(['autumn', 'pinterest']),
+    imageUrl: 'https://images.unsplash.com/photo-1445205170230-053b83016050?auto=format&fit=crop&w=900&q=80',
+  },
+  {
     id: 'trend-cher-plaid',
     sourceUrl: 'https://images.unsplash.com/photo-1594938298603-c8148c3817b1?auto=format&fit=crop&w=900&q=80',
     sourcePlatform: 'celebrity_streetwear',

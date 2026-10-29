@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { fashionAPI } from '../../api/fashion';
 import { inspirationContextLine, type InspirationMatch } from '../../lib/inspirationBadge';
 import { itemsFor, type ClosetGender, type ClosetItem } from '../../data/closetCatalog';
+import SwipeableOutfitWrapper from './SwipeableOutfitWrapper';
 import './CluelessClosetApp.css';
 
 const PATTERN =
@@ -31,6 +32,8 @@ export default function CluelessClosetApp({
   const [bottomIndex, setBottomIndex] = useState(0);
   const [showMatchOverlay, setShowMatchOverlay] = useState(false);
   const [trendMatches, setTrendMatches] = useState<InspirationMatch[]>([]);
+  const [saveNote, setSaveNote] = useState('');
+  const saveGen = useRef(0);
 
   useEffect(() => {
     setTopIndex(0);
@@ -68,6 +71,34 @@ export default function CluelessClosetApp({
     if (bottoms.length) setBottomIndex(Math.floor(Math.random() * bottoms.length));
   };
 
+  const handleRockIt = () => {
+    if (!top || !bottom) return;
+    const imageUrl = garmentSrc(top);
+    const title = `${top.title} + ${bottom.title}`;
+    const pieces = [top.title, bottom.title];
+    const gen = ++saveGen.current;
+    handleShuffle();
+    if (!imageUrl) {
+      setSaveNote('That look has no photo to save.');
+      return;
+    }
+    void fashionAPI
+      .saveUpload({
+        title,
+        imageUrl,
+        kind: 'look',
+        group: 'Saved looks',
+        event: 'date',
+        pieces,
+      })
+      .then(() => {
+        if (saveGen.current === gen) setSaveNote('Rocked it — saved to your wardrobe.');
+      })
+      .catch(() => {
+        if (saveGen.current === gen) setSaveNote('Could not save that look.');
+      });
+  };
+
   const handleTryOn = () => {
     if (!top || !bottom) return;
     setShowMatchOverlay(true);
@@ -90,40 +121,44 @@ export default function CluelessClosetApp({
           </button>
         </aside>
 
-        <div className="clueless-stage" data-closet-tour="carousel">
-          <div className="clueless-inspiration-badge" role="note">
-            {inspirationLine}
-          </div>
-          <div className="clueless-row">
-            <button type="button" className="clueless-arrow" onClick={prevTop} aria-label="Previous top">
-              {'<'}
-            </button>
-            {top ? (
-              <img src={garmentSrc(top)} alt={top.title} className="clueless-garment" />
-            ) : (
-              <p className="clueless-empty">No tops yet</p>
-            )}
-            <button type="button" className="clueless-arrow" onClick={nextTop} aria-label="Next top">
-              {'>'}
-            </button>
-          </div>
-          {top && <p className="clueless-name">{top.title}</p>}
+        <SwipeableOutfitWrapper onSwipeLeft={handleShuffle} onSwipeRight={handleRockIt}>
+          <div className="clueless-stage" data-closet-tour="carousel">
+            <p className="clueless-swipe-hint">Swipe right to rock it · swipe left for as if</p>
+            <div className="clueless-inspiration-badge" role="note">
+              {inspirationLine}
+            </div>
+            <div className="clueless-row">
+              <button type="button" className="clueless-arrow" onClick={prevTop} aria-label="Previous top">
+                {'<'}
+              </button>
+              {top ? (
+                <img src={garmentSrc(top)} alt={top.title} className="clueless-garment" />
+              ) : (
+                <p className="clueless-empty">No tops yet</p>
+              )}
+              <button type="button" className="clueless-arrow" onClick={nextTop} aria-label="Next top">
+                {'>'}
+              </button>
+            </div>
+            {top && <p className="clueless-name">{top.title}</p>}
 
-          <div className="clueless-row">
-            <button type="button" className="clueless-arrow" onClick={prevBottom} aria-label="Previous bottom">
-              {'<'}
-            </button>
-            {bottom ? (
-              <img src={garmentSrc(bottom)} alt={bottom.title} className="clueless-garment" />
-            ) : (
-              <p className="clueless-empty">No bottoms yet</p>
-            )}
-            <button type="button" className="clueless-arrow" onClick={nextBottom} aria-label="Next bottom">
-              {'>'}
-            </button>
+            <div className="clueless-row">
+              <button type="button" className="clueless-arrow" onClick={prevBottom} aria-label="Previous bottom">
+                {'<'}
+              </button>
+              {bottom ? (
+                <img src={garmentSrc(bottom)} alt={bottom.title} className="clueless-garment" />
+              ) : (
+                <p className="clueless-empty">No bottoms yet</p>
+              )}
+              <button type="button" className="clueless-arrow" onClick={nextBottom} aria-label="Next bottom">
+                {'>'}
+              </button>
+            </div>
+            {bottom && <p className="clueless-name">{bottom.title}</p>}
+            {saveNote && <p className="clueless-save-note">{saveNote}</p>}
           </div>
-          {bottom && <p className="clueless-name">{bottom.title}</p>}
-        </div>
+        </SwipeableOutfitWrapper>
 
         <aside className="clueless-sidebar">
           <img src={PATTERN} alt="" className="clueless-pattern" />

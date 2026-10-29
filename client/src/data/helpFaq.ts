@@ -524,13 +524,13 @@ export function babyStepsFor(target: HelpNavTarget | null, userQ: string): strin
       'Use free helps first; premium unlocks unlimited AI help.',
     ],
     events: [
-      'From Home tap Events.',
+      'Open the Connections tab. Events is the main screen.',
       'Browse meetups or create one.',
       'Join and chat with attendees.',
       'Show up safely — share plans with a contact.',
     ],
     datematch: [
-      'From Home tap Date Arena.',
+      'Open Connections, tap the menu (☰), then Date Arena.',
       'Set what you are looking for.',
       'Accept / pitch / roll fun date ideas.',
       'Move good matches into Communication to plan.',

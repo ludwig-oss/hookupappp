@@ -61,7 +61,6 @@ function tabForWidget(id: Exclude<WidgetId, null>): MainTab {
     case 'activity':
       return 'Communications';
     case 'compatibility':
-    case 'events':
     case 'highlights':
     case 'safety':
     case 'help':
@@ -71,11 +70,11 @@ function tabForWidget(id: Exclude<WidgetId, null>): MainTab {
   }
 }
 
-function tabHomeWidget(tab: MainTab, inRelationship: boolean): WidgetId {
+function tabHomeWidget(tab: MainTab): WidgetId {
   if (tab === 'Feed') return 'lovefeed';
   if (tab === 'Communications') return 'chat';
   if (tab === 'Profile') return null;
-  return inRelationship ? null : 'datematch';
+  return 'events';
 }
 
 const RELATIONSHIP_LOCKED: Array<Exclude<WidgetId, null>> = ['activity', 'connections', 'highlights', 'datematch'];
@@ -100,7 +99,7 @@ const Dashboard = () => {
   const [selectedHighlightId, setSelectedHighlightId] = useState<string | null>(null);
   const [viewingHighlight, setViewingHighlight] = useState<any | null>(null);
   const bootState = (location.state || {}) as { openWidget?: WidgetId; openChatWithUserId?: string } | null;
-  const [openWidget, setOpenWidget] = useState<WidgetId>(bootState?.openWidget ?? 'datematch');
+  const [openWidget, setOpenWidget] = useState<WidgetId>(bootState?.openWidget ?? 'events');
   const [activeTab, setActiveTab] = useState<MainTab>(bootState?.openWidget ? tabForWidget(bootState.openWidget) : 'Connections');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [returnToWidget, setReturnToWidget] = useState<'help' | null>(null);
@@ -143,7 +142,7 @@ const Dashboard = () => {
       setReturnToWidget(null);
       return;
     }
-    setOpenWidget(tabHomeWidget(activeTab, inRelationship));
+    setOpenWidget(tabHomeWidget(activeTab));
   };
 
   const selectTab = (tab: MainTab) => {
@@ -151,7 +150,7 @@ const Dashboard = () => {
     setIsSidebarOpen(false);
     setReturnToWidget(null);
     setActiveTab(tab);
-    setOpenWidget(tab === 'Profile' && mustPickGuide ? 'compatibility' : tabHomeWidget(tab, inRelationship));
+    setOpenWidget(tab === 'Profile' && mustPickGuide ? 'compatibility' : tabHomeWidget(tab));
   };
 
   const openSidebarFeature = (id: Exclude<WidgetId, null>) => {
@@ -202,7 +201,7 @@ const Dashboard = () => {
   useEffect(() => {
     if (!inRelationship || !openWidget) return;
     if (!RELATIONSHIP_LOCKED.includes(openWidget)) return;
-    setOpenWidget(tabHomeWidget(tabForWidget(openWidget), true));
+    setOpenWidget(tabHomeWidget(tabForWidget(openWidget)));
   }, [inRelationship, openWidget]);
 
   useEffect(() => {
@@ -493,7 +492,7 @@ const Dashboard = () => {
     };
   }, []);
 
-  const homeWidget = tabHomeWidget(activeTab, inRelationship);
+  const homeWidget = tabHomeWidget(activeTab);
   const showHeaderBack = Boolean(returnToWidget) || (openWidget != null && openWidget !== homeWidget);
   const relationshipLocked = (id: Exclude<WidgetId, null>) => inRelationship && RELATIONSHIP_LOCKED.includes(id);
 
@@ -695,9 +694,7 @@ const Dashboard = () => {
         </div>
       ) : (
         <p className="app-stage-placeholder">
-          {activeTab === 'Connections' && (inRelationship
-            ? 'In a relationship — focus on your partner.'
-            : '⚔️ Welcome to the Date Arena')}
+          {activeTab === 'Connections' && 'Events'}
           {activeTab === 'Feed' && '💖 Love Life Feed'}
           {activeTab === 'Communications' && '💬 Messages Inbox'}
         </p>
@@ -713,7 +710,6 @@ const Dashboard = () => {
             <>
               <p className="app-side-label">Workspace</p>
               {sideItem('compatibility', '🧬', 'Compatibility')}
-              {sideItem('events', '📅', 'Event Calendar')}
               {sideItem('highlights', '✨', 'Highlights')}
               <p className="app-side-label">Support</p>
               {sideItem('safety', '🛡️', 'Safety Shield')}
@@ -725,6 +721,11 @@ const Dashboard = () => {
               {sideItem('advice', '💡', 'Dating Advice')}
               {sideItem('confession', '🤫', 'Confession Booth')}
               {sideItem('activity', '📈', 'Activity Stream')}
+            </>
+          ) : activeTab === 'Connections' ? (
+            <>
+              <p className="app-side-label">Meet</p>
+              {sideItem('datematch', '⚔️', 'Date Arena')}
             </>
           ) : (
             <p className="app-side-hint">Select main panel feature</p>

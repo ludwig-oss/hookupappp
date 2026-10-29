@@ -85,12 +85,12 @@ export default function CluelessClosetApp({
       <div className="clueless-workspace">
         <aside className="clueless-sidebar">
           <img src={PATTERN} alt="" className="clueless-pattern" />
-          <button type="button" className="clueless-side-btn" onClick={handleShuffle}>
+          <button type="button" className="clueless-side-btn" data-closet-tour="shuffle" onClick={handleShuffle}>
             SHUFFLE
           </button>
         </aside>
 
-        <div className="clueless-stage">
+        <div className="clueless-stage" data-closet-tour="carousel">
           <div className="clueless-inspiration-badge" role="note">
             {inspirationLine}
           </div>
@@ -127,7 +127,7 @@ export default function CluelessClosetApp({
 
         <aside className="clueless-sidebar">
           <img src={PATTERN} alt="" className="clueless-pattern" />
-          <button type="button" className="clueless-side-btn" onClick={handleTryOn}>
+          <button type="button" className="clueless-side-btn" data-closet-tour="tryon" onClick={handleTryOn}>
             TRY ON
           </button>
         </aside>

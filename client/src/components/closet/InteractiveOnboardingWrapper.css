@@ -6,108 +6,111 @@
   position: absolute;
   inset: 0;
   z-index: 40;
-  background: rgba(0, 0, 0, 0.55);
+  background: rgba(4, 4, 8, 0.72);
   pointer-events: auto;
 }
 
 .closet-tour-tooltip {
   position: absolute;
   z-index: 50;
-  width: min(280px, calc(100% - 24px));
-  background: #1e1e1e;
-  color: #fff;
-  padding: 16px;
-  border-radius: 12px;
-  border: 1.5px solid #d182c6;
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
+  background: #0a0a0e;
+  color: #f4f4f5;
+  padding: 14px 14px 12px;
+  border-radius: 2px;
+  border: 2px solid #f4f4f5;
+  box-shadow:
+    0 0 0 1px #d182c6,
+    4px 4px 0 #d182c6;
+  font-family: ui-monospace, "Cascadia Mono", "Courier New", monospace;
 }
 
-.closet-tour-tooltip.is-carousel {
-  top: 35%;
-  left: 50%;
-  transform: translateX(-50%);
-}
-
-.closet-tour-tooltip.is-shuffle {
-  bottom: 15%;
-  left: 5%;
-}
-
-.closet-tour-tooltip.is-tryon {
-  bottom: 15%;
-  right: 5%;
-  left: auto;
+.closet-tour-kicker {
+  margin: 0 0 2px;
+  color: #d182c6;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.28em;
 }
 
 .closet-tour-counter {
-  margin: 0 0 4px;
-  color: #d182c6;
+  margin: 0 0 8px;
+  color: #f4f4f5;
   font-size: 10px;
-  font-weight: 900;
-  letter-spacing: 1px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
 }
 
 .closet-tour-copy {
   margin: 0 0 12px;
-  color: #fff;
+  color: #e8e8ea;
   font-size: 13px;
-  line-height: 18px;
+  line-height: 1.4;
   font-weight: 500;
+  letter-spacing: 0.01em;
 }
 
 .closet-tour-next {
   width: 100%;
-  background: #fff;
-  color: #000;
-  border: 0;
-  border-radius: 6px;
-  padding: 8px 10px;
+  background: #f4f4f5;
+  color: #0a0a0e;
+  border: 2px solid #f4f4f5;
+  border-radius: 0;
+  padding: 9px 10px;
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 800;
+  letter-spacing: 0.12em;
   cursor: pointer;
+  font-family: inherit;
 }
 
-.closet-tour-caret {
+.closet-tour-next:hover {
+  background: #d182c6;
+  border-color: #d182c6;
+  color: #0a0a0e;
+}
+
+/* Geometric diamond pointer — flanks toward Shuffle (left) / Try On (right) / carousel (up). */
+.closet-tour-pointer {
   position: absolute;
-  width: 0;
-  height: 0;
+  width: 12px;
+  height: 12px;
+  background: #0a0a0e;
+  border: 2px solid #f4f4f5;
+  box-shadow: 1px 1px 0 #d182c6;
+  transform: rotate(45deg);
 }
 
-.closet-tour-caret.arrow-top-center {
-  top: -10px;
+.closet-tour-pointer.points-left {
+  left: -8px;
+  top: 50%;
+  margin-top: -6px;
+}
+
+.closet-tour-pointer.points-right {
+  right: -8px;
+  top: 50%;
+  margin-top: -6px;
+}
+
+.closet-tour-pointer.points-up {
+  top: -8px;
   left: 50%;
-  margin-left: -10px;
-  border-left: 10px solid transparent;
-  border-right: 10px solid transparent;
-  border-bottom: 10px solid #1e1e1e;
+  margin-left: -6px;
 }
 
-.closet-tour-caret.arrow-bottom-left {
-  bottom: -10px;
-  left: 20px;
-  border-left: 10px solid transparent;
-  border-right: 10px solid transparent;
-  border-top: 10px solid #1e1e1e;
-}
-
-.closet-tour-caret.arrow-bottom-right {
-  bottom: -10px;
-  right: 20px;
-  border-left: 10px solid transparent;
-  border-right: 10px solid transparent;
-  border-top: 10px solid #1e1e1e;
+[data-closet-tour].is-tour-hot {
+  outline: 2px solid #d182c6;
+  outline-offset: 3px;
+  box-shadow: 0 0 0 4px rgba(209, 130, 198, 0.35);
+  z-index: 45;
+  position: relative;
 }
 
 @media (max-width: 720px) {
-  .closet-tour-tooltip.is-carousel {
-    top: 28%;
-  }
-
-  .closet-tour-tooltip.is-shuffle,
-  .closet-tour-tooltip.is-tryon {
-    bottom: 10%;
-    left: 50%;
-    right: auto;
-    transform: translateX(-50%);
+  .closet-tour-tooltip.points-left,
+  .closet-tour-tooltip.points-right {
+    left: 50% !important;
+    transform: translate(-50%, -50%) !important;
+    width: min(280px, calc(100% - 24px)) !important;
   }
 }

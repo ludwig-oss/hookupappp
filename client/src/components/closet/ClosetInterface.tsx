@@ -9,6 +9,7 @@ import {
 } from '../../data/closetCatalog';
 import { fashionAPI, type FashionLookCard } from '../../api/fashion';
 import CluelessClosetApp from './CluelessClosetApp';
+import InteractiveOnboardingWrapper from './InteractiveOnboardingWrapper';
 import './ClosetInterface.css';
 
 /** High-fidelity full-body stand-ins until the user’s body photo / VTON result lands. */
@@ -219,7 +220,9 @@ export default function ClosetInterface({
 
   return (
     <div className="closet-stack">
-    <CluelessClosetApp gender={gender} onTryOn={(top) => void runVirtualTryOn(top)} />
+    <InteractiveOnboardingWrapper>
+      <CluelessClosetApp gender={gender} onTryOn={(top) => void runVirtualTryOn(top)} />
+    </InteractiveOnboardingWrapper>
     <div className="closet-root">
       <div className="closet-stage">
         <div className="closet-tryon-frame" aria-busy={tryOnLoading}>

@@ -70,11 +70,11 @@ function tabForWidget(id: Exclude<WidgetId, null>): MainTab {
   }
 }
 
-function tabHomeWidget(tab: MainTab): WidgetId {
+function tabHomeWidget(tab: MainTab, inRelationship: boolean): WidgetId {
   if (tab === 'Feed') return 'lovefeed';
   if (tab === 'Communications') return 'chat';
   if (tab === 'Profile') return null;
-  return 'events';
+  return inRelationship ? null : 'connections';
 }
 
 const RELATIONSHIP_LOCKED: Array<Exclude<WidgetId, null>> = ['activity', 'connections', 'highlights', 'datematch'];
@@ -99,7 +99,7 @@ const Dashboard = () => {
   const [selectedHighlightId, setSelectedHighlightId] = useState<string | null>(null);
   const [viewingHighlight, setViewingHighlight] = useState<any | null>(null);
   const bootState = (location.state || {}) as { openWidget?: WidgetId; openChatWithUserId?: string } | null;
-  const [openWidget, setOpenWidget] = useState<WidgetId>(bootState?.openWidget ?? 'events');
+  const [openWidget, setOpenWidget] = useState<WidgetId>(bootState?.openWidget ?? 'connections');
   const [activeTab, setActiveTab] = useState<MainTab>(bootState?.openWidget ? tabForWidget(bootState.openWidget) : 'Connections');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [returnToWidget, setReturnToWidget] = useState<'help' | null>(null);
@@ -142,7 +142,7 @@ const Dashboard = () => {
       setReturnToWidget(null);
       return;
     }
-    setOpenWidget(tabHomeWidget(activeTab));
+    setOpenWidget(tabHomeWidget(activeTab, inRelationship));
   };
 
   const selectTab = (tab: MainTab) => {
@@ -150,7 +150,7 @@ const Dashboard = () => {
     setIsSidebarOpen(false);
     setReturnToWidget(null);
     setActiveTab(tab);
-    setOpenWidget(tab === 'Profile' && mustPickGuide ? 'compatibility' : tabHomeWidget(tab));
+    setOpenWidget(tab === 'Profile' && mustPickGuide ? 'compatibility' : tabHomeWidget(tab, inRelationship));
   };
 
   const openSidebarFeature = (id: Exclude<WidgetId, null>) => {
@@ -201,7 +201,7 @@ const Dashboard = () => {
   useEffect(() => {
     if (!inRelationship || !openWidget) return;
     if (!RELATIONSHIP_LOCKED.includes(openWidget)) return;
-    setOpenWidget(tabHomeWidget(tabForWidget(openWidget)));
+    setOpenWidget(tabHomeWidget(tabForWidget(openWidget), true));
   }, [inRelationship, openWidget]);
 
   useEffect(() => {
@@ -492,7 +492,7 @@ const Dashboard = () => {
     };
   }, []);
 
-  const homeWidget = tabHomeWidget(activeTab);
+  const homeWidget = tabHomeWidget(activeTab, inRelationship);
   const showHeaderBack = Boolean(returnToWidget) || (openWidget != null && openWidget !== homeWidget);
   const relationshipLocked = (id: Exclude<WidgetId, null>) => inRelationship && RELATIONSHIP_LOCKED.includes(id);
 
@@ -694,7 +694,9 @@ const Dashboard = () => {
         </div>
       ) : (
         <p className="app-stage-placeholder">
-          {activeTab === 'Connections' && 'Events'}
+          {activeTab === 'Connections' && (inRelationship
+            ? 'In a relationship — focus on your partner.'
+            : 'Connections')}
           {activeTab === 'Feed' && '💖 Love Life Feed'}
           {activeTab === 'Communications' && '💬 Messages Inbox'}
         </p>
@@ -726,6 +728,7 @@ const Dashboard = () => {
             <>
               <p className="app-side-label">Meet</p>
               {sideItem('datematch', '⚔️', 'Date Arena')}
+              {sideItem('events', '📅', 'Events')}
             </>
           ) : (
             <p className="app-side-hint">Select main panel feature</p>

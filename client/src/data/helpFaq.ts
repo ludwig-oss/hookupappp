@@ -524,7 +524,7 @@ export function babyStepsFor(target: HelpNavTarget | null, userQ: string): strin
       'Use free helps first; premium unlocks unlimited AI help.',
     ],
     events: [
-      'Open the Connections tab. Events is the main screen.',
+      'Open Connections, tap the menu (☰), then Events.',
       'Browse meetups or create one.',
       'Join and chat with attendees.',
       'Show up safely — share plans with a contact.',

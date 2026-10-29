@@ -151,6 +151,15 @@ export const fashionAPI = {
       shuffleOptions: { availableTopsCount: number; availableBottomsCount: number };
     };
   },
+  matchScore: async (body?: {
+    occasion?: 'everyday' | 'special_event' | 'work' | 'night_out';
+    allowContradictoryPatterns?: boolean;
+    requestedPatterns?: string[];
+    limit?: number;
+  }) => {
+    const response = await axios.post(`${API_URL}/match-score`, body || {});
+    return response.data;
+  },
   monthlyCheckIn: async (month?: string) => {
     const response = await axios.post(`${API_URL}/monthly-check-in`, { month });
     return response.data as { message: string; requiresInput: boolean; inputType: string };

@@ -12,8 +12,10 @@ import {
   cluelessStylist,
   fromSavedWardrobe,
   occasionFromText,
+  type ClutchWardrobeItem,
   type OccasionType,
 } from '../services/cluelessOutfitComposer.js';
+import { clutchItemToMatchPiece, rankLooks, type MatchPiece } from '../services/closetMatchEngine.js';
 
 function serializeLook(look: FashionLook) {
   return {
@@ -233,6 +235,32 @@ export const clutchMatchHandler = async (req: Request, res: Response) => {
     const closet = await listWardrobe(userId);
     const occasion = (String(req.body?.occasion || occasionFromText(String(req.body?.prompt || ''))).trim() ||
       'everyday') as OccasionType;
+    const ownedAndShop: ClutchWardrobeItem[] = [
+      ...closet.map(fromSavedWardrobe),
+      ...catalogAsRetail(),
+    ];
+    const pieces: MatchPiece[] = [];
+    for (const row of ownedAndShop) {
+      const piece = clutchItemToMatchPiece({
+        id: row.id,
+        category: row.category,
+        color: row.color,
+        pattern: row.pattern,
+        styleTags: row.styleTags,
+        imageUrl: row.imageUrl,
+        isOwned: row.isOwned && row.userId === userId,
+        name: row.pattern,
+      });
+      if (piece) pieces.push(piece);
+    }
+    const ranked = rankLooks({
+      pieces,
+      occasion,
+      allowContradictoryPatterns: Boolean(req.body?.allowContradictoryPatterns),
+      requestedPatterns: Array.isArray(req.body?.requestedPatterns) ? req.body.requestedPatterns.map(String) : [],
+      limit: 8,
+    });
+    const best = ranked.looks[0];
     const match = cluelessStylist.generateOutfitMatch(
       {
         userId,
@@ -244,7 +272,28 @@ export const clutchMatchHandler = async (req: Request, res: Response) => {
       closet.map(fromSavedWardrobe),
       catalogAsRetail()
     );
-    res.json(match);
+    res.json({
+      ...match,
+      matchEngine: {
+        looks: ranked.looks,
+        rejectedClashCount: ranked.rejectedClashCount,
+        shoppingPool: ranked.shoppingPool,
+      },
+      outfit: best
+        ? {
+            top: best.top,
+            bottom: best.bottom,
+            accessory: best.accessory,
+            outerwear: best.accessory,
+          }
+        : match.outfit,
+      shoppingRecommendation: best?.shoppingAlternatives[0]?.piece || match.shoppingRecommendation,
+      guideLine: best
+        ? best.shoppingAlternatives.length
+          ? `Owned closet first. ${best.shoppingAlternatives[0].reason}.`
+          : best.notes[0] || match.guideLine
+        : match.guideLine,
+    });
   } catch (error) {
     console.error('Fashion clutch match error:', error);
     res.status(500).json({ error: 'Could not compose that outfit' });

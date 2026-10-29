@@ -6,16 +6,14 @@ import PhotoVerificationModal from './PhotoVerificationModal';
 import './PhotoVerificationGate.css';
 
 const REMIND_KEY = (userId: string) => `aswp.photoVerify.remindedAt.${userId}`;
-const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
 function shouldRemind(userId: string, daysLeft: number): boolean {
-  if (daysLeft > 23) return false;
+  if (daysLeft <= 0) return false;
   try {
     const raw = localStorage.getItem(REMIND_KEY(userId));
     const last = raw ? Number(raw) : 0;
-    const gap = daysLeft <= 7 ? ONE_DAY_MS : THREE_DAYS_MS;
-    return !Number.isFinite(last) || Date.now() - last >= gap;
+    return !Number.isFinite(last) || Date.now() - last >= ONE_DAY_MS;
   } catch {
     return true;
   }
@@ -201,7 +199,7 @@ export default function PhotoVerificationGate() {
           <h3 id="photo-remind-title">Safety reminder</h3>
           <p>{status.message}</p>
           <p>
-            Take a live selfie in the app. We compare it to your visible profile photo. If you skip this, after one month you will not be able to interact until you prove it is you.
+            Take a live selfie in the app. We compare it to your visible profile photo. You can keep using the app for these two days. After that, chat, matching, and posts lock until you prove it is you.
           </p>
           <button type="button" className="photo-lock-primary" onClick={() => setShowScan(true)}>
             Verify now

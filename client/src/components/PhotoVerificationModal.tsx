@@ -151,7 +151,7 @@ export default function PhotoVerificationModal({
           </button>
         </div>
         <p className="photo-verification-privacy">
-          Selfies are used only to confirm your profile photo is you. This is required after one month so people cannot catfish.
+          Selfies are used only to confirm your profile photo is you. After two days without this match, chat, matching, and posts stay locked until you prove it is you.
         </p>
       </div>
     </div>

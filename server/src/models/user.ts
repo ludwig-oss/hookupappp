@@ -138,8 +138,13 @@ export interface User {
   celebMessagesOnlyWhenOpened?: boolean;
   /** Anti-catfish: user verified their profile photo with a selfie (look left/center/right scan). Shown as green badge. */
   photoVerifiedAt?: string | null;
-  /** When the account was created — photo verification becomes mandatory after 30 days. */
+  /** When the account was created — live-selfie verification locks chat, matching, and posts after 2 days. */
   createdAt?: string | Date | null;
+  /**
+   * One-time later deadline for accounts that were already past the 2-day window
+   * when that window started. After this instant, a missing selfie locks the account.
+   */
+  photoLockNotBefore?: string | null;
   /** OAuth provider ids (Google / Facebook). */
   googleId?: string | null;
   facebookId?: string | null;

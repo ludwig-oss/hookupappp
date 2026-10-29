@@ -938,7 +938,7 @@ const SettingsWidgetFull = () => {
           <div style={{ marginBottom: '30px', padding: '20px', background: '#fdf2f8', border: '2px solid #f9a8d4', borderRadius: '12px' }}>
             <h4 style={{ marginBottom: '8px' }}>Photo match (required)</h4>
             <p style={{ fontSize: '13px', color: '#6b7280', marginBottom: '12px', lineHeight: 1.45 }}>
-              After one month, if you have not taken a live selfie that matches your visible profile photo, you cannot chat, match, or post until you do. We will remind you. This is for safety and catfishing prevention.
+              You have two days to take a live selfie that matches your visible profile photo. Until then you can keep using the app. After those two days you cannot chat, match, or post until you do. We will remind you. This is for safety and catfishing prevention.
             </p>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
               <span>Live selfie vs profile photo</span>

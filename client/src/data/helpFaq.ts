@@ -311,7 +311,7 @@ export const HELP_FAQ: HelpFaqItem[] = [
   {
     category: 'Profile & account',
     q: 'How does photo verification work?',
-    a: 'To prove you are real, the app asks for a live selfie compared to your visible profile photo (not email or phone). After about a month you must verify again. If you skip reminders you can be locked until you scan. Open Profile if you see a verification prompt.',
+    a: 'To prove you are real, the app asks for a live selfie compared to your visible profile photo (not email or phone). You have two days to do it and can keep using the app until then. After two days, chat, matching, and posts lock until the selfie matches. Open Profile if you see a verification prompt.',
     keywords: ['photo verification', 'selfie scan', 'catfish', 'locked', 'verify photo'],
   },
   {

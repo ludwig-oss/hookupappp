@@ -1,6 +1,7 @@
 import { getUserById, updateUserProfile } from './user.js';
 
-export const PHOTO_VERIFY_GRACE_MS = 30 * 24 * 60 * 60 * 1000;
+/** How long someone can use the app before a missing live selfie locks chat, matching, and posts. */
+export const PHOTO_VERIFY_GRACE_MS = 2 * 24 * 60 * 60 * 1000;
 
 export interface PhotoLockStatus {
   photoVerifiedAt: string | null;
@@ -22,14 +23,27 @@ export function inferAccountCreatedAt(user: { id: string; createdAt?: string | D
   return new Date();
 }
 
+export function photoLockDeadline(user: {
+  id: string;
+  createdAt?: string | Date | null;
+  photoLockNotBefore?: string | null;
+}): Date {
+  const created = inferAccountCreatedAt(user);
+  const fromSignup = created.getTime() + PHOTO_VERIFY_GRACE_MS;
+  const granted = user.photoLockNotBefore ? new Date(user.photoLockNotBefore).getTime() : NaN;
+  const deadlineMs = Number.isFinite(granted) ? Math.max(fromSignup, granted) : fromSignup;
+  return new Date(deadlineMs);
+}
+
 export function photoLockStatusForUser(user: {
   id: string;
   createdAt?: string | Date | null;
   photoVerifiedAt?: string | null;
   profilePicture?: string | null;
+  photoLockNotBefore?: string | null;
 }): PhotoLockStatus {
   const created = inferAccountCreatedAt(user);
-  const deadline = new Date(created.getTime() + PHOTO_VERIFY_GRACE_MS);
+  const deadline = photoLockDeadline(user);
   const verified = Boolean(user.photoVerifiedAt);
   const remainingMs = deadline.getTime() - Date.now();
   const locked = !verified && remainingMs <= 0;
@@ -40,7 +54,7 @@ export function photoLockStatusForUser(user: {
     message =
       'Your account is limited until you prove the person in your profile photo is you. Take a live selfie so we can match it to your visible photo — this is for safety and catfishing prevention.';
   } else if (!verified) {
-    message = `Within ${daysUntilDeadline} day${daysUntilDeadline === 1 ? '' : 's'} you must verify your live selfie matches your profile photo, or you will not be able to chat, match, or post. This is for safety and catfishing prevention.`;
+    message = `You have ${daysUntilDeadline} day${daysUntilDeadline === 1 ? '' : 's'} to match a live selfie to your profile photo. You can keep using the app until then. After that, chat, matching, and posts lock until you do. This is for safety and catfishing prevention.`;
   }
   return {
     photoVerifiedAt: user.photoVerifiedAt || null,
@@ -54,13 +68,24 @@ export function photoLockStatusForUser(user: {
 }
 
 export async function getPhotoLockStatus(userId: string): Promise<PhotoLockStatus | null> {
-  const user = await getUserById(userId);
+  let user = await getUserById(userId);
   if (!user) return null;
+  const patch: { createdAt?: string; photoLockNotBefore?: string } = {};
   if (!user.createdAt) {
-    const inferred = inferAccountCreatedAt(user);
-    const iso = inferred.toISOString();
-    await updateUserProfile(userId, { createdAt: iso });
-    return photoLockStatusForUser({ ...user, createdAt: iso });
+    patch.createdAt = inferAccountCreatedAt(user).toISOString();
+    user = { ...user, createdAt: patch.createdAt };
+  }
+  // Accounts already older than two days would lock the moment this window starts.
+  // Give them the same two days, once, then the lock can turn on.
+  if (!user.photoVerifiedAt && !user.photoLockNotBefore) {
+    const fromSignup = inferAccountCreatedAt(user).getTime() + PHOTO_VERIFY_GRACE_MS;
+    if (fromSignup <= Date.now()) {
+      patch.photoLockNotBefore = new Date(Date.now() + PHOTO_VERIFY_GRACE_MS).toISOString();
+      user = { ...user, photoLockNotBefore: patch.photoLockNotBefore };
+    }
+  }
+  if (patch.createdAt || patch.photoLockNotBefore) {
+    await updateUserProfile(userId, patch);
   }
   return photoLockStatusForUser(user);
 }

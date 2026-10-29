@@ -239,7 +239,8 @@ export const getUserProfile = async (req: Request, res: Response) => {
 
     // Don't send password and sensitive data
     const { password, resetToken, resetTokenExpiry, backupPasswordHash, ...userProfile } = user;
-    
+    const ownPhotoLock = viewingOwnProfile ? await getPhotoLockStatus(user.id) : null;
+
     // Ensure all required fields exist with defaults
     const profile: Record<string, unknown> = {
       ...userProfile,
@@ -255,8 +256,8 @@ export const getUserProfile = async (req: Request, res: Response) => {
       unmatchedUsers: userProfile.unmatchedUsers || [],
       profiles: userProfile.profiles || [],
       photoVerifiedAt: userProfile.photoVerifiedAt ?? null,
-      createdAt: viewingOwnProfile ? photoLockStatusForUser(user).createdAt : undefined,
-      photoLock: viewingOwnProfile ? photoLockStatusForUser(user) : undefined,
+      createdAt: ownPhotoLock?.createdAt,
+      photoLock: ownPhotoLock ?? undefined,
       hasBackupPassword: viewingOwnProfile ? Boolean(backupPasswordHash) : undefined,
       hasGoogleAuth: viewingOwnProfile ? Boolean((user as { googleId?: string | null }).googleId) : undefined,
     };

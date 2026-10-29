@@ -48,6 +48,38 @@ import { postsAPI } from '../api/posts';
 import { relationshipAPI } from '../api/relationship';
 import './Dashboard.css';
 
+type WidgetId = 'activity' | 'compatibility' | 'connections' | 'highlights' | 'lovefeed' | 'advice' | 'confession' | 'chat' | 'events' | 'help' | 'safety' | 'datematch' | null;
+type MainTab = 'Connections' | 'Feed' | 'Communications' | 'Profile';
+
+function tabForWidget(id: Exclude<WidgetId, null>): MainTab {
+  switch (id) {
+    case 'lovefeed':
+      return 'Feed';
+    case 'chat':
+    case 'advice':
+    case 'confession':
+    case 'activity':
+      return 'Communications';
+    case 'compatibility':
+    case 'events':
+    case 'highlights':
+    case 'safety':
+    case 'help':
+      return 'Profile';
+    default:
+      return 'Connections';
+  }
+}
+
+function tabHomeWidget(tab: MainTab, inRelationship: boolean): WidgetId {
+  if (tab === 'Feed') return 'lovefeed';
+  if (tab === 'Communications') return 'chat';
+  if (tab === 'Profile') return null;
+  return inRelationship ? null : 'datematch';
+}
+
+const RELATIONSHIP_LOCKED: Array<Exclude<WidgetId, null>> = ['activity', 'connections', 'highlights', 'datematch'];
+
 const Dashboard = () => {
   const { user, logout, updateUser } = useContext(AuthContext);
   const { t } = useTranslation();
@@ -67,9 +99,10 @@ const Dashboard = () => {
   const [uploading, setUploading] = useState(false);
   const [selectedHighlightId, setSelectedHighlightId] = useState<string | null>(null);
   const [viewingHighlight, setViewingHighlight] = useState<any | null>(null);
-  type WidgetId = 'activity' | 'compatibility' | 'connections' | 'highlights' | 'lovefeed' | 'advice' | 'confession' | 'chat' | 'events' | 'help' | 'safety' | 'datematch' | null;
   const bootState = (location.state || {}) as { openWidget?: WidgetId; openChatWithUserId?: string } | null;
-  const [openWidget, setOpenWidget] = useState<WidgetId>(bootState?.openWidget || null);
+  const [openWidget, setOpenWidget] = useState<WidgetId>(bootState?.openWidget ?? 'datematch');
+  const [activeTab, setActiveTab] = useState<MainTab>(bootState?.openWidget ? tabForWidget(bootState.openWidget) : 'Connections');
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [returnToWidget, setReturnToWidget] = useState<'help' | null>(null);
   const [openChatWithUserId, setOpenChatWithUserId] = useState<string | null>(bootState?.openChatWithUserId || null);
 
@@ -77,8 +110,10 @@ const Dashboard = () => {
 
   const openWidgetFromHome = (id: Exclude<WidgetId, null>) => {
     if (mustPickGuide && id !== 'compatibility') return;
+    if (inRelationship && RELATIONSHIP_LOCKED.includes(id)) return;
     setReturnToWidget(null);
     setOpenWidget(id);
+    setIsSidebarOpen(false);
   };
 
   const checkNearbyNow = () => {
@@ -99,15 +134,28 @@ const Dashboard = () => {
 
   const handleBackFromWidget = () => {
     if (mustPickGuide) {
+      setActiveTab('Profile');
       setOpenWidget('compatibility');
       return;
     }
     if (returnToWidget) {
       setOpenWidget(returnToWidget);
       setReturnToWidget(null);
-    } else {
-      setOpenWidget(null);
+      return;
     }
+    setOpenWidget(tabHomeWidget(activeTab, inRelationship));
+  };
+
+  const selectTab = (tab: MainTab) => {
+    if (mustPickGuide && tab !== 'Profile') return;
+    setIsSidebarOpen(false);
+    setReturnToWidget(null);
+    setActiveTab(tab);
+    setOpenWidget(tab === 'Profile' && mustPickGuide ? 'compatibility' : tabHomeWidget(tab, inRelationship));
+  };
+
+  const openSidebarFeature = (id: Exclude<WidgetId, null>) => {
+    openWidgetFromHome(id);
   };
 
   const navigateFromHelp = (target: HelpNavTarget) => {
@@ -146,6 +194,16 @@ const Dashboard = () => {
       relationshipAPI.getMyRelationship().then((r) => setInRelationship(r.relationship?.status === 'active')).catch(() => setInRelationship(false));
     }
   }, [user?.id]);
+
+  useEffect(() => {
+    if (openWidget) setActiveTab(tabForWidget(openWidget));
+  }, [openWidget]);
+
+  useEffect(() => {
+    if (!inRelationship || !openWidget) return;
+    if (!RELATIONSHIP_LOCKED.includes(openWidget)) return;
+    setOpenWidget(tabHomeWidget(tabForWidget(openWidget), true));
+  }, [inRelationship, openWidget]);
 
   useEffect(() => {
     if (user) {
@@ -435,8 +493,29 @@ const Dashboard = () => {
     };
   }, []);
 
+  const homeWidget = tabHomeWidget(activeTab, inRelationship);
+  const showHeaderBack = Boolean(returnToWidget) || (openWidget != null && openWidget !== homeWidget);
+  const relationshipLocked = (id: Exclude<WidgetId, null>) => inRelationship && RELATIONSHIP_LOCKED.includes(id);
+
+  const sideItem = (id: Exclude<WidgetId, null>, icon: string, label: string) => {
+    const locked = (mustPickGuide && id !== 'compatibility') || relationshipLocked(id);
+    return (
+      <button
+        key={id}
+        type="button"
+        className={`app-side-item ${openWidget === id ? 'is-active' : ''}`}
+        disabled={locked}
+        title={relationshipLocked(id) ? 'In a relationship – focus on your partner' : undefined}
+        onClick={() => openSidebarFeature(id)}
+      >
+        <span className="app-side-icon" aria-hidden>{icon}</span>
+        {label}
+      </button>
+    );
+  };
+
   return (
-    <div className="dashboard-container">
+    <div className="dashboard-container app-shell">
       <SchoolDailyNotification
         onOpenGuides={(categoryId) => {
           setOpenWidget('compatibility');
@@ -480,81 +559,40 @@ const Dashboard = () => {
           <span className="love-float-8" title="Love">💕</span>
         </div>
       </div>
-      {openWidget && (
-        <div className="dashboard-back-link-wrap">
-          <button type="button" className="dashboard-back-link" onClick={handleBackFromWidget}>
-            ← {returnToWidget === 'help' ? t('backToHelp') : t('backToHome')}
-          </button>
-        </div>
-      )}
-      {!openWidget ? (
-        <div className="widget-grid">
+      <header className="app-topbar">
+        <button
+          type="button"
+          className="app-menu-btn"
+          onClick={() => setIsSidebarOpen((open) => !open)}
+          aria-label={isSidebarOpen ? 'Close menu' : 'Open menu'}
+          aria-expanded={isSidebarOpen}
+        >
+          ☰
+        </button>
+        <h1 className="app-header-title">{activeTab.toUpperCase()}</h1>
+        <div className="app-header-actions">
           {!inRelationship && (
-            <button
-              type="button"
-              className="nearby-now-btn nearby-now-btn-grid"
-              onClick={checkNearbyNow}
-            >
-              People nearby (50m)
+            <button type="button" className="app-header-nearby" onClick={checkNearbyNow}>
+              50m
             </button>
           )}
-          <div className="widget-card" onClick={() => navigate('/profile')} role="button" tabIndex={0} onKeyDown={(e) => e.key === 'Enter' && navigate('/profile')}>
-            <div className="widget-card-icon">👤</div>
-            <div className="widget-card-title">{t('profile')}</div>
-          </div>
-          <div className={`widget-card ${inRelationship ? 'widget-card-blurred' : ''}`} onClick={() => !inRelationship && openWidgetFromHome('activity')} role="button" tabIndex={inRelationship ? -1 : 0} onKeyDown={(e) => !inRelationship && e.key === 'Enter' && openWidgetFromHome('activity')} title={inRelationship ? 'In a relationship – focus on your partner' : undefined}>
-            <div className="widget-card-icon">◇</div>
-            <div className="widget-card-title">{t('activityStream')}</div>
-          </div>
-          <div className="widget-card" onClick={() => openWidgetFromHome('compatibility')} role="button" tabIndex={0} onKeyDown={(e) => e.key === 'Enter' && openWidgetFromHome('compatibility')}>
-            <div className="widget-card-icon">⚡</div>
-            <div className="widget-card-title">{t('compatibility')}</div>
-          </div>
-          <div className={`widget-card ${inRelationship ? 'widget-card-blurred' : ''}`} onClick={() => !inRelationship && openWidgetFromHome('connections')} role="button" tabIndex={inRelationship ? -1 : 0} onKeyDown={(e) => !inRelationship && e.key === 'Enter' && openWidgetFromHome('connections')} title={inRelationship ? 'In a relationship – focus on your partner' : undefined}>
-            <div className="widget-card-icon">▣</div>
-            <div className="widget-card-title">{t('connections')}</div>
-          </div>
-          <div className={`widget-card ${inRelationship ? 'widget-card-blurred' : ''}`} onClick={() => !inRelationship && openWidgetFromHome('highlights')} role="button" tabIndex={inRelationship ? -1 : 0} onKeyDown={(e) => !inRelationship && e.key === 'Enter' && openWidgetFromHome('highlights')} title={inRelationship ? 'In a relationship – focus on your partner' : undefined}>
-            <div className="widget-card-icon">✦</div>
-            <div className="widget-card-title">{t('highlights')}</div>
-          </div>
-          <div className="widget-card" style={{ position: 'relative' }} onClick={() => openWidgetFromHome('lovefeed')} role="button" tabIndex={0} onKeyDown={(e) => e.key === 'Enter' && openWidgetFromHome('lovefeed')}>
-            <div className="widget-card-icon">♥</div>
-            <div className="widget-card-title">Love Life Feed</div>
-            {loveFeedBlowingUpCount > 0 && (
-              <span className="widget-card-badge" title="Breaking / blowing up posts">{loveFeedBlowingUpCount}</span>
-            )}
-          </div>
-          <div className="widget-card" onClick={() => openWidgetFromHome('advice')} role="button" tabIndex={0} onKeyDown={(e) => e.key === 'Enter' && openWidgetFromHome('advice')}>
-            <div className="widget-card-icon">💬</div>
-            <div className="widget-card-title">Dating Advice</div>
-          </div>
-          <div className="widget-card" onClick={() => openWidgetFromHome('confession')} role="button" tabIndex={0} onKeyDown={(e) => e.key === 'Enter' && openWidgetFromHome('confession')}>
-            <div className="widget-card-icon">⛪</div>
-            <div className="widget-card-title">Confession Booth</div>
-          </div>
-          <div className={`widget-card ${inRelationship ? 'widget-card-blurred' : ''}`} onClick={() => !inRelationship && openWidgetFromHome('datematch')} role="button" tabIndex={inRelationship ? -1 : 0} onKeyDown={(e) => !inRelationship && e.key === 'Enter' && openWidgetFromHome('datematch')} title={inRelationship ? 'In a relationship – focus on your partner' : undefined}>
-            <div className="widget-card-icon">⚔</div>
-            <div className="widget-card-title">{t('dateArena')}</div>
-          </div>
-          <div className="widget-card" onClick={() => openWidgetFromHome('chat')} role="button" tabIndex={0} onKeyDown={(e) => e.key === 'Enter' && openWidgetFromHome('chat')}>
-            <div className="widget-card-icon">◉</div>
-            <div className="widget-card-title">{t('communication')}</div>
-          </div>
-          <div className="widget-card" onClick={() => openWidgetFromHome('events')} role="button" tabIndex={0} onKeyDown={(e) => e.key === 'Enter' && openWidgetFromHome('events')}>
-            <div className="widget-card-icon">📅</div>
-            <div className="widget-card-title">Events</div>
-          </div>
-          <div className="widget-card" onClick={() => openWidgetFromHome('help')} role="button" tabIndex={0} onKeyDown={(e) => e.key === 'Enter' && openWidgetFromHome('help')}>
-            <div className="widget-card-icon">?</div>
-            <div className="widget-card-title">Help</div>
-          </div>
-          <div className="widget-card" onClick={() => openWidgetFromHome('safety')} role="button" tabIndex={0} onKeyDown={(e) => e.key === 'Enter' && openWidgetFromHome('safety')}>
-            <div className="widget-card-icon">🛡</div>
-            <div className="widget-card-title">Safety shield</div>
-          </div>
+          {showHeaderBack ? (
+            <button
+              type="button"
+              className="app-header-back"
+              onClick={handleBackFromWidget}
+              aria-label={returnToWidget === 'help' ? t('backToHelp') : t('backToHome')}
+            >
+              ←
+            </button>
+          ) : (
+            <span className="app-header-spacer" />
+          )}
         </div>
-      ) : (
+      </header>
+
+      <main className="app-stage">
+      {openWidget ? (
         <div className="widget-open-panel">
           <div className="holographic-panel left-panel">
             {openWidget === 'activity' && (
@@ -630,38 +668,89 @@ const Dashboard = () => {
             )}
           </div>
         </div>
+      ) : activeTab === 'Profile' ? (
+        <div className="app-profile-hub">
+          {user?.profilePicture ? (
+            <img className="app-profile-avatar" src={user.profilePicture} alt="" />
+          ) : (
+            <div className="app-profile-avatar app-profile-avatar-fallback" aria-hidden>👤</div>
+          )}
+          <h2 className="app-profile-name">{user?.name || user?.username || 'My Personal Hub'}</h2>
+          {user?.username && <p className="app-profile-handle">@{user.username}</p>}
+          <p className="app-profile-blurb">👤 My Personal Hub Information</p>
+          <button type="button" className="app-profile-action" onClick={() => navigate('/profile')}>
+            {t('profile')}
+          </button>
+          <button type="button" className="app-profile-action" onClick={() => navigate('/settings')}>
+            Settings
+          </button>
+          <button type="button" className="app-profile-action app-profile-action-logout" onClick={handleLogout}>
+            {t('logout')}
+          </button>
+          <div className="dashboard-legal-footer app-profile-legal">
+            <Link to="/terms">Terms</Link>
+            <span className="dashboard-legal-sep">·</span>
+            <Link to="/privacy">Privacy</Link>
+          </div>
+        </div>
+      ) : (
+        <p className="app-stage-placeholder">
+          {activeTab === 'Connections' && (inRelationship
+            ? 'In a relationship — focus on your partner.'
+            : '⚔️ Welcome to the Date Arena')}
+          {activeTab === 'Feed' && '💖 Love Life Feed'}
+          {activeTab === 'Communications' && '💬 Messages Inbox'}
+        </p>
       )}
+      </main>
 
-      {!inRelationship && openWidget && (
-        <button type="button" className="nearby-now-btn nearby-now-btn-fixed" onClick={checkNearbyNow}>
-          Nearby 50m
-        </button>
+      {isSidebarOpen && (
+        <button type="button" className="app-sidebar-backdrop" aria-label="Close menu" onClick={() => setIsSidebarOpen(false)} />
       )}
+      <aside className={`app-sidebar ${isSidebarOpen ? 'is-open' : ''}`} aria-hidden={!isSidebarOpen}>
+        <div className="app-sidebar-inner">
+          {activeTab === 'Profile' ? (
+            <>
+              <p className="app-side-label">Workspace</p>
+              {sideItem('compatibility', '🧬', 'Compatibility')}
+              {sideItem('events', '📅', 'Event Calendar')}
+              {sideItem('highlights', '✨', 'Highlights')}
+              <p className="app-side-label">Support</p>
+              {sideItem('safety', '🛡️', 'Safety Shield')}
+              {sideItem('help', '❓', 'Help Center')}
+            </>
+          ) : activeTab === 'Communications' ? (
+            <>
+              <p className="app-side-label">Integrations</p>
+              {sideItem('advice', '💡', 'Dating Advice')}
+              {sideItem('confession', '🤫', 'Confession Booth')}
+              {sideItem('activity', '📈', 'Activity Stream')}
+            </>
+          ) : (
+            <p className="app-side-hint">Select main panel feature</p>
+          )}
+        </div>
+      </aside>
 
-      {/* Console Controls */}
-      <div className="console-controls">
-        <button
-          className="console-btn"
-          onClick={() => {
-            if (mustPickGuide) return;
-            navigate('/profile');
-          }}
-        >
-          {t('profile').toUpperCase()}
+      <nav className="app-dock" aria-label="Main">
+        <button type="button" className={`app-dock-tab ${activeTab === 'Connections' ? 'is-active' : ''}`} onClick={() => selectTab('Connections')}>
+          <span className="app-dock-icon" aria-hidden>👥</span>
+          <span className="app-dock-label">Connections</span>
         </button>
-        <button className="console-btn" onClick={() => navigate('/home')}>
-          {t('home').toUpperCase()}
+        <button type="button" className={`app-dock-tab ${activeTab === 'Feed' ? 'is-active' : ''}`} onClick={() => selectTab('Feed')}>
+          <span className="app-dock-icon" aria-hidden>❤️</span>
+          {loveFeedBlowingUpCount > 0 && <span className="app-dock-badge">{loveFeedBlowingUpCount}</span>}
+          <span className="app-dock-label">Feed</span>
         </button>
-        <button className="console-btn logout" onClick={handleLogout}>
-          {t('logout').toUpperCase()}
+        <button type="button" className={`app-dock-tab ${activeTab === 'Communications' ? 'is-active' : ''}`} onClick={() => selectTab('Communications')}>
+          <span className="app-dock-icon" aria-hidden>💬</span>
+          <span className="app-dock-label">Comms</span>
         </button>
-      </div>
-
-      <div className="dashboard-legal-footer">
-        <Link to="/terms">Terms</Link>
-        <span className="dashboard-legal-sep">·</span>
-        <Link to="/privacy">Privacy</Link>
-      </div>
+        <button type="button" className={`app-dock-tab ${activeTab === 'Profile' ? 'is-active' : ''}`} onClick={() => selectTab('Profile')}>
+          <span className="app-dock-icon" aria-hidden>👤</span>
+          <span className="app-dock-label">Profile</span>
+        </button>
+      </nav>
 
       <AiGuideFab />
 

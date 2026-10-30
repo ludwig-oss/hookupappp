@@ -459,13 +459,6 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
           </>
         )}
 
-        <p className="auth-switch" style={{ marginTop: 16 }}>
-          {mode === 'signup' ? (
-            <>Already have an account? <button type="button" style={{ background: 'none', border: 'none', color: '#ff6b9d', cursor: 'pointer', textDecoration: 'underline' }} onClick={() => setMode('login')}>Sign in</button></>
-          ) : (
-            <>New here? <button type="button" style={{ background: 'none', border: 'none', color: '#ff6b9d', cursor: 'pointer', textDecoration: 'underline' }} onClick={() => setMode('signup')}>Create account</button></>
-          )}
-        </p>
       </div>
     </div>
   );

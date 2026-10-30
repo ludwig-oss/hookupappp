@@ -27,7 +27,9 @@ const AuthCallback = () => {
         const full = await profileAPI.getCurrentUser();
         if (cancelled) return;
         if (full.hasGoogleAuth && full.email) {
-          const saved = await handleGoogleAuthSessionFix.syncGoogleAccountOnSignIn(full.email);
+          const saved = await handleGoogleAuthSessionFix.syncGoogleAccountOnSignIn(full.email, {
+            welcomeIfEmpty: !full.profileSetupComplete,
+          });
           if (saved == null) {
             await handleGoogleAuthSessionFix.linkGoogleAccountOnSignUp({
               email: full.email,

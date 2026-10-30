@@ -222,13 +222,25 @@ export const handleGoogleAuthSessionFix = {
    * Returning Google sign-in. Looks up the verified email and puts that closet back.
    * Does not create a second profile when one is already stored.
    */
-  async syncGoogleAccountOnSignIn(googleEmail: string): Promise<GoogleDeviceProfile | null | undefined> {
+  async syncGoogleAccountOnSignIn(
+    googleEmail: string,
+    options?: { welcomeIfEmpty?: boolean }
+  ): Promise<GoogleDeviceProfile | null | undefined> {
     try {
       const normalizedEmail = String(googleEmail || '').trim().toLowerCase();
       if (!normalizedEmail) return null;
       const existing = await readProfile(normalizedEmail);
       if (!existing) {
-        welcomeNewCloset();
+        // A new phone has no local closet yet. The account still lives on the server,
+        // so only a first signup with nothing saved should see the new-wardrobe note.
+        if (options?.welcomeIfEmpty) {
+          const live = await fetchLiveRecords();
+          const hasServer =
+            (live.wardrobe.ok && live.wardrobe.items.length > 0) ||
+            (live.calendar.ok && live.calendar.events.length > 0) ||
+            (live.matching.ok && hasMatching(live.matching.records));
+          if (!hasServer) welcomeNewCloset();
+        }
         return null;
       }
 

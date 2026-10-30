@@ -11,10 +11,26 @@ import { formatAxiosError } from '../lib/apiError';
 import { prepareAndUploadFile } from '../lib/uploadMedia';
 import { trimVideoToBlob, clampClipRange, MAX_CLIP_SEC } from '../lib/trimVideo';
 import { getAuthToken, getStayLoggedIn } from '../lib/authStorage';
-import { extractFaceDescriptorFromImage } from '../lib/faceScan';
+import { photoShowsHead, preloadFaceCheck } from '../lib/faceScan';
 import './ProfileSetup.css';
 
 type MediaMode = 'photo' | 'clip';
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = window.setTimeout(() => reject(new Error('timeout')), ms);
+    promise.then(
+      (value) => {
+        window.clearTimeout(timer);
+        resolve(value);
+      },
+      (err) => {
+        window.clearTimeout(timer);
+        reject(err);
+      }
+    );
+  });
+}
 
 function asUploadFile(blob: Blob, fallbackName: string): File {
   if (blob instanceof File && blob.name) return blob;
@@ -55,6 +71,10 @@ const ProfileSetup = () => {
   const isVideo = mediaMode === 'clip' || Boolean(uploadBlob?.type.startsWith('video/'));
 
   useEffect(() => {
+    preloadFaceCheck();
+  }, []);
+
+  useEffect(() => {
     return () => {
       if (previewUrl) URL.revokeObjectURL(previewUrl);
     };
@@ -83,8 +103,8 @@ const ProfileSetup = () => {
     try {
       const url = URL.createObjectURL(blob);
       try {
-        const desc = await extractFaceDescriptorFromImage(url);
-        if (!desc) {
+        const hasHead = await withTimeout(photoShowsHead(url), 3000);
+        if (!hasHead) {
           setFaceOk(false);
           setError('We need your head in the photo. Chest and above is enough. No group shots, landscapes, or a picture of someone else.');
           return false;
@@ -96,7 +116,7 @@ const ProfileSetup = () => {
         URL.revokeObjectURL(url);
       }
     } catch {
-      // Models may fail to load; still require a photo and tell them it must be their face.
+      // Slow network or a model that did not load should not freeze Continue.
       setFaceOk(true);
       setError('');
       return true;
@@ -134,17 +154,17 @@ const ProfileSetup = () => {
     setLoading(true);
     setError('');
     try {
-      await profileAPI.updateProfile({ gender: g });
-      await walkMatchAPI.updateSettings({ gender: g }).catch(() => {});
-      if (orientation) {
-        await discoverAPI.setPreference({ orientation, userId: user.id });
-      }
-      if (lookingFor.length > 0) {
-        await dateMatchAPI.saveLookingFor(lookingFor);
-      }
       updateUser({ dateLookingFor: lookingFor, gender: g });
       const file = asUploadFile(blob, 'photo.jpg');
-      const pictureUrl = await prepareAndUploadFile(file, 'profile');
+      const [pictureUrl] = await Promise.all([
+        prepareAndUploadFile(file, 'profile'),
+        profileAPI.updateProfile({ gender: g }),
+        walkMatchAPI.updateSettings({ gender: g }).catch(() => {}),
+        orientation
+          ? discoverAPI.setPreference({ orientation, userId: user.id }).catch(() => {})
+          : Promise.resolve(),
+        lookingFor.length > 0 ? dateMatchAPI.saveLookingFor(lookingFor).catch(() => {}) : Promise.resolve(),
+      ]);
       const response = await profileAPI.completeProfileSetup(pictureUrl, user.id);
       const token = getAuthToken() || '';
       login(
@@ -497,8 +517,8 @@ const ProfileSetup = () => {
 
             {mediaMode === 'photo' ? (
               <div className="clip-actions">
-                <button type="button" onClick={() => void takeSelfie()} className="upload-button clip-record" disabled={loading || capturingSelfie || checkingFace}>
-                  {capturingSelfie ? 'Opening camera…' : checkingFace ? 'Checking face…' : 'Take a selfie'}
+                <button type="button" onClick={() => void takeSelfie()} className="upload-button clip-record" disabled={loading || capturingSelfie}>
+                  {capturingSelfie ? 'Opening camera…' : 'Take a selfie'}
                 </button>
                 <button type="button" onClick={() => photoInputRef.current?.click()} className="upload-button" disabled={loading || capturingSelfie}>
                   {previewUrl ? 'Change photo' : 'Upload face photo'}
@@ -565,7 +585,7 @@ const ProfileSetup = () => {
             className="continue-button"
             disabled={!canContinue}
           >
-            {loading ? 'Setting up…' : checkingFace ? 'Checking face…' : 'Continue'}
+            {loading ? 'Setting up…' : 'Continue'}
           </button>
           <p className="setup-required-foot">Face photo required — this cannot be skipped.</p>
         </div>

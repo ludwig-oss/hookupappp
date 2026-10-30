@@ -19,11 +19,54 @@ type FaceApiModule = any;
 let faceapiModule: FaceApiModule | null = null;
 let modelsLoaded = false;
 let loadingPromise: Promise<void> | null = null;
+let tinyLoaded = false;
+let tinyPromise: Promise<void> | null = null;
 
 async function loadFaceApi(): Promise<FaceApiModule> {
   if (faceapiModule) return faceapiModule;
   faceapiModule = await import(/* @vite-ignore */ FACE_API_ESM);
   return faceapiModule;
+}
+
+/** Tiny detector only — enough to see a head, and much faster than the full recognition models. */
+export function preloadFaceCheck(): void {
+  void loadTinyDetector().catch(() => {});
+}
+
+async function loadTinyDetector(): Promise<FaceApiModule> {
+  const faceapi = await loadFaceApi();
+  if (tinyLoaded) return faceapi;
+  if (!tinyPromise) {
+    tinyPromise = faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_BASE).then(() => {
+      tinyLoaded = true;
+    });
+  }
+  await tinyPromise;
+  return faceapi;
+}
+
+function downscaleForFaceCheck(img: HTMLImageElement, maxEdge = 256): HTMLCanvasElement {
+  const longest = Math.max(img.naturalWidth || img.width, img.naturalHeight || img.height);
+  const scale = longest > maxEdge ? maxEdge / longest : 1;
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.round((img.naturalWidth || img.width) * scale));
+  canvas.height = Math.max(1, Math.round((img.naturalHeight || img.height) * scale));
+  const ctx = canvas.getContext('2d', { alpha: false });
+  if (!ctx) return canvas;
+  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+  return canvas;
+}
+
+/** True when a head is visible. Does not load the landmark or recognition models. */
+export async function photoShowsHead(src: string): Promise<boolean> {
+  const faceapi = await loadTinyDetector();
+  const img = await loadImageElement(src);
+  const canvas = downscaleForFaceCheck(img);
+  const detection = await faceapi.detectSingleFace(
+    canvas,
+    new faceapi.TinyFaceDetectorOptions({ inputSize: 160, scoreThreshold: 0.22 })
+  );
+  return Boolean(detection);
 }
 
 export async function loadFaceModels(): Promise<void> {

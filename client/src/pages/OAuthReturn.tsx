@@ -6,7 +6,11 @@ import './Auth.css';
 
 const VALID: OAuthProvider[] = ['google', 'facebook', 'apple'];
 
-/** Google/Apple/Facebook redirect here first — we wake the API, then finish on /api/auth/.../callback */
+function looksLikeHostPage(raw: string, contentType: string | null): boolean {
+  return !contentType?.includes('json') || /<html|onrender\.com/i.test(raw);
+}
+
+/** Google/Apple/Facebook redirect here first — we wake the API, then finish without showing the host page. */
 const OAuthReturn = () => {
   const { provider = '' } = useParams<{ provider: string }>();
   const [searchParams] = useSearchParams();
@@ -35,10 +39,15 @@ const OAuthReturn = () => {
       if (provider === 'google' && idToken) {
         const res = await fetch(`${window.location.origin}/api/auth/google/id-token`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
           body: JSON.stringify({ idToken, state: hashParams.get('state') || '' }),
         });
-        const data = (await res.json().catch(() => ({}))) as { token?: string; setup?: string; error?: string };
+        const raw = await res.text();
+        if (looksLikeHostPage(raw, res.headers.get('content-type'))) {
+          setError('Server is waking up. Wait a few seconds and try again.');
+          return;
+        }
+        const data = JSON.parse(raw) as { token?: string; setup?: string; error?: string };
         if (!res.ok || !data.token) {
           setError(data.error || 'Google sign-in failed. Try again.');
           return;
@@ -49,11 +58,31 @@ const OAuthReturn = () => {
         );
         return;
       }
-      const qs = searchParams.toString();
+      const qs = new URLSearchParams(searchParams);
+      qs.set('format', 'json');
+      const res = await fetch(`${window.location.origin}/api/auth/${provider}/callback?${qs.toString()}`, {
+        headers: { Accept: 'application/json' },
+        cache: 'no-store',
+        credentials: 'same-origin',
+      });
+      const raw = await res.text();
+      if (cancelled) return;
+      if (looksLikeHostPage(raw, res.headers.get('content-type'))) {
+        setError('Server is waking up. Wait a few seconds and try again.');
+        return;
+      }
+      const data = JSON.parse(raw) as { token?: string; setup?: string; error?: string };
+      if (!res.ok || !data.token) {
+        setError(data.error || 'Sign-in failed. Try again.');
+        return;
+      }
+      const setup = data.setup === '1' ? '1' : '0';
       window.location.replace(
-        `${window.location.origin}/api/auth/${provider}/callback${qs ? `?${qs}` : ''}`
+        `${window.location.origin}/auth/callback?token=${encodeURIComponent(data.token)}&setup=${setup}`
       );
-    })();
+    })().catch(() => {
+      if (!cancelled) setError('Sign-in failed. Try again.');
+    });
     return () => {
       cancelled = true;
     };
@@ -65,7 +94,7 @@ const OAuthReturn = () => {
         <div className="auth-card">
           <h1 className="auth-title">Sign-in issue</h1>
           <div className="error-message">{error}</div>
-          <Link to="/login" className="auth-button" style={{ display: 'inline-block', textDecoration: 'none' }}>
+          <Link to="/login?mode=login" className="auth-button" style={{ display: 'inline-block', textDecoration: 'none' }}>
             Back to Sign in
           </Link>
         </div>

@@ -94,7 +94,7 @@ const Login = () => {
     setError('');
     setOauthLoading(true);
     try {
-      await redirectToOAuth(provider);
+      await redirectToOAuth(provider, 'login');
     } catch (e: unknown) {
       setOauthLoading(false);
       setError(e instanceof Error ? e.message : 'Could not start sign-in. Try again.');

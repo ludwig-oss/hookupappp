@@ -338,6 +338,61 @@ const ProfileSetup = () => {
     setError('');
   };
 
+  useEffect(() => {
+    if (user?.profileSetupComplete) {
+      navigate('/home', { replace: true });
+    }
+  }, [user?.profileSetupComplete, navigate]);
+
+  useEffect(() => {
+    if (!user?.id || user.profileSetupComplete) return;
+    let cancelled = false;
+    const sessionUser = user;
+    (async () => {
+      try {
+        const full = await profileAPI.getCurrentUser();
+        if (cancelled) return;
+        if (full.profileSetupComplete) {
+          const token = getAuthToken() || '';
+          login(
+            { ...sessionUser, ...full, profileSetupComplete: true },
+            token,
+            { stayLoggedIn: getStayLoggedIn() }
+          );
+          navigate('/home', { replace: true });
+          return;
+        }
+        const g = datingGender(typeof full.gender === 'string' ? full.gender : '');
+        if (g) setGender(g);
+        const savedLooking = (full as { dateLookingFor?: unknown }).dateLookingFor;
+        if (Array.isArray(savedLooking) && savedLooking.length) {
+          setLookingFor(savedLooking.filter((x): x is string => typeof x === 'string'));
+        }
+        const pref = await discoverAPI.getMyPreference().catch(() => null);
+        const orient = pref?.preference?.orientation;
+        if (orient && g && orientationFitsGender(orient, g)) {
+          setOrientation(orient);
+        }
+      } catch {
+        /* keep whatever is already on screen */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // Load the saved choices once per account. Typing must not refetch and wipe the form.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
+
+  const rememberGender = (next: string) => {
+    const g = datingGender(next);
+    setGender(g);
+    if (orientation && !orientationFitsGender(orientation, g)) setOrientation('');
+    if (!g) return;
+    updateUser({ gender: g });
+    void profileAPI.updateProfile({ gender: g }).catch(() => {});
+  };
+
   const canContinue = Boolean(
     uploadBlob && uploadBlob.type.startsWith('image/') && faceOk && datingGender(gender) && agreedToTerms
     && !loading && !trimming && !checkingFace && !capturingSelfie
@@ -362,11 +417,7 @@ const ProfileSetup = () => {
             id="setup-gender"
             className="setup-select"
             value={datingGender(gender)}
-            onChange={(e) => {
-              const next = e.target.value;
-              setGender(next);
-              if (orientation && !orientationFitsGender(orientation, next)) setOrientation('');
-            }}
+            onChange={(e) => rememberGender(e.target.value)}
           >
             <option value="">Female or Male…</option>
             {DATING_GENDERS.map((g) => (

@@ -168,6 +168,17 @@ module.exports = async function handler(req, res) {
       );
       return;
     }
+    const body = Buffer.from(await upstream.arrayBuffer());
+    const ct = upstream.headers.get('content-type') || '';
+    const sniff = body.slice(0, 500).toString('utf8');
+    const redirectStatus = upstream.status >= 300 && upstream.status < 400;
+    const hostSplash = !redirectStatus && (/text\/html/i.test(ct) || /<html|onrender\.com/i.test(sniff));
+    if (hostSplash) {
+      res.status(503).setHeader('Content-Type', 'application/json');
+      res.setHeader('Cache-Control', 'no-store');
+      res.send(JSON.stringify({ error: 'Server is waking up. Wait a few seconds and try again.' }));
+      return;
+    }
     res.status(upstream.status);
     upstream.headers.forEach((value, key) => {
       const lower = key.toLowerCase();
@@ -178,13 +189,13 @@ module.exports = async function handler(req, res) {
         /* ignore */
       }
     });
-    res.send(Buffer.from(await upstream.arrayBuffer()));
+    res.send(body);
   } catch (e) {
     console.error('[api proxy]', target, e);
     res.status(502).setHeader('Content-Type', 'application/json');
     res.send(
       JSON.stringify({
-        error: 'Could not reach backend. Confirm BACKEND_URL and that Render is awake.',
+        error: 'Server is waking up. Wait a few seconds and try again.',
       })
     );
   }

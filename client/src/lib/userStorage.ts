@@ -15,6 +15,7 @@ export function userForStorage(user: Record<string, unknown>): Record<string, un
       ? user.improvementCategories.filter((c): c is string => typeof c === 'string')
       : [],
     phoneNumber: user.phoneNumber ?? null,
+    gender: typeof user.gender === 'string' ? user.gender : undefined,
     age: user.age,
     country: user.country,
     city: user.city,

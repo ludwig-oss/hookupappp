@@ -110,21 +110,29 @@ function googleWebClientId(): string {
   return process.env.GOOGLE_CLIENT_ID?.trim() || PUBLIC_GOOGLE_WEB_CLIENT_ID;
 }
 
-function parseOAuthState(state: string): { o?: string; nonce?: string } {
+function parseOAuthState(state: string): { o?: string; nonce?: string; i?: string } {
   try {
     return JSON.parse(Buffer.from(String(state || ''), 'base64url').toString('utf8')) as {
       o?: string;
       nonce?: string;
+      i?: string;
     };
   } catch {
     return {};
   }
 }
 
-function encodeOAuthState(origin: string, nonce?: string): string {
-  return Buffer.from(JSON.stringify({ n: uuidv4(), o: origin, nonce: nonce || uuidv4() }), 'utf8').toString(
-    'base64url'
-  );
+function encodeOAuthState(origin: string, nonce?: string, intent: OAuthIntent = 'signup'): string {
+  return Buffer.from(
+    JSON.stringify({ n: uuidv4(), o: origin, nonce: nonce || uuidv4(), i: intent }),
+    'utf8'
+  ).toString('base64url');
+}
+
+function intentFromRequest(req: Request): OAuthIntent {
+  const fromState = parseOAuthState(String(req.query.state || req.body?.state || '')).i;
+  if (fromState === 'login' || fromState === 'signup') return fromState;
+  return oauthIntent(req.query.intent);
 }
 
 function originFromOAuthState(state: string, req: Request): string {
@@ -137,11 +145,29 @@ function oauthReturnRedirectUri(provider: 'google' | 'facebook' | 'apple', origi
 }
 
 function missingOAuthVarsMessage(label: string, vars: string[]): string {
-  const onRender = Boolean(process.env.RENDER);
-  const where = onRender
-    ? `Set ${vars.join(' and ')} on Render, then redeploy.`
-    : `Add ${vars.join(' and ')} to server/.env and restart the API.`;
-  return `${label} is not configured yet. ${where}`;
+  return `${label} is not configured yet. Set ${vars.join(' and ')} on the server, then try again.`;
+}
+
+type OAuthIntent = 'login' | 'signup';
+
+function oauthIntent(value: unknown): OAuthIntent {
+  return value === 'login' ? 'login' : 'signup';
+}
+
+function clientWantsJson(req: Request): boolean {
+  if (String(req.query.format || '') === 'json') return true;
+  return String(req.headers.accept || '').includes('application/json');
+}
+
+function isGoogleHostedPhoto(url: string | null | undefined): boolean {
+  return /googleusercontent|ggpht\.com/i.test(String(url || ''));
+}
+
+function accountReady(user: User): boolean {
+  if (user.profileSetupComplete) return true;
+  const gender = String(user.gender || '').toLowerCase();
+  const picture = String(user.profilePicture || '');
+  return Boolean(picture) && !isGoogleHostedPhoto(picture) && (gender === 'female' || gender === 'male');
 }
 
 function toClientUser(user: User) {
@@ -163,24 +189,29 @@ function toClientUser(user: User) {
   };
 }
 
-function issueTokenAndRedirect(res: Response, user: User, origin?: string) {
+function issueTokenAndRedirect(req: Request, res: Response, user: User, origin?: string) {
   const token = jwt.sign({ userId: user.id, email: user.email }, getJwtSecret(), {
     expiresIn: JWT_EXPIRES_IN,
   });
+  const setup = accountReady(user) ? '1' : '0';
+  if (clientWantsJson(req)) {
+    return res.json({ token, setup, user: toClientUser({ ...user, profileSetupComplete: setup === '1' }) });
+  }
   const base = safeAppOrigin(origin, frontendBase());
-  const dest = `${base}/auth/callback?token=${encodeURIComponent(token)}&setup=${user.profileSetupComplete ? '1' : '0'}`;
+  const dest = `${base}/auth/callback?token=${encodeURIComponent(token)}&setup=${setup}`;
   res.redirect(302, dest);
 }
 
-function redirectError(res: Response, message: string, origin?: string) {
+function redirectError(req: Request, res: Response, message: string, origin?: string) {
+  if (clientWantsJson(req)) {
+    return res.status(400).json({ error: message });
+  }
   const base = safeAppOrigin(origin, frontendBase());
-  res.redirect(302, `${base}/login?oauth_error=${encodeURIComponent(message)}`);
+  res.redirect(302, `${base}/login?mode=login&oauth_error=${encodeURIComponent(message)}`);
 }
 
 async function reopenGoogleUser(user: User): Promise<User> {
-  const gender = String(user.gender || '').toLowerCase();
-  const alreadyChose = gender === 'female' || gender === 'male';
-  if (!user.profileSetupComplete && alreadyChose && user.profilePicture) {
+  if (accountReady(user) && !user.profileSetupComplete) {
     await updateUserProfile(user.id, { profileSetupComplete: true });
     return (await getUserById(user.id)) || { ...user, profileSetupComplete: true };
   }
@@ -211,25 +242,28 @@ async function uniqueUsername(base: string): Promise<string> {
   return candidate;
 }
 
+async function linkExistingGoogle(user: User, providerId: string, picture?: string | null): Promise<User> {
+  const patch: Partial<User> = {};
+  if (!user.googleId) patch.googleId = providerId;
+  if (picture && !user.profilePicture) patch.profilePicture = picture;
+  const saved = Object.keys(patch).length ? (await updateUserProfile(user.id, patch)) || user : user;
+  return reopenGoogleUser(saved);
+}
+
 async function upsertOAuthUser(opts: {
   provider: 'google' | 'facebook' | 'apple';
   providerId: string;
   email: string;
   name: string;
   picture?: string | null;
-}): Promise<User> {
+  /** Sign in must not mint a second unfinished account. */
+  createIfMissing?: boolean;
+}): Promise<User | null> {
   const { provider, providerId, email, name, picture } = opts;
+  const createIfMissing = opts.createIfMissing !== false;
   if (provider === 'google') {
     const existing = await findUserForGoogle(providerId, email.toLowerCase());
-    if (existing) {
-      const patch: Partial<User> = {};
-      if (!existing.googleId) patch.googleId = providerId;
-      if (picture && !existing.profilePicture) patch.profilePicture = picture;
-      const saved = Object.keys(patch).length
-        ? (await updateUserProfile(existing.id, patch)) || existing
-        : existing;
-      return reopenGoogleUser(saved);
-    }
+    if (existing) return linkExistingGoogle(existing, providerId, picture);
   }
 
   const existingByProvider =
@@ -245,9 +279,10 @@ async function upsertOAuthUser(opts: {
     return (await getUserById(existingByProvider.id)) || existingByProvider;
   }
 
-  if (email && provider !== 'google') {
+  if (email) {
     const byEmail = await getUserByEmail(email.toLowerCase());
-    if (byEmail) {
+    if (byEmail && provider === 'google') return linkExistingGoogle(byEmail, providerId, picture);
+    if (byEmail && provider !== 'google') {
       const patch: Partial<User> = {
         emailVerified: true,
         ...(picture && !byEmail.profilePicture ? { profilePicture: picture } : {}),
@@ -259,33 +294,44 @@ async function upsertOAuthUser(opts: {
     }
   }
 
+  if (!createIfMissing) return null;
+
   const username = await uniqueUsername((email || name || 'user').split('@')[0]);
   const randomPass = await bcrypt.hash(uuidv4() + providerId, 10);
-  const user = await createUser({
-    email: email || `${provider}_${providerId}@oauth.local`,
-    password: randomPass,
-    name: name || username,
-    username,
-    improvementCategories: ['dating-apps'],
-    passwordHint1: 'oauth',
-    passwordHint2: 'oauth',
-    passwordHint3: 'oauth',
-  });
-  await reserveUsername(username, user.id);
-  const idPatch =
-    provider === 'google'
-      ? ({ googleId: providerId } as any)
-      : provider === 'facebook'
-        ? ({ facebookId: providerId } as any)
-        : ({ appleId: providerId } as any);
-  await updateUserProfile(user.id, {
-    emailVerified: true,
-    pinAuth: false,
-    profileSetupComplete: false,
-    profilePicture: picture || null,
-    ...idPatch,
-  });
-  return (await getUserById(user.id)) || user;
+  try {
+    const user = await createUser({
+      email: email || `${provider}_${providerId}@oauth.local`,
+      password: randomPass,
+      name: name || username,
+      username,
+      improvementCategories: ['dating-apps'],
+      passwordHint1: 'oauth',
+      passwordHint2: 'oauth',
+      passwordHint3: 'oauth',
+    });
+    await reserveUsername(username, user.id);
+    const idPatch =
+      provider === 'google'
+        ? ({ googleId: providerId } as any)
+        : provider === 'facebook'
+          ? ({ facebookId: providerId } as any)
+          : ({ appleId: providerId } as any);
+    await updateUserProfile(user.id, {
+      emailVerified: true,
+      pinAuth: false,
+      profileSetupComplete: false,
+      profilePicture: picture || null,
+      ...idPatch,
+    });
+    return (await getUserById(user.id)) || user;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : '';
+    if (msg !== 'USERNAME_TAKEN' && !/duplicate|unique/i.test(msg)) throw err;
+    const again = email ? await getUserByEmail(email.toLowerCase()) : null;
+    if (again && provider === 'google') return linkExistingGoogle(again, providerId, picture);
+    if (again) return again;
+    throw err;
+  }
 }
 
 export function oauthStatus(_req: Request, res: Response) {
@@ -301,7 +347,7 @@ export function startGoogle(req: Request, res: Response) {
   const clientId = googleWebClientId();
   const secret = process.env.GOOGLE_CLIENT_SECRET?.trim();
   if (!clientId) {
-    return redirectError(res, 'Google sign-in is unavailable. Try username + PIN.', origin);
+    return redirectError(req, res, 'Google sign-in is unavailable. Try username + PIN.', origin);
   }
   const redirectUri = oauthReturnRedirectUri('google', origin);
   const nonce = uuidv4();
@@ -310,7 +356,7 @@ export function startGoogle(req: Request, res: Response) {
   url.searchParams.set('redirect_uri', redirectUri);
   url.searchParams.set('scope', 'openid email profile');
   url.searchParams.set('prompt', 'select_account');
-  url.searchParams.set('state', encodeOAuthState(origin, nonce));
+  url.searchParams.set('state', encodeOAuthState(origin, nonce, oauthIntent(req.query.intent)));
   if (secret) {
     url.searchParams.set('response_type', 'code');
     url.searchParams.set('access_type', 'online');
@@ -323,6 +369,7 @@ export function startGoogle(req: Request, res: Response) {
   }
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
   res.setHeader('Referrer-Policy', 'no-referrer-when-downgrade');
+  if (clientWantsJson(req)) return res.json({ url: url.toString() });
   res.redirect(302, url.toString());
 }
 
@@ -381,14 +428,21 @@ export async function googleIdToken(req: Request, res: Response) {
       email: profile.email,
       name: profile.name,
       picture: profile.picture,
+      createIfMissing: intentFromRequest(req) !== 'login',
     });
+    if (!user) {
+      return res.status(400).json({
+        error: 'No Hook Up account for this Google account. Tap Sign up — Sign in does not create a new one.',
+      });
+    }
+    const ready = accountReady(user);
     const token = jwt.sign({ userId: user.id, email: user.email }, getJwtSecret(), {
       expiresIn: JWT_EXPIRES_IN,
     });
     return res.json({
       token,
-      setup: user.profileSetupComplete ? '1' : '0',
-      user: toClientUser(user),
+      setup: ready ? '1' : '0',
+      user: toClientUser({ ...user, profileSetupComplete: ready }),
     });
   } catch (e: any) {
     console.error('Google ID token error:', e);
@@ -409,22 +463,26 @@ export async function googleCallback(req: Request, res: Response) {
         email: profile.email,
         name: profile.name,
         picture: profile.picture,
+        createIfMissing: intentFromRequest(req) !== 'login',
       });
-      return issueTokenAndRedirect(res, user, origin);
+      if (!user) {
+        return redirectError(req, res, 'No Hook Up account for this Google account. Tap Sign up — Sign in does not create a new one.', origin);
+      }
+      return issueTokenAndRedirect(req, res, user, origin);
     }
 
     const clientId = googleWebClientId();
     const secret = process.env.GOOGLE_CLIENT_SECRET?.trim();
     if (!clientId) {
-      return redirectError(res, 'Google sign-in is unavailable. Try username + PIN.', origin);
+      return redirectError(req, res, 'Google sign-in is unavailable. Try username + PIN.', origin);
     }
     if (!secret) {
-      return redirectError(res, 'Google sign-in needs another tap. Use Sign in with Google again.', origin);
+      return redirectError(req, res, 'Google sign-in needs another tap. Use Sign in with Google again.', origin);
     }
     const code = String(req.query.code || '');
     const err = String(req.query.error || '');
-    if (err) return redirectError(res, err, origin);
-    if (!code) return redirectError(res, 'Google did not return a code.', origin);
+    if (err) return redirectError(req, res, err, origin);
+    if (!code) return redirectError(req, res, 'Google did not return a code.', origin);
 
     const redirectUri = oauthReturnRedirectUri('google', origin);
     const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
@@ -440,7 +498,7 @@ export async function googleCallback(req: Request, res: Response) {
     });
     const tokenJson = (await tokenRes.json()) as { access_token?: string; error?: string };
     if (!tokenRes.ok || !tokenJson.access_token) {
-      return redirectError(res, tokenJson.error || 'Google token exchange failed', origin);
+      return redirectError(req, res, tokenJson.error || 'Google token exchange failed', origin);
     }
 
     const profileRes = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
@@ -453,10 +511,10 @@ export async function googleCallback(req: Request, res: Response) {
       picture?: string;
       verified_email?: boolean;
     };
-    if (!profile.id) return redirectError(res, 'Could not read Google profile', origin);
+    if (!profile.id) return redirectError(req, res, 'Could not read Google profile', origin);
 
     if (!profile.email) {
-      return redirectError(res, 'Google did not share your Gmail. Allow email access and try again.', origin);
+      return redirectError(req, res, 'Google did not share your Gmail. Allow email access and try again.', origin);
     }
 
     const user = await upsertOAuthUser({
@@ -465,11 +523,15 @@ export async function googleCallback(req: Request, res: Response) {
       email: profile.email.toLowerCase(),
       name: profile.name || 'Google User',
       picture: profile.picture || null,
+      createIfMissing: intentFromRequest(req) !== 'login',
     });
-    issueTokenAndRedirect(res, user, origin);
+    if (!user) {
+      return redirectError(req, res, 'No Hook Up account for this Google account. Tap Sign up — Sign in does not create a new one.', origin);
+    }
+    issueTokenAndRedirect(req, res, user, origin);
   } catch (e: any) {
     console.error('Google OAuth error:', e);
-    redirectError(res, e.message || 'Google sign-in failed', origin);
+    redirectError(req, res, e.message || 'Google sign-in failed', origin);
   }
 }
 
@@ -478,14 +540,15 @@ export function startFacebook(req: Request, res: Response) {
   const appId = process.env.FACEBOOK_APP_ID?.trim();
   const secret = process.env.FACEBOOK_APP_SECRET?.trim();
   if (!appId || !secret) {
-    return redirectError(res, missingOAuthVarsMessage('Facebook sign-in', ['FACEBOOK_APP_ID', 'FACEBOOK_APP_SECRET']), origin);
+    return redirectError(req, res, missingOAuthVarsMessage('Facebook sign-in', ['FACEBOOK_APP_ID', 'FACEBOOK_APP_SECRET']), origin);
   }
   const redirectUri = oauthReturnRedirectUri('facebook', origin);
   const url = new URL('https://www.facebook.com/v19.0/dialog/oauth');
   url.searchParams.set('client_id', appId);
   url.searchParams.set('redirect_uri', redirectUri);
-  url.searchParams.set('state', encodeOAuthState(origin));
+  url.searchParams.set('state', encodeOAuthState(origin, undefined, oauthIntent(req.query.intent)));
   url.searchParams.set('scope', 'email,public_profile');
+  if (clientWantsJson(req)) return res.json({ url: url.toString() });
   res.redirect(302, url.toString());
 }
 
@@ -495,12 +558,12 @@ export async function facebookCallback(req: Request, res: Response) {
     const appId = process.env.FACEBOOK_APP_ID?.trim();
     const secret = process.env.FACEBOOK_APP_SECRET?.trim();
     if (!appId || !secret) {
-      return redirectError(res, 'Facebook sign-in is not configured.', origin);
+      return redirectError(req, res, 'Facebook sign-in is not configured.', origin);
     }
     const code = String(req.query.code || '');
     const err = String(req.query.error_description || req.query.error || '');
-    if (err) return redirectError(res, err, origin);
-    if (!code) return redirectError(res, 'Facebook did not return a code.', origin);
+    if (err) return redirectError(req, res, err, origin);
+    if (!code) return redirectError(req, res, 'Facebook did not return a code.', origin);
 
     const redirectUri = oauthReturnRedirectUri('facebook', origin);
     const tokenUrl = new URL('https://graph.facebook.com/v19.0/oauth/access_token');
@@ -511,7 +574,7 @@ export async function facebookCallback(req: Request, res: Response) {
     const tokenRes = await fetch(tokenUrl.toString());
     const tokenJson = (await tokenRes.json()) as { access_token?: string; error?: { message?: string } };
     if (!tokenRes.ok || !tokenJson.access_token) {
-      return redirectError(res, tokenJson.error?.message || 'Facebook token exchange failed', origin);
+      return redirectError(req, res, tokenJson.error?.message || 'Facebook token exchange failed', origin);
     }
 
     const profileUrl = new URL('https://graph.facebook.com/me');
@@ -524,7 +587,7 @@ export async function facebookCallback(req: Request, res: Response) {
       email?: string;
       picture?: { data?: { url?: string } };
     };
-    if (!profile.id) return redirectError(res, 'Could not read Facebook profile', origin);
+    if (!profile.id) return redirectError(req, res, 'Could not read Facebook profile', origin);
 
     const user = await upsertOAuthUser({
       provider: 'facebook',
@@ -532,11 +595,15 @@ export async function facebookCallback(req: Request, res: Response) {
       email: (profile.email || '').toLowerCase(),
       name: profile.name || 'Facebook User',
       picture: profile.picture?.data?.url || null,
+      createIfMissing: intentFromRequest(req) !== 'login',
     });
-    issueTokenAndRedirect(res, user, origin);
+    if (!user) {
+      return redirectError(req, res, 'No Hook Up account for this sign-in. Tap Sign up — Sign in does not create a new one.', origin);
+    }
+    issueTokenAndRedirect(req, res, user, origin);
   } catch (e: any) {
     console.error('Facebook OAuth error:', e);
-    redirectError(res, e.message || 'Facebook sign-in failed', origin);
+    redirectError(req, res, e.message || 'Facebook sign-in failed', origin);
   }
 }
 
@@ -545,7 +612,7 @@ export function startApple(req: Request, res: Response) {
   const clientId = process.env.APPLE_CLIENT_ID?.trim();
   const teamId = process.env.APPLE_TEAM_ID?.trim();
   if (!clientId || !teamId) {
-    return redirectError(res, missingOAuthVarsMessage('Apple Sign-In', ['APPLE_CLIENT_ID', 'APPLE_TEAM_ID']), origin);
+    return redirectError(req, res, missingOAuthVarsMessage('Apple Sign-In', ['APPLE_CLIENT_ID', 'APPLE_TEAM_ID']), origin);
   }
   const redirectUri = oauthReturnRedirectUri('apple', origin);
   const url = new URL('https://appleid.apple.com/auth/authorize');
@@ -554,7 +621,8 @@ export function startApple(req: Request, res: Response) {
   url.searchParams.set('response_type', 'code');
   url.searchParams.set('response_mode', 'query');
   url.searchParams.set('scope', 'name email');
-  url.searchParams.set('state', encodeOAuthState(origin));
+  url.searchParams.set('state', encodeOAuthState(origin, undefined, oauthIntent(req.query.intent)));
+  if (clientWantsJson(req)) return res.json({ url: url.toString() });
   res.redirect(302, url.toString());
 }
 
@@ -563,19 +631,19 @@ export async function appleCallback(req: Request, res: Response) {
   try {
     const clientId = process.env.APPLE_CLIENT_ID?.trim();
     if (!clientId) {
-      return redirectError(res, 'Apple Sign-In is not configured.', origin);
+      return redirectError(req, res, 'Apple Sign-In is not configured.', origin);
     }
     const code = String(req.query.code || '');
     const err = String(req.query.error || '');
-    if (err) return redirectError(res, err, origin);
-    if (!code) return redirectError(res, 'Apple did not return a code.', origin);
+    if (err) return redirectError(req, res, err, origin);
+    if (!code) return redirectError(req, res, 'Apple did not return a code.', origin);
 
     // Production Apple token exchange requires a signed client_secret JWT (ES256).
     // When APPLE_KEY_ID + APPLE_PRIVATE_KEY are set, exchange the code; otherwise guide setup.
     const keyId = process.env.APPLE_KEY_ID?.trim();
     const privateKey = process.env.APPLE_PRIVATE_KEY?.replace(/\\n/g, '\n');
     if (!keyId || !privateKey) {
-      return redirectError(res, 'Apple Sign-In needs APPLE_KEY_ID and APPLE_PRIVATE_KEY on the server. See OAUTH-SETUP.md.', origin);
+      return redirectError(req, res, 'Apple Sign-In needs APPLE_KEY_ID and APPLE_PRIVATE_KEY on the server. See OAUTH-SETUP.md.', origin);
     }
 
     const redirectUri = oauthReturnRedirectUri('apple', origin);
@@ -601,11 +669,11 @@ export async function appleCallback(req: Request, res: Response) {
     });
     const tokenJson = (await tokenRes.json()) as { id_token?: string; error?: string };
     if (!tokenRes.ok || !tokenJson.id_token) {
-      return redirectError(res, tokenJson.error || 'Apple token exchange failed', origin);
+      return redirectError(req, res, tokenJson.error || 'Apple token exchange failed', origin);
     }
 
     const payload = jwt.decode(tokenJson.id_token) as { sub?: string; email?: string } | null;
-    if (!payload?.sub) return redirectError(res, 'Could not read Apple profile', origin);
+    if (!payload?.sub) return redirectError(req, res, 'Could not read Apple profile', origin);
 
     const user = await upsertOAuthUser({
       provider: 'apple',
@@ -613,10 +681,14 @@ export async function appleCallback(req: Request, res: Response) {
       email: (payload.email || '').toLowerCase(),
       name: 'Apple User',
       picture: null,
+      createIfMissing: intentFromRequest(req) !== 'login',
     });
-    issueTokenAndRedirect(res, user, origin);
+    if (!user) {
+      return redirectError(req, res, 'No Hook Up account for this sign-in. Tap Sign up — Sign in does not create a new one.', origin);
+    }
+    issueTokenAndRedirect(req, res, user, origin);
   } catch (e: any) {
     console.error('Apple OAuth error:', e);
-    redirectError(res, e.message || 'Apple sign-in failed', origin);
+    redirectError(req, res, e.message || 'Apple sign-in failed', origin);
   }
 }

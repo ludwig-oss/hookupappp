@@ -271,8 +271,8 @@ export async function findUserForGoogle(googleId: string, email: string): Promis
      WHERE data->>'googleId' = $1
         OR lower(btrim(email)) = lower(btrim($2))
      ORDER BY
-       CASE WHEN data->>'googleId' = $1 THEN 0 ELSE 1 END,
        CASE WHEN data->>'profileSetupComplete' = 'true' THEN 0 ELSE 1 END,
+       CASE WHEN data->>'googleId' = $1 THEN 0 ELSE 1 END,
        CASE WHEN coalesce(data->>'gender', '') IN ('female', 'male') AND coalesce(data->>'profilePicture', '') <> '' THEN 0 ELSE 1 END
      LIMIT 1`,
     [googleId, email]

@@ -703,8 +703,8 @@ export async function findUserForGoogle(googleId: string, email: string): Promis
   );
   matches.sort((a, b) => {
     const score = (u: User) =>
-      (u.googleId === googleId ? 4 : 0) +
-      (u.profileSetupComplete ? 2 : 0) +
+      (u.profileSetupComplete ? 4 : 0) +
+      (u.googleId === googleId ? 2 : 0) +
       (u.profilePicture && (u.gender === 'female' || u.gender === 'male') ? 1 : 0);
     return score(b) - score(a);
   });

@@ -547,7 +547,15 @@ export const completeProfileSetup = async (req: Request, res: Response) => {
 
     res.json({
       message: 'Profile setup completed',
-      user: { id: user.id, email: user.email, name: user.name, username: user.username, profilePicture: user.profilePicture },
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        username: user.username,
+        profilePicture: user.profilePicture,
+        profileSetupComplete: true,
+        gender: user.gender,
+      },
     });
   } catch (error) {
     console.error('Complete profile setup error:', error);

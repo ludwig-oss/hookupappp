@@ -1,4 +1,4 @@
-import { useEffect, useContext, useState } from 'react';
+import { useEffect, useContext, useState, useRef } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import axios from 'axios';
 import { AuthContext } from '../context/AuthContext';
@@ -12,6 +12,8 @@ const AuthCallback = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { login } = useContext(AuthContext);
+  const loginRef = useRef(login);
+  loginRef.current = login;
   const [error, setError] = useState('');
   const [attemptKey, setAttemptKey] = useState(0);
 
@@ -38,10 +40,12 @@ const AuthCallback = () => {
         if (cancelled) return;
         if (!full) throw lastError;
         const gender = String(full.gender || '').toLowerCase();
+        const picture = String(full.profilePicture || '');
+        const realPhoto = Boolean(picture) && !/googleusercontent|ggpht\.com/i.test(picture);
         const alreadySetUp = Boolean(
           full.profileSetupComplete ||
           searchParams.get('setup') === '1' ||
-          (full.profilePicture && (gender === 'female' || gender === 'male'))
+          (realPhoto && (gender === 'female' || gender === 'male'))
         );
         if (full.hasGoogleAuth && full.email) {
           const saved = await handleGoogleAuthSessionFix.syncGoogleAccountOnSignIn(full.email, {
@@ -57,7 +61,7 @@ const AuthCallback = () => {
             await handleGoogleAuthSessionFix.archiveLiveRecords(full.email);
           }
         }
-        login(full as any, token, { stayLoggedIn: getStayLoggedIn() });
+        loginRef.current(full as any, token, { stayLoggedIn: getStayLoggedIn() });
         navigate(alreadySetUp ? '/home' : '/profile-setup', { replace: true });
       } catch (e: any) {
         if (cancelled) return;
@@ -67,7 +71,7 @@ const AuthCallback = () => {
     return () => {
       cancelled = true;
     };
-  }, [searchParams, login, navigate, attemptKey]);
+  }, [searchParams, navigate, attemptKey]);
 
   if (error) {
     return (

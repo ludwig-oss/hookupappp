@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { redirectToOAuth } from '../lib/oauth';
+import { redirectToOAuth, type OAuthIntent } from '../lib/oauth';
 
 function GoogleMark() {
   return (
@@ -14,11 +14,13 @@ function GoogleMark() {
 
 export default function GoogleContinueButton({
   label = 'Continue with Google',
+  intent = 'signup',
   disabled,
   onBusy,
   onError,
 }: {
   label?: string;
+  intent?: OAuthIntent;
   disabled?: boolean;
   onBusy?: (busy: boolean) => void;
   onError: (message: string) => void;
@@ -30,7 +32,7 @@ export default function GoogleContinueButton({
     setBusy(true);
     onBusy?.(true);
     try {
-      await redirectToOAuth('google');
+      await redirectToOAuth('google', intent);
     } catch (e: unknown) {
       setBusy(false);
       onBusy?.(false);

@@ -225,7 +225,8 @@ app.get('/api/email-status', (req, res) => {
   });
 });
 
-async function start() {
+/** Sign-in only builds a provider URL. Do not wait on the database before accepting that request. */
+async function bootAfterListen() {
   if (process.env.DATABASE_URL) {
     try {
       await runWithSystem(() => runSchema());
@@ -258,6 +259,17 @@ async function start() {
   } catch {
     /* non-fatal */
   }
+  void import('./models/dateMatch.js').then(({ settleGuideLawyerCuts, closeExpiredLawyerRooms }) => {
+    const settle = () => {
+      closeExpiredLawyerRooms().catch(() => {});
+      settleGuideLawyerCuts().catch((err) => console.error('Lawyer cut settle:', err));
+    };
+    settle();
+    setInterval(settle, 6 * 60 * 60 * 1000);
+  }).catch(() => {});
+}
+
+function start() {
   app.listen(PORT, () => {
     console.log(`Server running on http://localhost:${PORT}`);
     const smtpUser = process.env.SMTP_USER?.trim();
@@ -277,18 +289,8 @@ async function start() {
     }
     if (process.env.DATABASE_URL) console.log('✓ PostgreSQL (DATABASE_URL) – users, posts, chat use DB');
     console.log('  Check config: http://localhost:' + PORT + '/api/email-status');
-    void import('./models/dateMatch.js').then(({ settleGuideLawyerCuts, closeExpiredLawyerRooms }) => {
-      const settle = () => {
-        closeExpiredLawyerRooms().catch(() => {});
-        settleGuideLawyerCuts().catch((err) => console.error('Lawyer cut settle:', err));
-      };
-      settle();
-      setInterval(settle, 6 * 60 * 60 * 1000);
-    }).catch(() => {});
   });
+  void bootAfterListen();
 }
-start().catch((err) => {
-  console.error('Startup failed:', err);
-  process.exit(1);
-});
+start();
 

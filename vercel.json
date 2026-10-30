@@ -4,6 +4,7 @@
     "BACKEND_URL": "https://hookupappp.onrender.com"
   },
   "framework": null,
+  "regions": ["fra1"],
   "installCommand": "npm run vercel-install",
   "buildCommand": "npm run vercel-build",
   "outputDirectory": "client/dist",

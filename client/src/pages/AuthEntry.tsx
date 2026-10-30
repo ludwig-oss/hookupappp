@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { redirectToOAuth, type OAuthIntent } from '../lib/oauth';
+import { prefetchOAuth, redirectToOAuth, type OAuthIntent } from '../lib/oauth';
 import './Auth.css';
 
 type Props = { initialMode?: 'signup' | 'login' };
@@ -9,6 +9,11 @@ const AuthEntry = (_props: Props) => {
   const [searchParams] = useSearchParams();
   const [error, setError] = useState('');
   const [busy, setBusy] = useState<OAuthIntent | null>(null);
+
+  useEffect(() => {
+    prefetchOAuth('google', 'signup');
+    prefetchOAuth('google', 'login');
+  }, []);
 
   useEffect(() => {
     const oauthErr = searchParams.get('oauth_error');

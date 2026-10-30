@@ -33,6 +33,7 @@ import { applyAppTheme } from './lib/theme';
 import { clearAuth, getAuthToken, getAuthUserRaw, persistAuth, writeAuthUser } from './lib/authStorage';
 import { clearLoggedOutFlag, endSession, isLoggedOutFlag } from './lib/endSession';
 import { handleGoogleAuthSessionFix } from './lib/googleAuthSession';
+import { wakeBackend } from './lib/warmBackend';
 import './api/http';
 import AppearanceSafetyPrompt from './components/AppearanceSafetyPrompt';
 import PhotoVerificationGate from './components/PhotoVerificationGate';
@@ -255,6 +256,10 @@ function App() {
       return next;
     });
   };
+
+  useEffect(() => {
+    wakeBackend();
+  }, []);
 
   useEffect(() => {
     applyAppTheme();

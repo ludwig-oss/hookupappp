@@ -7,6 +7,22 @@ function abortAfter(ms: number): AbortSignal {
   return ctrl.signal;
 }
 
+const RENDER_API = 'https://hookupappp.onrender.com';
+
+/** Ask the API to wake up as soon as the site opens. Does not block the screen. */
+export function wakeBackend(): void {
+  if (typeof window === 'undefined') return;
+  const host = window.location.hostname;
+  const direct =
+    host === 'hookupapp.dev' || host.endsWith('.hookupapp.dev') || host.endsWith('.vercel.app');
+  const urls = direct
+    ? [`${RENDER_API}/api/health`, `${window.location.origin}/api/health`]
+    : [`${window.location.origin}/api/health`];
+  for (const url of urls) {
+    fetch(url, { cache: 'no-store', credentials: 'omit', signal: abortAfter(45000) }).catch(() => {});
+  }
+}
+
 /** Ping /api/health until the real JSON API responds (not Render's cold-start HTML). */
 export async function warmBackend(maxWaitMs = 60000): Promise<boolean> {
   if (typeof window === 'undefined') return false;

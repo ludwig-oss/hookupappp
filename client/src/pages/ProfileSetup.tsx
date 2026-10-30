@@ -70,7 +70,7 @@ const ProfileSetup = () => {
   const verifyFacePhoto = async (blob: Blob): Promise<boolean> => {
     if (!blob.type.startsWith('image/')) {
       setFaceOk(false);
-      setError('Use a still selfie of your face. You cannot skip this, and it cannot be a video clip.');
+      setError('Use a still photo. Chest and above is enough, as long as your head is in it. Not a video clip.');
       return false;
     }
     setCheckingFace(true);
@@ -80,7 +80,7 @@ const ProfileSetup = () => {
         const desc = await extractFaceDescriptorFromImage(url);
         if (!desc) {
           setFaceOk(false);
-          setError('We need a clear photo of YOUR face — like a selfie. No group shots, landscapes, filters that hide your face, or pictures of someone else.');
+          setError('We need your head in the photo. Chest and above is enough. No group shots, landscapes, or a picture of someone else.');
           return false;
         }
         setFaceOk(true);
@@ -105,7 +105,7 @@ const ProfileSetup = () => {
       return;
     }
     if (!blob || !blob.type.startsWith('image/')) {
-      setError('Add a selfie of your face to continue. This step cannot be skipped.');
+      setError('Add a photo with your head visible. Chest and above is enough. This step cannot be skipped.');
       return;
     }
     if (!faceOk) {
@@ -204,7 +204,7 @@ const ProfileSetup = () => {
       setMediaFromBlob(blob);
       await verifyFacePhoto(blob);
     } catch {
-      setError('Allow camera access to take a selfie of your face. You can also upload a clear face photo.');
+      setError('Allow camera access, or upload a chest-up photo with your head visible.');
     } finally {
       setCapturingSelfie(false);
     }
@@ -324,7 +324,7 @@ const ProfileSetup = () => {
         </Link>
         <h1 className="setup-title">Add your face photo</h1>
         <p className="setup-subtitle">
-          This is required — you cannot skip it. Use a selfie of your face so people nearby know it is you.
+          This is required — you cannot skip it. Chest and above is enough, as long as your head is in the photo.
         </p>
         <div className="setup-info-note">
           <p><strong>Your photo must be your face</strong> — a selfie or a clear close-up of you. Group shots, landscapes, or pictures of someone else will not work.</p>
@@ -335,7 +335,7 @@ const ProfileSetup = () => {
 
         <section className="setup-section" aria-labelledby="setup-photo-heading">
           <h2 id="setup-photo-heading" className="setup-section-title">
-            Required: selfie of your face
+            Required: head visible, chest and above
           </h2>
           <p className="setup-section-hint">
             Take a selfie now or upload a clear photo of your face. You cannot continue without it.
@@ -382,7 +382,7 @@ const ProfileSetup = () => {
               </div>
             ) : (
               <div className="clip-actions">
-                <p className="setup-section-hint">A clip is extra. Switch back to Photo and add a selfie of your face — that part cannot be skipped.</p>
+                <p className="setup-section-hint">A clip is extra. Switch back to Photo and add a chest-up shot with your head visible — that part cannot be skipped.</p>
                 <button type="button" className="upload-button" disabled={loading || recording} onClick={() => videoInputRef.current?.click()}>
                   Upload video
                 </button>

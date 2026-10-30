@@ -1,5 +1,5 @@
 /**
- * Camera face scan: both eyes open + 128-d descriptor for sign-up / sign-in.
+ * Camera face scan: a visible head is enough (chest and above).
  * Models + library loaded from CDN (no extra npm install).
  */
 
@@ -7,8 +7,7 @@ import { MEDIA_API_BASE } from '../api/config';
 
 const MODEL_BASE = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model';
 const FACE_API_ESM = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api/dist/face-api.esm.js';
-const EYE_OPEN_MIN = 0.21;
-const OPEN_FRAMES_REQUIRED = 4;
+const HEAD_FRAMES_REQUIRED = 2;
 
 export type FaceScanResult = {
   descriptor: number[];
@@ -42,27 +41,6 @@ export async function loadFaceModels(): Promise<void> {
   return loadingPromise;
 }
 
-function dist(a: { x: number; y: number }, b: { x: number; y: number }): number {
-  return Math.hypot(a.x - b.x, a.y - b.y);
-}
-
-/** Eye aspect ratio — higher means eyes more open. */
-function eyeAspectRatio(points: { x: number; y: number }[], indices: number[]): number {
-  const p = indices.map((i) => points[i]);
-  const vertical1 = dist(p[1], p[5]);
-  const vertical2 = dist(p[2], p[4]);
-  const horizontal = dist(p[0], p[3]);
-  if (horizontal === 0) return 0;
-  return (vertical1 + vertical2) / (2 * horizontal);
-}
-
-function bothEyesOpen(landmarks: { positions: { x: number; y: number }[] }): boolean {
-  const pts = landmarks.positions;
-  const left = eyeAspectRatio(pts, [36, 37, 38, 39, 40, 41]);
-  const right = eyeAspectRatio(pts, [42, 43, 44, 45, 46, 47]);
-  return left >= EYE_OPEN_MIN && right >= EYE_OPEN_MIN;
-}
-
 export type ScanProgress = {
   status: 'loading' | 'no_face' | 'eyes_closed' | 'ready' | 'capturing' | 'done' | 'error';
   hint: string;
@@ -78,49 +56,42 @@ export async function captureFaceWithOpenEyes(
 
   onProgress({ status: 'loading', hint: 'Loading face check…' });
 
-  let openFrames = 0;
+  let seenFrames = 0;
   const maxAttempts = 120;
 
   for (let i = 0; i < maxAttempts; i++) {
     if (signal?.aborted) throw new Error('Scan cancelled');
 
     const detection = await faceapi
-      .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.5 }))
+      .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.28 }))
       .withFaceLandmarks()
       .withFaceDescriptor();
 
     if (!detection) {
-      openFrames = 0;
-      onProgress({ status: 'no_face', hint: 'Center your face in the circle' });
+      seenFrames = 0;
+      onProgress({ status: 'no_face', hint: 'Keep your head in frame. Chest and above is enough.' });
       await sleep(120);
       continue;
     }
 
-    if (!bothEyesOpen(detection.landmarks)) {
-      openFrames = 0;
-      onProgress({ status: 'eyes_closed', hint: 'Open both eyes to continue' });
-      await sleep(120);
-      continue;
-    }
-
-    openFrames++;
+    seenFrames++;
     onProgress({
-      status: openFrames >= OPEN_FRAMES_REQUIRED ? 'ready' : 'eyes_closed',
-      hint: openFrames >= OPEN_FRAMES_REQUIRED ? 'Hold still…' : 'Open both eyes to continue',
+      status: 'ready',
+      hint: seenFrames >= HEAD_FRAMES_REQUIRED ? 'Hold still…' : 'Head in frame — chest and above is enough',
     });
 
-    if (openFrames >= OPEN_FRAMES_REQUIRED) {
-      onProgress({ status: 'capturing', hint: 'Verifying your face…' });
+    if (seenFrames >= HEAD_FRAMES_REQUIRED) {
+      onProgress({ status: 'capturing', hint: 'Checking your head against your photo…' });
       const descriptor = Array.from(detection.descriptor as Float32Array);
-      onProgress({ status: 'done', hint: 'Face verified' });
+      onProgress({ status: 'done', hint: 'Head matched' });
       return { descriptor };
     }
 
     await sleep(100);
   }
 
-  onProgress({ status: 'error', hint: 'Could not verify your face. Try better lighting.' });
-  throw new Error('Face scan timed out. Open both eyes and face the camera.');
+  onProgress({ status: 'error', hint: 'Could not see your head. Frame from the chest up and try again.' });
+  throw new Error('Could not see your head. A chest-up photo is enough — keep your head in frame.');
 }
 
 export async function startCamera(video: HTMLVideoElement): Promise<MediaStream> {
@@ -176,7 +147,7 @@ function loadImageElement(src: string): Promise<HTMLImageElement> {
     const img = new Image();
     img.crossOrigin = 'anonymous';
     img.onload = () => resolve(img);
-    img.onerror = () => reject(new Error('Could not load your profile photo. Upload a clear face photo and try again.'));
+    img.onerror = () => reject(new Error('Could not load your profile photo. Use a chest-up photo with your head visible.'));
     img.src = resolveImageSrc(src);
   });
 }
@@ -187,7 +158,7 @@ export async function extractFaceDescriptorFromImage(src: string): Promise<numbe
   const faceapi = await loadFaceApi();
   const img = await loadImageElement(src);
   const detection = await faceapi
-    .detectSingleFace(img, new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.4 }))
+    .detectSingleFace(img, new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.28 }))
     .withFaceLandmarks()
     .withFaceDescriptor();
   if (!detection) return null;

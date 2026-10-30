@@ -73,13 +73,13 @@ export default function PhotoVerificationModal({
       await loadFaceModels();
       const profileDescriptor = await extractFaceDescriptorFromImage(profilePictureUrl);
       if (!profileDescriptor) {
-        throw new Error('No face found in your visible profile photo. Upload a clear photo of your face, then try again.');
+        throw new Error('No head found in your visible profile photo. A chest-up photo is enough, as long as your head is in it.');
       }
 
       const video = videoRef.current;
       if (!video) throw new Error('Camera is not ready.');
       streamRef.current = await startCamera(video);
-      setProgress({ status: 'no_face', hint: 'Center your face — both eyes open' });
+      setProgress({ status: 'no_face', hint: 'Keep your head in frame. Chest and above is enough.' });
 
       const controller = new AbortController();
       abortRef.current = controller;
@@ -122,7 +122,7 @@ export default function PhotoVerificationModal({
         )}
         <h3 id="photo-verify-title" className="photo-verification-title">Prove it&apos;s you</h3>
         <p className="photo-verification-subtitle">
-          For safety and catfishing prevention, we match a live selfie to the profile photo others see. Keep both eyes open and face the camera.
+          For safety and catfishing prevention, we match a live selfie to the profile photo others see. Chest and above is enough, as long as your head is in frame.
         </p>
         {profilePictureUrl && (
           <div className="photo-verification-profile-preview">

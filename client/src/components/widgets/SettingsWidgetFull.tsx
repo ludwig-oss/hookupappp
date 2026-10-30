@@ -22,6 +22,7 @@ import { authAPI } from '../../api/auth';
 import { applyAppTheme, type AppTheme } from '../../lib/theme';
 import { applyStayLoggedIn, getStayLoggedIn } from '../../lib/authStorage';
 import { normalizeUsernameInput, USERNAME_HINT } from '../../lib/username';
+import { DATING_GENDERS, datingGender, orientationFitsGender, orientationsForGender } from '../../lib/genderOrientation';
 import { walletAPI, GuideWalletSummary } from '../../api/improvement';
 import { relationshipAPI } from '../../api/relationship';
 import BreakupReasonModal from '../BreakupReasonModal';
@@ -472,12 +473,11 @@ const SettingsWidgetFull = () => {
             </div>
             <div className="form-group">
               <label style={{ display: 'block', marginBottom: '8px', fontWeight: 600 }}>Gender</label>
-              <select value={gender} onChange={(e) => setGender(e.target.value)} style={{ width: '100%', padding: '12px', border: '2px solid #e5e7eb', borderRadius: '8px', fontSize: '16px' }}>
-                <option value="">Select</option>
-                <option value="male">Male</option>
-                <option value="female">Female</option>
-                <option value="non-binary">Non-binary</option>
-                <option value="other">Other</option>
+              <select value={datingGender(gender)} onChange={(e) => setGender(e.target.value)} style={{ width: '100%', padding: '12px', border: '2px solid #e5e7eb', borderRadius: '8px', fontSize: '16px' }}>
+                <option value="">Female or Male</option>
+                {DATING_GENDERS.map((g) => (
+                  <option key={g.value} value={g.value}>{g.label}</option>
+                ))}
               </select>
             </div>
           </div>
@@ -588,13 +588,39 @@ const SettingsWidgetFull = () => {
           </div>
 
           <div className="form-group" style={{ marginBottom: '20px' }}>
+            <label style={{ display: 'block', marginBottom: '8px', fontWeight: 600 }}>Gender</label>
+            <select
+              value={datingGender(gender)}
+              onChange={(e) => {
+                const next = e.target.value;
+                setGender(next);
+                if (preference?.orientation && !orientationFitsGender(preference.orientation, next)) {
+                  const first = orientationsForGender(next)[0];
+                  if (first) setPreference({ ...preference, orientation: first.value });
+                }
+              }}
+              style={{ width: '100%', padding: '12px', border: '2px solid #e5e7eb', borderRadius: '8px', fontSize: '16px' }}
+            >
+              <option value="">Female or Male</option>
+              {DATING_GENDERS.map((g) => (
+                <option key={g.value} value={g.value}>{g.label}</option>
+              ))}
+            </select>
+            <p style={{ fontSize: 12, color: '#6b7280', margin: '8px 0 0' }}>Gay is for men. Lesbian is for women. Pick the gender that matches.</p>
+          </div>
+
+          <div className="form-group" style={{ marginBottom: '20px' }}>
             <label style={{ display: 'block', marginBottom: '8px', fontWeight: 600 }}>Orientation</label>
-            <select value={preference?.orientation || 'straight'} onChange={(e) => setPreference({ ...(preference ?? { userId: user?.id ?? '', orientation: 'straight', lookingFor: ['dating'], city: '', lastActiveAt: new Date().toISOString() }), orientation: e.target.value as any })} style={{ width: '100%', padding: '12px', border: '2px solid #e5e7eb', borderRadius: '8px', fontSize: '16px' }}>
-              <option value="straight">Straight</option>
-              <option value="gay">Gay</option>
-              <option value="lesbian">Lesbian</option>
-              <option value="bisexual">Bisexual</option>
-              <option value="pansexual">Pansexual</option>
+            <select
+              value={preference && orientationFitsGender(preference.orientation, gender) ? preference.orientation : ''}
+              disabled={!datingGender(gender)}
+              onChange={(e) => setPreference({ ...(preference ?? { userId: user?.id ?? '', orientation: 'straight', lookingFor: ['dating'], city: '', lastActiveAt: new Date().toISOString() }), orientation: e.target.value as 'straight' })}
+              style={{ width: '100%', padding: '12px', border: '2px solid #e5e7eb', borderRadius: '8px', fontSize: '16px' }}
+            >
+              <option value="">{datingGender(gender) ? 'Choose…' : 'Choose Female or Male first'}</option>
+              {orientationsForGender(gender).map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
             </select>
           </div>
 
@@ -672,8 +698,19 @@ const SettingsWidgetFull = () => {
 
           <button onClick={async () => {
             if (preference) {
+              const g = datingGender(gender);
+              if (!g) {
+                setError('Choose Female or Male before saving orientation.');
+                return;
+              }
+              if (!orientationFitsGender(preference.orientation, g)) {
+                setError('That orientation does not match the gender you chose.');
+                return;
+              }
               setLoading(true);
               try {
+                await profileAPI.updateProfile({ gender: g });
+                if (user) updateUser({ ...user, gender: g });
                 await discoverAPI.setPreference(preference);
                 setSuccess('Preferences saved!');
                 setTimeout(() => setSuccess(''), 3000);
@@ -892,13 +929,13 @@ const SettingsWidgetFull = () => {
           <div className="form-group" style={{ marginBottom: '20px' }}>
             <label style={{ display: 'block', marginBottom: '8px', fontWeight: 600 }}>Genders</label>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
-              {['male', 'female', 'non-binary', 'other'].map(g => (
-                <label key={g} style={{ display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer' }}>
-                  <input type="checkbox" checked={settings.filters.genders.includes(g)} onChange={(e) => {
-                    const newGenders = e.target.checked ? [...settings.filters.genders, g] : settings.filters.genders.filter(x => x !== g);
+              {DATING_GENDERS.map((g) => (
+                <label key={g.value} style={{ display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={settings.filters.genders.includes(g.value)} onChange={(e) => {
+                    const newGenders = e.target.checked ? [...settings.filters.genders, g.value] : settings.filters.genders.filter(x => x !== g.value);
                     handleSaveSettings('filters', { ...settings.filters, genders: newGenders });
                   }} />
-                  <span style={{ textTransform: 'capitalize' }}>{g}</span>
+                  <span>{g.label}</span>
                 </label>
               ))}
             </div>

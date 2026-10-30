@@ -56,7 +56,7 @@ export default function FaceVerifyPanel({ open, title, onClose, onCaptured }: Pr
         const video = videoRef.current;
         if (!video || cancelled) return;
         streamRef.current = await startCamera(video);
-        setProgress({ status: 'no_face', hint: 'Center your face — both eyes open' });
+        setProgress({ status: 'no_face', hint: 'Keep your head in frame. Chest and above is enough.' });
 
         const controller = new AbortController();
         abortRef.current = controller;
@@ -88,7 +88,7 @@ export default function FaceVerifyPanel({ open, title, onClose, onCaptured }: Pr
         <div className={`face-verify-ring face-verify-${progress.status}`}>
           <video ref={videoRef} className="face-verify-video" playsInline muted />
         </div>
-        <p className="face-verify-note">We check that both eyes are open and your face is unique — not a photo or look-alike.</p>
+        <p className="face-verify-note">Chest and above is enough. We only need your head in frame so this is you, not a photo of someone else.</p>
         {error && <div className="error-message">{error}</div>}
         <div className="face-verify-actions">
           <button type="button" className="auth-button" disabled={busy} onClick={onClose}>

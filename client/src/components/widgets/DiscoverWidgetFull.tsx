@@ -1,6 +1,7 @@
 import { useState, useEffect, useContext } from 'react';
 import { AuthContext } from '../../context/AuthContext';
 import { discoverAPI, User, Interest, Place, UserPreference } from '../../api/discover';
+import { datingGender, orientationsForGender, orientationFitsGender } from '../../lib/genderOrientation';
 import './Widget.css';
 
 const DiscoverWidgetFull = () => {
@@ -551,8 +552,9 @@ const DiscoverWidgetFull = () => {
           <div style={{ marginBottom: '20px' }}>
             <label style={{ display: 'block', marginBottom: '8px', fontWeight: 600 }}>Orientation</label>
             <select
-              value={preference?.orientation || 'straight'}
-              onChange={(e) => setPreference({ ...preference!, orientation: e.target.value as any })}
+              value={preference && orientationFitsGender(preference.orientation, String((user as { gender?: string } | null)?.gender || '')) ? preference.orientation : ''}
+              disabled={!datingGender((user as { gender?: string } | null)?.gender)}
+              onChange={(e) => setPreference({ ...preference!, orientation: e.target.value as UserPreference['orientation'] })}
               style={{
                 width: '100%',
                 padding: '12px',
@@ -561,11 +563,10 @@ const DiscoverWidgetFull = () => {
                 fontSize: '16px',
               }}
             >
-              <option value="straight">Straight</option>
-              <option value="gay">Gay</option>
-              <option value="lesbian">Lesbian</option>
-              <option value="bisexual">Bisexual</option>
-              <option value="pansexual">Pansexual</option>
+              <option value="">{datingGender((user as { gender?: string } | null)?.gender) ? 'Choose…' : 'Set gender to Female or Male in Settings first'}</option>
+              {orientationsForGender(String((user as { gender?: string } | null)?.gender || '')).map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
             </select>
           </div>
 

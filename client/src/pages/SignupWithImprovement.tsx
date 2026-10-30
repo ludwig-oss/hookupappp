@@ -7,6 +7,7 @@ import { formatAxiosError } from '../lib/apiError';
 import { normalizeUsernameInput, USERNAME_HINT, USERNAME_MAX, USERNAME_MIN } from '../lib/username';
 import { walkMatchAPI } from '../api/walkMatch';
 import LookingForChips from '../components/LookingForChips';
+import { DATING_GENDERS, datingGender, orientationFitsGender, orientationsForGender } from '../lib/genderOrientation';
 import { dateMatchAPI } from '../api/dateMatch';
 import './Auth.css';
 import './Legal.css';
@@ -83,8 +84,12 @@ const SignupWithImprovement = () => {
       return;
     }
     const ageNum = parseInt(age, 10);
-    if (!gender || !age || Number.isNaN(ageNum) || ageNum < 18 || ageNum > 99) {
-      setError('Please enter your age (18–99) and gender for outdoor matching');
+    if (!datingGender(gender) || !age || Number.isNaN(ageNum) || ageNum < 18 || ageNum > 99) {
+      setError('Enter your age (18–99) and choose Female or Male.');
+      return;
+    }
+    if (!orientationFitsGender(orientation, gender)) {
+      setError('That orientation does not match the gender you chose.');
       return;
     }
 
@@ -215,14 +220,21 @@ const SignupWithImprovement = () => {
             <label htmlFor="gender">Gender</label>
             <select
               id="gender"
-              value={gender}
-              onChange={(e) => setGender(e.target.value)}
+              value={datingGender(gender)}
+              onChange={(e) => {
+                const next = e.target.value;
+                setGender(next);
+                if (!orientationFitsGender(orientation, next)) {
+                  const first = orientationsForGender(next)[0];
+                  if (first) setOrientation(first.value);
+                }
+              }}
               style={{ width: '100%', padding: '10px', borderRadius: '6px' }}
             >
-              <option value="">Select…</option>
-              <option value="female">Female</option>
-              <option value="male">Male</option>
-              <option value="other">Other</option>
+              <option value="">Female or Male…</option>
+              {DATING_GENDERS.map((g) => (
+                <option key={g.value} value={g.value}>{g.label}</option>
+              ))}
             </select>
           </div>
 
@@ -280,15 +292,15 @@ const SignupWithImprovement = () => {
             <label htmlFor="orientation">Orientation</label>
             <select
               id="orientation"
-              value={orientation}
+              value={orientationFitsGender(orientation, gender) ? orientation : ''}
+              disabled={!datingGender(gender)}
               onChange={(e) => setOrientation(e.target.value as typeof orientation)}
               style={{ width: '100%', padding: '12px', border: '2px solid rgba(0, 212, 255, 0.3)', borderRadius: '8px', fontSize: '16px', background: 'rgba(0, 0, 0, 0.4)', color: '#fff', fontFamily: 'Orbitron, monospace' }}
             >
-              <option value="straight" style={{ background: '#0a0a1a' }}>Straight</option>
-              <option value="gay" style={{ background: '#0a0a1a' }}>Gay</option>
-              <option value="lesbian" style={{ background: '#0a0a1a' }}>Lesbian</option>
-              <option value="bisexual" style={{ background: '#0a0a1a' }}>Bisexual</option>
-              <option value="pansexual" style={{ background: '#0a0a1a' }}>Pansexual</option>
+              <option value="">{datingGender(gender) ? 'Choose…' : 'Choose Female or Male first'}</option>
+              {orientationsForGender(gender).map((o) => (
+                <option key={o.value} value={o.value} style={{ background: '#0a0a1a' }}>{o.label}</option>
+              ))}
             </select>
           </div>
 

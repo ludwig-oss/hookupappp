@@ -8,6 +8,7 @@ import { formatAxiosError } from '../lib/apiError';
 import { normalizePinDigits } from '../lib/pin';
 import { normalizeLoginIdentifier, normalizeUsernameInput, USERNAME_HINT, USERNAME_MAX, USERNAME_MIN } from '../lib/username';
 import LookingForChips from '../components/LookingForChips';
+import { DATING_GENDERS, datingGender, orientationFitsGender, orientationsForGender } from '../lib/genderOrientation';
 import { dateMatchAPI } from '../api/dateMatch';
 import PasswordInput from '../components/PasswordInput';
 import GoogleContinueButton from '../components/GoogleContinueButton';
@@ -141,6 +142,14 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
     }
     if (!agreedToTerms) {
       setError('Agree to Terms and Privacy to continue');
+      return;
+    }
+    if (!datingGender(gender)) {
+      setError('Choose Female or Male. Orientation uses those genders.');
+      return;
+    }
+    if (orientation && !orientationFitsGender(orientation, gender)) {
+      setError('That orientation does not match the gender you chose.');
       return;
     }
     setError('');
@@ -328,12 +337,21 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
                 <input id="age" type="number" min={18} max={99} value={age} onChange={(e) => setAge(e.target.value)} />
               </div>
               <div className="form-group">
-                <label htmlFor="gender">Gender (optional)</label>
-                <select id="gender" value={gender} onChange={(e) => setGender(e.target.value)} style={{ width: '100%', padding: 10 }}>
-                  <option value="">Skip for now…</option>
-                  <option value="female">Female</option>
-                  <option value="male">Male</option>
-                  <option value="other">Other</option>
+                <label htmlFor="gender">Gender</label>
+                <select
+                  id="gender"
+                  value={datingGender(gender)}
+                  onChange={(e) => {
+                    const next = e.target.value;
+                    setGender(next);
+                    if (orientation && !orientationFitsGender(orientation, next)) setOrientation('');
+                  }}
+                  style={{ width: '100%', padding: 10 }}
+                >
+                  <option value="">Female or Male…</option>
+                  {DATING_GENDERS.map((g) => (
+                    <option key={g.value} value={g.value}>{g.label}</option>
+                  ))}
                 </select>
               </div>
             </div>
@@ -342,23 +360,22 @@ const AuthEntry = ({ initialMode = 'signup' }: Props) => {
               <select
                 id="orientation"
                 value={orientation}
+                disabled={!datingGender(gender)}
                 onChange={(e) => setOrientation(e.target.value as typeof orientation)}
                 style={{ width: '100%', padding: 10 }}
               >
-                <option value="">Skip for now…</option>
-                <option value="straight">Straight — advice with straight guys / girls</option>
-                <option value="gay">Gay — advice with gay guys</option>
-                <option value="lesbian">Lesbian — advice with lesbians</option>
-                <option value="bisexual">Bisexual — advice with bi peers</option>
-                <option value="pansexual">Pansexual — open advice feed</option>
+                <option value="">{datingGender(gender) ? 'Skip for now…' : 'Choose Female or Male first'}</option>
+                {orientationsForGender(gender).map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
               </select>
               <p style={{ fontSize: 12, color: '#9ca3af', marginTop: 6, marginBottom: 0 }}>
-                Dating Advice posts stay anonymous and only notify your preference group first.
+                Gay is for men, lesbian is for women. Straight, bi, and pan follow the gender you picked.
               </p>
             </div>
             <LookingForChips value={lookingFor} onChange={setLookingFor} />
             <div className="auth-info-note">
-              <p><strong>Next step — your face photo is required.</strong> You cannot skip it. It has to be a selfie of your face, not a group shot or someone else.</p>
+              <p><strong>Next step — your photo is required.</strong> You cannot skip it. Chest and above is enough, as long as your head is in the photo. Not a group shot or someone else.</p>
               <p>While you are in the app, location turns on automatically so people nearby can show up. You can show interest or pass. Location turns off when you leave the app, switch sites, or switch apps.</p>
             </div>
             <div className="legal-agree-wrap">

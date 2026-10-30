@@ -509,7 +509,7 @@ export const completeProfileSetup = async (req: Request, res: Response) => {
     const { profilePicture } = req.body;
     if (!profilePicture || typeof profilePicture !== 'string') {
       return res.status(400).json({
-        error: 'A photo of your face is required. Take a selfie — you cannot skip this step.',
+        error: 'A photo with your head visible is required. Chest and above is enough — you cannot skip this step.',
       });
     }
 
@@ -518,7 +518,7 @@ export const completeProfileSetup = async (req: Request, res: Response) => {
       profilePicture.startsWith('data:video') || /\.(mp4|webm|mov)(\?|#|$)/i.test(profilePicture);
     if (isVideo) {
       return res.status(400).json({
-        error: 'Use a still selfie of your face as your profile photo. Clips can be added later.',
+        error: 'Use a still photo from the chest up, with your head visible. Clips can be added later.',
       });
     }
     updates.profilePicture = await uploadImage(profilePicture, 'profile');

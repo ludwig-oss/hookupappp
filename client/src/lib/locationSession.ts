@@ -1,4 +1,11 @@
-export type StoredCoords = { lat: number; lon: number; accuracy?: number; source?: 'gps' | 'storage' | 'server' | 'profile' };
+export type StoredCoords = {
+  lat: number;
+  lon: number;
+  accuracy?: number;
+  source?: 'gps' | 'storage' | 'server' | 'profile' | 'ip';
+  city?: string;
+  country?: string;
+};
 
 const GRANTED_KEY = 'hookup:locationGranted';
 const COORDS_KEY = 'hookup:lastCoords';
@@ -78,15 +85,18 @@ export function nearbyRadiusForCoords(coords: StoredCoords | null): number {
   return Math.min(250, NEARBY_TARGET_M + pad);
 }
 
-/** People-around-me matching is always ~50 m, including city pins (not city-wide). */
+/**
+ * Ask the server for a wide enough circle.
+ * GPS stays about a block (indoor pins drift). City or IP pins cover the same metro
+ * so two phones still see each other when GPS never arrives.
+ */
 export function nearbyPeopleRadiusMeters(coords: StoredCoords | null): number {
   if (!coords) return NEARBY_TARGET_M;
-  if (coords.source === 'profile' || coords.source === 'server') return NEARBY_TARGET_M;
-  const pad =
-    typeof coords.accuracy === 'number' && Number.isFinite(coords.accuracy)
-      ? Math.min(40, Math.max(0, coords.accuracy))
-      : 0;
-  return NEARBY_TARGET_M + pad;
+  const acc = typeof coords.accuracy === 'number' && Number.isFinite(coords.accuracy) ? coords.accuracy : 0;
+  const coarse =
+    coords.source === 'profile' || coords.source === 'server' || coords.source === 'ip' || acc >= 1500;
+  if (coarse) return 80_000;
+  return Math.max(NEARBY_TARGET_M, Math.min(500, NEARBY_TARGET_M + acc));
 }
 
 export function startGpsWatch(onFix: (coords: StoredCoords) => void): () => void {
@@ -174,16 +184,16 @@ export function requestGpsFromUserTap(): Promise<{ coords: StoredCoords | null; 
     }
 
     let settled = false;
-    let watchId: number | null = null;
-    let deniedTimer: ReturnType<typeof setTimeout> | null = null;
+    const watches: number[] = [];
+    let denyTimer: ReturnType<typeof setTimeout> | null = null;
 
     const finish = (coords: StoredCoords | null, error?: string) => {
       if (settled) return;
       settled = true;
-      if (deniedTimer) clearTimeout(deniedTimer);
-      if (watchId != null) {
+      if (denyTimer) clearTimeout(denyTimer);
+      for (const id of watches) {
         try {
-          navigator.geolocation.clearWatch(watchId);
+          navigator.geolocation.clearWatch(id);
         } catch {
           /* ignore */
         }
@@ -194,46 +204,43 @@ export function requestGpsFromUserTap(): Promise<{ coords: StoredCoords | null; 
 
     const onOk = (pos: GeolocationPosition) => finish(coordsFromPosition(pos));
 
-    const options: PositionOptions = {
-      enableHighAccuracy: true,
-      timeout: 25000,
-      maximumAge: 15_000,
+    // A first "denied" often fires while the Allow sheet is still open. Do not give up in 2 seconds.
+    const noteProblem = (err: GeolocationPositionError) => {
+      if (settled) return;
+      const giveUp = () => {
+        if (!settled) finish(null, geolocationErrorMessage(err));
+      };
+      if (err?.code === 1) {
+        try {
+          const q = navigator.permissions?.query?.({ name: 'geolocation' as PermissionName });
+          q?.then((p) => {
+            if (p.state === 'denied') giveUp();
+          }).catch(() => {});
+        } catch {
+          /* permissions API missing — timer below still ends the wait */
+        }
+        if (!denyTimer) denyTimer = setTimeout(giveUp, 8000);
+        return;
+      }
+      if (!denyTimer) denyTimer = setTimeout(giveUp, 4000);
     };
 
-    // iOS Safari often succeeds with watchPosition after a false first "denied".
+    const precise: PositionOptions = { enableHighAccuracy: true, timeout: 20000, maximumAge: 15_000 };
+    const loose: PositionOptions = { enableHighAccuracy: false, timeout: 12000, maximumAge: 120_000 };
+
     try {
-      watchId = navigator.geolocation.watchPosition(
-        onOk,
-        (err) => {
-          if (err?.code === 1) {
-            if (deniedTimer) clearTimeout(deniedTimer);
-            deniedTimer = setTimeout(() => {
-              if (!settled) finish(null, geolocationErrorMessage(err));
-            }, 2500);
-            return;
-          }
-          if (err?.code === 2 || err?.code === 3) {
-            navigator.geolocation.getCurrentPosition(
-              onOk,
-              (err2) => finish(null, geolocationErrorMessage(err2)),
-              { enableHighAccuracy: false, timeout: 20000, maximumAge: 600_000 }
-            );
-          }
-        },
-        options
-      );
+      watches.push(navigator.geolocation.watchPosition(onOk, noteProblem, precise));
     } catch {
       finish(null, 'Could not start GPS. Type your city and country below and tap Save.');
       return;
     }
 
-    navigator.geolocation.getCurrentPosition(onOk, () => {
-      /* watchPosition above is the fallback */
-    }, options);
+    // Indoor / blocked high-accuracy often still returns a wifi fix.
+    navigator.geolocation.getCurrentPosition(onOk, noteProblem, loose);
 
     window.setTimeout(() => {
       if (!settled) finish(null, 'GPS is taking too long. Type your city and country below and tap Save.');
-    }, 28000);
+    }, 18000);
   });
 }
 
@@ -243,27 +250,82 @@ export type ResolveCoordsOptions = {
   country?: string;
   /** Try browser GPS even if cached coords exist (default false). */
   refreshGps?: boolean;
+  /** Yes / Save city should not reuse a pin from somewhere else. */
+  ignoreCache?: boolean;
+  /** Geocode the typed city before GPS, cache, or IP. */
+  placeFirst?: boolean;
+  /** When GPS is blocked, use the network location so the other phone can see you. */
+  allowIp?: boolean;
 };
 
+type LocationApi = {
+  getMyLocation: () => Promise<{ lat: number | null; lon: number | null; accuracy?: number | null; city?: string; country?: string }>;
+  forwardGeocode: (q: string) => Promise<{ lat: number | null; lon: number | null }>;
+  updateLocation: (data: {
+    lat: number;
+    lon: number;
+    accuracy?: number;
+    userId: string;
+    connectionsVisible?: boolean;
+    city?: string;
+    country?: string;
+  }) => Promise<unknown>;
+  locateByIp?: () => Promise<{
+    lat: number | null;
+    lon: number | null;
+    accuracy?: number;
+    city?: string;
+    country?: string;
+  }>;
+};
+
+async function geocodePlace(place: string, userId: string, api: LocationApi, city?: string, country?: string): Promise<StoredCoords | null> {
+  try {
+    const geo = await api.forwardGeocode(place);
+    if (geo.lat != null && geo.lon != null && Number.isFinite(geo.lat) && Number.isFinite(geo.lon)) {
+      const coords: StoredCoords = {
+        lat: geo.lat,
+        lon: geo.lon,
+        accuracy: 10_000,
+        source: 'profile',
+        city,
+        country,
+      };
+      markLocationGranted(coords);
+      await api.updateLocation({
+        lat: coords.lat,
+        lon: coords.lon,
+        accuracy: coords.accuracy,
+        userId,
+        connectionsVisible: true,
+        city,
+        country,
+      }).catch(() => {});
+      return coords;
+    }
+  } catch {
+    /* geocode failed */
+  }
+  return null;
+}
+
 /**
- * Resolve coords on phone, tablet, or laptop:
- * cached → GPS → server last location → geocode profile city.
+ * Resolve coords on phone, tablet, or laptop.
+ * Yes (allowIp): network location, then city, then last saved pin.
+ * Save city (placeFirst): the place they typed.
  */
 export async function resolveWorkingCoords(
   options: ResolveCoordsOptions,
-  api?: {
-    getMyLocation: () => Promise<{ lat: number | null; lon: number | null; accuracy?: number | null }>;
-    forwardGeocode: (q: string) => Promise<{ lat: number | null; lon: number | null }>;
-    updateLocation: (data: {
-      lat: number;
-      lon: number;
-      accuracy?: number;
-      userId: string;
-      connectionsVisible?: boolean;
-    }) => Promise<unknown>;
-  }
+  api?: LocationApi
 ): Promise<StoredCoords | null> {
-  if (!options.refreshGps) {
+  const place = [options.city, options.country].filter(Boolean).join(', ').trim();
+
+  if (options.placeFirst && place && options.userId && api) {
+    const pinned = await geocodePlace(place, options.userId, api, options.city, options.country);
+    if (pinned) return pinned;
+  }
+
+  if (!options.refreshGps && !options.ignoreCache && !options.placeFirst) {
     const cached = readStoredCoords();
     if (cached) return cached;
   }
@@ -279,6 +341,40 @@ export async function resolveWorkingCoords(
     }
   }
 
+  if (options.allowIp && options.userId && api?.locateByIp) {
+    try {
+      const ip = await api.locateByIp();
+      if (ip.lat != null && ip.lon != null && Number.isFinite(ip.lat) && Number.isFinite(ip.lon)) {
+        const coords: StoredCoords = {
+          lat: ip.lat,
+          lon: ip.lon,
+          accuracy: ip.accuracy ?? 8000,
+          source: 'ip',
+          city: ip.city || options.city,
+          country: ip.country || options.country,
+        };
+        markLocationGranted(coords);
+        await api.updateLocation({
+          lat: coords.lat,
+          lon: coords.lon,
+          accuracy: coords.accuracy,
+          userId: options.userId,
+          connectionsVisible: true,
+          city: coords.city,
+          country: coords.country,
+        }).catch(() => {});
+        return coords;
+      }
+    } catch {
+      /* IP lookup failed — try city */
+    }
+  }
+
+  if (!options.placeFirst && place && options.userId && api) {
+    const pinned = await geocodePlace(place, options.userId, api, options.city, options.country);
+    if (pinned) return pinned;
+  }
+
   if (options.userId && api) {
     try {
       const srv = await api.getMyLocation();
@@ -288,6 +384,8 @@ export async function resolveWorkingCoords(
           lon: srv.lon,
           accuracy: srv.accuracy ?? undefined,
           source: 'server',
+          city: srv.city,
+          country: srv.country,
         };
         markLocationGranted(coords);
         return coords;
@@ -297,25 +395,6 @@ export async function resolveWorkingCoords(
     }
   }
 
-  const place = [options.city, options.country].filter(Boolean).join(', ').trim();
-  if (place && options.userId && api) {
-    try {
-      const geo = await api.forwardGeocode(place);
-      if (geo.lat != null && geo.lon != null && Number.isFinite(geo.lat) && Number.isFinite(geo.lon)) {
-        const coords: StoredCoords = {
-          lat: geo.lat,
-          lon: geo.lon,
-          accuracy: 10_000,
-          source: 'profile',
-        };
-        markLocationGranted(coords);
-        api.updateLocation({ ...coords, userId: options.userId, connectionsVisible: true }).catch(() => {});
-        return coords;
-      }
-    } catch {
-      /* geocode failed */
-    }
-  }
-
+  if (options.ignoreCache || options.placeFirst) return null;
   return readStoredCoords();
 }

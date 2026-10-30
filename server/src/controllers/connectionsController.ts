@@ -1,3 +1,4 @@
+import { createHash } from 'crypto';
 import { Request, Response } from 'express';
 import {
   createBuzz,
@@ -191,6 +192,108 @@ export const getMyLocation = async (req: Request, res: Response) => {
   }
 };
 
+function headerValue(req: Request, name: string): string {
+  const v = req.headers[name];
+  if (Array.isArray(v)) return v[0] || '';
+  return typeof v === 'string' ? v : '';
+}
+
+function isPrivateIp(ip: string): boolean {
+  if (!ip) return true;
+  const host = ip.replace(/^::ffff:/, '').trim();
+  if (!host || host === '::1' || host === '0.0.0.0') return true;
+  if (/^127\./.test(host) || /^10\./.test(host) || /^192\.168\./.test(host) || /^169\.254\./.test(host)) return true;
+  const m = /^172\.(\d+)\./.exec(host);
+  if (m) {
+    const n = Number(m[1]);
+    if (n >= 16 && n <= 31) return true;
+  }
+  return host.startsWith('fc') || host.startsWith('fd') || host.startsWith('fe80');
+}
+
+/** Real phone IP. The site proxies through Vercel, so prefer the header Vercel sets. */
+function clientIp(req: Request): string {
+  const candidates = [
+    headerValue(req, 'x-vercel-forwarded-for'),
+    headerValue(req, 'cf-connecting-ip'),
+    headerValue(req, 'x-real-ip'),
+    headerValue(req, 'x-forwarded-for'),
+    req.ip || req.socket?.remoteAddress || '',
+  ];
+  for (const raw of candidates) {
+    for (const part of raw.split(',')) {
+      const ip = part.trim().replace(/^::ffff:/, '');
+      if (ip && !isPrivateIp(ip)) return ip;
+    }
+  }
+  return '';
+}
+
+function networkKeyFor(req: Request): string | undefined {
+  const ip = clientIp(req);
+  if (!ip) return undefined;
+  return createHash('sha256').update(ip).digest('hex').slice(0, 24);
+}
+
+async function readJson(url: string): Promise<Record<string, unknown> | null> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 7000);
+  try {
+    const response = await fetch(url, {
+      signal: ctrl.signal,
+      headers: { Accept: 'application/json', 'User-Agent': 'ASWP/1.0 (Connections location)' },
+    });
+    if (!response.ok) return null;
+    const data = (await response.json()) as Record<string, unknown>;
+    return data && typeof data === 'object' ? data : null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** Approximate place from the phone's public IP when GPS is blocked. Same wifi → same pin. */
+export const locateByIp = async (req: Request, res: Response) => {
+  try {
+    const ip = clientIp(req);
+    if (!ip) return res.json({ lat: null, lon: null });
+
+    const who = await readJson(`https://ipwho.is/${encodeURIComponent(ip)}`);
+    const whoLat = Number(who?.latitude);
+    const whoLon = Number(who?.longitude);
+    if (who?.success !== false && Number.isFinite(whoLat) && Number.isFinite(whoLon)) {
+      return res.json({
+        lat: whoLat,
+        lon: whoLon,
+        accuracy: 8000,
+        city: typeof who?.city === 'string' ? who.city : '',
+        country: typeof who?.country === 'string' ? who.country : '',
+        source: 'ip',
+      });
+    }
+
+    const api = await readJson(`https://ipapi.co/${encodeURIComponent(ip)}/json/`);
+    const apiLat = Number(api?.latitude);
+    const apiLon = Number(api?.longitude);
+    if (Number.isFinite(apiLat) && Number.isFinite(apiLon) && !api?.error) {
+      return res.json({
+        lat: apiLat,
+        lon: apiLon,
+        accuracy: 8000,
+        city: typeof api?.city === 'string' ? api.city : '',
+        country: typeof api?.country_name === 'string' ? api.country_name : '',
+        source: 'ip',
+      });
+    }
+
+    return res.json({ lat: null, lon: null });
+  } catch (error) {
+    console.error('IP location error:', error);
+    return res.json({ lat: null, lon: null });
+  }
+};
+
 export const updateLocation = async (req: Request, res: Response) => {
   try {
     const userId = (req as any).userId || req.body.userId;
@@ -205,19 +308,29 @@ export const updateLocation = async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Latitude and longitude are required' });
     }
 
+    const networkKey = networkKeyFor(req);
+    const parsedAcc = Number(accuracy);
+    const nextAccuracy = Number.isFinite(parsedAcc) && parsedAcc > 0 ? parsedAcc : undefined;
     await updateUserLocation(userId, {
       lat: latNum,
       lon: lonNum,
-      accuracy: accuracy || 50,
+      ...(nextAccuracy != null ? { accuracy: nextAccuracy } : {}),
+      ...(networkKey ? { networkKey } : {}),
     });
 
+    const city = typeof req.body.city === 'string' ? req.body.city.trim() : '';
+    const country = typeof req.body.country === 'string' ? req.body.country.trim() : '';
+    const profilePatch: { connectionsVisible?: boolean; city?: string; country?: string } = {};
     if (typeof connectionsVisible === 'boolean') {
-      await updateUserProfile(userId, { connectionsVisible });
+      profilePatch.connectionsVisible = connectionsVisible;
     } else {
       const user = await getUserById(userId);
-      if (user && user.connectionsVisible === undefined) {
-        await updateUserProfile(userId, { connectionsVisible: true });
-      }
+      if (user && user.connectionsVisible === undefined) profilePatch.connectionsVisible = true;
+    }
+    if (city) profilePatch.city = city;
+    if (country) profilePatch.country = country;
+    if (Object.keys(profilePatch).length > 0) {
+      await updateUserProfile(userId, profilePatch);
     }
 
     res.json({ message: 'Location updated successfully' });
@@ -266,12 +379,14 @@ export const getNearby = async (req: Request, res: Response) => {
     const lat = parseFloat(req.query.lat as string);
     const lon = parseFloat(req.query.lon as string);
     const radius = parseInt(req.query.radius as string, 10) || 50;
+    const accuracyRaw = parseFloat(req.query.accuracy as string);
+    const accuracy = Number.isFinite(accuracyRaw) ? accuracyRaw : undefined;
 
     if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
       return res.status(400).json({ error: 'Latitude and longitude are required' });
     }
 
-    const nearby = await runWithSystem(() => getNearbyUsers(userId, lat, lon, radius));
+    const nearby = await runWithSystem(() => getNearbyUsers(userId, lat, lon, radius, accuracy));
     res.json({ users: nearby });
   } catch (error) {
     console.error('Get nearby users error:', error);

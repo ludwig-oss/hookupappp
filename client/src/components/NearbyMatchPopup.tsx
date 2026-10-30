@@ -23,6 +23,7 @@ const locationApi = {
   forwardGeocode: (q: string) => connectionsAPI.forwardGeocode(q),
   updateLocation: (data: Parameters<typeof connectionsAPI.updateLocation>[0]) =>
     connectionsAPI.updateLocation(data),
+  locateByIp: () => connectionsAPI.locateByIp(),
 };
 
 /** Proactive popup when someone matching your orientation is within ~50 m. */
@@ -39,7 +40,12 @@ export default function NearbyMatchPopup({ onOpenConnections }: Props) {
   const poll = useCallback(async (opts?: { force?: boolean }) => {
     if (!user?.id) return;
     const coords = await resolveWorkingCoords(
-      { userId: user.id, city: (user as { city?: string }).city, country: (user as { country?: string }).country },
+      {
+        userId: user.id,
+        city: (user as { city?: string }).city,
+        country: (user as { country?: string }).country,
+        allowIp: true,
+      },
       locationApi
     );
     if (!coords) {
@@ -52,6 +58,7 @@ export default function NearbyMatchPopup({ onOpenConnections }: Props) {
           lat: coords.lat,
           lon: coords.lon,
           radius: nearbyPeopleRadiusMeters(coords),
+          accuracy: coords.accuracy,
           userId: user.id,
         }),
         connectionsAPI.getMyBuzzes(user.id).catch(() => ({ received: [], sent: [] })),
@@ -161,7 +168,12 @@ export default function NearbyMatchPopup({ onOpenConnections }: Props) {
   const sendInterest = async () => {
     if (!match || !user?.id) return;
     const coords = await resolveWorkingCoords(
-      { userId: user.id, city: (user as { city?: string }).city, country: (user as { country?: string }).country },
+      {
+        userId: user.id,
+        city: (user as { city?: string }).city,
+        country: (user as { country?: string }).country,
+        allowIp: true,
+      },
       locationApi
     );
     if (!coords) {

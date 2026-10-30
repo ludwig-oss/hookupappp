@@ -13,6 +13,7 @@ import {
   patchConnectionVisibility,
   getMyLocation,
   forwardGeocode,
+  locateByIp,
 } from '../controllers/connectionsController.js';
 import { authenticateToken } from '../middleware/auth.js';
 import { requirePhotoUnlocked } from '../middleware/requirePhotoUnlocked.js';
@@ -26,6 +27,7 @@ router.get('/buzzes', getMyBuzzes);
 router.post('/buzz/respond', requirePhotoUnlocked, respondBuzz);
 router.post('/location', updateLocation);
 router.get('/location', getMyLocation);
+router.get('/ip-place', locateByIp);
 router.get('/geocode', forwardGeocode);
 router.get('/prefs', getConnectionPrefs);
 router.patch('/visibility', patchConnectionVisibility);

@@ -13,6 +13,7 @@ const locationApi = {
   forwardGeocode: (q: string) => connectionsAPI.forwardGeocode(q),
   updateLocation: (data: Parameters<typeof connectionsAPI.updateLocation>[0]) =>
     connectionsAPI.updateLocation(data),
+  locateByIp: () => connectionsAPI.locateByIp(),
 };
 
 const VENUE_RADIUS_OPTIONS = [
@@ -107,6 +108,18 @@ const ConnectionsWidget = () => {
       if (city && country) setPlaceLabel(`${city}, ${country}`);
       else if (displayName) setPlaceLabel(displayName);
       else setPlaceLabel(null);
+      if (city) setPlaceCity((prev) => prev || city);
+      if (country) setPlaceCountry((prev) => prev || country);
+      if ((city || country) && user?.id) {
+        connectionsAPI.updateLocation({
+          lat,
+          lon,
+          userId: user.id,
+          connectionsVisible: true,
+          city: city || undefined,
+          country: country || undefined,
+        }).catch(() => {});
+      }
     } catch {
       setPlaceLabel(null);
     }
@@ -133,7 +146,7 @@ const ConnectionsWidget = () => {
     setConnectionsVisible(true);
   }, [pushLocation]);
 
-  const ensureLocation = useCallback(async (): Promise<{ lat: number; lon: number; accuracy?: number }> => {
+  const ensureLocation = useCallback(async (): Promise<{ lat: number; lon: number; accuracy?: number; source?: string }> => {
     const { coords, error } = await requestGpsFromUserTap();
     if (coords) {
       applyCoords(coords);
@@ -144,11 +157,19 @@ const ConnectionsWidget = () => {
         userId: user?.id,
         city: placeCity.trim() || (user as { city?: string })?.city,
         country: placeCountry.trim() || (user as { country?: string })?.country,
+        ignoreCache: true,
+        allowIp: true,
       },
       locationApi
     );
     if (fallback) {
+      if (fallback.city) setPlaceCity((prev) => prev || fallback.city || '');
+      if (fallback.country) setPlaceCountry((prev) => prev || fallback.country || '');
       applyCoords(fallback);
+      if (fallback.source !== 'gps') {
+        setComfortingMessage('Location on. People near you can show up now — tap Yes on the other phone too.');
+        setTimeout(() => setComfortingMessage(null), 6000);
+      }
       return fallback;
     }
     throw new Error(error || 'Type your city and country below, then tap Save.');
@@ -222,6 +243,7 @@ const ConnectionsWidget = () => {
         lat: loc.lat,
         lon: loc.lon,
         radius: nearbyPeopleRadiusMeters(radiusCoords),
+        accuracy: radiusCoords.accuracy,
         userId: user.id,
       });
       setNearbyUsers(response.users);
@@ -265,11 +287,14 @@ const ConnectionsWidget = () => {
         userId: user.id,
         city: (user as { city?: string }).city,
         country: (user as { country?: string }).country,
+        allowIp: true,
       },
       locationApi
     ).then((coords) => {
       if (coords && !location) {
         setLocation(coords);
+        if (coords.city) setPlaceCity((prev) => prev || coords.city || '');
+        if (coords.country) setPlaceCountry((prev) => prev || coords.country || '');
         fetchPlaceLabel(coords.lat, coords.lon);
         pushLocation(coords, true).catch(() => {});
       }
@@ -292,11 +317,14 @@ const ConnectionsWidget = () => {
         userId: user.id,
         city: (user as { city?: string }).city,
         country: (user as { country?: string }).country,
+        allowIp: true,
       },
       locationApi
     ).then((coords) => {
       if (!coords) return;
       setLocation(coords);
+      if (coords.city) setPlaceCity((prev) => prev || coords.city || '');
+      if (coords.country) setPlaceCountry((prev) => prev || coords.country || '');
       fetchPlaceLabel(coords.lat, coords.lon);
       pushLocation(coords, true).catch(() => {});
     });
@@ -324,7 +352,7 @@ const ConnectionsWidget = () => {
       // Silent while searching places so errors don't flash the form back to "failed"
       refreshNearby(location, { silent: view === 'search_places' || view === 'venues' });
       loadBuzzes();
-    }, 15000);
+    }, 5000);
     return () => clearInterval(nearbyPoll);
   }, [location, user?.id, refreshNearby, loadBuzzes, view]);
 
@@ -620,7 +648,7 @@ const ConnectionsWidget = () => {
             setError('');
             try {
               const coords = await resolveWorkingCoords(
-                { userId: user.id, city, country },
+                { userId: user.id, city, country, placeFirst: true, ignoreCache: true },
                 locationApi
               );
               if (!coords) {
@@ -658,7 +686,7 @@ const ConnectionsWidget = () => {
     if (visibleNearbyUsers.length === 0 && pendingBuzzNotNearby.length === 0) {
       return (
         <p style={{ color: '#9ca3af', fontSize: '12px', fontFamily: 'Orbitron, monospace', textAlign: 'center', padding: '20px 0' }}>
-          No one nearby right now. The list updates automatically — check again in a moment.
+          No one nearby yet. The other phone has to tap Yes too — this list refreshes every few seconds.
         </p>
       );
     }

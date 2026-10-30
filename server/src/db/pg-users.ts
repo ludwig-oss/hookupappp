@@ -343,9 +343,21 @@ export async function updateUserProfile(userId: string, updates: Partial<User>):
   return getUserById(userId);
 }
 
-export async function updateUserLocation(userId: string, location: { lat: number; lon: number; accuracy?: number }): Promise<User | null> {
+export async function updateUserLocation(
+  userId: string,
+  location: { lat: number; lon: number; accuracy?: number; networkKey?: string }
+): Promise<User | null> {
+  const existing = await getUserById(userId);
+  const prevAcc = existing?.location?.accuracy;
+  const accuracy = location.accuracy ?? prevAcc;
   return updateUserProfile(userId, {
-    location: { lat: location.lat, lon: location.lon, accuracy: location.accuracy, updatedAt: new Date() },
+    location: {
+      lat: location.lat,
+      lon: location.lon,
+      ...(accuracy != null ? { accuracy } : {}),
+      networkKey: location.networkKey || existing?.location?.networkKey,
+      updatedAt: new Date(),
+    },
   });
 }
 

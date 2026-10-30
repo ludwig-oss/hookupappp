@@ -50,6 +50,8 @@ export interface Location {
   lon: number;
   accuracy?: number;
   updatedAt: Date | string;
+  /** Hash of the public IP. Two phones on the same wifi match even when GPS is off. */
+  networkKey?: string;
 }
 
 export interface DatingProfile {
@@ -468,13 +470,17 @@ export async function updateUserProfile(userId: string, updates: Partial<User>):
 
 export async function updateUserLocation(
   userId: string,
-  location: { lat: number; lon: number; accuracy?: number }
+  location: { lat: number; lon: number; accuracy?: number; networkKey?: string }
 ): Promise<User | null> {
+  const existing = await getUserById(userId);
+  const prevAcc = existing?.location?.accuracy;
+  const accuracy = location.accuracy ?? prevAcc;
   return updateUserProfile(userId, {
     location: {
       lat: location.lat,
       lon: location.lon,
-      accuracy: location.accuracy,
+      ...(accuracy != null ? { accuracy } : {}),
+      networkKey: location.networkKey || existing?.location?.networkKey,
       updatedAt: new Date(),
     },
   });

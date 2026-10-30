@@ -49,18 +49,38 @@ export interface VenueCount {
 let lastLocationPingAt = 0;
 let lastLocationPingKey = '';
 
+function locationPingKey(data: {
+  lat: number;
+  lon: number;
+  connectionsVisible?: boolean;
+  city?: string;
+  country?: string;
+}): string {
+  return `${data.lat.toFixed(4)},${data.lon.toFixed(4)},${data.connectionsVisible !== false ? 1 : 0},${data.city || ''},${data.country || ''}`;
+}
+
 function shouldSkipLocationPing(data: {
   lat: number;
   lon: number;
   connectionsVisible?: boolean;
+  city?: string;
+  country?: string;
 }): boolean {
   const now = Date.now();
-  const key = `${data.lat.toFixed(4)},${data.lon.toFixed(4)},${data.connectionsVisible !== false ? 1 : 0}`;
+  const key = locationPingKey(data);
   if (key === lastLocationPingKey && now - lastLocationPingAt < 20_000) return true;
-  if (now - lastLocationPingAt < 4_000) return true;
-  lastLocationPingAt = now;
-  lastLocationPingKey = key;
   return false;
+}
+
+function rememberLocationPing(data: {
+  lat: number;
+  lon: number;
+  connectionsVisible?: boolean;
+  city?: string;
+  country?: string;
+}): void {
+  lastLocationPingAt = Date.now();
+  lastLocationPingKey = locationPingKey(data);
 }
 
 export const connectionsAPI = {
@@ -94,11 +114,25 @@ export const connectionsAPI = {
     venueType?: string;
     userId: string;
     connectionsVisible?: boolean;
+    city?: string;
+    country?: string;
   }): Promise<{ message: string }> => {
     if (shouldSkipLocationPing(data)) {
       return { message: 'ok' };
     }
     const response = await axios.post(`${API_URL}/location`, data);
+    rememberLocationPing(data);
+    return response.data;
+  },
+
+  locateByIp: async (): Promise<{
+    lat: number | null;
+    lon: number | null;
+    accuracy?: number;
+    city?: string;
+    country?: string;
+  }> => {
+    const response = await axios.get(`${API_URL}/ip-place`, { timeout: 12_000 });
     return response.data;
   },
 
@@ -116,6 +150,7 @@ export const connectionsAPI = {
     lat: number;
     lon: number;
     radius?: number;
+    accuracy?: number;
     userId: string;
   }): Promise<{ users: NearbyUser[] }> => {
     const response = await axios.get(`${API_URL}/nearby`, { params: data });

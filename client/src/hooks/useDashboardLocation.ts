@@ -1,12 +1,13 @@
 import { useEffect, useRef } from 'react';
 import { connectionsAPI } from '../api/connections';
-import { markLocationGranted, readStoredCoords, resolveWorkingCoords, startGpsWatch } from '../lib/locationSession';
+import { markLocationGranted, readStoredCoords, resolveWorkingCoords, startGpsWatch, type StoredCoords } from '../lib/locationSession';
 
 const locationApi = {
   getMyLocation: () => connectionsAPI.getMyLocation(),
   forwardGeocode: (q: string) => connectionsAPI.forwardGeocode(q),
   updateLocation: (data: Parameters<typeof connectionsAPI.updateLocation>[0]) =>
     connectionsAPI.updateLocation(data),
+  locateByIp: () => connectionsAPI.locateByIp(),
 };
 
 type UserLoc = { id: string; city?: string; country?: string };
@@ -26,10 +27,7 @@ export function useDashboardLocation(user?: UserLoc) {
   useEffect(() => {
     if (!user?.id) return;
 
-    const push = (
-      coords: { lat: number; lon: number; accuracy?: number; source?: 'gps' | 'storage' | 'server' | 'profile' },
-      visible: boolean
-    ) => {
+    const push = (coords: StoredCoords, visible: boolean) => {
       coordsRef.current = coords;
       markLocationGranted(coords);
       connectionsAPI
@@ -68,7 +66,7 @@ export function useDashboardLocation(user?: UserLoc) {
       connectionsAPI.setVisibility(true).catch(() => {});
 
       resolveWorkingCoords(
-        { userId: user.id, city: user.city, country: user.country },
+        { userId: user.id, city: user.city, country: user.country, allowIp: true },
         locationApi
       ).then((coords) => {
         if (coords && visibleRef.current) push(coords, true);
@@ -84,7 +82,7 @@ export function useDashboardLocation(user?: UserLoc) {
         if (c) push(c, true);
         else {
           resolveWorkingCoords(
-            { userId: user.id, city: user.city, country: user.country },
+            { userId: user.id, city: user.city, country: user.country, allowIp: true },
             locationApi
           ).then((next) => {
             if (next && visibleRef.current) push(next, true);

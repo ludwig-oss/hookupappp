@@ -223,7 +223,21 @@ export const getUserProfile = async (req: Request, res: Response) => {
     await runWithSystem(() => pruneExpiredStories(ownerId));
     const fresh = await runWithSystem(() => getUserById(ownerId));
     if (fresh) user = fresh;
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
     const viewingOwnProfile = isOwnProfileRequest || String(authUserId) === String(user.id);
+    const chosenGender = String(user.gender || '').toLowerCase();
+    if (
+      viewingOwnProfile &&
+      !user.profileSetupComplete &&
+      user.profilePicture &&
+      (chosenGender === 'female' || chosenGender === 'male')
+    ) {
+      const healId = user.id;
+      const healed = await runWithSystem(() => updateUserProfile(healId, { profileSetupComplete: true }));
+      if (healed) user = healed;
+    }
     const now = Date.now();
     const viewerId = String(authUserId);
     const ownerCloseFriends = (user.closeFriendIds || []).map(String);

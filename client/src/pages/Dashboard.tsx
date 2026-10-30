@@ -1,5 +1,5 @@
 import { useContext, useState, useEffect, useRef } from 'react';
-import { useNavigate, Link, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { createPortal } from 'react-dom';
 import { AuthContext } from '../context/AuthContext';
 import { profileAPI } from '../api/profile';
@@ -28,6 +28,7 @@ import BuzzResultPopup from '../components/BuzzResultPopup';
 import NearbyMatchPopup from '../components/NearbyMatchPopup';
 import { useDashboardLocation } from '../hooks/useDashboardLocation';
 import AddPasswordPrompt from '../components/AddPasswordPrompt';
+import Profile from './Profile';
 import { askNotifyPermission } from '../lib/deviceNotify';
 import { NEARBY_POPUP_VISIBLE_EVENT, requestNearbyCheckNow, setConnectionsStartView } from '../lib/proximitySession';
 import { useGuideApplicationNotifications } from '../hooks/useGuideApplicationNotifications';
@@ -668,29 +669,8 @@ const Dashboard = () => {
           </div>
         </div>
       ) : activeTab === 'Profile' ? (
-        <div className="app-profile-hub">
-          {user?.profilePicture ? (
-            <img className="app-profile-avatar" src={user.profilePicture} alt="" />
-          ) : (
-            <div className="app-profile-avatar app-profile-avatar-fallback" aria-hidden>👤</div>
-          )}
-          <h2 className="app-profile-name">{user?.name || user?.username || 'My Personal Hub'}</h2>
-          {user?.username && <p className="app-profile-handle">@{user.username}</p>}
-          <p className="app-profile-blurb">👤 My Personal Hub Information</p>
-          <button type="button" className="app-profile-action" onClick={() => navigate('/profile')}>
-            {t('profile')}
-          </button>
-          <button type="button" className="app-profile-action" onClick={() => navigate('/settings')}>
-            Settings
-          </button>
-          <button type="button" className="app-profile-action app-profile-action-logout" onClick={handleLogout}>
-            {t('logout')}
-          </button>
-          <div className="dashboard-legal-footer app-profile-legal">
-            <Link to="/terms">Terms</Link>
-            <span className="dashboard-legal-sep">·</span>
-            <Link to="/privacy">Privacy</Link>
-          </div>
+        <div className="app-profile-embed">
+          <Profile embedded />
         </div>
       ) : (
         <p className="app-stage-placeholder">
@@ -735,6 +715,17 @@ const Dashboard = () => {
           ) : (
             <p className="app-side-hint">Select main panel feature</p>
           )}
+          <button
+            type="button"
+            className="app-side-item app-side-logout"
+            onClick={() => {
+              setIsSidebarOpen(false);
+              handleLogout();
+            }}
+          >
+            <span className="app-side-icon" aria-hidden>↩</span>
+            {t('logout')}
+          </button>
         </div>
       </aside>
 

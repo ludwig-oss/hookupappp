@@ -51,7 +51,7 @@ function buildSessionProfile(user: {
   };
 }
 
-const Profile = () => {
+const Profile = ({ embedded = false }: { embedded?: boolean }) => {
   const { user, logout, updateUser } = useContext(AuthContext);
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -715,7 +715,8 @@ const Profile = () => {
   const closeFriendIds = ((profile as any).closeFriendIds || []).map(String);
 
   return (
-    <div className="dashboard-container">
+    <div className={`dashboard-container${embedded ? ' profile-embedded' : ''}`}>
+      {!embedded && (
       <div className="stars-background" aria-hidden>
         <div className="love-bg-hearts" />
         <div className="love-bg-float">
@@ -729,15 +730,16 @@ const Profile = () => {
           <span className="love-float-8">💕</span>
         </div>
       </div>
+      )}
       <div className="dashboard-top-nav">
-        {fromHelp && (
+        {!embedded && fromHelp && (
           <Link to="/home" state={{ openWidget: 'help' }} className="dashboard-back-link">← {t('backToHelp')}</Link>
         )}
-        {fromChat ? (
+        {!embedded && (fromChat ? (
           <button type="button" className="dashboard-back-link" onClick={openTheirChat}>← Back to chat</button>
         ) : (
           <Link to="/home" className="dashboard-back-link">← {t('backToHome')}</Link>
-        )}
+        ))}
         {isOwnProfile && (
           <Link to="/settings" className="dashboard-back-link">⚙️ {t('settings')}</Link>
         )}
@@ -1617,10 +1619,12 @@ const Profile = () => {
         </div>
       </div>
 
+      {!embedded && (
       <div className="console-controls">
         <button className="console-btn" onClick={() => navigate('/home')}>{t('home').toUpperCase()}</button>
         <button className="console-btn logout" onClick={handleLogout}>{t('logout').toUpperCase()}</button>
       </div>
+      )}
 
       {showStoryAudiencePicker && pendingStoryFile && createPortal(
         <div className="story-audience-overlay" role="dialog" aria-modal onClick={() => { if (!storyAudienceBusy) { setShowStoryAudiencePicker(false); setPendingStoryFile(null); } }}>

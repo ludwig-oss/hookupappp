@@ -13,6 +13,7 @@ const AuthCallback = () => {
   const navigate = useNavigate();
   const { login } = useContext(AuthContext);
   const [error, setError] = useState('');
+  const [attemptKey, setAttemptKey] = useState(0);
 
   useEffect(() => {
     const token = searchParams.get('token');
@@ -24,11 +25,27 @@ const AuthCallback = () => {
     (async () => {
       try {
         axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-        const full = await profileAPI.getCurrentUser();
+        let full: Awaited<ReturnType<typeof profileAPI.getCurrentUser>> | null = null;
+        let lastError: unknown;
+        for (let attempt = 0; attempt < 3 && !full; attempt += 1) {
+          try {
+            full = await profileAPI.getCurrentUser();
+          } catch (err) {
+            lastError = err;
+            await new Promise((resolve) => window.setTimeout(resolve, 700 * (attempt + 1)));
+          }
+        }
         if (cancelled) return;
+        if (!full) throw lastError;
+        const gender = String(full.gender || '').toLowerCase();
+        const alreadySetUp = Boolean(
+          full.profileSetupComplete ||
+          searchParams.get('setup') === '1' ||
+          (full.profilePicture && (gender === 'female' || gender === 'male'))
+        );
         if (full.hasGoogleAuth && full.email) {
           const saved = await handleGoogleAuthSessionFix.syncGoogleAccountOnSignIn(full.email, {
-            welcomeIfEmpty: !full.profileSetupComplete,
+            welcomeIfEmpty: !alreadySetUp,
           });
           if (saved == null) {
             await handleGoogleAuthSessionFix.linkGoogleAccountOnSignUp({
@@ -41,16 +58,16 @@ const AuthCallback = () => {
           }
         }
         login(full as any, token, { stayLoggedIn: getStayLoggedIn() });
-        navigate(full.profileSetupComplete ? '/home' : '/profile-setup', { replace: true });
+        navigate(alreadySetUp ? '/home' : '/profile-setup', { replace: true });
       } catch (e: any) {
         if (cancelled) return;
-        setError(e?.response?.data?.error || e?.message || 'Sign-in failed after OAuth. Try again.');
+        setError(e?.response?.data?.error || e?.message || 'Could not load your account yet. It is still there — tap Try again.');
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [searchParams, login, navigate]);
+  }, [searchParams, login, navigate, attemptKey]);
 
   if (error) {
     return (
@@ -58,7 +75,10 @@ const AuthCallback = () => {
         <div className="auth-card">
           <h1 className="auth-title">Sign-in issue</h1>
           <div className="error-message">{error}</div>
-          <Link to="/login" className="auth-button" style={{ display: 'inline-block', textDecoration: 'none' }}>
+          <button type="button" className="auth-button" onClick={() => { setError(''); setAttemptKey((n) => n + 1); }}>
+            Try again
+          </button>
+          <Link to="/login" className="auth-button" style={{ display: 'inline-block', textDecoration: 'none', marginTop: 12 }}>
             Back to Sign in
           </Link>
         </div>

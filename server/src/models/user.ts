@@ -694,6 +694,23 @@ export async function viewDisappearingPhoto(photoId: string, viewerId: string, o
   return { canView: true, imageUrl: photo.imageUrl };
 }
 
+export async function findUserForGoogle(googleId: string, email: string): Promise<User | null> {
+  if (usePostgres()) return pgUsers.findUserForGoogle(googleId, email);
+  const users = await readUsers();
+  const needle = email.trim().toLowerCase();
+  const matches = users.filter(
+    (u) => u.googleId === googleId || String(u.email || '').trim().toLowerCase() === needle
+  );
+  matches.sort((a, b) => {
+    const score = (u: User) =>
+      (u.googleId === googleId ? 4 : 0) +
+      (u.profileSetupComplete ? 2 : 0) +
+      (u.profilePicture && (u.gender === 'female' || u.gender === 'male') ? 1 : 0);
+    return score(b) - score(a);
+  });
+  return matches[0] || null;
+}
+
 export async function getAllUsers(): Promise<Omit<User, 'password' | 'resetToken' | 'resetTokenExpiry'>[]> {
   if (usePostgres()) return pgUsers.getAllUsers();
   const users = await readUsers();

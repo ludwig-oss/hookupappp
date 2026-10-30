@@ -5470,6 +5470,21 @@ html.theme-day .chat-boundaries-q {
   cursor: not-allowed;
 }
 
+.app-side-logout {
+  margin-top: 28px;
+  color: #ff8fab;
+}
+
+.app-profile-embed {
+  height: 100%;
+  overflow: auto;
+}
+
+.profile-embedded.dashboard-container {
+  min-height: 0;
+  background: transparent;
+}
+
 .app-side-icon {
   width: 1.4em;
 }

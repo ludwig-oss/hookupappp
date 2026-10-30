@@ -4,10 +4,11 @@ import jwt from 'jsonwebtoken';
 import { v4 as uuidv4 } from 'uuid';
 import {
   createUser,
+  findUserForGoogle,
+  getAllUsers,
   getUserByEmail,
   getUserById,
   getUserByUsername,
-  getAllUsers,
   updateUserProfile,
   type User,
 } from '../models/user.js';
@@ -176,10 +177,14 @@ function redirectError(res: Response, message: string, origin?: string) {
   res.redirect(302, `${base}/login?oauth_error=${encodeURIComponent(message)}`);
 }
 
-async function findByGoogleId(googleId: string): Promise<User | null> {
-  const users = await getAllUsers();
-  const hit = users.find((u) => (u as any).googleId === googleId);
-  return hit ? ((await getUserById(hit.id)) as User) : null;
+async function reopenGoogleUser(user: User): Promise<User> {
+  const gender = String(user.gender || '').toLowerCase();
+  const alreadyChose = gender === 'female' || gender === 'male';
+  if (!user.profileSetupComplete && alreadyChose && user.profilePicture) {
+    await updateUserProfile(user.id, { profileSetupComplete: true });
+    return (await getUserById(user.id)) || { ...user, profileSetupComplete: true };
+  }
+  return user;
 }
 
 async function findByFacebookId(facebookId: string): Promise<User | null> {
@@ -214,12 +219,25 @@ async function upsertOAuthUser(opts: {
   picture?: string | null;
 }): Promise<User> {
   const { provider, providerId, email, name, picture } = opts;
+  if (provider === 'google') {
+    const existing = await findUserForGoogle(providerId, email.toLowerCase());
+    if (existing) {
+      const patch: Partial<User> = {};
+      if (!existing.googleId) patch.googleId = providerId;
+      if (picture && !existing.profilePicture) patch.profilePicture = picture;
+      const saved = Object.keys(patch).length
+        ? (await updateUserProfile(existing.id, patch)) || existing
+        : existing;
+      return reopenGoogleUser(saved);
+    }
+  }
+
   const existingByProvider =
-    provider === 'google'
-      ? await findByGoogleId(providerId)
-      : provider === 'facebook'
-        ? await findByFacebookId(providerId)
-        : await findByAppleId(providerId);
+    provider === 'facebook'
+      ? await findByFacebookId(providerId)
+      : provider === 'apple'
+        ? await findByAppleId(providerId)
+        : null;
   if (existingByProvider) {
     if (picture && !existingByProvider.profilePicture) {
       await updateUserProfile(existingByProvider.id, { profilePicture: picture });
@@ -227,14 +245,14 @@ async function upsertOAuthUser(opts: {
     return (await getUserById(existingByProvider.id)) || existingByProvider;
   }
 
-  if (email) {
+  if (email && provider !== 'google') {
     const byEmail = await getUserByEmail(email.toLowerCase());
     if (byEmail) {
       const patch: Partial<User> = {
         emailVerified: true,
         ...(picture && !byEmail.profilePicture ? { profilePicture: picture } : {}),
       };
-      const idKey = provider === 'google' ? 'googleId' : provider === 'facebook' ? 'facebookId' : 'appleId';
+      const idKey = provider === 'facebook' ? 'facebookId' : 'appleId';
       (patch as any)[idKey] = providerId;
       await updateUserProfile(byEmail.id, patch);
       return (await getUserById(byEmail.id)) || byEmail;

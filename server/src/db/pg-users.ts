@@ -264,6 +264,22 @@ async function hydrateUserMedia(user: User): Promise<User> {
   }
 }
 
+/** Prefer the Google id, then the same email, and a finished profile over a blank duplicate. */
+export async function findUserForGoogle(googleId: string, email: string): Promise<User | null> {
+  const res = await query<{ id: string; email: string; password: string; name: string; username: string; data: unknown }>(
+    `SELECT ${USER_COLS} FROM users
+     WHERE data->>'googleId' = $1
+        OR lower(btrim(email)) = lower(btrim($2))
+     ORDER BY
+       CASE WHEN data->>'googleId' = $1 THEN 0 ELSE 1 END,
+       CASE WHEN data->>'profileSetupComplete' = 'true' THEN 0 ELSE 1 END,
+       CASE WHEN coalesce(data->>'gender', '') IN ('female', 'male') AND coalesce(data->>'profilePicture', '') <> '' THEN 0 ELSE 1 END
+     LIMIT 1`,
+    [googleId, email]
+  );
+  return res.rows[0] ? hydrateUserMedia(rowToUser(res.rows[0])) : null;
+}
+
 export async function getUserByEmail(email: string): Promise<User | null> {
   const res = await query<{ id: string; email: string; password: string; name: string; username: string; data: unknown }>(
     `SELECT ${USER_COLS} FROM users WHERE lower(btrim(email)) = lower(btrim($1))`,

@@ -9,6 +9,23 @@ import './GuideProgramGate.css';
 
 const MAX_AREAS = 5;
 const GRADES: GuideProgramGrade[] = ['A', 'B', 'C', 'D', 'F'];
+const HELPER_LATER_KEY = 'hookup_helper_later';
+
+function readHelperLater() {
+  try {
+    return localStorage.getItem(HELPER_LATER_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function rememberHelperLater() {
+  try {
+    localStorage.setItem(HELPER_LATER_KEY, '1');
+  } catch {
+    /* storage unavailable */
+  }
+}
 
 export default function GuideProgramGate() {
   const { user, logout } = useContext(AuthContext);
@@ -26,6 +43,9 @@ export default function GuideProgramGate() {
   const [coupleSelected, setCoupleSelected] = useState<string[]>([]);
   const [humanPath, setHumanPath] = useState(false);
   const [holdAiChat, setHoldAiChat] = useState(false);
+  const [helperStep, setHelperStep] = useState<'ask' | 'ai' | 'later'>(() =>
+    readHelperLater() ? 'later' : 'ask'
+  );
 
   const refresh = useCallback(async () => {
     if (!user?.id || !user?.profileSetupComplete) return;
@@ -236,31 +256,70 @@ export default function GuideProgramGate() {
     );
   }
 
-  if (!humanPath && (status.needsOnboarding || status.needsGuidePick || holdAiChat) && !status.waitingOnEval) {
+  const chooseHuman = () => {
+    setHumanPath(true);
+    setPickingGuide(true);
+    setHoldAiChat(false);
+    navigate('/home');
+    const categoryId = DEFAULT_IMPROVEMENT_CATEGORIES[0]?.id;
+    window.setTimeout(() => {
+      window.dispatchEvent(new CustomEvent('school:open-guides', { detail: { categoryId } }));
+    }, 250);
+  };
+
+  const chooseLater = () => {
+    rememberHelperLater();
+    setHelperStep('later');
+    setHoldAiChat(false);
+  };
+
+  const needsHelperChoice =
+    !humanPath &&
+    (status.needsOnboarding || status.needsGuidePick || holdAiChat) &&
+    !status.waitingOnEval;
+
+  if (needsHelperChoice && helperStep !== 'later') {
+    if (helperStep === 'ai' || holdAiChat) {
+      return (
+        <AiGuideStudio
+          mode="gate"
+          startOnCrew
+          onUnlocked={() => {
+            setHoldAiChat(true);
+            void refresh();
+          }}
+          onClose={() => {
+            setHoldAiChat(false);
+            setHelperStep('ask');
+          }}
+          onChooseHuman={chooseHuman}
+        />
+      );
+    }
+
     return (
-      <AiGuideStudio
-        mode="gate"
-        onUnlocked={() => {
-          setHoldAiChat(true);
-          void refresh();
-        }}
-        onClose={() => {
-          setHoldAiChat(false);
-          void refresh();
-        }}
-        onChooseHuman={() => {
-          // Still allow browsing humans, but keep AI as the unlock path — do not trap users on empty human lists
-          setHumanPath(true);
-          setPickingGuide(true);
-          setHoldAiChat(false);
-          navigate('/home');
-          window.setTimeout(() => {
-            window.dispatchEvent(new CustomEvent('ai-guide:open', { detail: {} }));
-            window.dispatchEvent(new CustomEvent('school:open-guides', { detail: {} }));
-          }, 250);
-        }}
-      />
+      <div className="school-overlay guide-program-overlay guide-program-choice" role="dialog" aria-modal="true">
+        <div className="school-card school-setup-card">
+          <h2>Who should help you?</h2>
+          <p className="school-sub">Pick a human helper or an AI helper. You can also choose later.</p>
+          <div className="school-actions">
+            <button type="button" className="school-btn-primary" onClick={() => setHelperStep('ai')}>
+              AI helper
+            </button>
+            <button type="button" className="school-btn-secondary" onClick={chooseHuman}>
+              Human helper
+            </button>
+            <button type="button" className="school-btn-ghost" onClick={chooseLater}>
+              Choose later
+            </button>
+          </div>
+        </div>
+      </div>
     );
+  }
+
+  if (helperStep === 'later' && !holdAiChat && !status.waitingOnEval) {
+    return null;
   }
 
   if (status.canUseApp && !holdAiChat) return null;

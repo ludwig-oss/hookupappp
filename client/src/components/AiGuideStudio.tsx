@@ -43,6 +43,7 @@ export default function AiGuideStudio({
   openTermAct = false,
   initialGuideId,
   startInChat = false,
+  startOnCrew = false,
 }: {
   mode?: 'gate' | 'app';
   onUnlocked?: () => void;
@@ -53,10 +54,12 @@ export default function AiGuideStudio({
   /** Jump straight into chat with this guide (Character.AI-style). */
   initialGuideId?: string;
   startInChat?: boolean;
+  /** Open the crew portrait after the user already picked an AI helper. */
+  startOnCrew?: boolean;
 }) {
   const { user, updateUser } = useContext(AuthContext);
   const { language } = useTranslation();
-  const [kind, setKind] = useState<Kind>(mode === 'app' ? 'ai' : 'choose');
+  const [kind, setKind] = useState<Kind>(mode === 'app' || startOnCrew ? 'ai' : 'choose');
   const [guides, setGuides] = useState<AiGuideCharacter[]>([]);
   const [query, setQuery] = useState(initialQuery);
   const [lesson, setLesson] = useState<AiLesson | null>(null);

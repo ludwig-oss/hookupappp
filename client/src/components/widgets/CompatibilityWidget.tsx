@@ -41,7 +41,7 @@ export default function CompatibilityWidget() {
   const [view, setView] = useState<'main' | 'recommended' | 'search' | 'guides' | 'request' | 'send_proof' | 'booking' | 'expert_apply' | 'expert_dashboard'>('main');
   /** Wizard: want a guide → region → browse areas & pick an expert */
   const [guideSeekStep, setGuideSeekStep] = useState<GuideSeekStep>(() => (user?.aiGuideId ? 'skipped' : 'choose'));
-  const [showAiCrew, setShowAiCrew] = useState(() => !user?.aiGuideId);
+  const [showAiCrew, setShowAiCrew] = useState(false);
   const [aiCrewQuery, setAiCrewQuery] = useState('');
   const [chatGuideId, setChatGuideId] = useState<string | undefined>();
   const [startCrewChat, setStartCrewChat] = useState(false);
@@ -121,8 +121,6 @@ export default function CompatibilityWidget() {
       setGuideSeekStep('ready');
       if (catId) {
         void loadGuidesForCategory(catId);
-      } else {
-        setShowAiCrew(true);
       }
     };
     window.addEventListener('school:open-guides', handler);
@@ -292,14 +290,9 @@ export default function CompatibilityWidget() {
       const humans = res.guides || [];
       setGuides(humans);
       setView('guides');
-      // AI crew is the default — open them when humans are empty so users are never stuck
-      if (humans.length === 0 && !user?.aiGuideId) {
-        openAiCrewForCategory(catId);
-      }
     } catch {
       setError('Failed to load experts');
       setView('guides');
-      if (!user?.aiGuideId) openAiCrewForCategory(catId);
     } finally {
       setLoading(false);
     }

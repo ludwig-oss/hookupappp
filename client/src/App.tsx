@@ -31,6 +31,7 @@ import { setStoredLanguage } from './i18n/languageStorage';
 import { userForStorage } from './lib/userStorage';
 import { applyAppTheme } from './lib/theme';
 import { clearAuth, getAuthToken, getAuthUserRaw, persistAuth, writeAuthUser } from './lib/authStorage';
+import { clearLoggedOutFlag, endSession, isLoggedOutFlag } from './lib/endSession';
 import { handleGoogleAuthSessionFix } from './lib/googleAuthSession';
 import './api/http';
 import AppearanceSafetyPrompt from './components/AppearanceSafetyPrompt';
@@ -83,6 +84,11 @@ function App() {
     };
 
     try {
+      if (isLoggedOutFlag()) {
+        clearAuth();
+        finishBoot();
+        return;
+      }
       const token = getAuthToken();
       const userData = getAuthUserRaw();
       if (token) {
@@ -126,7 +132,7 @@ function App() {
 
   // Mid-session: token present but user cleared — rebuild once from /me
   useEffect(() => {
-    if (loading || user?.id) return;
+    if (loading || user?.id || isLoggedOutFlag()) return;
     const token = getAuthToken();
     if (!token) return;
     let cancelled = false;
@@ -161,7 +167,7 @@ function App() {
 
   // After load: refresh full profile from server so pictures, highlights, etc. are always current
   useEffect(() => {
-    if (loading || !user?.id || hasRefreshedProfile.current) return;
+    if (loading || !user?.id || hasRefreshedProfile.current || isLoggedOutFlag()) return;
     const token = getAuthToken();
     if (!token) return;
     hasRefreshedProfile.current = true;
@@ -202,6 +208,11 @@ function App() {
       });
   }, [loading, user?.id]);
 
+  useEffect(() => {
+    if (!user?.id || getAuthToken() || isLoggedOutFlag()) return;
+    endSession('/login');
+  }, [user?.id]);
+
   const login = (userData: any, token: string, options?: { stayLoggedIn?: boolean }) => {
     const id = normalizeUserId(userData?.id);
     if (!isPlainObject(userData) || !id || typeof token !== 'string' || !token) {
@@ -210,6 +221,7 @@ function App() {
     const normalized = { ...userForStorage(userData as Record<string, unknown>), id };
     refreshGen.current += 1;
     hasRefreshedProfile.current = false;
+    clearLoggedOutFlag();
     persistAuth(normalized, token, options?.stayLoggedIn === true);
     axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
     // Commit user before the caller navigates so /profile-setup does not
@@ -224,16 +236,13 @@ function App() {
     const email = String(user?.email || '').trim();
     const google = Boolean(user?.hasGoogleAuth);
     refreshGen.current += 1;
-    setUser(null);
-    hasRefreshedProfile.current = false;
-    void (async () => {
-      if (google && email) {
-        await handleGoogleAuthSessionFix.archiveLiveRecords(email);
-      }
-      clearAuth();
-      await handleGoogleAuthSessionFix.safeSignOut();
-      delete axios.defaults.headers.common['Authorization'];
-    })();
+    hasRefreshedProfile.current = true;
+    if (google && email) void handleGoogleAuthSessionFix.archiveLiveRecords(email);
+    void handleGoogleAuthSessionFix.safeSignOut();
+    flushSync(() => {
+      setUser(null);
+    });
+    endSession('/login');
   };
 
   const updateUser = (updates: Partial<Record<string, any>>) => {

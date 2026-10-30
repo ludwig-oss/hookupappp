@@ -2550,7 +2550,7 @@ img.celeb-blur-img {
   display: flex;
   flex-direction: column;
   height: 100%;
-  min-height: 600px;
+  min-height: 0;
 }
 
 .comm-header {
@@ -2841,6 +2841,7 @@ img.celeb-blur-img {
   color: #ff8888;
   font-size: 12px;
   font-family: 'Orbitron', monospace;
+  overflow-wrap: anywhere;
 }
 
 .chat-list-wrap {
@@ -5660,4 +5661,86 @@ html.theme-day .app-profile-action {
   background: #1a1a1a;
   color: #e1e1e1;
   border-color: #333333;
+}
+
+/* Phones in landscape: keep the dock readable and let the page scroll. */
+@media (orientation: landscape) and (max-height: 520px) {
+  .app-topbar {
+    height: calc(44px + env(safe-area-inset-top, 0px));
+  }
+
+  .app-dock {
+    height: calc(48px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .app-dock-icon {
+    font-size: 18px;
+  }
+
+  .app-sidebar {
+    top: calc(44px + env(safe-area-inset-top, 0px));
+    bottom: calc(48px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .chat-select-header,
+  .chat-intent-lanes,
+  .chat-reply-policy-banner,
+  .comm-header {
+    flex-wrap: wrap;
+  }
+}
+
+/* iPad, Mac, PC: side navigation so the app is not a stretched phone. */
+@media (min-width: 1024px) {
+  .dashboard-container.app-shell {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: stretch;
+  }
+
+  .app-topbar {
+    order: 0;
+    flex: 1 0 100%;
+  }
+
+  .app-dock {
+    order: 1;
+    flex: 0 0 120px;
+    width: 120px;
+    height: auto;
+    min-height: 0;
+    flex-direction: column;
+    justify-content: flex-start;
+    gap: 4px;
+    padding: 12px 8px;
+    border-top: 0;
+    border-right: 1px solid #262626;
+  }
+
+  .app-stage {
+    order: 2;
+    flex: 1 1 auto;
+    height: calc(100dvh - 56px - env(safe-area-inset-top, 0px));
+  }
+
+  .app-dock-tab {
+    flex: 0 0 auto;
+    width: 100%;
+    min-height: 68px;
+    padding: 8px 4px;
+    border-radius: 12px;
+  }
+
+  .app-dock-label {
+    font-size: 11px;
+    white-space: normal;
+    text-align: center;
+    line-height: 1.2;
+  }
+
+  .app-sidebar {
+    top: calc(56px + env(safe-area-inset-top, 0px));
+    bottom: 0;
+    left: 120px;
+  }
 }

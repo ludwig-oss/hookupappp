@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { getAuthToken } from '../lib/authStorage';
+import { endSession, isLoggedOutFlag } from '../lib/endSession';
 
 const RETRY_STATUSES = new Set([502, 503, 504]);
 const RETRY_METHODS = new Set(['get', 'post', 'put', 'patch', 'delete']);
@@ -38,6 +39,18 @@ axios.interceptors.response.use(
     }
     const cfg = err?.config;
     const status = err?.response?.status;
+    const url = String(cfg?.url || '');
+    const sentAuth = String(cfg?.headers?.Authorization || cfg?.headers?.authorization || '');
+    const hadAuth = sentAuth.length > 0;
+    const authAttempt = /\/api\/auth\//.test(url);
+    if (status === 401 && hadAuth && !authAttempt) {
+      const current = getAuthToken() || '';
+      const sent = sentAuth.replace(/^Bearer\s+/i, '');
+      const stale = Boolean(current) && current !== sent;
+      if (!stale && !( !current && isLoggedOutFlag())) {
+        endSession('/login');
+      }
+    }
     if (
       cfg &&
       !cfg.__retriedOnce &&

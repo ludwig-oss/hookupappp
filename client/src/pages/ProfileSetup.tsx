@@ -90,7 +90,6 @@ const ProfileSetup = () => {
 
   const startOver = () => {
     logout();
-    navigate('/', { replace: true });
   };
 
   const verifyFacePhoto = async (blob: Blob): Promise<boolean> => {
@@ -183,7 +182,6 @@ const ProfileSetup = () => {
       const code = (err as { response?: { data?: { code?: string } } })?.response?.data?.code;
       if (status === 401 || status === 404 || code === 'SESSION_GONE') {
         logout();
-        navigate('/', { replace: true });
         return;
       }
       setError(formatAxiosError(err, 'Failed to complete profile setup'));

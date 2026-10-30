@@ -17,6 +17,7 @@ import { useTranslation } from '../context/LanguageContext';
 import { chatAPI } from '../api/chat';
 import { isVideoMediaUrl } from '../lib/media';
 import { getAuthToken } from '../lib/authStorage';
+import { endSession } from '../lib/endSession';
 import { prepareAndUploadFile } from '../lib/uploadMedia';
 import { MEDIA_FILE_ACCEPT, isProbablyImageFile, isProbablyVideoFile } from '../lib/compressVideo';
 import { formatAxiosError } from '../lib/apiError';
@@ -319,9 +320,7 @@ const Profile = ({ embedded = false }: { embedded?: boolean }) => {
         return;
       }
       if (!getAuthToken()) {
-        setProfile(null);
-        setError('Session expired. Please sign in again.');
-        setLoading(false);
+        endSession('/login');
         return;
       }
       setProfile((prev) => prev ?? buildSessionProfile(user));
@@ -649,7 +648,7 @@ const Profile = ({ embedded = false }: { embedded?: boolean }) => {
     }
   };
 
-  const handleLogout = () => { logout(); navigate('/login'); };
+  const handleLogout = () => { logout(); };
 
   if (loading) {
     return (
@@ -683,7 +682,7 @@ const Profile = ({ embedded = false }: { embedded?: boolean }) => {
           <p style={{ marginBottom: 24 }}>
             {error || (signedIn ? 'Could not load this profile.' : 'You need to sign in to view your profile.')}
           </p>
-          {signedIn ? (
+          {signedIn && getAuthToken() ? (
             <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
               <button type="button" className="profile-save-btn" onClick={() => { setLoading(true); setError(''); loadProfileFromServer(); }}>
                 Retry

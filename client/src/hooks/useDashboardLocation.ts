@@ -66,7 +66,7 @@ export function useDashboardLocation(user?: UserLoc) {
       connectionsAPI.setVisibility(true).catch(() => {});
 
       resolveWorkingCoords(
-        { userId: user.id, city: user.city, country: user.country, allowIp: true },
+        { userId: user.id, allowIp: true },
         locationApi
       ).then((coords) => {
         if (coords && visibleRef.current) push(coords, true);
@@ -82,7 +82,7 @@ export function useDashboardLocation(user?: UserLoc) {
         if (c) push(c, true);
         else {
           resolveWorkingCoords(
-            { userId: user.id, city: user.city, country: user.country, allowIp: true },
+            { userId: user.id, allowIp: true },
             locationApi
           ).then((next) => {
             if (next && visibleRef.current) push(next, true);

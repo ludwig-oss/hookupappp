@@ -85,18 +85,11 @@ export function nearbyRadiusForCoords(coords: StoredCoords | null): number {
   return Math.min(250, NEARBY_TARGET_M + pad);
 }
 
-/**
- * Ask the server for a wide enough circle.
- * GPS stays about a block (indoor pins drift). City or IP pins cover the same metro
- * so two phones still see each other when GPS never arrives.
- */
+/** Nearby stays a block, even if the pin came from a rough fix. City search is separate. */
 export function nearbyPeopleRadiusMeters(coords: StoredCoords | null): number {
   if (!coords) return NEARBY_TARGET_M;
   const acc = typeof coords.accuracy === 'number' && Number.isFinite(coords.accuracy) ? coords.accuracy : 0;
-  const coarse =
-    coords.source === 'profile' || coords.source === 'server' || coords.source === 'ip' || acc >= 1500;
-  if (coarse) return 80_000;
-  return Math.max(NEARBY_TARGET_M, Math.min(500, NEARBY_TARGET_M + acc));
+  return Math.max(NEARBY_TARGET_M, Math.min(500, NEARBY_TARGET_M + Math.min(acc, 450)));
 }
 
 export function startGpsWatch(onFix: (coords: StoredCoords) => void): () => void {
@@ -155,15 +148,15 @@ function tryGps(timeoutMs = 20000, highAccuracy = false): Promise<StoredCoords |
 export function geolocationErrorMessage(err: GeolocationPositionError | null | undefined): string {
   const code = err?.code;
   if (code === 1) {
-    return 'GPS did not come through. Type your city and country below and tap Save — nearby still works.';
+    return 'GPS did not come through. Allow location for this site, then tap Yes again.';
   }
   if (code === 2) {
-    return 'Could not find GPS. Type your city and country below and tap Save.';
+    return 'Could not find GPS. Allow location, then tap Yes again.';
   }
   if (code === 3) {
-    return 'GPS timed out. Type your city and country below and tap Save.';
+    return 'GPS timed out. Tap Yes again.';
   }
-  return 'Could not get GPS. Type your city and country below and tap Save.';
+  return 'Could not get GPS. Allow location, then tap Yes again.';
 }
 
 function coordsFromPosition(pos: GeolocationPosition): StoredCoords {
@@ -179,7 +172,7 @@ function coordsFromPosition(pos: GeolocationPosition): StoredCoords {
 export function requestGpsFromUserTap(): Promise<{ coords: StoredCoords | null; error?: string }> {
   return new Promise((resolve) => {
     if (typeof navigator === 'undefined' || !navigator.geolocation) {
-      resolve({ coords: null, error: 'This browser cannot use GPS. Type your city and country, then Save.' });
+      resolve({ coords: null, error: 'This browser cannot use GPS. Allow location, then tap Yes again.' });
       return;
     }
 
@@ -231,7 +224,7 @@ export function requestGpsFromUserTap(): Promise<{ coords: StoredCoords | null; 
     try {
       watches.push(navigator.geolocation.watchPosition(onOk, noteProblem, precise));
     } catch {
-      finish(null, 'Could not start GPS. Type your city and country below and tap Save.');
+      finish(null, 'Could not start GPS. Allow location, then tap Yes again.');
       return;
     }
 
@@ -239,7 +232,7 @@ export function requestGpsFromUserTap(): Promise<{ coords: StoredCoords | null; 
     navigator.geolocation.getCurrentPosition(onOk, noteProblem, loose);
 
     window.setTimeout(() => {
-      if (!settled) finish(null, 'GPS is taking too long. Type your city and country below and tap Save.');
+      if (!settled) finish(null, 'GPS is taking too long. Tap Yes again.');
     }, 18000);
   });
 }

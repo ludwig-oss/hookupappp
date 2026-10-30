@@ -729,6 +729,8 @@ const Dashboard = () => {
               <p className="app-side-label">Meet</p>
               {sideItem('datematch', '⚔️', 'Date Arena')}
               {sideItem('events', '📅', 'Events')}
+              <p className="app-side-label">International</p>
+              {sideItem('activity', '🌍', 'Search a city')}
             </>
           ) : (
             <p className="app-side-hint">Select main panel feature</p>

@@ -233,41 +233,14 @@ export async function tryMutualBuzzMatch(
 const NEW_ACCOUNT_MS = 2 * 24 * 60 * 60 * 1000;
 /** Indoor GPS pins for two phones in the same room are often a few hundred meters apart. */
 const INDOOR_MATCH_M = 500;
-const COARSE_ACCURACY_M = 1500;
-/** IP/city pins for the same metro can land tens of km apart. */
-const COARSE_MATCH_M = 80_000;
 
+/** Nearby is physical only. City search is a separate international list. */
 export function shouldShowNearby(opts: {
   distance: number;
-  requestedRadius: number;
-  viewerAccuracy: number;
-  otherAccuracy: number;
-  sameCity: boolean;
   sameNetwork: boolean;
 }): boolean {
   if (opts.sameNetwork) return true;
-  const radius = Number.isFinite(opts.requestedRadius) && opts.requestedRadius > 0 ? opts.requestedRadius : 50;
-  if (opts.distance <= Math.max(radius, INDOOR_MATCH_M)) return true;
-  const viewerCoarse = opts.viewerAccuracy >= COARSE_ACCURACY_M;
-  const otherCoarse = opts.otherAccuracy >= COARSE_ACCURACY_M;
-  if (viewerCoarse && otherCoarse && (opts.sameCity || opts.distance <= COARSE_MATCH_M)) return true;
-  if ((viewerCoarse || otherCoarse) && opts.sameCity) return true;
-  return false;
-}
-
-function normPlace(value?: string | null): string {
-  return String(value || '')
-    .trim()
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '');
-}
-
-function sameCityName(a?: string | null, b?: string | null): boolean {
-  const x = normPlace(a);
-  const y = normPlace(b);
-  if (!x || !y) return false;
-  return x === y || x.includes(y) || y.includes(x);
+  return opts.distance <= INDOOR_MATCH_M;
 }
 
 function isFreshAccount(user: { id: string; createdAt?: string | Date | null }): boolean {
@@ -281,6 +254,8 @@ export async function getNearbyUsers(
   radius: number = 50,
   viewerAccuracy?: number
 ): Promise<NearbyUser[]> {
+  void radius;
+  void viewerAccuracy;
   const users = await getAllUsers();
   const user = await getUserById(userId);
   if (!user) return [];
@@ -312,26 +287,10 @@ export async function getNearbyUsers(
       if (updatedAt && Date.now() - updatedAt > 24 * 60 * 60 * 1000) continue;
 
       const distance = calculateDistance(lat, lon, otherLat, otherLon);
-      const otherAccRaw = Number(otherUser.location.accuracy);
-      const otherAcc = Number.isFinite(otherAccRaw) ? otherAccRaw : 80;
-      const fromQuery = Number(viewerAccuracy);
-      const fromProfile = Number(user.location?.accuracy);
-      const viewerAcc = Number.isFinite(fromQuery) ? fromQuery : Number.isFinite(fromProfile) ? fromProfile : 80;
       const viewerNet = user.location?.networkKey;
       const otherNet = otherUser.location.networkKey;
       const sameNetwork = Boolean(viewerNet && otherNet && viewerNet === otherNet);
-      if (
-        !shouldShowNearby({
-          distance,
-          requestedRadius: radius,
-          viewerAccuracy: viewerAcc,
-          otherAccuracy: otherAcc,
-          sameCity: sameCityName(user.city, otherUser.city),
-          sameNetwork,
-        })
-      ) {
-        continue;
-      }
+      if (!shouldShowNearby({ distance, sameNetwork })) continue;
 
       const otherPref = await getUserPreference(otherUser.id);
       // Missing prefs must not hide someone who is physically nearby.

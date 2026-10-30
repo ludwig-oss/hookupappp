@@ -40,16 +40,11 @@ export default function NearbyMatchPopup({ onOpenConnections }: Props) {
   const poll = useCallback(async (opts?: { force?: boolean }) => {
     if (!user?.id) return;
     const coords = await resolveWorkingCoords(
-      {
-        userId: user.id,
-        city: (user as { city?: string }).city,
-        country: (user as { country?: string }).country,
-        allowIp: true,
-      },
+      { userId: user.id, allowIp: true },
       locationApi
     );
     if (!coords) {
-      if (opts?.force) setEmptyHint('Turn on location (or save your city) to see people within 50 meters.');
+      if (opts?.force) setEmptyHint('Turn location on to see people next to you.');
       return;
     }
     try {
@@ -168,16 +163,11 @@ export default function NearbyMatchPopup({ onOpenConnections }: Props) {
   const sendInterest = async () => {
     if (!match || !user?.id) return;
     const coords = await resolveWorkingCoords(
-      {
-        userId: user.id,
-        city: (user as { city?: string }).city,
-        country: (user as { country?: string }).country,
-        allowIp: true,
-      },
+      { userId: user.id, allowIp: true },
       locationApi
     );
     if (!coords) {
-      setError('Add your city on Profile, or allow location — then try again.');
+      setError('Allow location, then try again.');
       return;
     }
     setLoading(true);

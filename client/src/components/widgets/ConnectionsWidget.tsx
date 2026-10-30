@@ -89,8 +89,6 @@ const ConnectionsWidget = () => {
   const [showPreferenceRankList, setShowPreferenceRankList] = useState(false);
   const [locationDeclined, setLocationDeclined] = useState(false);
   const [requestingLocation, setRequestingLocation] = useState(false);
-  const [placeCity, setPlaceCity] = useState(() => String((user as { city?: string } | null)?.city || ''));
-  const [placeCountry, setPlaceCountry] = useState(() => String((user as { country?: string } | null)?.country || ''));
   const [handledRev, setHandledRev] = useState(0);
   const [personSearch, setPersonSearch] = useState('');
   const [listPage, setListPage] = useState(0);
@@ -108,8 +106,6 @@ const ConnectionsWidget = () => {
       if (city && country) setPlaceLabel(`${city}, ${country}`);
       else if (displayName) setPlaceLabel(displayName);
       else setPlaceLabel(null);
-      if (city) setPlaceCity((prev) => prev || city);
-      if (country) setPlaceCountry((prev) => prev || country);
       if ((city || country) && user?.id) {
         connectionsAPI.updateLocation({
           lat,
@@ -155,25 +151,21 @@ const ConnectionsWidget = () => {
     const fallback = await resolveWorkingCoords(
       {
         userId: user?.id,
-        city: placeCity.trim() || (user as { city?: string })?.city,
-        country: placeCountry.trim() || (user as { country?: string })?.country,
         ignoreCache: true,
         allowIp: true,
       },
       locationApi
     );
     if (fallback) {
-      if (fallback.city) setPlaceCity((prev) => prev || fallback.city || '');
-      if (fallback.country) setPlaceCountry((prev) => prev || fallback.country || '');
       applyCoords(fallback);
       if (fallback.source !== 'gps') {
-        setComfortingMessage('Location on. People near you can show up now — tap Yes on the other phone too.');
+        setComfortingMessage('Location on. People next to you can show up now — keep the other phone in the app too.');
         setTimeout(() => setComfortingMessage(null), 6000);
       }
       return fallback;
     }
-    throw new Error(error || 'Type your city and country below, then tap Save.');
-  }, [applyCoords, user?.id, user, placeCity, placeCountry]);
+    throw new Error(error || 'Allow location, then tap Yes again.');
+  }, [applyCoords, user?.id]);
 
   const requestLocationAccess = useCallback(async () => {
     setRequestingLocation(true);
@@ -257,13 +249,6 @@ const ConnectionsWidget = () => {
   }, [user?.id, location]);
 
   useEffect(() => {
-    const city = (user as { city?: string } | null)?.city;
-    const country = (user as { country?: string } | null)?.country;
-    if (city && !placeCity) setPlaceCity(city);
-    if (country && !placeCountry) setPlaceCountry(country);
-  }, [user, placeCity, placeCountry]);
-
-  useEffect(() => {
     if (user?.id) {
       connectionsAPI.getPrefs().then((p) => {
         setConnectionsVisible(p.connectionsVisible);
@@ -285,21 +270,17 @@ const ConnectionsWidget = () => {
     resolveWorkingCoords(
       {
         userId: user.id,
-        city: (user as { city?: string }).city,
-        country: (user as { country?: string }).country,
         allowIp: true,
       },
       locationApi
     ).then((coords) => {
       if (coords && !location) {
         setLocation(coords);
-        if (coords.city) setPlaceCity((prev) => prev || coords.city || '');
-        if (coords.country) setPlaceCountry((prev) => prev || coords.country || '');
         fetchPlaceLabel(coords.lat, coords.lon);
         pushLocation(coords, true).catch(() => {});
       }
     });
-  }, [user?.id, user?.city, user?.country]);
+  }, [user?.id]);
 
   useEffect(() => {
     if (!user?.id || location) return;
@@ -315,16 +296,12 @@ const ConnectionsWidget = () => {
     resolveWorkingCoords(
       {
         userId: user.id,
-        city: (user as { city?: string }).city,
-        country: (user as { country?: string }).country,
         allowIp: true,
       },
       locationApi
     ).then((coords) => {
       if (!coords) return;
       setLocation(coords);
-      if (coords.city) setPlaceCity((prev) => prev || coords.city || '');
-      if (coords.country) setPlaceCountry((prev) => prev || coords.country || '');
       fetchPlaceLabel(coords.lat, coords.lon);
       pushLocation(coords, true).catch(() => {});
     });
@@ -616,59 +593,9 @@ const ConnectionsWidget = () => {
             No
           </button>
         </div>
-        <p style={{ margin: '14px 0 8px', fontSize: 12, color: '#d1d5db' }}>
-          Or type your city — works even if GPS does not.
-        </p>
-        <input
-          className="profile-input"
-          value={placeCity}
-          onChange={(e) => setPlaceCity(e.target.value)}
-          placeholder="City"
-          style={{ width: '100%', marginBottom: 6, padding: 10 }}
-        />
-        <input
-          className="profile-input"
-          value={placeCountry}
-          onChange={(e) => setPlaceCountry(e.target.value)}
-          placeholder="Country"
-          style={{ width: '100%', marginBottom: 8, padding: 10 }}
-        />
-        <button
-          type="button"
-          disabled={requestingLocation || loading}
-          onClick={async () => {
-            const city = placeCity.trim();
-            const country = placeCountry.trim();
-            if (!city && !country) {
-              setError('Type your city and country, then tap Save.');
-              return;
-            }
-            if (!user?.id) return;
-            setRequestingLocation(true);
-            setError('');
-            try {
-              const coords = await resolveWorkingCoords(
-                { userId: user.id, city, country, placeFirst: true, ignoreCache: true },
-                locationApi
-              );
-              if (!coords) {
-                setError('Could not find that place. Check the spelling.');
-                return;
-              }
-              applyCoords(coords);
-            } catch (err: unknown) {
-              setError(formatAxiosError(err, 'Could not save that place'));
-            } finally {
-              setRequestingLocation(false);
-            }
-          }}
-          style={{ width: '100%', margin: 0 }}
-        >
-          {requestingLocation ? 'Saving…' : 'Save city'}
-        </button>
         {locationDeclined && (
           <p style={{ margin: '10px 0 0', fontSize: 11, color: '#9ca3af' }}>
-            Location off — you can still browse. Tap Yes or Save city anytime.
+            Location off. Tap Yes when you want people next to you.
           </p>
         )}
       </div>

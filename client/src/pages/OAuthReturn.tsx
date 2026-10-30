@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
-import { warmBackend } from '../lib/warmBackend';
 import type { OAuthProvider } from '../lib/oauth';
 import './Auth.css';
 
@@ -30,12 +29,7 @@ const OAuthReturn = () => {
         return;
       }
       const idToken = hashParams.get('id_token');
-      const ok = await warmBackend(75000);
       if (cancelled) return;
-      if (!ok) {
-        setError('Could not reach the server. Wait a few seconds and try signing in again.');
-        return;
-      }
       if (provider === 'google' && idToken) {
         const res = await fetch(`${window.location.origin}/api/auth/google/id-token`, {
           method: 'POST',

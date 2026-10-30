@@ -1,10 +1,13 @@
-import { warmBackend } from './warmBackend';
-
 export type OAuthProvider = 'google' | 'facebook' | 'apple';
 export type OAuthIntent = 'login' | 'signup';
 
-function isFirefox(): boolean {
-  return typeof navigator !== 'undefined' && /firefox/i.test(navigator.userAgent);
+function abortAfter(ms: number): AbortSignal {
+  if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') {
+    return AbortSignal.timeout(ms);
+  }
+  const ctrl = new AbortController();
+  window.setTimeout(() => ctrl.abort(), ms);
+  return ctrl.signal;
 }
 
 function allowedProviderHost(hostname: string, provider: OAuthProvider): boolean {
@@ -15,43 +18,55 @@ function allowedProviderHost(hostname: string, provider: OAuthProvider): boolean
 }
 
 /**
- * Ask our API for the provider URL, then open that URL.
- * The browser never loads the API host itself, so a cold-start HTML page cannot flash on screen.
+ * Ask our API for the provider URL, then open that URL immediately.
+ * No health-check wait first — that was holding the button for up to a minute.
  */
 export async function redirectToOAuth(provider: OAuthProvider, intent: OAuthIntent = 'signup'): Promise<void> {
-  const firefox = isFirefox();
-  const ready = await warmBackend(firefox ? 8000 : 60000);
-  if (!ready && !firefox) {
-    throw new Error('Server is waking up — please try again in a moment.');
-  }
   const origin = window.location.origin;
   const url = `${origin}/api/auth/${provider}?return_origin=${encodeURIComponent(origin)}&intent=${intent}&format=json`;
-  const res = await fetch(url, {
-    headers: { Accept: 'application/json' },
-    cache: 'no-store',
-    credentials: 'same-origin',
-  });
-  const raw = await res.text();
-  if (!res.headers.get('content-type')?.includes('json') || /<html|onrender\.com/i.test(raw)) {
-    throw new Error('Server is waking up — please try again in a moment.');
+  let lastMessage = 'Could not start. Try again.';
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    if (attempt > 0) await new Promise((r) => setTimeout(r, 400));
+    let res: Response;
+    try {
+      res = await fetch(url, {
+        headers: { Accept: 'application/json' },
+        cache: 'no-store',
+        credentials: 'same-origin',
+        signal: abortAfter(8000),
+      });
+    } catch {
+      lastMessage = 'Could not reach the server. Try again.';
+      continue;
+    }
+    const raw = await res.text();
+    const isJson = (res.headers.get('content-type') || '').includes('json') && !/<html|onrender\.com/i.test(raw);
+    if (!isJson || res.status >= 500) {
+      lastMessage = 'Server is waking up — please try again.';
+      continue;
+    }
+    let data: { url?: string; error?: string };
+    try {
+      data = JSON.parse(raw) as { url?: string; error?: string };
+    } catch {
+      lastMessage = 'Could not start. Try again.';
+      continue;
+    }
+    if (!res.ok || !data.url) {
+      throw new Error(data.error || 'Could not start. Try again.');
+    }
+    let dest: URL;
+    try {
+      dest = new URL(data.url);
+    } catch {
+      throw new Error('Could not start. Try again.');
+    }
+    if (!allowedProviderHost(dest.hostname, provider)) {
+      throw new Error('Could not start. Try again.');
+    }
+    window.location.assign(data.url);
+    return;
   }
-  let data: { url?: string; error?: string };
-  try {
-    data = JSON.parse(raw) as { url?: string; error?: string };
-  } catch {
-    throw new Error('Server is waking up — please try again in a moment.');
-  }
-  if (!res.ok || !data.url) {
-    throw new Error(data.error || 'Could not start sign-in. Try again.');
-  }
-  let dest: URL;
-  try {
-    dest = new URL(data.url);
-  } catch {
-    throw new Error('Could not start sign-in. Try again.');
-  }
-  if (!allowedProviderHost(dest.hostname, provider)) {
-    throw new Error('Could not start sign-in. Try again.');
-  }
-  window.location.assign(data.url);
+  throw new Error(lastMessage);
 }

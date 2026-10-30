@@ -153,9 +153,9 @@ module.exports = async function handler(req, res) {
 
   try {
     let upstream = await fetch(target, fetchOpts);
-    // Render free tier cold start — retry once after a short pause
+    // Cold start: one short retry. A long pause here is what made Sign up feel stuck.
     if ((upstream.status === 502 || upstream.status === 503 || upstream.status === 504) && method !== 'OPTIONS') {
-      await sleep(2500);
+      await sleep(400);
       upstream = await fetch(target, fetchOpts);
     }
     if (upstream.status === 508) {

@@ -3,7 +3,10 @@ import { useNavigate, Link } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
 import { profileAPI } from '../api/profile';
 import { dateMatchAPI } from '../api/dateMatch';
+import { discoverAPI } from '../api/discover';
+import { walkMatchAPI } from '../api/walkMatch';
 import LookingForChips from '../components/LookingForChips';
+import { DATING_GENDERS, datingGender, orientationFitsGender, orientationsForGender } from '../lib/genderOrientation';
 import { formatAxiosError } from '../lib/apiError';
 import { prepareAndUploadFile } from '../lib/uploadMedia';
 import { trimVideoToBlob, clampClipRange, MAX_CLIP_SEC } from '../lib/trimVideo';
@@ -36,6 +39,9 @@ const ProfileSetup = () => {
   const [lookingFor, setLookingFor] = useState<string[]>(
     Array.isArray(user?.dateLookingFor) ? user.dateLookingFor.filter((x: unknown) => typeof x === 'string') : []
   );
+  const [gender, setGender] = useState(datingGender(typeof user?.gender === 'string' ? user.gender : ''));
+  const [orientation, setOrientation] = useState<'' | 'straight' | 'gay' | 'lesbian' | 'bisexual' | 'pansexual'>('');
+  const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [checkingFace, setCheckingFace] = useState(false);
   const [faceOk, setFaceOk] = useState(false);
   const [capturingSelfie, setCapturingSelfie] = useState(false);
@@ -112,13 +118,31 @@ const ProfileSetup = () => {
       const ok = await verifyFacePhoto(blob);
       if (!ok) return;
     }
+    const g = datingGender(gender);
+    if (!g) {
+      setError('Choose Female or Male.');
+      return;
+    }
+    if (orientation && !orientationFitsGender(orientation, g)) {
+      setError('That orientation does not match the gender you chose.');
+      return;
+    }
+    if (!agreedToTerms) {
+      setError('Agree to Terms and Privacy to continue.');
+      return;
+    }
     setLoading(true);
     setError('');
     try {
+      await profileAPI.updateProfile({ gender: g });
+      await walkMatchAPI.updateSettings({ gender: g }).catch(() => {});
+      if (orientation) {
+        await discoverAPI.setPreference({ orientation, userId: user.id });
+      }
       if (lookingFor.length > 0) {
         await dateMatchAPI.saveLookingFor(lookingFor);
-        updateUser({ dateLookingFor: lookingFor });
       }
+      updateUser({ dateLookingFor: lookingFor, gender: g });
       const file = asUploadFile(blob, 'photo.jpg');
       const pictureUrl = await prepareAndUploadFile(file, 'profile');
       const response = await profileAPI.completeProfileSetup(pictureUrl, user.id);
@@ -314,7 +338,10 @@ const ProfileSetup = () => {
     setError('');
   };
 
-  const canContinue = Boolean(uploadBlob && uploadBlob.type.startsWith('image/') && faceOk && !loading && !trimming && !checkingFace && !capturingSelfie);
+  const canContinue = Boolean(
+    uploadBlob && uploadBlob.type.startsWith('image/') && faceOk && datingGender(gender) && agreedToTerms
+    && !loading && !trimming && !checkingFace && !capturingSelfie
+  );
 
   return (
     <div className="profile-setup-container">
@@ -322,18 +349,64 @@ const ProfileSetup = () => {
         <Link to="/" className="back-link" onClick={(e) => { e.preventDefault(); startOver(); }}>
           ← Back to start
         </Link>
-        <h1 className="setup-title">Add your face photo</h1>
+        <h1 className="setup-title">Finish joining</h1>
         <p className="setup-subtitle">
-          This is required — you cannot skip it. Chest and above is enough, as long as your head is in the photo.
+          Google got you in. Choose gender, orientation, and what you want, then agree to Terms and Privacy. The photo comes after that.
         </p>
-        <div className="setup-info-note">
-          <p><strong>Your photo must be your face</strong> — a selfie or a clear close-up of you. Group shots, landscapes, or pictures of someone else will not work.</p>
-          <p>While you use Hook Up, location turns on automatically so nearby people show up. You can show interest or pass. Location turns off when you leave, switch sites, or switch apps.</p>
-        </div>
 
         {error && <div className="error-message">{error}</div>}
 
+        <section className="setup-section" aria-labelledby="setup-gender-heading">
+          <h2 id="setup-gender-heading" className="setup-section-title">Gender</h2>
+          <select
+            id="setup-gender"
+            className="setup-select"
+            value={datingGender(gender)}
+            onChange={(e) => {
+              const next = e.target.value;
+              setGender(next);
+              if (orientation && !orientationFitsGender(orientation, next)) setOrientation('');
+            }}
+          >
+            <option value="">Female or Male…</option>
+            {DATING_GENDERS.map((g) => (
+              <option key={g.value} value={g.value}>{g.label}</option>
+            ))}
+          </select>
+        </section>
+
+        <section className="setup-section" aria-labelledby="setup-orientation-heading">
+          <h2 id="setup-orientation-heading" className="setup-section-title">Orientation</h2>
+          <select
+            id="setup-orientation"
+            className="setup-select"
+            value={orientation}
+            disabled={!datingGender(gender)}
+            onChange={(e) => setOrientation(e.target.value as typeof orientation)}
+          >
+            <option value="">{datingGender(gender) ? 'Skip for now…' : 'Choose Female or Male first'}</option>
+            {orientationsForGender(gender).map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+          <p className="setup-section-hint">Gay is for men, lesbian is for women. Straight, bi, and pan follow the gender you picked.</p>
+        </section>
+
+        <section className="setup-section" aria-labelledby="setup-looking-heading">
+          <h2 id="setup-looking-heading" className="setup-section-title">What you&apos;re looking for</h2>
+          <LookingForChips value={lookingFor} onChange={setLookingFor} variant="setup" />
+        </section>
+
+        <label className="setup-terms">
+          <input type="checkbox" checked={agreedToTerms} onChange={(e) => setAgreedToTerms(e.target.checked)} />
+          <span>I agree to the <Link to="/terms">Terms</Link> and <Link to="/privacy">Privacy</Link>. 18+.</span>
+        </label>
+
         <section className="setup-section" aria-labelledby="setup-photo-heading">
+          <div className="setup-info-note">
+            <p><strong>Your photo must show your head</strong> — chest and above is enough. Group shots, landscapes, or pictures of someone else will not work.</p>
+            <p>While you use Hook Up, location turns on automatically so nearby people show up. You can show interest or pass. Location turns off when you leave, switch sites, or switch apps.</p>
+          </div>
           <h2 id="setup-photo-heading" className="setup-section-title">
             Required: head visible, chest and above
           </h2>
@@ -429,11 +502,6 @@ const ProfileSetup = () => {
               </div>
             )}
           </div>
-        </section>
-
-        <section className="setup-section" aria-labelledby="setup-looking-heading">
-          <h2 id="setup-looking-heading" className="setup-section-title">What you&apos;re looking for (optional)</h2>
-          <LookingForChips value={lookingFor} onChange={setLookingFor} variant="setup" />
         </section>
 
         <input ref={photoInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleImageSelect} />

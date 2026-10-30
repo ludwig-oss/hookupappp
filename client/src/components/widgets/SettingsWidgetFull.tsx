@@ -1722,7 +1722,7 @@ const SettingsWidgetFull = () => {
             <h4 style={{ marginBottom: '16px' }}>{user?.hasBackupPassword ? 'Change Password' : 'Add a password'}</h4>
             {!user?.hasBackupPassword && (
               <p style={{ fontSize: 13, color: '#6b7280', marginBottom: 12 }}>
-                You skipped this at sign-up. Add a password so you can sign in if you forget your PIN.
+                Optional. Google is enough to sign in. Add a password here if you want a stronger sign-in.
               </p>
             )}
             {passwordError && <div className="error-message" style={{ marginBottom: '12px' }}>{passwordError}</div>}

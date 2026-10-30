@@ -101,6 +101,31 @@
   color: #f9a8d4;
 }
 
+.setup-select {
+  width: 100%;
+  padding: 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(0, 0, 0, 0.35);
+  color: #f3f4f6;
+  font-size: 15px;
+}
+
+.setup-terms {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  text-align: left;
+  font-size: 14px;
+  line-height: 1.4;
+  margin: 0 0 28px;
+  color: #e5e7eb;
+}
+
+.setup-terms a {
+  color: #7dd3fc;
+}
+
 .setup-section-hint {
   margin: 0 0 16px;
   font-size: 12px;

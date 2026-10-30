@@ -139,6 +139,18 @@ export async function createBuzz(buzzData: Omit<Buzz, 'id' | 'status' | 'created
   return buzz;
 }
 
+export async function findPendingBetween(fromUserId: string, toUserId: string): Promise<Buzz | null> {
+  if (usePostgres()) return pgBuzzes.findPendingBetween(fromUserId, toUserId);
+  const buzzes = await readBuzzes();
+  return buzzes.find((b) => b.fromUserId === fromUserId && b.toUserId === toUserId && b.status === 'pending') || null;
+}
+
+export async function deleteBuzz(id: string): Promise<void> {
+  if (usePostgres()) return pgBuzzes.deleteBuzz(id);
+  const buzzes = await readBuzzes();
+  await writeBuzzes(buzzes.filter((b) => String(b.id) !== String(id)));
+}
+
 export async function getBuzzesForUser(userId: string): Promise<Buzz[]> {
   if (usePostgres()) return pgBuzzes.getBuzzesForUser(userId);
   const buzzes = await readBuzzes();

@@ -2603,6 +2603,17 @@ const ChatWidget = ({
             <button type="button" className="chat-toolbar-btn" onClick={() => setShowGamesPicker(true)} title="Games and quizzes">
               🎮
             </button>
+            <button
+              type="button"
+              className="chat-toolbar-btn"
+              title="Having trouble texting? Get a live guide"
+              onClick={() => {
+                setHelpSessionId(null);
+                setTextingHelpOpen(true);
+              }}
+            >
+              SOS
+            </button>
             <button type="button" className="chat-toolbar-btn" onClick={handleVideoCall} title="Video call">
               📞
             </button>
@@ -2629,17 +2640,6 @@ const ChatWidget = ({
               </button>
             </div>
           )}
-          <button
-            type="button"
-            className="chat-texting-help-fab"
-            title="Having trouble texting? Get a live guide"
-            onClick={() => {
-              setHelpSessionId(null);
-              setTextingHelpOpen(true);
-            }}
-          >
-            SOS
-          </button>
           <div className="chat-input-wrap">
             <input
               ref={chatInputRef}

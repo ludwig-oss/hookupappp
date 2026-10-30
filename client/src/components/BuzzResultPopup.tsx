@@ -9,7 +9,7 @@ const SEEN_KEY = 'hookup:buzz-outcome-seen';
 
 function readSeen(): Set<string> {
   try {
-    const raw = sessionStorage.getItem(SEEN_KEY);
+    const raw = localStorage.getItem(SEEN_KEY);
     const arr = raw ? (JSON.parse(raw) as string[]) : [];
     return new Set(Array.isArray(arr) ? arr : []);
   } catch {
@@ -19,7 +19,7 @@ function readSeen(): Set<string> {
 
 function writeSeen(ids: Set<string>): void {
   try {
-    sessionStorage.setItem(SEEN_KEY, JSON.stringify([...ids]));
+    localStorage.setItem(SEEN_KEY, JSON.stringify([...ids].slice(-200)));
   } catch {
     /* ignore */
   }

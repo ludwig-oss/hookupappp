@@ -9,7 +9,8 @@ import {
   getVenueCounts,
   getCountsForOsmVenues,
   getComfortingMessage,
-  tryMutualBuzzMatch,
+  findPendingBetween,
+  deleteBuzz,
 } from '../models/connections.js';
 import { updateUserLocation, getUserById, updateUserProfile } from '../models/user.js';
 import { ensureMatchConversation } from '../models/chat.js';
@@ -30,6 +31,15 @@ export const sendBuzz = async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'User ID is required' });
     }
 
+    const alreadyWaiting = await runWithSystem(() => findPendingBetween(toUserId, userId));
+    if (alreadyWaiting) {
+      return res.json({
+        needsResponse: true,
+        buzzId: alreadyWaiting.id,
+        message: 'They already showed interest. Accept or decline.',
+      });
+    }
+
     const buzz = await runWithSystem(() =>
       createBuzz({
         fromUserId: userId,
@@ -38,35 +48,23 @@ export const sendBuzz = async (req: Request, res: Response) => {
       })
     );
 
-    // Mutual interest: they already sent you a pending buzz → match + chat now
-    const mutual = await runWithSystem(() => tryMutualBuzzMatch(userId, toUserId));
-    if (mutual.matched && mutual.chatUserId) {
-      await ensureMatchConversation(userId, mutual.chatUserId);
-      sendPushToUser(toUserId, {
-        title: 'Hook Up',
-        body: "It's a match — you can talk in Communications.",
-        data: { type: 'buzz_match', vibrate: '1' },
-      }, 'matches').catch(() => {});
-      sendPushToUser(userId, {
-        title: 'Hook Up',
-        body: "It's a match — you can talk in Communications.",
-        data: { type: 'buzz_match', vibrate: '1' },
-      }, 'matches').catch(() => {});
+    const raced = await runWithSystem(() => findPendingBetween(toUserId, userId));
+    if (raced) {
+      await runWithSystem(() => deleteBuzz(buzz.id));
       return res.json({
-        message: "It's a match! They're in your Communications.",
-        buzz,
-        openChat: true,
-        chatUserId: mutual.chatUserId,
+        needsResponse: true,
+        buzzId: raced.id,
+        message: 'They already showed interest. Accept or decline.',
       });
     }
 
     sendPushToUser(toUserId, {
       title: 'Someone nearby is interested',
-      body: 'Show interest back if you want to talk. You only join Communications if it is mutual.',
+      body: 'Accept to talk, or decline. You are added to chat only if you accept.',
       data: { type: 'buzz_incoming', vibrate: '1' },
     }, 'interest').catch(() => {});
 
-    res.json({ message: 'Interest sent. You join Communications only if they show interest too.', buzz });
+    res.json({ message: 'Interest sent. They can accept or decline.', buzz });
   } catch (error: any) {
     console.error('Send buzz error:', error);
     res.status(500).json({ error: error.message || 'Internal server error' });

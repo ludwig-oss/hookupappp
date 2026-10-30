@@ -412,6 +412,11 @@ const ConnectionsWidget = () => {
       markProximityBannerShown('nearby-match', toUserId);
       await loadBuzzes();
       await refreshNearby();
+      if ((result as { needsResponse?: boolean }).needsResponse) {
+        setComfortingMessage('They already showed interest. Accept or decline.');
+        setTimeout(() => setComfortingMessage(null), 4000);
+        return;
+      }
       const chatId = (result as { chatUserId?: string }).chatUserId;
       if (chatId) {
         notifyDevice('Hook Up', "It's a match — they're in Communications.", 'matches');
@@ -510,7 +515,7 @@ const ConnectionsWidget = () => {
     if (buzz) {
       return (
         <div className="nearby-person-actions">
-          <button type="button" onClick={() => handleSendBuzz(personId)} className="send-btn" disabled={loading} style={{ background: 'rgba(16, 185, 129, 0.2)', border: '2px solid #10b981', color: '#10b981', fontSize: '11px', padding: '6px 10px', fontFamily: 'Orbitron, monospace', fontWeight: 'bold' }}>Show interest too</button>
+          <button type="button" onClick={() => handleRespondBuzz(buzz.id, 'accepted')} className="send-btn" disabled={loading} style={{ background: 'rgba(16, 185, 129, 0.2)', border: '2px solid #10b981', color: '#10b981', fontSize: '11px', padding: '6px 10px', fontFamily: 'Orbitron, monospace', fontWeight: 'bold' }}>Accept</button>
           <button type="button" onClick={() => handleRespondBuzz(buzz.id, 'rejected')} className="send-btn" disabled={loading} style={{ background: 'rgba(239, 68, 68, 0.2)', border: '2px solid #ef4444', color: '#ef4444', fontSize: '11px', padding: '6px 10px', fontFamily: 'Orbitron, monospace', fontWeight: 'bold' }}>No</button>
         </div>
       );

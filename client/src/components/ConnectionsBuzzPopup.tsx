@@ -3,7 +3,6 @@ import { AuthContext } from '../context/AuthContext';
 import { connectionsAPI, Buzz } from '../api/connections';
 import { openChatWithUser } from '../lib/openChat';
 import { markProximityBannerShown, setConnectionsStartView, shouldShowProximityBanner } from '../lib/proximitySession';
-import { resolveWorkingCoords } from '../lib/locationSession';
 import { formatAxiosError } from '../lib/apiError';
 import { notifyDevice } from '../lib/deviceNotify';
 import './WalkingPartnerPopup.css';
@@ -37,8 +36,8 @@ export default function ConnectionsBuzzPopup({ onOpenConnections }: Props) {
       notifyDevice(
         'Hook Up — interest',
         fresh.length > 1
-          ? `${fresh.length} people nearby showed interest. Show interest back only if you want to talk.`
-          : 'Someone nearby showed interest. Show interest back to join Communications — otherwise you will not be added.',
+          ? `${fresh.length} people nearby showed interest. Accept or decline each one.`
+          : 'Someone nearby showed interest. Accept to talk, or decline.',
         'interest'
       );
       fresh.forEach((b) => {
@@ -66,35 +65,17 @@ export default function ConnectionsBuzzPopup({ onOpenConnections }: Props) {
     setError('');
   };
 
-  const sendInterestBack = async () => {
+  const accept = async () => {
     if (!incoming || !user?.id) return;
     setLoading(true);
     setError('');
     try {
-      const coords = await resolveWorkingCoords(
-        {
-          userId: user.id,
-          city: (user as { city?: string }).city,
-          country: (user as { country?: string }).country,
-        },
-        {
-          getMyLocation: () => connectionsAPI.getMyLocation(),
-          forwardGeocode: (q) => connectionsAPI.forwardGeocode(q),
-          updateLocation: (data) => connectionsAPI.updateLocation(data),
-        }
-      );
-      const result = await connectionsAPI.sendBuzz({
-        toUserId: incoming.fromUserId,
-        location: coords ? { lat: coords.lat, lon: coords.lon } : undefined,
-        userId: user.id,
-      });
+      const result = await connectionsAPI.respondBuzz({ buzzId: incoming.id, response: 'accepted' });
       dropCurrent(true);
-      if (result.chatUserId) {
-        notifyDevice('Hook Up', "It's a match — they're in Communications.", 'matches');
-        openChatWithUser(result.chatUserId);
-      }
+      const chatId = result.chatUserId || incoming.fromUserId;
+      if (chatId) openChatWithUser(chatId);
     } catch (err: unknown) {
-      setError(formatAxiosError(err, 'Could not send interest'));
+      setError(formatAxiosError(err, 'Could not accept'));
     } finally {
       setLoading(false);
     }
@@ -120,9 +101,9 @@ export default function ConnectionsBuzzPopup({ onOpenConnections }: Props) {
     <div className="walk-popup-overlay" role="dialog" aria-modal="true">
       <div className="walk-popup-card">
         <p className="walk-popup-badge">Nearby · your type</p>
-        <h2>Someone nearby is interested</h2>
+        <h2>They showed interest</h2>
         <p className="walk-popup-sub">
-          Show interest back to join Communications. If you do not, you will not be added to chat.
+          Accept to talk in Communications, or decline. They get one notice either way.
         </p>
         {moreCount > 0 && (
           <p className="walk-popup-sub" style={{ color: '#00d4ff' }}>
@@ -153,8 +134,8 @@ export default function ConnectionsBuzzPopup({ onOpenConnections }: Props) {
           <button type="button" className="walk-btn-secondary" disabled={loading} onClick={decline}>
             Not interested
           </button>
-          <button type="button" className="walk-btn-primary" disabled={loading} onClick={sendInterestBack}>
-            {loading ? '…' : 'Show interest too'}
+          <button type="button" className="walk-btn-primary" disabled={loading} onClick={accept}>
+            {loading ? '…' : 'Accept'}
           </button>
         </div>
       </div>

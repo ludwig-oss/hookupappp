@@ -86,6 +86,20 @@ export async function getInteractedNearbyUserIds(userId: string): Promise<Set<st
   return new Set(res.rows.map((row) => row.other_id));
 }
 
+export async function findPendingBetween(fromUserId: string, toUserId: string): Promise<Buzz | null> {
+  const res = await query<BuzzRow>(
+    `SELECT * FROM connection_buzzes
+     WHERE from_user_id = $1 AND to_user_id = $2 AND status = 'pending'
+     LIMIT 1`,
+    [fromUserId, toUserId]
+  );
+  return res.rows[0] ? rowToBuzz(res.rows[0]) : null;
+}
+
+export async function deleteBuzz(id: string): Promise<void> {
+  await query('DELETE FROM connection_buzzes WHERE id = $1', [id]);
+}
+
 export async function respondToBuzz(
   buzzId: string,
   status: Exclude<BuzzStatus, 'pending'>

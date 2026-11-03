@@ -1,94 +1,63 @@
-import { useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
-import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { authAPI } from '../api/auth';
-import { formatAxiosError } from '../lib/apiError';
-import type { AuthStackParamList } from '../navigation/types';
+import { useEffect, useState } from 'react';
+import { StyleSheet, View } from 'react-native';
+import { startGoogle, type OAuthIntent } from '../lib/googleAuth';
 import { useAuth } from '../state/AuthContext';
-import { ErrorText, Field, PrimaryButton, Screen, Title } from '../ui/components';
+import { ErrorText, PrimaryButton } from '../ui/components';
 import { colors } from '../ui/theme';
 
-type Props = NativeStackScreenProps<AuthStackParamList, 'Login'>;
+export function LoginScreen() {
+  const { entryError, clearEntryError } = useAuth();
+  const [error, setError] = useState(entryError);
+  const [busy, setBusy] = useState<OAuthIntent | null>(null);
 
-export function LoginScreen({ navigation }: Props) {
-  const { login } = useAuth();
-  const [identifier, setIdentifier] = useState('');
-  const [password, setPassword] = useState('');
-  const [pin, setPin] = useState('');
-  const [usePin, setUsePin] = useState(false);
-  const [stayLoggedIn, setStayLoggedIn] = useState(true);
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
+  useEffect(() => {
+    if (entryError) setError(entryError);
+  }, [entryError]);
 
-  const submit = async () => {
+  const start = async (intent: OAuthIntent) => {
     setError('');
-    const id = identifier.trim();
-    if (!id) {
-      setError(usePin ? 'Enter your username.' : 'Enter your username, email, or phone number.');
-      return;
-    }
-    setLoading(true);
+    clearEntryError();
+    setBusy(intent);
     try {
-      const response = usePin
-        ? await authAPI.loginWithPin(id, pin.trim(), stayLoggedIn)
-        : await authAPI.login({ identifier: id, username: id, password, stayLoggedIn });
-      if (!response.token || !response.user) throw new Error('Invalid login response');
-      login(response.user, response.token, { stayLoggedIn });
+      await startGoogle(intent);
     } catch (err) {
-      setError(formatAxiosError(err, 'Those credentials did not match an account.'));
-    } finally {
-      setLoading(false);
+      setBusy(null);
+      setError(err instanceof Error ? err.message : 'Could not start Google.');
     }
   };
 
   return (
-    <Screen>
-      <Title subtitle="Same account as the website. Password or PIN.">Welcome back</Title>
-      <View style={styles.row}>
-        <Pressable onPress={() => setUsePin(false)} style={[styles.chip, !usePin && styles.chipOn]}>
-          <Text style={styles.chipText}>Password</Text>
-        </Pressable>
-        <Pressable onPress={() => setUsePin(true)} style={[styles.chip, usePin && styles.chipOn]}>
-          <Text style={styles.chipText}>PIN</Text>
-        </Pressable>
+    <View style={styles.center}>
+      <View style={styles.actions}>
+        <PrimaryButton
+          label={busy === 'signup' ? 'Signing up…' : 'Sign up'}
+          onPress={() => void start('signup')}
+          disabled={busy !== null}
+          fill
+        />
+        <PrimaryButton
+          label={busy === 'login' ? 'Signing in…' : 'Sign in'}
+          onPress={() => void start('login')}
+          disabled={busy !== null}
+          fill
+        />
+        <ErrorText>{error}</ErrorText>
       </View>
-      <Field
-        label={usePin ? 'Username' : 'Username, email, or phone'}
-        value={identifier}
-        onChangeText={setIdentifier}
-        autoComplete="username"
-      />
-      {usePin ? (
-        <Field label="PIN" value={pin} onChangeText={setPin} keyboardType="number-pad" secureTextEntry />
-      ) : (
-        <Field label="Password" value={password} onChangeText={setPassword} secureTextEntry autoComplete="password" />
-      )}
-      <Pressable onPress={() => setStayLoggedIn((v) => !v)} style={styles.checkRow}>
-        <View style={[styles.box, stayLoggedIn && styles.boxOn]} />
-        <Text style={styles.checkLabel}>Stay signed in on this device</Text>
-      </Pressable>
-      <ErrorText>{error}</ErrorText>
-      <PrimaryButton label="Sign in" onPress={() => void submit()} loading={loading} />
-      <PrimaryButton label="Forgot password" tone="ghost" onPress={() => navigation.navigate('ForgotPassword')} />
-      <PrimaryButton label="Create account" tone="ghost" onPress={() => navigation.navigate('Signup')} />
-    </Screen>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  row: { flexDirection: 'row', gap: 8 },
-  chip: {
+  center: {
     flex: 1,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.line,
-    paddingVertical: 10,
+    backgroundColor: colors.bg,
     alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
   },
-  chipOn: { backgroundColor: colors.accentDeep, borderColor: colors.accent },
-  chipText: { color: colors.text, fontWeight: '700' },
-  checkRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  box: { width: 20, height: 20, borderRadius: 6, borderWidth: 1, borderColor: colors.muted },
-  boxOn: { backgroundColor: colors.accent },
-  checkLabel: { color: colors.text, fontSize: 15 },
+  actions: {
+    width: '100%',
+    maxWidth: 420,
+    gap: 12,
+  },
 });

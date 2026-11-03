@@ -6,8 +6,6 @@ import { StatusBar } from 'expo-status-bar';
 import type { AppStackParamList, AuthStackParamList, MainTabParamList } from './types';
 import { useAuth } from '../state/AuthContext';
 import { LoginScreen } from '../screens/LoginScreen';
-import { SignupScreen } from '../screens/SignupScreen';
-import { ForgotPasswordScreen } from '../screens/ForgotPasswordScreen';
 import { ProfileSetupScreen } from '../screens/ProfileSetupScreen';
 import { ConnectionsScreen } from '../screens/ConnectionsScreen';
 import { FeedScreen } from '../screens/FeedScreen';
@@ -65,10 +63,8 @@ function MainTabs() {
 
 function SignedOut() {
   return (
-    <AuthStack.Navigator screenOptions={screenOptions}>
-      <AuthStack.Screen name="Login" component={LoginScreen} options={{ title: 'Sign in' }} />
-      <AuthStack.Screen name="Signup" component={SignupScreen} options={{ title: 'Sign up' }} />
-      <AuthStack.Screen name="ForgotPassword" component={ForgotPasswordScreen} options={{ title: 'Recovery' }} />
+    <AuthStack.Navigator screenOptions={{ ...screenOptions, headerShown: false }}>
+      <AuthStack.Screen name="Login" component={LoginScreen} />
     </AuthStack.Navigator>
   );
 }

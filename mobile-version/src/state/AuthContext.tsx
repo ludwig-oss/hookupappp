@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { axios } from '../api/http';
 import { profileAPI } from '../api/profile';
 import { settingsAPI } from '../api/settings';
+import { consumeGoogleRedirect } from '../lib/googleAuth';
 import {
   clearAuth,
   clearLoggedOutFlag,
@@ -38,6 +39,8 @@ export type SessionUser = {
 type AuthContextValue = {
   user: SessionUser | null;
   loading: boolean;
+  entryError: string;
+  clearEntryError: () => void;
   login: (userData: unknown, token: string, options?: { stayLoggedIn?: boolean }) => void;
   logout: () => void;
   updateUser: (updates: Partial<SessionUser>) => void;
@@ -54,6 +57,7 @@ function toSessionUser(raw: Record<string, unknown>): SessionUser | null {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<SessionUser | null>(null);
   const [loading, setLoading] = useState(true);
+  const [entryError, setEntryError] = useState('');
   const hasRefreshedProfile = useRef(false);
   const refreshGen = useRef(0);
 
@@ -67,6 +71,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
 
     void (async () => {
+      try {
+        const google = await consumeGoogleRedirect();
+        if (cancelled) return;
+        if (google) {
+          const session = toSessionUser(google.user);
+          if (session) {
+            clearLoggedOutFlag();
+            persistAuth(session, google.token, true);
+            axios.defaults.headers.common.Authorization = `Bearer ${google.token}`;
+            setUser(session);
+            finish();
+            return;
+          }
+        }
+      } catch (err) {
+        if (!cancelled) setEntryError(err instanceof Error ? err.message : 'Google sign-in failed.');
+        finish();
+        return;
+      }
+
       try {
         await hydrateAuth();
         if (cancelled) return;
@@ -171,9 +195,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  const clearEntryError = useCallback(() => setEntryError(''), []);
+
   const value = useMemo(
-    () => ({ user, loading, login, logout, updateUser }),
-    [user, loading, login, logout, updateUser]
+    () => ({ user, loading, entryError, clearEntryError, login, logout, updateUser }),
+    [user, loading, entryError, clearEntryError, login, logout, updateUser]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

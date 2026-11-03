@@ -67,12 +67,14 @@ export function PrimaryButton({
   loading = false,
   disabled = false,
   tone = 'accent',
+  fill = false,
 }: {
   label: string;
   onPress: () => void;
   loading?: boolean;
   disabled?: boolean;
   tone?: 'accent' | 'danger' | 'ghost' | 'ok';
+  fill?: boolean;
 }) {
   const blocked = disabled || loading;
   return (
@@ -85,6 +87,7 @@ export function PrimaryButton({
         tone === 'ghost' && styles.buttonGhost,
         tone === 'ok' && styles.buttonOk,
         blocked && styles.buttonDisabled,
+        fill && styles.buttonFill,
         pressed && !blocked && styles.pressed,
       ]}
     >
@@ -138,6 +141,7 @@ const styles = StyleSheet.create({
   buttonOk: { backgroundColor: '#1d7a5f' },
   buttonGhost: { backgroundColor: 'transparent', borderWidth: 1, borderColor: colors.line },
   buttonDisabled: { opacity: 0.55 },
+  buttonFill: { alignSelf: 'stretch' },
   pressed: { opacity: 0.85 },
   buttonText: { color: colors.text, fontSize: 16, fontWeight: '700' },
   error: { color: colors.danger, fontSize: 14, lineHeight: 20 },

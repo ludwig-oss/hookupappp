@@ -21,6 +21,23 @@ async function readJson(res: Response): Promise<Record<string, unknown>> {
   return JSON.parse(raw) as Record<string, unknown>;
 }
 
+function googleStartUrl(intent: OAuthIntent, returnOrigin: string): string {
+  return (
+    `${API_BASE}/api/auth/google?return_origin=${encodeURIComponent(returnOrigin)}` +
+    `&intent=${intent}&format=json`
+  );
+}
+
+/** Warm the same Google start endpoint the website prefetches when the screen opens. */
+export function prefetchGoogle(intent: OAuthIntent): void {
+  const returnOrigin = origin();
+  if (!returnOrigin) return;
+  void fetch(googleStartUrl(intent, returnOrigin), {
+    headers: { Accept: 'application/json' },
+    cache: 'no-store',
+  }).catch(() => undefined);
+}
+
 /** Ask the same Google start endpoint the website uses, then open Google. */
 export async function startGoogle(intent: OAuthIntent): Promise<void> {
   const returnOrigin = origin();
@@ -29,10 +46,10 @@ export async function startGoogle(intent: OAuthIntent): Promise<void> {
   let last = 'Could not reach the server. Try again.';
   while (Date.now() < deadline) {
     try {
-      const url =
-        `${API_BASE}/api/auth/google?return_origin=${encodeURIComponent(returnOrigin)}` +
-        `&intent=${intent}&format=json`;
-      const res = await fetch(url, { headers: { Accept: 'application/json' }, cache: 'no-store' });
+      const res = await fetch(googleStartUrl(intent, returnOrigin), {
+        headers: { Accept: 'application/json' },
+        cache: 'no-store',
+      });
       const data = await readJson(res);
       const next = typeof data.url === 'string' ? data.url : '';
       if (!res.ok || !next) throw new Error(typeof data.error === 'string' ? data.error : 'Could not start Google.');

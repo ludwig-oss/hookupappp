@@ -23,8 +23,8 @@ const PRIVACY_URL = 'https://hookupapp.dev/privacy';
 export function LoginScreen() {
   const { login, entryError, clearEntryError } = useAuth();
   const [error, setError] = useState(entryError);
-  const [busy, setBusy] = useState<OAuthIntent | null>(null);
-  const intentRef = useRef<OAuthIntent>('login');
+  const [busy, setBusy] = useState(false);
+  const intentRef = useRef<OAuthIntent>('signup');
   const handledToken = useRef('');
 
   const isBrowser = Platform.OS === 'web' && typeof window !== 'undefined';
@@ -56,7 +56,7 @@ export function LoginScreen() {
   useEffect(() => {
     if (response?.type !== 'success') {
       if (response?.type === 'error') {
-        setBusy(null);
+        setBusy(false);
         setError(response.error?.message || 'Google sign-in failed. Try again.');
       }
       return;
@@ -70,23 +70,23 @@ export function LoginScreen() {
         login(session.user, session.token, { stayLoggedIn: true });
       } catch (err) {
         handledToken.current = '';
-        setBusy(null);
+        setBusy(false);
         setError(err instanceof Error ? err.message : 'Google sign-in failed.');
       }
     })();
   }, [login, response]);
 
-  const start = async (intent: OAuthIntent) => {
+  const start = async () => {
     setError('');
     clearEntryError();
-    intentRef.current = intent;
-    rememberGoogleIntent(intent);
-    setBusy(intent);
+    intentRef.current = 'signup';
+    rememberGoogleIntent('signup');
+    setBusy(true);
     try {
       const result = await promptAsync();
-      if (result.type === 'cancel' || result.type === 'dismiss') setBusy(null);
+      if (result.type === 'cancel' || result.type === 'dismiss') setBusy(false);
     } catch (err) {
-      setBusy(null);
+      setBusy(false);
       setError(err instanceof Error ? err.message : 'Could not start Google.');
     }
   };
@@ -102,15 +102,11 @@ export function LoginScreen() {
           <Text style={styles.tagline}>Find Your Match</Text>
           <Text style={styles.sub}>Real connections. Real moments.</Text>
           <GoogleButton
-            label={busy === 'login' ? 'Signing in…' : 'Sign in with Google'}
-            disabled={busy !== null || !request}
-            onPress={() => void start('login')}
+            label={busy ? 'Opening Google…' : 'Sign up or Sign in with Google'}
+            disabled={busy || !request}
+            onPress={() => void start()}
           />
-          <Pressable disabled={busy !== null || !request} onPress={() => void start('signup')}>
-            <Text style={styles.signup}>
-              {busy === 'signup' ? 'Signing up…' : 'New here? Sign up with Google'}
-            </Text>
-          </Pressable>
+          <Text style={styles.caption}>New users will automatically create an account.</Text>
           {error ? <Text style={styles.error}>{error}</Text> : null}
         </View>
         <View style={styles.legal}>
@@ -138,7 +134,9 @@ function GoogleButton({ label, onPress, disabled }: { label: string; onPress: ()
       <View style={styles.gBadge}>
         <Text style={styles.gLetter}>G</Text>
       </View>
-      <Text style={styles.googleLabel}>{label}</Text>
+      <Text style={styles.googleLabel} numberOfLines={2}>
+        {label}
+      </Text>
     </Pressable>
   );
 }
@@ -207,8 +205,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   gLetter: { color: '#4285F4', fontSize: 20, fontWeight: '700' },
-  googleLabel: { color: '#1f1f1f', fontSize: 16, fontWeight: '600' },
-  signup: { color: '#fff', fontSize: 15, fontWeight: '600', textDecorationLine: 'underline' },
+  googleLabel: { color: '#1f1f1f', fontSize: 15, fontWeight: '600', flexShrink: 1, textAlign: 'center' },
+  caption: {
+    color: 'rgba(255,255,255,0.82)',
+    fontSize: 14,
+    lineHeight: 20,
+    textAlign: 'center',
+    maxWidth: 340,
+  },
   error: { color: '#ffb4c8', fontSize: 14, textAlign: 'center', lineHeight: 20, maxWidth: 340 },
   pressed: { opacity: 0.9, transform: [{ scale: 0.99 }] },
   disabled: { opacity: 0.65 },

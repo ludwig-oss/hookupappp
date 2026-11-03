@@ -270,7 +270,7 @@ async function upsertOAuthUser(opts: {
   email: string;
   name: string;
   picture?: string | null;
-  /** Sign in must not mint a second unfinished account. */
+  /** Google always creates a missing account. Other providers can refuse a first login. */
   createIfMissing?: boolean;
 }): Promise<User | null> {
   const { provider, providerId, email, name, picture } = opts;
@@ -441,11 +441,11 @@ export async function googleIdToken(req: Request, res: Response) {
       email: profile.email,
       name: profile.name,
       picture: profile.picture,
-      createIfMissing: intentFromRequest(req) !== 'login',
+      createIfMissing: true,
     });
     if (!user) {
       return res.status(400).json({
-        error: 'No Hook Up account for this Google account. Tap Sign up — Sign in does not create a new one.',
+        error: 'Could not create your Hook Up account. Try Google again.',
       });
     }
     const ready = accountReady(user);
@@ -476,10 +476,10 @@ export async function googleCallback(req: Request, res: Response) {
         email: profile.email,
         name: profile.name,
         picture: profile.picture,
-        createIfMissing: intentFromRequest(req) !== 'login',
+        createIfMissing: true,
       });
       if (!user) {
-        return redirectError(req, res, 'No Hook Up account for this Google account. Tap Sign up — Sign in does not create a new one.', origin);
+        return redirectError(req, res, 'Could not create your Hook Up account. Try Google again.', origin);
       }
       return issueTokenAndRedirect(req, res, user, origin);
     }
@@ -536,10 +536,10 @@ export async function googleCallback(req: Request, res: Response) {
       email: profile.email.toLowerCase(),
       name: profile.name || 'Google User',
       picture: profile.picture || null,
-      createIfMissing: intentFromRequest(req) !== 'login',
+      createIfMissing: true,
     });
     if (!user) {
-      return redirectError(req, res, 'No Hook Up account for this Google account. Tap Sign up — Sign in does not create a new one.', origin);
+      return redirectError(req, res, 'Could not create your Hook Up account. Try Google again.', origin);
     }
     issueTokenAndRedirect(req, res, user, origin);
   } catch (e: any) {

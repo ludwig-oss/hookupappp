@@ -98,9 +98,9 @@ export function rememberGoogleIntent(intent: OAuthIntent): void {
 
 export function rememberedGoogleIntent(): OAuthIntent {
   try {
-    return sessionStorage.getItem(INTENT_KEY) === 'signup' ? 'signup' : 'login';
+    return sessionStorage.getItem(INTENT_KEY) === 'login' ? 'login' : 'signup';
   } catch {
-    return 'login';
+    return 'signup';
   }
 }
 

@@ -9,6 +9,11 @@ export type OAuthIntent = 'login' | 'signup';
 export const GOOGLE_WEB_CLIENT_ID =
   '20879117427-ksgnef8b8dlnmv8h2d9a2403ihcrb18f.apps.googleusercontent.com';
 
+/** Android OAuth client. Package app.hookup.mobile plus the debug SHA-1. Public, not a secret. */
+export const GOOGLE_ANDROID_CLIENT_ID =
+  process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID?.trim() ||
+  '20879117427-hd3mrt9m2uaam4vn9gc5k5pm4uvatu9b.apps.googleusercontent.com';
+
 const INTENT_KEY = 'google_oauth_intent';
 
 type GoogleSession = { user: Record<string, unknown>; token: string };

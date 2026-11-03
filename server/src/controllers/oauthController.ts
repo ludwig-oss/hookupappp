@@ -106,8 +106,18 @@ function originFromRequest(req: Request): string {
 const PUBLIC_GOOGLE_WEB_CLIENT_ID =
   '20879117427-ksgnef8b8dlnmv8h2d9a2403ihcrb18f.apps.googleusercontent.com';
 
+/** Android client for package app.hookup.mobile. Public. ID tokens from this client may sign in. */
+const PUBLIC_GOOGLE_ANDROID_CLIENT_ID =
+  '20879117427-hd3mrt9m2uaam4vn9gc5k5pm4uvatu9b.apps.googleusercontent.com';
+
 function googleWebClientId(): string {
   return process.env.GOOGLE_CLIENT_ID?.trim() || PUBLIC_GOOGLE_WEB_CLIENT_ID;
+}
+
+function googleIdTokenAudienceOk(aud: string | undefined): boolean {
+  if (!aud) return false;
+  if (aud === googleWebClientId()) return true;
+  return aud === PUBLIC_GOOGLE_ANDROID_CLIENT_ID;
 }
 
 function parseOAuthState(state: string): { o?: string; nonce?: string; i?: string } {
@@ -374,7 +384,6 @@ export function startGoogle(req: Request, res: Response) {
 }
 
 async function googleProfileFromIdToken(idToken: string, expectedNonce?: string) {
-  const clientId = googleWebClientId();
   const tokenRes = await fetch(
     `https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`
   );
@@ -392,7 +401,7 @@ async function googleProfileFromIdToken(idToken: string, expectedNonce?: string)
   if (!tokenRes.ok || payload.error || !payload.sub) {
     throw new Error('Google sign-in expired. Tap Sign in with Google again.');
   }
-  if (payload.aud !== clientId) {
+  if (!googleIdTokenAudienceOk(payload.aud)) {
     throw new Error('Google sign-in did not match this app.');
   }
   const iss = String(payload.iss || '');

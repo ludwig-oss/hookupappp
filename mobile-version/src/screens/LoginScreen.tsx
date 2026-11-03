@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
-import { Image, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, Linking, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as WebBrowser from 'expo-web-browser';
 import { makeRedirectUri, ResponseType } from 'expo-auth-session';
 import * as Google from 'expo-auth-session/providers/google';
 import {
   exchangeGoogleIdToken,
+  GOOGLE_ANDROID_CLIENT_ID,
   GOOGLE_WEB_CLIENT_ID,
   rememberGoogleIntent,
   type OAuthIntent,
@@ -24,18 +25,21 @@ export function LoginScreen() {
   const intentRef = useRef<OAuthIntent>('login');
   const handledToken = useRef('');
 
-  const redirectUri =
-    typeof window !== 'undefined'
-      ? `${window.location.origin}/auth/oauth-return/google`
-      : makeRedirectUri({ scheme: 'hookup', path: 'auth/oauth-return/google' });
+  const isBrowser = Platform.OS === 'web' && typeof window !== 'undefined';
   const [request, response, promptAsync] = Google.useAuthRequest({
     webClientId: GOOGLE_WEB_CLIENT_ID,
     iosClientId: GOOGLE_WEB_CLIENT_ID,
-    androidClientId: GOOGLE_WEB_CLIENT_ID,
+    androidClientId: GOOGLE_ANDROID_CLIENT_ID,
     selectAccount: true,
-    responseType: ResponseType.IdToken,
-    shouldAutoExchangeCode: false,
-    redirectUri,
+    ...(isBrowser
+      ? {
+          responseType: ResponseType.IdToken,
+          shouldAutoExchangeCode: false,
+          redirectUri: `${window.location.origin}/auth/oauth-return/google`,
+        }
+      : {
+          redirectUri: makeRedirectUri({ native: 'app.hookup.mobile:/oauthredirect' }),
+        }),
   });
 
   useEffect(() => {

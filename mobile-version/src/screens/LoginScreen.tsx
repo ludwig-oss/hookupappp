@@ -7,6 +7,8 @@ import * as Google from 'expo-auth-session/providers/google';
 import {
   exchangeGoogleIdToken,
   GOOGLE_ANDROID_CLIENT_ID,
+  GOOGLE_IOS_CLIENT_ID,
+  GOOGLE_IOS_URL_SCHEME,
   GOOGLE_WEB_CLIENT_ID,
   rememberGoogleIntent,
   type OAuthIntent,
@@ -28,7 +30,7 @@ export function LoginScreen() {
   const isBrowser = Platform.OS === 'web' && typeof window !== 'undefined';
   const [request, response, promptAsync] = Google.useAuthRequest({
     webClientId: GOOGLE_WEB_CLIENT_ID,
-    iosClientId: GOOGLE_WEB_CLIENT_ID,
+    iosClientId: GOOGLE_IOS_CLIENT_ID,
     androidClientId: GOOGLE_ANDROID_CLIENT_ID,
     selectAccount: true,
     ...(isBrowser
@@ -38,7 +40,12 @@ export function LoginScreen() {
           redirectUri: `${window.location.origin}/auth/oauth-return/google`,
         }
       : {
-          redirectUri: makeRedirectUri({ native: 'app.hookup.mobile:/oauthredirect' }),
+          redirectUri: makeRedirectUri({
+            native:
+              Platform.OS === 'ios'
+                ? `${GOOGLE_IOS_URL_SCHEME}:/oauth2redirect`
+                : 'app.hookup.mobile:/oauthredirect',
+          }),
         }),
   });
 

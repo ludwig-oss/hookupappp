@@ -14,6 +14,17 @@ export const GOOGLE_ANDROID_CLIENT_ID =
   process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID?.trim() ||
   '20879117427-hd3mrt9m2uaam4vn9gc5k5pm4uvatu9b.apps.googleusercontent.com';
 
+/** iOS OAuth client. Bundle ID app.hookup.mobile. Public, not a secret. */
+export const GOOGLE_IOS_CLIENT_ID =
+  process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID?.trim() ||
+  '20879117427-c0j7dsqd3i4nq8p0rui118536di5aqr5.apps.googleusercontent.com';
+
+/** Reversed iOS client ID. Google sends the phone back through this URL scheme. */
+export const GOOGLE_IOS_URL_SCHEME = `com.googleusercontent.apps.${GOOGLE_IOS_CLIENT_ID.replace(
+  '.apps.googleusercontent.com',
+  '',
+)}`;
+
 const INTENT_KEY = 'google_oauth_intent';
 
 type GoogleSession = { user: Record<string, unknown>; token: string };

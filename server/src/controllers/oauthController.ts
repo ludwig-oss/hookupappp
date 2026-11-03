@@ -110,6 +110,10 @@ const PUBLIC_GOOGLE_WEB_CLIENT_ID =
 const PUBLIC_GOOGLE_ANDROID_CLIENT_ID =
   '20879117427-hd3mrt9m2uaam4vn9gc5k5pm4uvatu9b.apps.googleusercontent.com';
 
+/** iOS client for bundle ID app.hookup.mobile. Public. ID tokens from this client may sign in. */
+const PUBLIC_GOOGLE_IOS_CLIENT_ID =
+  '20879117427-c0j7dsqd3i4nq8p0rui118536di5aqr5.apps.googleusercontent.com';
+
 function googleWebClientId(): string {
   return process.env.GOOGLE_CLIENT_ID?.trim() || PUBLIC_GOOGLE_WEB_CLIENT_ID;
 }
@@ -117,7 +121,7 @@ function googleWebClientId(): string {
 function googleIdTokenAudienceOk(aud: string | undefined): boolean {
   if (!aud) return false;
   if (aud === googleWebClientId()) return true;
-  return aud === PUBLIC_GOOGLE_ANDROID_CLIENT_ID;
+  return aud === PUBLIC_GOOGLE_ANDROID_CLIENT_ID || aud === PUBLIC_GOOGLE_IOS_CLIENT_ID;
 }
 
 function parseOAuthState(state: string): { o?: string; nonce?: string; i?: string } {

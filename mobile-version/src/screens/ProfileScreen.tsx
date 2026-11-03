@@ -21,7 +21,7 @@ const LINKS: Array<{ route: ProfileLink; label: string; hint: string }> = [
   { route: 'Settings', label: 'Settings', hint: 'Notifications and privacy' },
 ];
 
-export function ProfileScreen() {
+export function ProfileScreen({ showShortcuts = true }: { showShortcuts?: boolean }) {
   const { user, logout, updateUser } = useAuth();
   const navigation = useNavigation<NativeStackNavigationProp<AppStackParamList>>();
   const [name, setName] = useState(user?.name || '');
@@ -98,14 +98,16 @@ export function ProfileScreen() {
       <Field label="Country" value={country} onChangeText={setCountry} autoCapitalize="words" />
       <ErrorText>{error}</ErrorText>
       <PrimaryButton label="Save profile" onPress={() => void save()} loading={saving} />
-      {LINKS.map((link) => (
-        <Pressable key={link.route} onPress={() => navigation.navigate(link.route)}>
-          <Card>
-            <Text style={styles.link}>{link.label}</Text>
-            <Muted>{link.hint}</Muted>
-          </Card>
-        </Pressable>
-      ))}
+      {showShortcuts
+        ? LINKS.map((link) => (
+            <Pressable key={link.route} onPress={() => navigation.navigate(link.route)}>
+              <Card>
+                <Text style={styles.link}>{link.label}</Text>
+                <Muted>{link.hint}</Muted>
+              </Card>
+            </Pressable>
+          ))
+        : null}
       <PrimaryButton label="Sign out" tone="danger" onPress={logout} />
     </Screen>
   );

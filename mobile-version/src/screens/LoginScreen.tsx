@@ -49,7 +49,6 @@ export function LoginScreen() {
 
 const styles = StyleSheet.create({
   center: {
-    flex: 1,
     backgroundColor: colors.bg,
     alignItems: 'center',
     justifyContent: 'center',

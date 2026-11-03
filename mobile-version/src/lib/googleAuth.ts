@@ -2,6 +2,15 @@ import { API_BASE } from '../api/config';
 
 export type OAuthIntent = 'login' | 'signup';
 
+/**
+ * Public web client ID. The backend checks the Google ID token audience against this
+ * same client, then issues our own session token. The client secret stays on the server.
+ */
+export const GOOGLE_WEB_CLIENT_ID =
+  '20879117427-ksgnef8b8dlnmv8h2d9a2403ihcrb18f.apps.googleusercontent.com';
+
+const INTENT_KEY = 'google_oauth_intent';
+
 type GoogleSession = { user: Record<string, unknown>; token: string };
 
 function origin(): string {
@@ -63,6 +72,36 @@ export async function startGoogle(intent: OAuthIntent): Promise<void> {
   throw new Error(last);
 }
 
+export function rememberGoogleIntent(intent: OAuthIntent): void {
+  try {
+    sessionStorage.setItem(INTENT_KEY, intent);
+  } catch {
+    /* Native runs keep the intent in memory on the screen. */
+  }
+}
+
+export function rememberedGoogleIntent(): OAuthIntent {
+  try {
+    return sessionStorage.getItem(INTENT_KEY) === 'signup' ? 'signup' : 'login';
+  } catch {
+    return 'login';
+  }
+}
+
+/** Turn a Google ID token into a session in the existing user database. */
+export async function exchangeGoogleIdToken(idToken: string, intent: OAuthIntent): Promise<GoogleSession> {
+  const res = await fetch(`${API_BASE}/api/auth/google/id-token?intent=${intent}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+    body: JSON.stringify({ idToken }),
+  });
+  const data = await readJson(res);
+  if (!res.ok || typeof data.token !== 'string') {
+    throw new Error(typeof data.error === 'string' ? data.error : 'Google sign-in failed.');
+  }
+  return { user: (data.user as Record<string, unknown>) || {}, token: data.token };
+}
+
 /** Finish a Google redirect that landed back on this app. */
 export async function consumeGoogleRedirect(): Promise<GoogleSession | null> {
   if (typeof window === 'undefined') return null;
@@ -98,17 +137,9 @@ export async function consumeGoogleRedirect(): Promise<GoogleSession | null> {
 
   const idToken = hash.get('id_token');
   if (idToken) {
-    const res = await fetch(`${API_BASE}/api/auth/google/id-token`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-      body: JSON.stringify({ idToken, state: hash.get('state') || search.get('state') || '' }),
-    });
-    const data = await readJson(res);
+    const session = await exchangeGoogleIdToken(idToken, rememberedGoogleIntent());
     clearAddress();
-    if (!res.ok || typeof data.token !== 'string') {
-      throw new Error(typeof data.error === 'string' ? data.error : 'Google sign-in failed.');
-    }
-    return { user: (data.user as Record<string, unknown>) || {}, token: data.token };
+    return session;
   }
 
   const qs = new URLSearchParams(search);

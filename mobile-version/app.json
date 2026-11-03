@@ -18,7 +18,12 @@
     },
     "android": {
       "package": "app.hookup.mobile",
-      "permissions": ["ACCESS_COARSE_LOCATION", "ACCESS_FINE_LOCATION", "CAMERA", "READ_MEDIA_IMAGES"],
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "CAMERA",
+        "READ_MEDIA_IMAGES"
+      ],
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -43,7 +48,8 @@
           "photosPermission": "Hookup uses your photos for your profile picture.",
           "cameraPermission": "Hookup uses the camera for your profile photo."
         }
-      ]
+      ],
+      "expo-web-browser"
     ]
   }
 }

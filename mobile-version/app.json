@@ -53,7 +53,8 @@
           "cameraPermission": "Hookup uses the camera for your profile photo."
         }
       ],
-      "expo-web-browser"
+      "expo-web-browser",
+      "expo-router"
     ]
   }
 }

@@ -1,0 +1,47 @@
+function profilePictureForStorage(url: string | null | undefined): string | null {
+  if (!url || typeof url !== 'string') return null;
+  if (url.startsWith('http://') || url.startsWith('https://')) return url;
+  if (url.length < 500_000) return url;
+  return null;
+}
+
+/** Fields safe to keep on device (no secrets, no huge media blobs). Mirrors the web session cache. */
+export function userForStorage(user: Record<string, unknown>): Record<string, unknown> {
+  return {
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    username: user.username,
+    profilePicture: profilePictureForStorage(user.profilePicture as string | null | undefined),
+    profileSetupComplete: Boolean(user.profileSetupComplete),
+    emailVerified: user.emailVerified !== false,
+    improvementCategories: Array.isArray(user.improvementCategories)
+      ? user.improvementCategories.filter((c): c is string => typeof c === 'string')
+      : [],
+    phoneNumber: user.phoneNumber ?? null,
+    gender: typeof user.gender === 'string' ? user.gender : undefined,
+    age: user.age,
+    country: user.country,
+    city: user.city,
+    bio: typeof user.bio === 'string' ? user.bio : undefined,
+    photoVerifiedAt: user.photoVerifiedAt ?? null,
+    createdAt: user.createdAt ?? null,
+    photoLock: user.photoLock && typeof user.photoLock === 'object' ? user.photoLock : undefined,
+    aiGuideId: typeof user.aiGuideId === 'string' && user.aiGuideId ? user.aiGuideId : null,
+    dateLookingFor: Array.isArray(user.dateLookingFor)
+      ? user.dateLookingFor.filter((x): x is string => typeof x === 'string')
+      : [],
+    ...(typeof user.hasBackupPassword === 'boolean' ? { hasBackupPassword: user.hasBackupPassword } : {}),
+    ...(typeof user.hasGoogleAuth === 'boolean' ? { hasGoogleAuth: user.hasGoogleAuth } : {}),
+  };
+}
+
+export function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+
+export function normalizeUserId(v: unknown): string | null {
+  if (typeof v === 'string' && v.length > 0) return v;
+  if (typeof v === 'number' && Number.isFinite(v)) return String(Math.trunc(v));
+  return null;
+}

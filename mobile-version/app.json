@@ -1,0 +1,49 @@
+{
+  "expo": {
+    "name": "Hookup",
+    "slug": "hookup-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "scheme": "hookup",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "app.hookup.mobile",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "Hookup uses your location to show people nearby and to send a safety signal.",
+        "NSCameraUsageDescription": "Hookup uses the camera for your profile photo.",
+        "NSPhotoLibraryUsageDescription": "Hookup uses your photos for your profile picture."
+      }
+    },
+    "android": {
+      "package": "app.hookup.mobile",
+      "permissions": ["ACCESS_COARSE_LOCATION", "ACCESS_FINE_LOCATION", "CAMERA", "READ_MEDIA_IMAGES"],
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Hookup uses your location to show people nearby and to send a safety signal."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Hookup uses your photos for your profile picture.",
+          "cameraPermission": "Hookup uses the camera for your profile photo."
+        }
+      ]
+    ]
+  }
+}

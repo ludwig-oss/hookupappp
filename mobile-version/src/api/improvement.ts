@@ -1,0 +1,462 @@
+import axios from 'axios';
+import { API_BASE } from './config';
+import { DEFAULT_IMPROVEMENT_CATEGORIES } from '../constants/improvementCategories';
+
+const API_URL = API_BASE + '/api/improvement';
+
+export interface ImprovementCategory {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+}
+
+export interface GuideApplication {
+  id: string;
+  userId: string;
+  categories: string[];
+  region: string;
+  experience: string;
+  qualifications: string;
+  identificationUrl: string;
+  proofPerCategory?: Record<string, {
+    whyGood: string;
+    description?: string;
+    proofType?: 'instagram' | 'pictures' | 'video';
+    instagramHandle?: string;
+    imageUrls?: string[];
+    videoUrl?: string;
+  }>;
+  widgetAnswers?: Array<{
+    categoryId: string;
+    whyGood: string;
+    proofType: 'instagram' | 'pictures' | 'video';
+    instagramHandle?: string;
+    imageUrls?: string[];
+    videoUrl?: string;
+    fileUrls?: string[];
+  }>;
+  status: 'pending' | 'approved' | 'rejected';
+  autoApproved?: boolean;
+  decisionDueAt?: string | null;
+  appliedAt: string;
+  reviewedAt: string | null;
+  reviewedBy: string | null;
+  applicant?: {
+    id: string;
+    name: string;
+    username: string;
+    profilePicture: string | null;
+    age?: number | null;
+    city?: string | null;
+    country?: string | null;
+  } | null;
+}
+
+export interface Guide {
+  id: string;
+  userId: string;
+  categories: string[];
+  region: string;
+  experience: string;
+  qualifications: string;
+  hourlyRate: number;
+  sessionPriceEur?: number;
+  paypalInfo?: string | null;
+  rating: number;
+  totalSessions: number;
+  isActive: boolean;
+  badge: boolean;
+  qualifiedCoach?: boolean;
+  coachStarRating?: number;
+  user?: {
+    id: string;
+    name: string;
+    username: string;
+    profilePicture: string | null;
+    country?: string;
+    city?: string;
+  };
+}
+
+export interface AvailabilitySlot {
+  id: string;
+  guideId: string;
+  startTime: string;
+  endTime: string;
+  isBooked: boolean;
+}
+
+export interface Booking {
+  id: string;
+  userId: string;
+  guideId: string;
+  category: string;
+  startTime: string;
+  endTime: string;
+  duration: number;
+  amount: number;
+  paymentStatus: string;
+  status: string;
+  completedAt?: string | null;
+  guideRating?: 'success' | 'partial' | null;
+  improvementPercentage?: number;
+}
+
+export interface GuideRequest {
+  id: string;
+  userId: string;
+  guideId: string;
+  category: string;
+  status: 'pending' | 'accepted' | 'rejected';
+  message?: string;
+  createdAt: string;
+  respondedAt?: string | null;
+  paymentStatus?: 'pending' | 'sent_pending_confirmation' | 'confirmed' | 'paid';
+  paymentProofText?: string | null;
+  paymentProofImageUrl?: string | null;
+  paymentSentAt?: string | null;
+}
+
+export const improvementAPI = {
+  getCategories: async (): Promise<{ categories: ImprovementCategory[] }> => {
+    try {
+      const response = await axios.get(`${API_URL}/categories`, {
+        timeout: 10000,
+      });
+      const list = response.data?.categories;
+      if (Array.isArray(list) && list.length > 0) {
+        return { categories: list };
+      }
+    } catch {
+      // Vercel / missing VITE_API_URL / CORS / backend down — use bundled list (same ids as server)
+    }
+    return { categories: DEFAULT_IMPROVEMENT_CATEGORIES };
+  },
+
+  applyAsGuide: async (data: {
+    categories: string[];
+    region?: string;
+    experience?: string;
+    qualifications?: string;
+    identificationUrl?: string;
+    proofPerCategory?: Record<string, {
+      whyGood: string;
+      proofType: 'instagram' | 'pictures' | 'video';
+      instagramHandle?: string;
+      imageUrls?: string;
+      videoUrl?: string;
+    }>;
+    userId: string;
+  }): Promise<{
+    message: string;
+    application: GuideApplication;
+    autoApproved?: boolean;
+    reviewSlaHours?: number;
+    qualifiedAdminCount?: number;
+    seedLimit?: number;
+    decisionDueAt?: string;
+  }> => {
+    const response = await axios.post(`${API_URL}/guides/apply`, data);
+    return response.data;
+  },
+
+  getMyApplication: async (userId: string): Promise<{ application: GuideApplication | null }> => {
+    const response = await axios.get(`${API_URL}/guides/my-application`, { params: { userId } });
+    return response.data;
+  },
+
+  listPendingGuideApplications: async (): Promise<{
+    applications: GuideApplication[];
+    reviewSlaHours?: number;
+    qualifiedAdminCount?: number;
+  }> => {
+    const response = await axios.get(`${API_URL}/guides/applications/pending-review`);
+    return response.data;
+  },
+
+  approveGuideApplication: async (applicationId: string, coachStarRating?: number): Promise<{ message: string }> => {
+    const response = await axios.post(`${API_URL}/guides/approve`, { applicationId, coachStarRating });
+    return response.data;
+  },
+
+  rejectGuideApplication: async (applicationId: string): Promise<{ message: string }> => {
+    const response = await axios.post(`${API_URL}/guides/reject`, { applicationId });
+    return response.data;
+  },
+
+  getMyGuideProfile: async (
+    userId: string
+  ): Promise<{ guide: Guide | null; user: any; canVote?: boolean }> => {
+    const response = await axios.get(`${API_URL}/guides/my-profile`, { params: { userId } });
+    return response.data;
+  },
+
+  getGuidesForCategory: async (category: string, region?: string, country?: string, city?: string): Promise<{ guides: Guide[] }> => {
+    const response = await axios.get(`${API_URL}/guides/category/${category}`, {
+      params: { ...(region ? { region } : {}), ...(country ? { country } : {}), ...(city ? { city } : {}) },
+    });
+    return response.data;
+  },
+
+  getRecommendedGuides: async (userId: string, region?: string, country?: string, city?: string): Promise<{ guides: Guide[]; country?: string | null; city?: string | null }> => {
+    const response = await axios.get(`${API_URL}/guides/recommended`, {
+      params: { userId, ...(region ? { region } : {}), ...(country ? { country } : {}), ...(city ? { city } : {}) },
+    });
+    return response.data;
+  },
+
+  searchGuidesByProblem: async (q: string, region?: string, country?: string, city?: string): Promise<{ guides: Guide[] }> => {
+    const response = await axios.get(`${API_URL}/guides/search`, {
+      params: { q, ...(region ? { region } : {}), ...(country ? { country } : {}), ...(city ? { city } : {}) },
+    });
+    return response.data;
+  },
+
+  getLocalQualifiedCoaches: async (params?: { country?: string; city?: string; category?: string }): Promise<{ guides: Guide[]; country: string | null; city: string | null }> => {
+    const response = await axios.get(`${API_URL}/guides/local`, { params: params || {} });
+    return response.data;
+  },
+
+  getAllGuides: async (): Promise<{ guides: Guide[] }> => {
+    const response = await axios.get(`${API_URL}/guides`);
+    return response.data;
+  },
+
+  setAvailability: async (data: {
+    startTime: string;
+    endTime: string;
+    userId: string;
+  }): Promise<{ message: string; slot: AvailabilitySlot }> => {
+    const response = await axios.post(`${API_URL}/guides/availability`, data);
+    return response.data;
+  },
+
+  getGuideAvailability: async (guideId: string): Promise<{ availability: AvailabilitySlot[] }> => {
+    const response = await axios.get(`${API_URL}/guides/${guideId}/availability`);
+    return response.data;
+  },
+
+  createBooking: async (data: {
+    guideId: string;
+    category: string;
+    startTime: string;
+    endTime: string;
+    duration: number;
+    userId: string;
+    requestId?: string;
+  }): Promise<{ booking: Booking }> => {
+    const response = await axios.post(`${API_URL}/bookings`, data);
+    return response.data;
+  },
+
+  getMyBookings: async (userId: string): Promise<{ bookings: Booking[] }> => {
+    const response = await axios.get(`${API_URL}/bookings/my`, { params: { userId } });
+    return response.data;
+  },
+
+  getGuideBookings: async (guideId: string): Promise<{ bookings: Booking[] }> => {
+    const response = await axios.get(`${API_URL}/bookings/guide/${guideId}`);
+    return response.data;
+  },
+
+  // Guide Requests
+  sendGuideRequest: async (data: {
+    guideId: string;
+    category: string;
+    message?: string;
+    userId: string;
+  }): Promise<{ message: string; request: GuideRequest }> => {
+    const response = await axios.post(`${API_URL}/guides/request`, data);
+    return response.data;
+  },
+
+  getMyGuideRequests: async (userId: string): Promise<{ requests: GuideRequest[] }> => {
+    const response = await axios.get(`${API_URL}/guides/requests/my`, { params: { userId } });
+    return response.data;
+  },
+
+  getGuideRequests: async (guideId: string): Promise<{ requests: GuideRequest[] }> => {
+    const response = await axios.get(`${API_URL}/guides/${guideId}/requests`);
+    return response.data;
+  },
+
+  acceptGuideRequest: async (requestId: string): Promise<{ message: string }> => {
+    const response = await axios.post(`${API_URL}/guides/requests/accept`, { requestId });
+    return response.data;
+  },
+
+  rejectGuideRequest: async (requestId: string): Promise<{ message: string }> => {
+    const response = await axios.post(`${API_URL}/guides/requests/reject`, { requestId });
+    return response.data;
+  },
+
+  // Course Completion
+  rateCourseCompletion: async (data: {
+    bookingId: string;
+    rating: 'success' | 'partial';
+    guideId: string;
+  }): Promise<{ message: string; booking: Booking; improvementGained: number }> => {
+    const response = await axios.post(`${API_URL}/courses/rate`, data);
+    return response.data;
+  },
+
+  getUserImprovement: async (userId: string): Promise<{ 
+    improvementPercentage: number;
+    completedCourses: number;
+    courses: Booking[];
+  }> => {
+    const response = await axios.get(`${API_URL}/improvement`, { params: { userId } });
+    return response.data;
+  },
+};
+
+export const SESSION_PRICE_EUR = 50;
+
+export interface CoachVoteCampaign {
+  id: string;
+  applicationId: string;
+  applicantUserId: string;
+  applicantGender: string;
+  profileName: string;
+  profilePicture: string | null;
+  profileBio: string | null;
+  profileAge: number | null;
+  status: 'voting' | 'passed' | 'failed';
+  startedAt: string;
+  expiresAt: string;
+  resolvedAt: string | null;
+  improvementHints: string[];
+}
+
+export interface CoachVoteStatusResponse {
+  campaign: CoachVoteCampaign | null;
+  stats?: {
+    total: number;
+    yes: number;
+    no: number;
+    baddie?: number;
+    baddiePercent?: number;
+    minVotes: number;
+    thresholdPercent: number;
+    hoursLeft: number;
+  };
+  improvementHints?: string[];
+  application?: GuideApplication | null;
+}
+
+export interface GuideWalletSummary {
+  wallet: {
+    userId: string;
+    availableBalanceEur: number;
+    heldBalanceEur: number;
+    pendingBalanceEur: number;
+    totalEarnedEur: number;
+    totalWithdrawnEur: number;
+    paypalEmail: string | null;
+    paypalMerchantId: string | null;
+    paypalOnboardingStatus: 'not_started' | 'pending' | 'active' | 'denied';
+    bankAccountLabel?: string | null;
+  };
+  recentTransactions: Array<{ id: string; type: string; amountEur: number; note?: string; createdAt: string }>;
+  pendingWithdrawals: Array<{ id: string; amountEur: number; status: string }>;
+  holds?: Array<{
+    authorizationId: string;
+    guideShareEur: number;
+    status: string;
+    expiresAt: string | null;
+    createdAt: string;
+  }>;
+  paypalConnected?: boolean;
+  split: {
+    guidePercent: number;
+    platformPercent: number;
+    sessionPriceEur: number;
+    guideEarnsPerSession: number;
+    minWithdrawalEur: number;
+  };
+}
+
+export const coachVoteAPI = {
+  getPending: async (): Promise<{ campaigns: CoachVoteCampaign[]; feedbackTags: string[] }> => {
+    const res = await axios.get(`${API_URL}/coach-votes/pending`);
+    return res.data;
+  },
+  vote: async (campaignId: string, vote: 'yes' | 'no', feedbackTags?: string[]) => {
+    const res = await axios.post(`${API_URL}/coach-votes/${campaignId}/vote`, { vote, feedbackTags });
+    return res.data;
+  },
+  getMyStatus: async (): Promise<CoachVoteStatusResponse> => {
+    const res = await axios.get(`${API_URL}/coach-votes/my-status`);
+    return res.data;
+  },
+  getPopup: async (params?: { skip?: string; country?: string; city?: string }) => {
+    const res = await axios.get(`${API_URL}/coach-votes/popup`, { params });
+    return res.data as {
+      campaign: (CoachVoteCampaign & { applicantCountry?: string; applicantCity?: string }) | null;
+      swipeLabel?: string;
+      helpText?: string;
+      regionalMatch?: boolean;
+      popupSeconds?: number;
+    };
+  },
+};
+
+export const walletAPI = {
+  getMyWallet: async (): Promise<GuideWalletSummary> => {
+    const res = await axios.get(`${API_URL}/wallet`);
+    return res.data;
+  },
+  /** Payout contact email (legacy path still named /wallet/paypal). */
+  setPaypalEmail: async (paypalEmail: string) => {
+    await axios.put(`${API_URL}/wallet/paypal`, { paypalEmail });
+  },
+  setBankLabel: async (bankAccountLabel: string) => {
+    await axios.put(`${API_URL}/wallet/bank`, { bankAccountLabel });
+  },
+  withdraw: async (amountEur: number, paypalEmail?: string) => {
+    const res = await axios.post(`${API_URL}/wallet/withdraw`, { amountEur, paypalEmail });
+    return res.data;
+  },
+  getSplitInfo: async () => {
+    const res = await axios.get(`${API_URL}/payments/split-info`);
+    return res.data;
+  },
+};
+
+export const paymentAPI = {
+  createPaymentIntent: async (amount: number, bookingId: string): Promise<{ clientSecret: string; paymentIntentId: string }> => {
+    const response = await axios.post(`${API_URL}/payments/create-intent`, { amount, bookingId });
+    return response.data;
+  },
+
+  confirmPayment: async (bookingId: string, paymentIntentId: string): Promise<void> => {
+    await axios.post(`${API_URL}/bookings/confirm-payment`, { bookingId, paymentIntentId });
+  },
+
+  submitPaymentProof: async (requestId: string, proofText: string, proofImageUrl?: string | null): Promise<void> => {
+    await axios.post(`${API_URL}/guides/requests/${requestId}/submit-payment-proof`, { proofText, proofImageUrl });
+  },
+
+  setMyPaypalInfo: async (paypalInfo: string): Promise<void> => {
+    await axios.put(`${API_URL}/guides/my-paypal`, { paypalInfo });
+  },
+
+  confirmPaymentReceived: async (requestId: string): Promise<void> => {
+    await axios.post(`${API_URL}/guides/requests/confirm-payment`, { requestId });
+  },
+
+  createGuideStripePayment: async (requestId: string): Promise<{ clientSecret: string; paymentIntentId: string }> => {
+    const res = await axios.post(`${API_URL}/payments/stripe/guide-request`, { requestId });
+    return res.data;
+  },
+
+  confirmGuideStripePayment: async (requestId: string, paymentIntentId: string): Promise<void> => {
+    await axios.post(`${API_URL}/payments/stripe/guide-request/confirm`, { requestId, paymentIntentId });
+  },
+};
+
+
+
+
+

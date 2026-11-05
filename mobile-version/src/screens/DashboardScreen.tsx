@@ -199,7 +199,9 @@ export function DashboardScreen() {
     if (openWidget === 'safety') return <SafetyPanel />;
     if (openWidget === 'datematch') return <DateArenaPanel onOpenGuides={() => openFeature('compatibility')} />;
     if (openWidget === 'settings') return <SettingsPanel />;
-    if (activeTab === 'Profile') return <ProfilePanel onSignOut={logout} />;
+    if (activeTab === 'Profile') {
+      return <ProfilePanel onSignOut={logout} onOpenSettings={() => openFeature('settings')} />;
+    }
     return (
       <View style={styles.placeholder}>
         <Text style={styles.placeholderText}>

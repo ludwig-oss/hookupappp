@@ -1,21 +1,17 @@
 import { Tabs } from 'expo-router';
-import { colors } from '../../ui/theme';
+import { shell } from '../../components/dashboard/chrome';
 
 export default function TabLayout() {
   return (
     <Tabs
       screenOptions={{
-        headerStyle: { backgroundColor: colors.bgRaised },
-        headerTintColor: colors.text,
-        headerTitleStyle: { fontWeight: '700' },
-        tabBarStyle: { backgroundColor: colors.bgRaised, borderTopColor: colors.line },
-        tabBarActiveTintColor: colors.pink,
-        tabBarInactiveTintColor: colors.muted,
-        sceneStyle: { backgroundColor: colors.bg },
+        headerShown: false,
+        tabBarStyle: { display: 'none' },
+        sceneStyle: { backgroundColor: shell.bg },
       }}
     >
-      <Tabs.Screen name="index" options={{ title: 'Home' }} />
-      <Tabs.Screen name="profile" options={{ title: 'Profile' }} />
+      <Tabs.Screen name="index" options={{ title: 'Dashboard' }} />
+      <Tabs.Screen name="profile" options={{ href: null }} />
     </Tabs>
   );
 }

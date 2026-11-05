@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Image, Linking, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import Constants, { ExecutionEnvironment } from 'expo-constants';
 import * as WebBrowser from 'expo-web-browser';
 import { makeRedirectUri, ResponseType } from 'expo-auth-session';
 import * as Google from 'expo-auth-session/providers/google';
@@ -11,6 +12,7 @@ import {
   GOOGLE_IOS_URL_SCHEME,
   GOOGLE_WEB_CLIENT_ID,
   rememberGoogleIntent,
+  signInWithGoogleInExpoGo,
   type OAuthIntent,
 } from '../lib/googleAuth';
 import { useAuth } from '../state/AuthContext';
@@ -28,6 +30,7 @@ export function LoginScreen() {
   const handledToken = useRef('');
 
   const isBrowser = Platform.OS === 'web' && typeof window !== 'undefined';
+  const inExpoGo = Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
   const [request, response, promptAsync] = Google.useAuthRequest({
     webClientId: GOOGLE_WEB_CLIENT_ID,
     iosClientId: GOOGLE_IOS_CLIENT_ID,
@@ -83,6 +86,15 @@ export function LoginScreen() {
     rememberGoogleIntent('signup');
     setBusy(true);
     try {
+      if (inExpoGo) {
+        const session = await signInWithGoogleInExpoGo('signup');
+        if (!session) {
+          setBusy(false);
+          return;
+        }
+        login(session.user, session.token, { stayLoggedIn: true });
+        return;
+      }
       const result = await promptAsync();
       if (result.type === 'cancel' || result.type === 'dismiss') setBusy(false);
     } catch (err) {
@@ -103,7 +115,7 @@ export function LoginScreen() {
           <Text style={styles.sub}>Real connections. Real moments.</Text>
           <GoogleButton
             label={busy ? 'Opening Google…' : 'Sign up or Sign in with Google'}
-            disabled={busy || !request}
+            disabled={busy || (!inExpoGo && !request)}
             onPress={() => void start()}
           />
           <Text style={styles.caption}>New users will automatically create an account.</Text>

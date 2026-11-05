@@ -1,3 +1,5 @@
+import * as WebBrowser from 'expo-web-browser';
+import { makeRedirectUri } from 'expo-auth-session';
 import { API_BASE } from '../api/config';
 
 export type OAuthIntent = 'login' | 'signup';
@@ -116,6 +118,50 @@ export async function exchangeGoogleIdToken(idToken: string, intent: OAuthIntent
     throw new Error(typeof data.error === 'string' ? data.error : 'Google sign-in failed.');
   }
   return { user: (data.user as Record<string, unknown>) || {}, token: data.token };
+}
+
+function queryParam(url: string, key: string): string {
+  const query = url.split('?')[1]?.split('#')[0] || '';
+  return new URLSearchParams(query).get(key) || '';
+}
+
+/**
+ * Expo Go cannot use the iOS Google client. Google rejects that redirect because
+ * Expo Go's bundle id is not app.hookup.mobile. Use the website's HTTPS client
+ * instead, then catch the exp:// return that brings the session back.
+ */
+export async function signInWithGoogleInExpoGo(intent: OAuthIntent): Promise<GoogleSession | null> {
+  let appReturn = makeRedirectUri({ path: 'oauth', scheme: 'exp' });
+  if (!appReturn.startsWith('exp://') && !appReturn.startsWith('exps://')) {
+    const host = appReturn.replace(/^https?:\/\//, '').replace(/\/+$/, '');
+    appReturn = `exp://${host}/--/oauth`;
+  }
+  const startUrl =
+    `${API_BASE}/api/auth/google?return_origin=${encodeURIComponent('https://hookupapp.dev')}` +
+    `&intent=${intent}&format=json&app_return=${encodeURIComponent(appReturn)}`;
+  const res = await fetch(startUrl, { headers: { Accept: 'application/json' }, cache: 'no-store' });
+  const data = await readJson(res);
+  const next = typeof data.url === 'string' ? data.url : '';
+  if (!res.ok || !next) {
+    throw new Error(typeof data.error === 'string' ? data.error : 'Could not start Google.');
+  }
+
+  const result = await WebBrowser.openAuthSessionAsync(next, appReturn);
+  if (result.type === 'cancel' || result.type === 'dismiss') return null;
+  if (result.type !== 'success' || !result.url) throw new Error('Google sign-in was cancelled.');
+
+  const oauthError = queryParam(result.url, 'error_description') || queryParam(result.url, 'error') || queryParam(result.url, 'oauth_error');
+  if (oauthError) throw new Error(oauthError);
+
+  const token = queryParam(result.url, 'token');
+  if (!token) throw new Error('Google did not return a session. Try again.');
+
+  const me = await fetch(`${API_BASE}/api/profile/me`, {
+    headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
+  });
+  const user = await readJson(me);
+  if (!me.ok) throw new Error(typeof user.error === 'string' ? user.error : 'Could not finish sign-in.');
+  return { user, token };
 }
 
 /** Finish a Google redirect that landed back on this app. */

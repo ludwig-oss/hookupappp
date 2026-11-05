@@ -136,9 +136,30 @@ function parseOAuthState(state: string): { o?: string; nonce?: string; i?: strin
   }
 }
 
-function encodeOAuthState(origin: string, nonce?: string, intent: OAuthIntent = 'signup'): string {
+/** Expo Go can only receive the session on exp:// or the app scheme, never as Google's redirect. */
+function safeMobileReturn(raw: string): string {
+  const value = raw.trim();
+  if (!value || value.length > 500) return '';
+  try {
+    const url = new URL(value);
+    if (url.username || url.password) return '';
+    const scheme = url.protocol.replace(/:$/, '').toLowerCase();
+    if (scheme !== 'exp' && scheme !== 'exps' && scheme !== 'hookup' && scheme !== 'app.hookup.mobile') return '';
+    return url.toString();
+  } catch {
+    return '';
+  }
+}
+
+function encodeOAuthState(origin: string, nonce?: string, intent: OAuthIntent = 'signup', appReturn?: string): string {
   return Buffer.from(
-    JSON.stringify({ n: uuidv4(), o: origin, nonce: nonce || uuidv4(), i: intent }),
+    JSON.stringify({
+      n: uuidv4(),
+      o: origin,
+      nonce: nonce || uuidv4(),
+      i: intent,
+      ...(appReturn ? { a: appReturn } : {}),
+    }),
     'utf8'
   ).toString('base64url');
 }
@@ -365,12 +386,13 @@ export function startGoogle(req: Request, res: Response) {
   }
   const redirectUri = oauthReturnRedirectUri('google', origin);
   const nonce = uuidv4();
+  const appReturn = safeMobileReturn(String(req.query.app_return || ''));
   const url = new URL('https://accounts.google.com/o/oauth2/v2/auth');
   url.searchParams.set('client_id', clientId);
   url.searchParams.set('redirect_uri', redirectUri);
   url.searchParams.set('scope', 'openid email profile');
   url.searchParams.set('prompt', 'select_account');
-  url.searchParams.set('state', encodeOAuthState(origin, nonce, oauthIntent(req.query.intent)));
+  url.searchParams.set('state', encodeOAuthState(origin, nonce, oauthIntent(req.query.intent), appReturn));
   if (secret) {
     url.searchParams.set('response_type', 'code');
     url.searchParams.set('access_type', 'online');

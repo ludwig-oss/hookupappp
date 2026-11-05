@@ -9,6 +9,36 @@ function looksLikeHostPage(raw: string, contentType: string | null): boolean {
   return !contentType?.includes('json') || /<html|onrender\.com/i.test(raw);
 }
 
+/** Phone sign-in stores an exp:// or app scheme return in the OAuth state. */
+function appReturnFromState(state: string): string {
+  if (!state) return '';
+  try {
+    const pad = state.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = pad + '='.repeat((4 - (pad.length % 4)) % 4);
+    const parsed = JSON.parse(atob(padded)) as { a?: string };
+    const target = parsed.a || '';
+    const url = new URL(target);
+    if (url.username || url.password) return '';
+    const scheme = url.protocol.replace(/:$/, '').toLowerCase();
+    if (scheme !== 'exp' && scheme !== 'exps' && scheme !== 'hookup' && scheme !== 'app.hookup.mobile') return '';
+    return url.toString();
+  } catch {
+    return '';
+  }
+}
+
+function finishSignIn(token: string, setup: string, state: string) {
+  const appReturn = appReturnFromState(state);
+  if (appReturn) {
+    const join = appReturn.includes('?') ? '&' : '?';
+    window.location.replace(`${appReturn}${join}token=${encodeURIComponent(token)}&setup=${setup}`);
+    return;
+  }
+  window.location.replace(
+    `${window.location.origin}/auth/callback?token=${encodeURIComponent(token)}&setup=${setup}`
+  );
+}
+
 /** Google/Apple/Facebook redirect here first — we wake the API, then finish without showing the host page. */
 const OAuthReturn = () => {
   const { provider = '' } = useParams<{ provider: string }>();
@@ -23,6 +53,7 @@ const OAuthReturn = () => {
     let cancelled = false;
     (async () => {
       const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+      const state = hashParams.get('state') || searchParams.get('state') || '';
       const hashError = hashParams.get('error_description') || hashParams.get('error');
       if (hashError) {
         setError(hashError);
@@ -47,9 +78,7 @@ const OAuthReturn = () => {
           return;
         }
         const setup = data.setup === '1' ? '1' : '0';
-        window.location.replace(
-          `${window.location.origin}/auth/callback?token=${encodeURIComponent(data.token)}&setup=${setup}`
-        );
+        finishSignIn(data.token, setup, state);
         return;
       }
       const qs = new URLSearchParams(searchParams);
@@ -71,9 +100,7 @@ const OAuthReturn = () => {
         return;
       }
       const setup = data.setup === '1' ? '1' : '0';
-      window.location.replace(
-        `${window.location.origin}/auth/callback?token=${encodeURIComponent(data.token)}&setup=${setup}`
-      );
+      finishSignIn(data.token, setup, state);
     })().catch(() => {
       if (!cancelled) setError('Sign-in failed. Try again.');
     });

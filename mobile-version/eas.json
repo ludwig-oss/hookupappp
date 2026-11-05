@@ -9,6 +9,11 @@
       "android": {
         "buildType": "app-bundle"
       }
+    },
+    "ios-local": {
+      "extends": "production",
+      "credentialsSource": "local",
+      "distribution": "store"
     }
   }
 }

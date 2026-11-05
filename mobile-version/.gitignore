@@ -35,6 +35,10 @@ yarn-error.*
 .env
 .env*.local
 
+# iOS signing material. Never commit the real credentials.json.
+credentials.json
+certs/
+
 # typescript
 *.tsbuildinfo
 

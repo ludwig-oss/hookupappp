@@ -22,7 +22,8 @@
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "Hookup uses your location to show people nearby and to send a safety signal.",
         "NSCameraUsageDescription": "Hookup uses the camera for your profile photo.",
-        "NSPhotoLibraryUsageDescription": "Hookup uses your photos for your profile picture."
+        "NSPhotoLibraryUsageDescription": "Hookup uses your photos for your profile picture.",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {

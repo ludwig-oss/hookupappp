@@ -162,7 +162,12 @@ export const createDatingPost = async (req: Request, res: Response) => {
 
 export const getDatingPosts = async (req: Request, res: Response) => {
   try {
-    const posts = await getAllPosts();
+    const { pausedUserIds } = await import('../models/user.js');
+    const hidden = await pausedUserIds();
+    const viewerId = String((req as any).userId || '');
+    const posts = (await getAllPosts()).filter(
+      (post) => !hidden.has(String(post.userId)) || String(post.userId) === viewerId
+    );
     const userId = (req as any).userId || null;
     const { attachToPosts } = await import('../models/singleAgain.js');
     const withSingle = await attachToPosts(posts, userId);

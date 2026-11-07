@@ -61,7 +61,7 @@ export async function getRegionUsers(req: Request, res: Response) {
 
     const me = await getUserById(userId);
     const blocked = new Set(me?.blockedUsers || []);
-    let filtered = users.filter((u: any) => u && u.id && u.id !== userId && !blocked.has(u.id));
+    let filtered = users.filter((u: any) => u && u.id && u.id !== userId && !blocked.has(u.id) && u.isPaused !== true);
 
     // Orientation + gender filter (straight men don't get men, etc.)
     try {

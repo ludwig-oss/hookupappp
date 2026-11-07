@@ -31,6 +31,7 @@ if (process.env.npm_lifecycle_event === 'dev:sim' || process.env.npm_lifecycle_e
   process.env.SIMULATOR = '1';
 }
 import profileRoutes from './routes/profile.js';
+import accountRoutes from './routes/account.js';
 import chatRoutes from './routes/chat.js';
 import improvementRoutes from './routes/improvement.js';
 import nearbyRoutes from './routes/nearby.js';
@@ -144,6 +145,7 @@ app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use('/api/auth', authRoutes);
 app.use('/api', apiLimiter);
 app.use('/api/profile', profileRoutes);
+app.use('/api/account', accountRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/improvement', improvementRoutes);
 app.use('/api/nearby', nearbyRoutes);

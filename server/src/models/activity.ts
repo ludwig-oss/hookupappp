@@ -76,6 +76,7 @@ export async function getActiveUsersByRegion(country: string, city?: string) {
   const norm = (s: string) => (s || '').toLowerCase().trim();
   const c = norm(country);
   return users.filter((u) => {
+    if (u.isPaused === true) return false;
     if (!u.country) return false;
     const uc = norm(u.country);
     // Exact or loose match so "canada" finds "Canada"

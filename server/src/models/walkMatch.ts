@@ -305,6 +305,7 @@ export async function getWalkSuggestions(
 
   for (const other of users) {
     if (other.id === userId) continue;
+    if (other.isPaused === true) continue;
     if (shouldSkipNearbyCandidate(userId, other.id, interests, dismissals)) continue;
     if (viewer.blockedUsers?.includes(other.id)) continue;
     if (viewer.unmatchedUsers?.includes(other.id)) continue;

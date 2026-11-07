@@ -172,6 +172,12 @@ export async function getUserSettings(userId: string): Promise<UserSettings> {
   return newSettings;
 }
 
+export async function deleteUserSettings(userId: string): Promise<void> {
+  const settings = await readSettings();
+  const next = settings.filter((row) => row.userId !== userId);
+  if (next.length !== settings.length) await writeSettings(next);
+}
+
 export async function updateUserSettings(userId: string, updates: Partial<UserSettings>): Promise<UserSettings> {
   const settings = await readSettings();
   const index = settings.findIndex(s => s.userId === userId);

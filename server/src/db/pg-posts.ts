@@ -1,4 +1,5 @@
 import { query } from './index.js';
+import { pausedUserIds } from '../models/user.js';
 import type { DatingPost } from '../models/posts.js';
 
 const BLOWING_UP_LIKES_THRESHOLD = 25;
@@ -52,7 +53,15 @@ export async function getFeedPosts(options?: {
     comments: unknown;
     created_at: Date;
   }>('SELECT * FROM dating_posts ORDER BY created_at DESC');
-  const posts = res.rows.map(rowToPost).filter((post) => !(post.tags || []).includes('profile-gallery'));
+  const hidden = await pausedUserIds();
+  const viewerId = String(options?.userId || '');
+  const posts = res.rows
+    .map(rowToPost)
+    .filter(
+      (post) =>
+        !(post.tags || []).includes('profile-gallery') &&
+        (!hidden.has(String(post.userId)) || String(post.userId) === viewerId)
+    );
   const { attachViewCounts } = await import('../models/feedEngagement.js');
   const { rankFeedPosts } = await import('../models/feedAlgorithm.js');
   const { getUserFeedProfile } = await import('../models/feedEngagement.js');
@@ -141,6 +150,11 @@ export async function addComment(postId: string, comment: Omit<DatingPost['comme
   const comments = [...(post.comments || []), newComment];
   await query('UPDATE dating_posts SET comments = $1 WHERE id = $2', [JSON.stringify(comments), postId]);
   return true;
+}
+
+export async function deletePostsByUser(userId: string): Promise<string[]> {
+  const res = await query<{ content: string }>('DELETE FROM dating_posts WHERE user_id = $1 RETURNING content', [userId]);
+  return res.rows.map((row) => row.content).filter((content) => typeof content === 'string' && content.length > 0);
 }
 
 export async function deletePost(postId: string, userId: string): Promise<boolean> {

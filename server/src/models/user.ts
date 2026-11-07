@@ -213,6 +213,8 @@ export interface User {
   aiGuideId?: string | null;
   /** Date Arena intents picked at signup (serious_relationship, casual_dating, …). */
   dateLookingFor?: string[] | null;
+  /** Tinder-style pause. Profile stays saved and is hidden from discovery until this is cleared. */
+  isPaused?: boolean;
 }
 
 const DB_PATH = join(__dirname, '..', 'data', 'users.json');
@@ -433,6 +435,19 @@ export async function getUserByPhone(phoneNumber: string): Promise<User | null> 
   return null;
 }
 
+export function accountIsPaused(user: { isPaused?: boolean | null } | null | undefined): boolean {
+  return user?.isPaused === true;
+}
+
+export async function pausedUserIds(): Promise<Set<string>> {
+  try {
+    const users = await getAllUsers();
+    return new Set(users.filter((user) => user.isPaused === true).map((user) => String(user.id)));
+  } catch {
+    return new Set();
+  }
+}
+
 export async function getUserById(userId: string): Promise<User | null> {
   if (usePostgres()) {
     try {
@@ -466,6 +481,33 @@ export async function updateUserProfile(userId: string, updates: Partial<User>):
     return users[userIndex];
   }
   return null;
+}
+
+export async function deleteUserRecord(userId: string): Promise<User | null> {
+  const existing = await getUserById(userId);
+  const id = String(userId);
+  if (usePostgres()) {
+    try {
+      const { query } = await import('../db/index.js');
+      await query('DELETE FROM users WHERE id = $1', [id]);
+    } catch (err) {
+      console.error('Postgres user delete failed:', err);
+    }
+  }
+  const users = await readUsers();
+  const fromFile = users.find((user) => String(user.id) === id) || null;
+  const next = users
+    .filter((user) => String(user.id) !== id)
+    .map((user) => ({
+      ...user,
+      blockedUsers: (user.blockedUsers || []).filter((other) => String(other) !== id),
+      mutedUsers: (user.mutedUsers || []).filter((other) => String(other) !== id),
+      unmatchedUsers: (user.unmatchedUsers || []).filter((other) => String(other) !== id),
+      closeFriendIds: (user.closeFriendIds || []).filter((other) => String(other) !== id),
+      revealToUserIds: (user.revealToUserIds || []).filter((other) => String(other) !== id),
+    }));
+  await writeUsers(next);
+  return existing || fromFile;
 }
 
 export async function updateUserLocation(

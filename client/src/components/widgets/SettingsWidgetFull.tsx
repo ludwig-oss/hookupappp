@@ -27,6 +27,7 @@ import { walletAPI, GuideWalletSummary } from '../../api/improvement';
 import { relationshipAPI } from '../../api/relationship';
 import BreakupReasonModal from '../BreakupReasonModal';
 import { LANGUAGES } from '../../constants/languages';
+import AccountControls from '../AccountControls';
 import { setStoredLanguage } from '../../i18n/languageStorage';
 import './Widget.css';
 
@@ -1860,10 +1861,7 @@ const SettingsWidgetFull = () => {
 
           <div style={{ marginBottom: '30px' }}>
             <h4 style={{ marginBottom: '12px' }}>Danger Zone</h4>
-            <button onClick={async () => {
-              if (!window.confirm('Are you sure? This cannot be undone.')) return;
-              alert('Account deletion feature coming soon');
-            }} className="danger-btn" disabled={loading} style={{ width: '100%', padding: '12px' }}>
+            <button onClick={() => window.dispatchEvent(new Event('hookup:confirm-delete-account'))} className="danger-btn" disabled={loading} style={{ width: '100%', padding: '12px' }}>
               Delete Account
             </button>
             <small style={{ color: '#6b7280', fontSize: '12px', display: 'block', marginTop: '8px' }}>
@@ -1872,6 +1870,8 @@ const SettingsWidgetFull = () => {
           </div>
         </div>
       )}
+
+      <AccountControls />
 
       {showPhotoVerification && user?.id && createPortal(
         <PhotoVerificationModal

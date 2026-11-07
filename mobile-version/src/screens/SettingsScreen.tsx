@@ -4,6 +4,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { settingsAPI, type UserSettings } from '../api/settings';
 import { formatAxiosError } from '../lib/apiError';
 import { PrivacyPolicyCopy } from '../components/PrivacyPolicyCopy';
+import { AccountControls } from '../components/AccountControls';
 import { Card, ErrorText, Muted, Screen, Title } from '../ui/components';
 import { colors } from '../ui/theme';
 
@@ -79,6 +80,7 @@ export function SettingsScreen() {
       <Card>
         <PrivacyPolicyCopy />
       </Card>
+      <AccountControls />
     </Screen>
   );
 }

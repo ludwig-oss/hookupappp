@@ -284,6 +284,7 @@ export async function getNearbyUsers(
   for (const otherUser of users) {
     try {
       if (otherUser.id === userId) continue;
+      if (otherUser.isPaused === true) continue;
       if (interactedIds.has(otherUser.id)) continue;
       if (!isConnectionsVisible(otherUser)) continue;
       if (user.blockedUsers?.includes(otherUser.id)) continue;
@@ -398,6 +399,7 @@ export async function getVenueCounts(
 
     for (const otherUser of allUsers) {
       if (otherUser.id === userId) continue;
+      if (otherUser.isPaused === true) continue;
       if (user.blockedUsers?.includes(otherUser.id)) continue;
       if (!otherUser.location) continue;
 

@@ -12,7 +12,7 @@ import {
 } from '../models/discover.js';
 import { notifyNewMatch, notifyNewInterest } from '../realtime/notifications.js';
 import { sendPushToUser } from '../realtime/push.js';
-import { getAllUsers, getUserById } from '../models/user.js';
+import { accountIsPaused, getAllUsers, getUserById } from '../models/user.js';
 import { maskUserForViewer } from '../lib/celebMask.js';
 import { sanitizeForStorage, sanitizeMessageContent, LIMITS } from '../utils/sanitize.js';
 import { ensureMatchConversation } from '../models/chat.js';
@@ -33,7 +33,7 @@ export async function getAllCities(req: Request, res: Response) {
         const cityLower = pref.city.toLowerCase().trim();
         if (!cityMap.has(cityLower)) {
           const user = users.find(u => u.id === pref.userId);
-          if (user) {
+          if (user && !accountIsPaused(user)) {
             cityMap.set(cityLower, {
               count: 1,
               users: [{
@@ -47,7 +47,7 @@ export async function getAllCities(req: Request, res: Response) {
         } else {
           const existing = cityMap.get(cityLower)!;
           const user = users.find(u => u.id === pref.userId);
-          if (user) {
+          if (user && !accountIsPaused(user)) {
             existing.count++;
             existing.users.push({
               id: user.id,
@@ -100,14 +100,14 @@ export async function searchByCity(req: Request, res: Response) {
     const users = await getAllUsers();
     
     // Filter by user preferences (masked user shape for response)
-    let cityUsers: Array<ReturnType<typeof maskUserForViewer> & { preference?: any }> = users.filter(u => userIds.includes(u.id)).map(u => {
+    let cityUsers: Array<ReturnType<typeof maskUserForViewer> & { preference?: any }> = users.filter(u => userIds.includes(u.id) && !accountIsPaused(u)).map(u => {
       const base = { id: u.id, name: u.name, username: u.username, profilePicture: u.profilePicture ?? null, publicFigureVerified: !!(u.publicFigureVerified), revealToUserIds: u.revealToUserIds || [] };
       return maskUserForViewer(base, userId);
     });
     
     if (userPref) {
       // Filter by orientation/preference matching (re-fetch full users for preference check)
-      const fullCityUsers = users.filter(u => userIds.includes(u.id));
+      const fullCityUsers = users.filter(u => userIds.includes(u.id) && !accountIsPaused(u));
       const matchingUsers = await Promise.all(
         fullCityUsers.map(async (u) => {
           if (u.id === userId) return null;
@@ -345,6 +345,7 @@ export async function getPlaceUsers(req: Request, res: Response) {
     }
 
     const nearbyUsers = users.filter(u => {
+      if (accountIsPaused(u)) return false;
       if (!u.location) return false;
       const distance = haversineMeters(place.lat, place.lon, u.location.lat, u.location.lon);
       return distance <= 50;

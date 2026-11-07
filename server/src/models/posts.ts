@@ -2,6 +2,7 @@ import { readFile, writeFile, mkdir, access } from 'fs/promises';
 import { dirname, join } from 'path';
 import { usePostgres } from '../db/index.js';
 import * as pgPosts from '../db/pg-posts.js';
+import { pausedUserIds } from './user.js';
 
 export interface DatingPost {
   id: string;
@@ -96,7 +97,13 @@ export async function getFeedPosts(options?: {
   const { rankFeedPosts } = await import('./feedAlgorithm.js');
   const { getUserFeedProfile } = await import('./feedEngagement.js');
 
-  const posts = (await readPosts()).filter((post) => !(post.tags || []).includes('profile-gallery'));
+  const hidden = await pausedUserIds();
+  const viewerId = String(options?.userId || '');
+  const posts = (await readPosts()).filter(
+    (post) =>
+      !(post.tags || []).includes('profile-gallery') &&
+      (!hidden.has(String(post.userId)) || String(post.userId) === viewerId)
+  );
   const withViews = await attachViewCounts(posts);
   const profile = options?.userId ? await getUserFeedProfile(options.userId) : null;
   const { posts: ranked } = rankFeedPosts(withViews, {
@@ -227,6 +234,19 @@ export async function addComment(postId: string, comment: Omit<DatingPost['comme
     return true;
   }
   return false;
+}
+
+export async function deletePostsByUser(userId: string): Promise<string[]> {
+  const id = String(userId);
+  const urls: string[] = [];
+  if (usePostgres()) urls.push(...(await pgPosts.deletePostsByUser(id)));
+  const posts = await readPosts();
+  for (const post of posts) {
+    if (String(post.userId) === id && post.content) urls.push(post.content);
+  }
+  const kept = posts.filter((post) => String(post.userId) !== id);
+  if (kept.length !== posts.length) await writePosts(kept);
+  return urls;
 }
 
 export async function deletePost(postId: string, userId: string): Promise<boolean> {

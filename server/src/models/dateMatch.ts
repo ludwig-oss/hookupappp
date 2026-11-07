@@ -9,7 +9,7 @@ import {
   allDateIdeaBases,
   getAnyIdeaById,
 } from '../data/dateMatchLocalize.js';
-import { getAllUsers, getUserById, updateUserProfile, unmatchUser } from './user.js';
+import { accountIsPaused, getAllUsers, getUserById, updateUserProfile, unmatchUser } from './user.js';
 import { getUserPreference, setUserPreference } from './discover.js';
 import { isSseConnected } from '../realtime/notifications.js';
 import { userHasFeature } from './premium.js';
@@ -530,6 +530,17 @@ export async function startSearch(
     /* optional */
   }
 
+  if (accountIsPaused(meUser)) {
+    return {
+      quota: await getSearchQuota(userId),
+      searching: false,
+      match: null,
+      other: null,
+      me: await toCard(userId),
+      cityScope,
+    };
+  }
+
   if (!normPlace(meUser.country)) {
     throw new Error('Set your country in Profile before searching Date Arena.');
   }
@@ -557,7 +568,7 @@ export async function startSearch(
   const scored: { entry: SearchQueueEntry; score: number; diff: number; prefBoost: number }[] = [];
   for (const entry of candidates) {
     const other = await getUserById(entry.userId);
-    if (!other) continue;
+    if (!other || accountIsPaused(other)) continue;
     if (blocked.has(entry.userId) || (other.blockedUsers || []).includes(userId) || (other.unmatchedUsers || []).includes(userId)) continue;
     if (other.relationshipStatus === 'In a relationship') continue;
     if (!locationFitsDateSearch(cityScope, meUser, other)) continue;

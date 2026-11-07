@@ -30,6 +30,7 @@ export interface ProfileData {
   profileSetupComplete: boolean;
   hasBackupPassword?: boolean;
   hasGoogleAuth?: boolean;
+  isPaused?: boolean;
   gender?: string;
   city?: string;
   country?: string;

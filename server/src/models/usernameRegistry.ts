@@ -145,6 +145,18 @@ export async function claimUsername(username: string): Promise<void> {
   await assertUsernameAvailable(username);
 }
 
+export async function releaseUsername(username: string, userId: string): Promise<void> {
+  const key = normalizeUsernameKey(username);
+  const id = String(userId);
+  if (!key) return;
+  if (usePostgres()) {
+    await query('DELETE FROM reserved_usernames WHERE username = $1 AND user_id = $2', [key, id]).catch(() => undefined);
+  }
+  const list = await readFileRegistry();
+  const next = list.filter((row) => !(row.username === key && String(row.userId) === id));
+  if (next.length !== list.length) await writeFileRegistry(next);
+}
+
 export async function reserveUsername(username: string, userId: string): Promise<void> {
   const key = normalizeUsernameKey(username);
   if (!key || !isRealUserId(userId)) return;

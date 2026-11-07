@@ -30,6 +30,7 @@ export interface ProfileData {
   profileSetupComplete: boolean;
   hasBackupPassword?: boolean;
   hasGoogleAuth?: boolean;
+  isPaused?: boolean;
   gender?: string;
   /** ISO date when user completed selfie verification (anti-catfish). Shown as green badge. */
   photoVerifiedAt?: string | null;

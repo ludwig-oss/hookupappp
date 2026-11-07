@@ -34,6 +34,7 @@ export type SessionUser = {
   dateLookingFor?: string[];
   hasBackupPassword?: boolean;
   hasGoogleAuth?: boolean;
+  isPaused?: boolean;
   photoVerifiedAt?: string | null;
 };
 

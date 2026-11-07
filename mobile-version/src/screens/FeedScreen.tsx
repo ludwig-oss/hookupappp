@@ -4,6 +4,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { postsAPI, type DatingPost, type FeedMode } from '../api/posts';
 import { formatAxiosError } from '../lib/apiError';
 import { isVideoMedia, PostMedia } from '../components/dashboard/PostMedia';
+import { UgcSafetyActions } from '../components/UgcSafetyActions';
 import { pickAndUploadPostMedia } from '../lib/uploadMedia';
 import { Card, ErrorText, Field, Muted, PrimaryButton, Screen, Title } from '../ui/components';
 import { colors } from '../ui/theme';
@@ -108,6 +109,10 @@ export function FeedScreen() {
             <Text style={styles.body}>{post.content}</Text>
           )}
           <Muted>{post.likes || 0} likes{post.user?.username ? ` · @${post.user.username}` : ''}</Muted>
+          <UgcSafetyActions
+            userId={post.userId || post.user?.id}
+            onBlocked={(id) => setPosts((current) => current.filter((item) => String(item.userId || item.user?.id) !== id))}
+          />
           <PrimaryButton label="Like" tone="ghost" onPress={() => void like(post.id)} />
         </Card>
       ))}

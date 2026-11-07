@@ -1,5 +1,5 @@
 import { query } from './index.js';
-import { pausedUserIds } from '../models/user.js';
+import { viewerHiddenAuthorIds } from '../models/user.js';
 import type { DatingPost } from '../models/posts.js';
 
 const BLOWING_UP_LIKES_THRESHOLD = 25;
@@ -53,7 +53,7 @@ export async function getFeedPosts(options?: {
     comments: unknown;
     created_at: Date;
   }>('SELECT * FROM dating_posts ORDER BY created_at DESC');
-  const hidden = await pausedUserIds();
+  const hidden = await viewerHiddenAuthorIds(options?.userId);
   const viewerId = String(options?.userId || '');
   const posts = res.rows
     .map(rowToPost)

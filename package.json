@@ -2,6 +2,8 @@
   "name": "auth-web-app",
   "version": "1.0.0",
   "description": "Full-stack web application with authentication",
+  "contentRating": "17+",
+  "keywords": ["ugc", "mature-17", "user-generated-content"],
   "engines": {
     "node": ">=20 <23"
   },

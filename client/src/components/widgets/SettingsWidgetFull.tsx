@@ -28,6 +28,7 @@ import { relationshipAPI } from '../../api/relationship';
 import BreakupReasonModal from '../BreakupReasonModal';
 import { LANGUAGES } from '../../constants/languages';
 import AccountControls from '../AccountControls';
+import { PrivacyPolicyLink } from '../UgcSafetyActions';
 import { setStoredLanguage } from '../../i18n/languageStorage';
 import './Widget.css';
 
@@ -1872,6 +1873,7 @@ const SettingsWidgetFull = () => {
       )}
 
       <AccountControls />
+      <PrivacyPolicyLink />
 
       {showPhotoVerification && user?.id && createPortal(
         <PhotoVerificationModal

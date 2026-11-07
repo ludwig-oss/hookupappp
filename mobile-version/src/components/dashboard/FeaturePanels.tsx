@@ -12,6 +12,7 @@ import { formatAxiosError } from '../../lib/apiError';
 import { PrivacyPolicyCopy } from '../PrivacyPolicyCopy';
 import { Field, Hint, NeonButton, Notice, PanelTitle, PersonRow, StageFrame, shell } from './chrome';
 import { AccountControls } from '../AccountControls';
+import { PrivacyPolicyLink } from '../UgcSafetyActions';
 import type { WidgetId } from './types';
 
 const HELP_LINKS: Array<{ id: WidgetId | 'profile'; icon: string; label: string; hint: string }> = [
@@ -645,6 +646,7 @@ export function SettingsPanel() {
         </>
       ) : null}
       <AccountControls />
+      <PrivacyPolicyLink />
     </StageFrame>
   );
 }

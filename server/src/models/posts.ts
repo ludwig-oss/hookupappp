@@ -2,7 +2,7 @@ import { readFile, writeFile, mkdir, access } from 'fs/promises';
 import { dirname, join } from 'path';
 import { usePostgres } from '../db/index.js';
 import * as pgPosts from '../db/pg-posts.js';
-import { pausedUserIds } from './user.js';
+import { viewerHiddenAuthorIds } from './user.js';
 
 export interface DatingPost {
   id: string;
@@ -97,7 +97,7 @@ export async function getFeedPosts(options?: {
   const { rankFeedPosts } = await import('./feedAlgorithm.js');
   const { getUserFeedProfile } = await import('./feedEngagement.js');
 
-  const hidden = await pausedUserIds();
+  const hidden = await viewerHiddenAuthorIds(options?.userId);
   const viewerId = String(options?.userId || '');
   const posts = (await readPosts()).filter(
     (post) =>

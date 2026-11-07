@@ -24,7 +24,8 @@
         "NSLocationWhenInUseUsageDescription": "Hookup uses your location to show people nearby and to send a safety signal.",
         "NSCameraUsageDescription": "Hookup uses the camera for your profile photo and posts.",
         "NSPhotoLibraryUsageDescription": "Hookup uses your photos and videos for your profile and posts.",
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "LSApplicationCategoryType": "public.app-category.social-networking"
       }
     },
     "android": {
@@ -71,6 +72,12 @@
       },
       "eas": {
         "projectId": "7f024715-d643-4733-acef-34a309e3b6e8"
+      },
+      "contentRating": {
+        "apple": "17+",
+        "googlePlay": "Mature 17+",
+        "userGeneratedContent": true,
+        "reason": "Users can post photos and videos"
       }
     },
     "owner": "hookupapp1"

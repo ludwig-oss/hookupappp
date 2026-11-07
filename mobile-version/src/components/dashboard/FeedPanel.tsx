@@ -5,6 +5,7 @@ import { formatAxiosError } from '../../lib/apiError';
 import { pickAndUploadPostMedia } from '../../lib/uploadMedia';
 import { Field, Hint, NeonButton, Notice, PanelTitle, StageFrame, shell } from './chrome';
 import { isVideoMedia, PostMedia } from './PostMedia';
+import { UgcSafetyActions } from '../UgcSafetyActions';
 
 const MODES: Array<{ id: FeedMode; label: string }> = [
   { id: 'for_you', label: 'For You' },
@@ -166,6 +167,10 @@ export function FeedPanel({ onShare }: { onShare: () => void }) {
           <Text style={styles.meta}>
             {post.likes || 0} likes · {post.comments?.length || 0} comments
           </Text>
+          <UgcSafetyActions
+            userId={post.userId || post.user?.id}
+            onBlocked={(id) => setPosts((current) => current.filter((item) => String(item.userId || item.user?.id) !== id))}
+          />
           <View style={styles.actions}>
             <View style={styles.flex}>
               <NeonButton label="Like" tone="ghost" onPress={() => void like(post.id)} />

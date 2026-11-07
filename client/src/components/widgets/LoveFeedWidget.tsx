@@ -4,6 +4,7 @@ import { AuthContext } from '../../context/AuthContext';
 import { postsAPI, DatingPost, FeedMode } from '../../api/posts';
 import { singleAgainAPI } from '../../api/singleAgain';
 import { formatAxiosError } from '../../lib/apiError';
+import { UgcSafetyActions } from '../UgcSafetyActions';
 import { prepareAndUploadFile } from '../../lib/uploadMedia';
 import { MEDIA_FILE_ACCEPT, isProbablyImageFile, isProbablyVideoFile } from '../../lib/compressVideo';
 import './Widget.css';
@@ -269,6 +270,7 @@ export default function LoveFeedWidget({ onShareToFriends }: { onShareToFriends?
   const [feedMode, setFeedMode] = useState<FeedMode>('for_you');
   const [feedDescription, setFeedDescription] = useState('');
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
+  const [hiddenAuthors, setHiddenAuthors] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [feedError, setFeedError] = useState<string | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -579,6 +581,8 @@ export default function LoveFeedWidget({ onShareToFriends }: { onShareToFriends?
   const blowingUpPosts = posts.filter((p) => (p.likes || 0) >= BLOWING_UP_LIKES);
 
   const renderPostCard = (post: DatingPost, opts?: { compact?: boolean }) => {
+    const authorId = String(post.userId || post.user?.id || '');
+    if (authorId && hiddenAuthors.has(authorId)) return null;
     const saPhoto = post.singleAgain?.photoUrl || null;
     const imageSrc =
       post.contentType === 'image' && post.content
@@ -627,6 +631,10 @@ export default function LoveFeedWidget({ onShareToFriends }: { onShareToFriends?
           </div>
         )}
       </div>
+      <UgcSafetyActions
+        userId={authorId}
+        onBlocked={(id) => setHiddenAuthors((current) => new Set(current).add(id))}
+      />
       <div className="love-feed-card-meta">
         <div className="love-feed-card-author">
           {post.user?.profilePicture ? (

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Image, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import * as Location from 'expo-location';
 import { connectionsAPI, type NearbyUser } from '../../api/connections';
+import { UgcSafetyActions } from '../UgcSafetyActions';
 import { formatAxiosError } from '../../lib/apiError';
 
 /** Same nearby interest card as the website, from any dashboard tab. */
@@ -99,6 +100,7 @@ export function NearbyInterestPopup({
             <View style={styles.avatar} />
           )}
           <Text style={styles.name}>{person?.name || 'Someone'}</Text>
+          <UgcSafetyActions userId={person?.id} onBlocked={() => setPerson(null)} />
           {error ? <Text style={styles.error}>{error}</Text> : null}
           <View style={styles.actions}>
             <Pressable onPress={dismiss} style={styles.ghost}>

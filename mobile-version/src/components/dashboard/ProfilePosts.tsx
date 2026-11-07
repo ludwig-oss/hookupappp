@@ -4,6 +4,7 @@ import { postsAPI, type DatingPost } from '../../api/posts';
 import { formatAxiosError } from '../../lib/apiError';
 import { pickAndUploadPostMedia } from '../../lib/uploadMedia';
 import { isVideoMedia, PostMedia } from './PostMedia';
+import { UgcSafetyActions } from '../UgcSafetyActions';
 
 export function ProfilePosts({ userId }: { userId: string }) {
   const [posts, setPosts] = useState<DatingPost[]>([]);
@@ -109,6 +110,10 @@ export function ProfilePosts({ userId }: { userId: string }) {
         return (
           <View key={post.id} style={styles.post}>
             {showMedia && post.content ? <PostMedia uri={post.content} video={video} /> : null}
+            <UgcSafetyActions
+              userId={post.userId || userId}
+              onBlocked={(id) => setPosts((current) => current.filter((item) => String(item.userId || userId) !== id))}
+            />
             {!showMedia && post.content ? <Text style={styles.postText}>{post.content}</Text> : null}
             {post.title ? <Text style={styles.postText}>{post.title}</Text> : null}
             {showMedia && !post.title ? (

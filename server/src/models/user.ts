@@ -448,6 +448,19 @@ export async function pausedUserIds(): Promise<Set<string>> {
   }
 }
 
+/** Authors the viewer must not see: paused accounts, plus people they blocked. */
+export async function viewerHiddenAuthorIds(viewerId?: string | null): Promise<Set<string>> {
+  const hidden = await pausedUserIds();
+  if (!viewerId) return hidden;
+  try {
+    const viewer = await getUserById(String(viewerId));
+    for (const id of viewer?.blockedUsers || []) hidden.add(String(id));
+  } catch {
+    /* Paused accounts still stay hidden. */
+  }
+  return hidden;
+}
+
 export async function getUserById(userId: string): Promise<User | null> {
   if (usePostgres()) {
     try {

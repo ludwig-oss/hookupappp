@@ -4,6 +4,7 @@ import * as Location from 'expo-location';
 import { connectionsAPI, type Buzz, type NearbyUser, type VenueCount } from '../../api/connections';
 import { formatAxiosError } from '../../lib/apiError';
 import { Field, Hint, NeonButton, Notice, PanelTitle, PersonRow, StageFrame, shell } from './chrome';
+import { UgcSafetyActions } from '../UgcSafetyActions';
 
 const RADII = [
   { value: 500, label: '500 m' },
@@ -188,13 +189,18 @@ export function ConnectionsPanel({
           <Text style={styles.section}>Nearby now{nearby.length ? ` · ${nearby.length}` : ''}</Text>
           {nearby.length === 0 && !loading ? <Hint>No one is in range right now.</Hint> : null}
           {nearby.map((person) => (
-            <PersonRow
-              key={person.id}
-              name={person.username ? `@${person.username}` : person.name || 'Nearby match'}
-              meta={person.isOnline ? 'Active nearby · your type' : 'Recently nearby · your type'}
-              action="Buzz"
-              onAction={() => void buzz(person.id)}
-            />
+            <View key={person.id}>
+              <PersonRow
+                name={person.username ? `@${person.username}` : person.name || 'Nearby match'}
+                meta={person.isOnline ? 'Active nearby · your type' : 'Recently nearby · your type'}
+                action="Buzz"
+                onAction={() => void buzz(person.id)}
+              />
+              <UgcSafetyActions
+                userId={person.id}
+                onBlocked={(id) => setNearby((current) => current.filter((item) => item.id !== id))}
+              />
+            </View>
           ))}
           {pending.map((item) => (
             <View key={item.id} style={styles.buzzCard}>

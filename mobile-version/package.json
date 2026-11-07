@@ -1,6 +1,8 @@
 {
   "name": "mobile-version",
   "version": "1.0.0",
+  "contentRating": "17+",
+  "keywords": ["ugc", "mature-17", "user-generated-content"],
   "main": "expo-router/entry",
   "dependencies": {
     "@expo/metro-runtime": "~58.0.16",

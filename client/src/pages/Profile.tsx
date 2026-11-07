@@ -12,6 +12,7 @@ import HealthProofSection from '../components/HealthProofSection';
 import { healthAPI, HealthTest } from '../api/health';
 import { postsAPI, DatingPost } from '../api/posts';
 import ProfileMedia from '../components/ProfileMedia';
+import { UgcSafetyActions } from '../components/UgcSafetyActions';
 import { getCountryFlagCode } from '../constants/countryFlags';
 import { useTranslation } from '../context/LanguageContext';
 import { chatAPI } from '../api/chat';
@@ -807,6 +808,9 @@ const Profile = ({ embedded = false }: { embedded?: boolean }) => {
                 )}
                 {isOwnProfile && <div className="avatar-overlay"><span className="upload-icon">📷</span></div>}
               </div>
+              {!isOwnProfile ? (
+                <UgcSafetyActions userId={viewingUserId} onBlocked={() => navigate('/home')} />
+              ) : null}
               {isOwnProfile && (
                 <>
                   <div className="avatar-actions">
@@ -1043,6 +1047,7 @@ const Profile = ({ embedded = false }: { embedded?: boolean }) => {
                           )
                         )}
                         {itemCount > 1 && <div className="highlight-count-badge">{itemCount}</div>}
+                        {!isOwnProfile ? <UgcSafetyActions userId={viewingUserId} /> : null}
                         {isOwnProfile && (
                         <div className="highlight-add-overlay">
                           <button type="button" className="add-to-highlight-btn" onClick={(e) => { e.stopPropagation(); handleHighlightClick(highlight.id); }} title="Add more">+</button>
@@ -1366,6 +1371,7 @@ const Profile = ({ embedded = false }: { embedded?: boolean }) => {
                         <div className="love-feed-card-media-text">{post.content}</div>
                       )}
                     </div>
+                    {!isOwnProfile ? <UgcSafetyActions userId={post.userId || viewingUserId} /> : null}
                     <div className="love-feed-card-meta">
                       {post.title && <p className="love-feed-card-headline">"{post.title}"</p>}
                       {post.contentType !== 'text' && post.content && !post.title && (

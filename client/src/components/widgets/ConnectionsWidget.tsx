@@ -3,6 +3,7 @@ import { AuthContext } from '../../context/AuthContext';
 import { connectionsAPI, NearbyUser, VenueCount, Buzz } from '../../api/connections';
 import { openChatWithUser } from '../../lib/openChat';
 import { formatAxiosError } from '../../lib/apiError';
+import { UgcSafetyActions } from '../UgcSafetyActions';
 import { markLocationGranted, clearLocationGranted, isLocationGranted, readStoredCoords, nearbyPeopleRadiusMeters, resolveWorkingCoords, requestGpsFromUserTap, startGpsWatch } from '../../lib/locationSession';
 import { askNotifyPermission, notifyDevice } from '../../lib/deviceNotify';
 import { hasHandledNearbyPerson, markProximityBannerShown, NEARBY_HANDLED_EVENT, takeConnectionsStartView } from '../../lib/proximitySession';
@@ -723,6 +724,10 @@ const ConnectionsWidget = () => {
                 </div>
               </div>
               {renderPersonActions(nearbyUser.id)}
+              <UgcSafetyActions
+                userId={nearbyUser.id}
+                onBlocked={(id) => setNearbyUsers((current) => current.filter((person) => person.id !== id))}
+              />
             </div>
           ))}
         </div>

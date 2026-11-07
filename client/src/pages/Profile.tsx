@@ -124,6 +124,8 @@ const Profile = ({ embedded = false }: { embedded?: boolean }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const highlightInputRef = useRef<HTMLInputElement>(null);
   const storyInputRef = useRef<HTMLInputElement>(null);
+  const postPhotoRef = useRef<HTMLInputElement>(null);
+  const postVideoRef = useRef<HTMLInputElement>(null);
   const storyVideoRef = useRef<HTMLVideoElement>(null);
   const publicFigureIdInputRef = useRef<HTMLInputElement>(null);
   const publicFigureUniqueInputRef = useRef<HTMLInputElement>(null);
@@ -465,6 +467,34 @@ const Profile = ({ embedded = false }: { embedded?: boolean }) => {
   };
 
   const handleAddStoryClick = () => storyInputRef.current?.click();
+
+  const publishProfilePost = async (file: File | undefined) => {
+    if (!file || !user?.id) return;
+    const video = isProbablyVideoFile(file);
+    const image = isProbablyImageFile(file);
+    if (!video && !image) {
+      setError('Please choose a photo or video.');
+      return;
+    }
+    setUploading(true);
+    setError('');
+    uploadingMediaRef.current = true;
+    try {
+      const mediaUrl = await prepareAndUploadFile(file, 'posts');
+      const { post } = await postsAPI.createPost({
+        type: 'positive',
+        contentType: video ? 'video' : 'image',
+        content: mediaUrl,
+        tags: ['dating'],
+      });
+      setProfilePosts((prev) => [post, ...prev.filter((item) => item.id !== post.id)]);
+    } catch (err: unknown) {
+      setError(formatAxiosError(err, 'Could not post that photo or video.'));
+    } finally {
+      uploadingMediaRef.current = false;
+      setUploading(false);
+    }
+  };
 
   const handleStoryFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -885,6 +915,25 @@ const Profile = ({ embedded = false }: { embedded?: boolean }) => {
               )}
               {isOwnProfile && city && <div className="profile-detail">📍 {city}</div>}
             </div>
+
+            {isOwnProfile && (
+              <div className="profile-posts-section">
+                <div className="highlights-header">
+                  <span className="highlights-title">POSTS</span>
+                </div>
+                <p className="stories-expires-note">Photos and videos you post here also go on the Love Life Feed. This is not a story or a highlight.</p>
+                <div className="profile-post-actions">
+                  <button type="button" className="profile-save-btn" disabled={uploading} onClick={() => postPhotoRef.current?.click()}>
+                    {uploading ? 'Posting…' : 'Photo'}
+                  </button>
+                  <button type="button" className="profile-save-btn" disabled={uploading} onClick={() => postVideoRef.current?.click()}>
+                    {uploading ? 'Posting…' : 'Video'}
+                  </button>
+                </div>
+                <input ref={postPhotoRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => { const file = e.target.files?.[0]; e.target.value = ''; void publishProfilePost(file); }} />
+                <input ref={postVideoRef} type="file" accept="video/*" style={{ display: 'none' }} onChange={(e) => { const file = e.target.files?.[0]; e.target.value = ''; void publishProfilePost(file); }} />
+              </div>
+            )}
 
             <div className="stories-section" style={{ marginTop: 16 }}>
               <div className="highlights-header">

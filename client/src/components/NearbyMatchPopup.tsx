@@ -8,7 +8,7 @@ import {
   NEARBY_CHECK_NOW_EVENT,
   markNearbyPopupVisible,
 } from '../lib/proximitySession';
-import { nearbyPeopleRadiusMeters, resolveWorkingCoords } from '../lib/locationSession';
+import { nearbyPeopleRadiusMeters, readStoredCoords, resolveWorkingCoords } from '../lib/locationSession';
 import { formatAxiosError } from '../lib/apiError';
 import { openChatWithUser } from '../lib/openChat';
 import { notifyDevice } from '../lib/deviceNotify';
@@ -34,15 +34,19 @@ export default function NearbyMatchPopup({ onOpenConnections }: Props) {
   const [error, setError] = useState('');
   const [emptyHint, setEmptyHint] = useState('');
   const queuedIdsRef = useRef<Set<string>>(new Set());
+  const lastGpsAt = useRef(0);
   const queueLenRef = useRef(0);
   queueLenRef.current = queue.length;
 
   const poll = useCallback(async (opts?: { force?: boolean }) => {
     if (!user?.id) return;
+    const cached = readStoredCoords();
+    const refreshGps = !cached || cached.source !== 'gps' || Date.now() - lastGpsAt.current > 45_000;
     const coords = await resolveWorkingCoords(
-      { userId: user.id, allowIp: true },
+      { userId: user.id, allowIp: true, refreshGps },
       locationApi
     );
+    if (coords?.source === 'gps') lastGpsAt.current = Date.now();
     if (!coords) {
       if (opts?.force) setEmptyHint('Turn location on to see people next to you.');
       return;

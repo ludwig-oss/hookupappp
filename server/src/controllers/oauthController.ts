@@ -202,7 +202,10 @@ function accountReady(user: User): boolean {
   if (user.profileSetupComplete) return true;
   const gender = String(user.gender || '').toLowerCase();
   const picture = String(user.profilePicture || '');
-  return Boolean(picture) && !isGoogleHostedPhoto(picture) && (gender === 'female' || gender === 'male');
+  const ownPhoto = Boolean(picture) && !isGoogleHostedPhoto(picture);
+  if (!ownPhoto) return false;
+  if (gender === 'female' || gender === 'male') return true;
+  return Boolean(String(user.city || '').trim());
 }
 
 function toClientUser(user: User) {

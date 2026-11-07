@@ -4515,6 +4515,8 @@ html.theme-day .chat-boundaries-q {
 
 .profile-reviews-section { margin-top: 24px; padding-top: 20px; border-top: 1px solid rgba(0, 212, 255, 0.3); }
 .profile-posts-section { margin-top: 24px; padding-top: 20px; border-top: 1px solid rgba(0, 212, 255, 0.3); }
+.profile-post-actions { display: flex; gap: 8px; margin-top: 8px; }
+.profile-post-actions .profile-save-btn { flex: 1; }
 .profile-posts-grid {
   display: flex;
   flex-direction: column;
@@ -5355,7 +5357,10 @@ html.theme-day .chat-boundaries-q {
   flex: 1;
   min-height: 0;
   min-width: 0;
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
   background: #121212;
   position: relative;
   z-index: 1;
@@ -5477,13 +5482,23 @@ html.theme-day .chat-boundaries-q {
 }
 
 .app-profile-embed {
-  height: 100%;
-  overflow: auto;
+  height: auto;
+  min-height: 0;
+  overflow: visible;
 }
 
 .profile-embedded.dashboard-container {
   min-height: 0;
+  height: auto;
+  overflow: visible;
   background: transparent;
+  padding-bottom: 28px;
+}
+
+.profile-embedded .holographic-panel,
+.profile-embedded .left-panel {
+  max-height: none;
+  overflow: visible;
 }
 
 .app-side-icon {

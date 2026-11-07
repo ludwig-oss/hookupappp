@@ -45,7 +45,7 @@ const AuthCallback = () => {
         const alreadySetUp = Boolean(
           full.profileSetupComplete ||
           searchParams.get('setup') === '1' ||
-          (realPhoto && (gender === 'female' || gender === 'male'))
+          (realPhoto && (gender === 'female' || gender === 'male' || String(full.city || '').trim()))
         );
         if (full.hasGoogleAuth && full.email) {
           const saved = await handleGoogleAuthSessionFix.syncGoogleAccountOnSignIn(full.email, {

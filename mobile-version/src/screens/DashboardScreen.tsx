@@ -22,6 +22,7 @@ import { EventsPanel } from '../components/dashboard/EventsPanel';
 import { ChatPanel } from '../components/dashboard/ChatPanel';
 import { ConnectionsPanel } from '../components/dashboard/ConnectionsPanel';
 import { FeedPanel } from '../components/dashboard/FeedPanel';
+import { NearbyInterestPopup } from '../components/dashboard/NearbyInterestPopup';
 import { ProfilePanel } from '../components/dashboard/ProfilePanel';
 import { shell } from '../components/dashboard/chrome';
 import { RELATIONSHIP_LOCKED, tabForWidget, tabHomeWidget, type MainTab, type WidgetId } from '../components/dashboard/types';
@@ -366,6 +367,9 @@ export function DashboardScreen() {
           );
         })}
       </View>
+      {user?.id && !inRelationship ? (
+        <NearbyInterestPopup userId={user.id} onOpenChat={openChat} />
+      ) : null}
     </View>
   );
 }

@@ -370,7 +370,10 @@ const ProfileSetup = () => {
       try {
         const full = await profileAPI.getCurrentUser();
         if (cancelled) return;
-        if (full.profileSetupComplete) {
+        const picture = String(full.profilePicture || '');
+        const ownPhoto = Boolean(picture) && !/googleusercontent|ggpht\.com/i.test(picture);
+        const returning = Boolean(full.profileSetupComplete || (ownPhoto && String(full.city || '').trim()));
+        if (returning) {
           const token = getAuthToken() || '';
           login(
             { ...sessionUser, ...full, profileSetupComplete: true },

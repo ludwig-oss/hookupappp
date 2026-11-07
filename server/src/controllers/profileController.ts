@@ -228,11 +228,12 @@ export const getUserProfile = async (req: Request, res: Response) => {
     }
     const viewingOwnProfile = isOwnProfileRequest || String(authUserId) === String(user.id);
     const chosenGender = String(user.gender || '').toLowerCase();
+    const ownPhoto = Boolean(user.profilePicture) && !/googleusercontent|ggpht\.com/i.test(String(user.profilePicture));
     if (
       viewingOwnProfile &&
       !user.profileSetupComplete &&
-      user.profilePicture &&
-      (chosenGender === 'female' || chosenGender === 'male')
+      ownPhoto &&
+      (chosenGender === 'female' || chosenGender === 'male' || Boolean(String(user.city || '').trim()))
     ) {
       const healId = user.id;
       const healed = await runWithSystem(() => updateUserProfile(healId, { profileSetupComplete: true }));

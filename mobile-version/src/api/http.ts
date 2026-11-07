@@ -48,15 +48,23 @@ axios.interceptors.response.use(
         endSession();
       }
     }
+    const message = String(err?.message || '');
+    const dropped =
+      !status &&
+      (err?.code === 'ERR_NETWORK' ||
+        err?.code === 'ECONNABORTED' ||
+        err?.code === 'ECONNRESET' ||
+        err?.code === 'ETIMEDOUT' ||
+        message === 'Network Error' ||
+        /timeout|network request failed/i.test(message));
     if (
       cfg &&
       !cfg.__retriedOnce &&
-      status &&
-      RETRY_STATUSES.has(status) &&
-      RETRY_METHODS.has(String(cfg.method || 'get').toLowerCase())
+      RETRY_METHODS.has(String(cfg.method || 'get').toLowerCase()) &&
+      ((status && RETRY_STATUSES.has(status)) || dropped)
     ) {
       cfg.__retriedOnce = true;
-      await new Promise((r) => setTimeout(r, 2500));
+      await new Promise((r) => setTimeout(r, status ? 2500 : 1200));
       return axios(cfg);
     }
     return Promise.reject(err);

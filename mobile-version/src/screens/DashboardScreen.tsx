@@ -3,8 +3,6 @@ import {
   Animated,
   Dimensions,
   Image,
-  KeyboardAvoidingView,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -249,7 +247,7 @@ export function DashboardScreen() {
   }, [user?.id, user?.city, user?.country, openWidget, nearbyPulse, chatUserId, activeTab, inRelationship, clearChatTarget, openFeature, logout]);
 
   return (
-    <KeyboardAvoidingView style={styles.shell} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    <View style={styles.shell}>
       <View style={[styles.topbar, { paddingTop: insets.top, height: 56 + insets.top }]}>
         <View style={styles.headerSide}>
           <Pressable
@@ -284,6 +282,8 @@ export function DashboardScreen() {
           key={`${activeTab}-${openWidget || 'home'}`}
           contentContainerStyle={styles.stageContent}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          automaticallyAdjustKeyboardInsets
           showsVerticalScrollIndicator={false}
         >
           {liveNote ? <Text style={styles.liveNote}>{liveNote}</Text> : null}
@@ -366,7 +366,7 @@ export function DashboardScreen() {
           );
         })}
       </View>
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 

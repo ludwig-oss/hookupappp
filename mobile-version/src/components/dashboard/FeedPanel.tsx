@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Keyboard, Pressable, StyleSheet, Text, View } from 'react-native';
 import { postsAPI, type DatingPost, type FeedMode } from '../../api/posts';
 import { formatAxiosError } from '../../lib/apiError';
 import { pickAndUploadPostMedia } from '../../lib/uploadMedia';
@@ -25,18 +25,25 @@ export function FeedPanel({ onShare }: { onShare: () => void }) {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
 
-  const load = useCallback(async (next: FeedMode) => {
-    setLoading(true);
-    setError('');
+  const load = useCallback(async (next: FeedMode, quiet = false) => {
+    if (!quiet) {
+      setLoading(true);
+      setError('');
+    }
     try {
       const feed = await postsAPI.getFeed(next);
-      setPosts(feed.posts || []);
+      const incoming = feed.posts || [];
+      setPosts((current) => {
+        if (!quiet) return incoming;
+        const extra = current.filter((post) => !incoming.some((item) => item.id === post.id));
+        return [...extra, ...incoming];
+      });
       setDescription(feed.feedMeta?.description || '');
+      if (!quiet) setError('');
     } catch (err) {
-      setPosts([]);
-      setError(formatAxiosError(err, 'Could not load the feed. The API may be waking up.'));
+      if (!quiet) setError(formatAxiosError(err, 'Could not load the feed. The API may be waking up.'));
     } finally {
-      setLoading(false);
+      if (!quiet) setLoading(false);
     }
   }, []);
 
@@ -49,11 +56,13 @@ export function FeedPanel({ onShare }: { onShare: () => void }) {
     if (!content) return;
     setError('');
     setPosting(true);
+    Keyboard.dismiss();
     try {
-      await postsAPI.createPost({ type: 'positive', contentType: 'text', content });
+      const { post } = await postsAPI.createPost({ type: 'positive', contentType: 'text', content });
       setDraft('');
       setComposing(false);
-      await load(mode);
+      setPosts((prev) => [post, ...prev.filter((item) => item.id !== post.id)]);
+      void load(mode, true);
     } catch (err) {
       setError(formatAxiosError(err, 'Could not publish that post.'));
     } finally {
@@ -63,20 +72,29 @@ export function FeedPanel({ onShare }: { onShare: () => void }) {
 
   const publishMedia = async (kind: 'images' | 'videos' | 'any' = 'any') => {
     setError('');
-    setPosting(true);
+    let uploaded: Awaited<ReturnType<typeof pickAndUploadPostMedia>> = null;
     try {
-      const uploaded = await pickAndUploadPostMedia(kind);
-      if (!uploaded) return;
-      const title = draft.trim();
-      await postsAPI.createPost({
+      uploaded = await pickAndUploadPostMedia(kind);
+    } catch (err) {
+      setError(formatAxiosError(err, 'Could not post that photo or video.'));
+      return;
+    }
+    if (!uploaded) return;
+    const title = draft.trim();
+    setPosting(true);
+    Keyboard.dismiss();
+    try {
+      const { post } = await postsAPI.createPost({
         type: 'positive',
         contentType: uploaded.contentType,
         content: uploaded.url,
         title: title || undefined,
+        tags: title ? undefined : ['dating'],
       });
       setDraft('');
       setComposing(false);
-      await load(mode);
+      setPosts((prev) => [post, ...prev.filter((item) => item.id !== post.id)]);
+      void load(mode, true);
     } catch (err) {
       setError(formatAxiosError(err, 'Could not post that photo or video.'));
     } finally {

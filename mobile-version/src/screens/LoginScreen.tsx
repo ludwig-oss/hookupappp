@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Image, Linking, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Constants, { ExecutionEnvironment } from 'expo-constants';
 import * as WebBrowser from 'expo-web-browser';
@@ -16,16 +16,17 @@ import {
   type OAuthIntent,
 } from '../lib/googleAuth';
 import { useAuth } from '../state/AuthContext';
+import { PrivacyPolicyCopy } from '../components/PrivacyPolicyCopy';
 
 WebBrowser.maybeCompleteAuthSession();
 
 const TERMS_URL = 'https://hookupapp.dev/terms';
-const PRIVACY_URL = 'https://hookupapp.dev/privacy';
 
 export function LoginScreen() {
   const { login, entryError, clearEntryError } = useAuth();
   const [error, setError] = useState(entryError);
   const [busy, setBusy] = useState(false);
+  const [privacyOpen, setPrivacyOpen] = useState(false);
   const intentRef = useRef<OAuthIntent>('signup');
   const handledToken = useRef('');
 
@@ -126,11 +127,21 @@ export function LoginScreen() {
             Terms of Service
           </Text>
           <Text style={styles.legalSep}>·</Text>
-          <Text style={styles.legalLink} onPress={() => void Linking.openURL(PRIVACY_URL)}>
+          <Text style={styles.legalLink} onPress={() => setPrivacyOpen(true)}>
             Privacy Policy
           </Text>
         </View>
       </SafeAreaView>
+      <Modal visible={privacyOpen} animationType="slide" onRequestClose={() => setPrivacyOpen(false)}>
+        <SafeAreaView style={styles.policyScreen}>
+          <Pressable onPress={() => setPrivacyOpen(false)} style={styles.policyClose}>
+            <Text style={styles.legalLink}>Close</Text>
+          </Pressable>
+          <ScrollView contentContainerStyle={styles.policyBody}>
+            <PrivacyPolicyCopy />
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
     </View>
   );
 }
@@ -231,4 +242,7 @@ const styles = StyleSheet.create({
   legal: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 8, paddingBottom: 8 },
   legalLink: { color: 'rgba(255,255,255,0.72)', fontSize: 13 },
   legalSep: { color: 'rgba(255,255,255,0.4)', fontSize: 13 },
+  policyScreen: { flex: 1, backgroundColor: '#0a0514' },
+  policyClose: { paddingHorizontal: 20, paddingVertical: 12 },
+  policyBody: { paddingHorizontal: 20, paddingBottom: 32 },
 });

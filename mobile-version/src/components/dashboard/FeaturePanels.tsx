@@ -9,6 +9,7 @@ import { discoverAPI, type User } from '../../api/discover';
 import { personalSafetyAPI, type ShieldSettings } from '../../api/personalSafety';
 import { settingsAPI, type UserSettings } from '../../api/settings';
 import { formatAxiosError } from '../../lib/apiError';
+import { PrivacyPolicyCopy } from '../PrivacyPolicyCopy';
 import { Field, Hint, NeonButton, Notice, PanelTitle, PersonRow, StageFrame, shell } from './chrome';
 import type { WidgetId } from './types';
 
@@ -629,6 +630,7 @@ export function SettingsPanel() {
               </Pressable>
             ))}
           </View>
+          <PrivacyPolicyCopy />
         </>
       ) : null}
       {settings && tab === 'filters' ? (

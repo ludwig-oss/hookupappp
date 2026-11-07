@@ -3,7 +3,7 @@ import { ActivityIndicator, Animated, Easing, Pressable, ScrollView, StyleSheet,
 import * as Location from 'expo-location';
 import { adviceAPI, type AdviceQuestion } from '../../api/advice';
 import { aiGuidesAPI, type AiGuideCharacter } from '../../api/aiGuides';
-import { confessionAPI, type ConfessionAiGuide } from '../../api/confession';
+import { ConfessionPanel } from './ConfessionPanel';
 import { dateMatchAPI, type DateMatchCatalog } from '../../api/dateMatch';
 import { discoverAPI, type User } from '../../api/discover';
 import { personalSafetyAPI, type ShieldSettings } from '../../api/personalSafety';
@@ -297,48 +297,7 @@ export function AdvicePanel() {
   );
 }
 
-export function ConfessionPanel() {
-  const [guides, setGuides] = useState<ConfessionAiGuide[]>([]);
-  const [path, setPath] = useState<'intro' | 'ai' | 'human'>('intro');
-  const [error, setError] = useState('');
-
-  useEffect(() => {
-    void confessionAPI
-      .getInfo()
-      .then((info) => setGuides(info.aiGuides || []))
-      .catch((err) => setError(formatAxiosError(err, 'Could not open the booth.')));
-  }, []);
-
-  return (
-    <StageFrame>
-      <Text style={styles.hero}>⛪</Text>
-      <Text style={styles.confessionTitle}>Confession Booth</Text>
-      <Hint>
-        A screen between you. You never see each other. Start with an AI helper for private matters, or a human guide from your region.
-      </Hint>
-      <View style={styles.chips}>
-        <Pressable onPress={() => setPath('ai')} style={[styles.chip, path === 'ai' && styles.chipOn]}>
-          <Text style={[styles.chipText, path === 'ai' && styles.chipTextOn]}>I need help</Text>
-        </Pressable>
-        <Pressable onPress={() => setPath('human')} style={[styles.chip, path === 'human' && styles.chipOn]}>
-          <Text style={[styles.chipText, path === 'human' && styles.chipTextOn]}>Human guide</Text>
-        </Pressable>
-      </View>
-      {error ? <Notice tone="danger">{error}</Notice> : null}
-      {path === 'human' ? (
-        <Hint>A human guide stays blurred and voices stay masked. Pick local or international when you book from the full booth.</Hint>
-      ) : null}
-      {path === 'ai'
-        ? guides.map((guide) => (
-            <View key={guide.id} style={styles.card}>
-              <Text style={styles.personName}>{guide.name}</Text>
-              <Text style={styles.meta}>{guide.tagline || guide.specialty}</Text>
-            </View>
-          ))
-        : null}
-    </StageFrame>
-  );
-}
+export { ConfessionPanel };
 
 export function HelpPanel({ onOpen }: { onOpen: (id: WidgetId | 'profile') => void }) {
   return (
@@ -539,21 +498,34 @@ export function DateArenaPanel({ onOpenGuides }: { onOpenGuides: () => void }) {
 
 export function SettingsPanel() {
   const [settings, setSettings] = useState<UserSettings | null>(null);
+  const [tab, setTab] = useState<'notifications' | 'privacy' | 'filters'>('notifications');
   const [error, setError] = useState('');
+  const [minAge, setMinAge] = useState('18');
+  const [maxAge, setMaxAge] = useState('99');
+  const [distance, setDistance] = useState('50');
+  const [quietStart, setQuietStart] = useState('22:00');
+  const [quietEnd, setQuietEnd] = useState('08:00');
 
   useEffect(() => {
     void settingsAPI
       .getSettings()
-      .then((res) => setSettings(res.settings))
+      .then((res) => {
+        setSettings(res.settings);
+        setMinAge(String(res.settings.filters.minAge));
+        setMaxAge(String(res.settings.filters.maxAge));
+        setDistance(String(res.settings.filters.maxDistance));
+        setQuietStart(res.settings.notifications.quietHours.start);
+        setQuietEnd(res.settings.notifications.quietHours.end);
+      })
       .catch((err) => setError(formatAxiosError(err, 'Could not load settings.')));
   }, []);
 
-  const setNotify = async (key: keyof UserSettings['notifications'], value: boolean) => {
-    if (!settings || key === 'quietHours') return;
+  const saveNotifications = async (notifications: UserSettings['notifications']) => {
+    if (!settings) return;
     const previous = settings;
-    setSettings({ ...settings, notifications: { ...settings.notifications, [key]: value } });
+    setSettings({ ...settings, notifications });
     try {
-      const res = await settingsAPI.updateNotifications({ [key]: value });
+      const res = await settingsAPI.updateNotifications(notifications);
       setSettings(res.settings);
     } catch (err) {
       setSettings(previous);
@@ -561,19 +533,112 @@ export function SettingsPanel() {
     }
   };
 
+  const savePrivacy = async (privacy: UserSettings['privacy']) => {
+    if (!settings) return;
+    const previous = settings;
+    setSettings({ ...settings, privacy });
+    try {
+      const res = await settingsAPI.updatePrivacy(privacy);
+      setSettings(res.settings);
+    } catch (err) {
+      setSettings(previous);
+      setError(formatAxiosError(err, 'Could not update privacy.'));
+    }
+  };
+
+  const saveFilters = async () => {
+    if (!settings) return;
+    const filters = {
+      ...settings.filters,
+      minAge: Math.min(99, Math.max(18, Number(minAge) || 18)),
+      maxAge: Math.min(99, Math.max(18, Number(maxAge) || 99)),
+      maxDistance: Math.min(1000, Math.max(1, Number(distance) || 50)),
+    };
+    const previous = settings;
+    setSettings({ ...settings, filters });
+    try {
+      const res = await settingsAPI.updateFilters(filters);
+      setSettings(res.settings);
+    } catch (err) {
+      setSettings(previous);
+      setError(formatAxiosError(err, 'Could not update filters.'));
+    }
+  };
+
   return (
     <StageFrame>
       <PanelTitle icon="⚙️">Settings</PanelTitle>
+      <View style={styles.chips}>
+        {(['notifications', 'privacy', 'filters'] as const).map((item) => (
+          <Pressable key={item} onPress={() => setTab(item)} style={[styles.chip, tab === item && styles.chipOn]}>
+            <Text style={[styles.chipText, tab === item && styles.chipTextOn]}>
+              {item === 'notifications' ? 'Alerts' : item === 'privacy' ? 'Privacy' : 'Filters'}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
       {error ? <Notice tone="danger">{error}</Notice> : null}
       {!settings ? <ActivityIndicator color={shell.cyan} /> : null}
-      {settings ? (
+      {settings && tab === 'notifications' ? (
         <>
-          <Text style={styles.kicker}>Notifications</Text>
-          <Toggle label="Push" value={settings.notifications.push} onChange={(value) => void setNotify('push', value)} />
-          <Toggle label="Messages" value={settings.notifications.messages} onChange={(value) => void setNotify('messages', value)} />
-          <Toggle label="Matches" value={settings.notifications.matches} onChange={(value) => void setNotify('matches', value)} />
-          <Toggle label="Likes" value={settings.notifications.likes} onChange={(value) => void setNotify('likes', value)} />
-          <Hint>{`Distance filter ${settings.filters.maxDistance} km · ages ${settings.filters.minAge}–${settings.filters.maxAge}`}</Hint>
+          <Toggle label="Push" value={settings.notifications.push} onChange={(push) => void saveNotifications({ ...settings.notifications, push })} />
+          <Toggle label="Email" value={settings.notifications.email} onChange={(email) => void saveNotifications({ ...settings.notifications, email })} />
+          <Toggle label="Messages" value={settings.notifications.messages} onChange={(messages) => void saveNotifications({ ...settings.notifications, messages })} />
+          <Toggle label="Matches" value={settings.notifications.matches} onChange={(matches) => void saveNotifications({ ...settings.notifications, matches })} />
+          <Toggle label="Likes" value={settings.notifications.likes} onChange={(likes) => void saveNotifications({ ...settings.notifications, likes })} />
+          <Toggle label="Interest alerts" value={settings.notifications.interestAlerts !== false} onChange={(interestAlerts) => void saveNotifications({ ...settings.notifications, interestAlerts })} />
+          <Toggle label="Vibrate for interest" value={settings.notifications.interestVibrate !== false} onChange={(interestVibrate) => void saveNotifications({ ...settings.notifications, interestVibrate })} />
+          <Toggle label="Sound" value={settings.notifications.sound} onChange={(sound) => void saveNotifications({ ...settings.notifications, sound })} />
+          <Toggle
+            label="Quiet hours"
+            value={settings.notifications.quietHours.enabled}
+            onChange={(enabled) => void saveNotifications({ ...settings.notifications, quietHours: { ...settings.notifications.quietHours, enabled, start: quietStart, end: quietEnd } })}
+          />
+          {settings.notifications.quietHours.enabled ? (
+            <>
+              <Field label="Quiet from" value={quietStart} onChangeText={setQuietStart} placeholder="22:00" autoCapitalize="none" />
+              <Field label="Quiet until" value={quietEnd} onChangeText={setQuietEnd} placeholder="08:00" autoCapitalize="none" />
+              <NeonButton
+                label="Save quiet hours"
+                onPress={() => void saveNotifications({ ...settings.notifications, quietHours: { enabled: true, start: quietStart, end: quietEnd } })}
+              />
+            </>
+          ) : null}
+        </>
+      ) : null}
+      {settings && tab === 'privacy' ? (
+        <>
+          <Toggle label="Show profile picture" value={settings.privacy.showProfilePicture !== false} onChange={(showProfilePicture) => void savePrivacy({ ...settings.privacy, showProfilePicture })} />
+          <Toggle label="Show location" value={settings.privacy.showLocation} onChange={(showLocation) => void savePrivacy({ ...settings.privacy, showLocation })} />
+          <Toggle label="Real-time location" value={settings.privacy.realTimeLocation} onChange={(realTimeLocation) => void savePrivacy({ ...settings.privacy, realTimeLocation })} />
+          <Toggle label="Show online" value={settings.privacy.showOnlineStatus} onChange={(showOnlineStatus) => void savePrivacy({ ...settings.privacy, showOnlineStatus })} />
+          <Toggle label="Read receipts" value={settings.privacy.readReceipts} onChange={(readReceipts) => void savePrivacy({ ...settings.privacy, readReceipts })} />
+          <Text style={styles.kicker}>Location accuracy</Text>
+          <View style={styles.chips}>
+            {(['exact', 'approximate', 'city'] as const).map((item) => (
+              <Pressable key={item} onPress={() => void savePrivacy({ ...settings.privacy, locationAccuracy: item })} style={[styles.chip, settings.privacy.locationAccuracy === item && styles.chipOn]}>
+                <Text style={styles.chipText}>{item}</Text>
+              </Pressable>
+            ))}
+          </View>
+          <Text style={styles.kicker}>Who can see you</Text>
+          <View style={styles.chips}>
+            {(['public', 'friends', 'private'] as const).map((item) => (
+              <Pressable key={item} onPress={() => void savePrivacy({ ...settings.privacy, profileVisibility: item })} style={[styles.chip, settings.privacy.profileVisibility === item && styles.chipOn]}>
+                <Text style={styles.chipText}>{item}</Text>
+              </Pressable>
+            ))}
+          </View>
+        </>
+      ) : null}
+      {settings && tab === 'filters' ? (
+        <>
+          <Field label="Min age" value={minAge} onChangeText={setMinAge} keyboardType="number-pad" />
+          <Field label="Max age" value={maxAge} onChangeText={setMaxAge} keyboardType="number-pad" />
+          <Field label="Max distance (km)" value={distance} onChangeText={setDistance} keyboardType="number-pad" />
+          <Toggle label="Verified people only" value={settings.filters.verifiedOnly} onChange={(verifiedOnly) => setSettings({ ...settings, filters: { ...settings.filters, verifiedOnly } })} />
+          <Toggle label="Active people only" value={settings.filters.activeOnly} onChange={(activeOnly) => setSettings({ ...settings, filters: { ...settings.filters, activeOnly } })} />
+          <NeonButton label="Save filters" tone="magenta" onPress={() => void saveFilters()} />
         </>
       ) : null}
     </StageFrame>

@@ -16,6 +16,7 @@ import { connectionsAPI } from '../../api/connections';
 import { improvementAPI } from '../../api/improvement';
 import { profileAPI, type ProfileData } from '../../api/profile';
 import { ProfilePosts } from './ProfilePosts';
+import { displayFirstName } from '../../lib/displayName';
 import { useAuth } from '../../state/AuthContext';
 
 type Props = {
@@ -58,6 +59,7 @@ async function pickImageDataUrl(): Promise<string | null> {
 export function ProfilePanel({ onSignOut, onOpenSettings }: Props) {
   const { user, updateUser } = useAuth();
   const [profile, setProfile] = useState<ProfileData | null>(null);
+  const [nameDraft, setNameDraft] = useState(displayFirstName(user?.name));
   const [age, setAge] = useState(user?.age != null ? String(user.age) : '');
   const [country, setCountry] = useState(user?.country || '');
   const [city, setCity] = useState(user?.city || '');
@@ -78,11 +80,17 @@ export function ProfilePanel({ onSignOut, onOpenSettings }: Props) {
       const me = await profileAPI.getCurrentUser();
       const extra = me as ProfileData & { age?: number | string; country?: string; city?: string };
       setProfile(me);
+      const short = displayFirstName(me.name);
+      setNameDraft(short);
+      if (short && short !== me.name) {
+        updateUser({ name: short });
+        void profileAPI.updateProfile({ name: short }).catch(() => undefined);
+      }
       setAge(extra.age != null && extra.age !== '' ? String(extra.age) : '');
       setCountry(extra.country || '');
       setCity(extra.city || '');
       updateUser({
-        name: me.name,
+        name: displayFirstName(me.name) || me.name,
         email: me.email,
         profilePicture: me.profilePicture,
         city: extra.city,
@@ -91,7 +99,8 @@ export function ProfilePanel({ onSignOut, onOpenSettings }: Props) {
         photoVerifiedAt: me.photoVerifiedAt,
       });
     } catch {
-      setError('Could not refresh your profile. Showing the Google account on this phone.');
+      setNameDraft(displayFirstName(user?.name));
+      if (!user?.name && !user?.email) setError('Could not refresh your profile.');
     }
     try {
       const imp = await improvementAPI.getUserImprovement(user.id);
@@ -106,7 +115,7 @@ export function ProfilePanel({ onSignOut, onOpenSettings }: Props) {
     void load();
   }, [load]);
 
-  const name = profile?.name || user?.name || 'Zorp';
+  const name = nameDraft || displayFirstName(profile?.name || user?.name) || 'Zorp';
   const email = profile?.email || user?.email || '';
   const picture = profile?.profilePicture || user?.profilePicture || '';
   const verified = Boolean(profile?.photoVerifiedAt || user?.photoVerifiedAt);
@@ -119,12 +128,20 @@ export function ProfilePanel({ onSignOut, onOpenSettings }: Props) {
     setError('');
     try {
       const ageNum = age.trim() ? Number(age) : undefined;
+      const nextName = displayFirstName(nameDraft);
+      if (!nextName) {
+        setSaving('error');
+        setError('Add a first name, up to 6 characters.');
+        return;
+      }
       await profileAPI.updateProfile({
+        name: nextName,
         age: ageNum != null && Number.isFinite(ageNum) ? ageNum : undefined,
         country: country.trim(),
         city: city.trim(),
       });
-      updateUser({ age: age.trim(), country: country.trim(), city: city.trim() });
+      setNameDraft(nextName);
+      updateUser({ name: nextName, age: age.trim(), country: country.trim(), city: city.trim() });
       setSaving('saved');
     } catch {
       setSaving('error');
@@ -247,6 +264,8 @@ export function ProfilePanel({ onSignOut, onOpenSettings }: Props) {
           ) : null}
         </View>
 
+        {user?.id ? <ProfilePosts userId={user.id} /> : null}
+
         <View style={styles.nameRow}>
           <Text style={styles.name}>{name}</Text>
           {verified ? (
@@ -257,6 +276,15 @@ export function ProfilePanel({ onSignOut, onOpenSettings }: Props) {
         </View>
         {email ? <Text style={styles.email}>{email}</Text> : null}
 
+        <TextInput
+          value={nameDraft}
+          onChangeText={(value) => setNameDraft(displayFirstName(value))}
+          placeholder="First name"
+          placeholderTextColor="rgba(0,212,255,0.5)"
+          maxLength={6}
+          autoCapitalize="words"
+          style={styles.input}
+        />
         <TextInput
           value={age}
           onChangeText={setAge}
@@ -384,8 +412,6 @@ export function ProfilePanel({ onSignOut, onOpenSettings }: Props) {
 
         <Text style={styles.match}>{loading ? '…' : `${match}% MATCH`}</Text>
       </View>
-
-      {user?.id ? <ProfilePosts userId={user.id} /> : null}
 
       <View style={styles.block}>
         <Text style={styles.sectionTitle}>REVIEWS</Text>

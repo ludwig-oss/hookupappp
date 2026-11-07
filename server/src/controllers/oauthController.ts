@@ -277,10 +277,20 @@ async function uniqueUsername(base: string): Promise<string> {
   return candidate;
 }
 
-async function linkExistingGoogle(user: User, providerId: string, picture?: string | null): Promise<User> {
+function displayFirstName(raw: string): string {
+  const first = raw.trim().split(/\s+/)[0] || '';
+  return first.slice(0, 6);
+}
+
+async function linkExistingGoogle(user: User, providerId: string, picture?: string | null, googleName?: string): Promise<User> {
   const patch: Partial<User> = {};
   if (!user.googleId) patch.googleId = providerId;
   if (picture && !user.profilePicture) patch.profilePicture = picture;
+  const current = user.name || googleName || '';
+  if (current.includes(' ') || current.length > 6) {
+    const short = displayFirstName(current);
+    if (short && short !== user.name) patch.name = short;
+  }
   const saved = Object.keys(patch).length ? (await updateUserProfile(user.id, patch)) || user : user;
   return reopenGoogleUser(saved);
 }
@@ -298,7 +308,7 @@ async function upsertOAuthUser(opts: {
   const createIfMissing = opts.createIfMissing !== false;
   if (provider === 'google') {
     const existing = await findUserForGoogle(providerId, email.toLowerCase());
-    if (existing) return linkExistingGoogle(existing, providerId, picture);
+    if (existing) return linkExistingGoogle(existing, providerId, picture, name);
   }
 
   const existingByProvider =
@@ -316,7 +326,7 @@ async function upsertOAuthUser(opts: {
 
   if (email) {
     const byEmail = await getUserByEmail(email.toLowerCase());
-    if (byEmail && provider === 'google') return linkExistingGoogle(byEmail, providerId, picture);
+    if (byEmail && provider === 'google') return linkExistingGoogle(byEmail, providerId, picture, name);
     if (byEmail && provider !== 'google') {
       const patch: Partial<User> = {
         emailVerified: true,
@@ -337,7 +347,7 @@ async function upsertOAuthUser(opts: {
     const user = await createUser({
       email: email || `${provider}_${providerId}@oauth.local`,
       password: randomPass,
-      name: name || username,
+      name: displayFirstName(name) || username.slice(0, 6),
       username,
       improvementCategories: ['dating-apps'],
       passwordHint1: 'oauth',
@@ -363,7 +373,7 @@ async function upsertOAuthUser(opts: {
     const msg = err instanceof Error ? err.message : '';
     if (msg !== 'USERNAME_TAKEN' && !/duplicate|unique/i.test(msg)) throw err;
     const again = email ? await getUserByEmail(email.toLowerCase()) : null;
-    if (again && provider === 'google') return linkExistingGoogle(again, providerId, picture);
+    if (again && provider === 'google') return linkExistingGoogle(again, providerId, picture, name);
     if (again) return again;
     throw err;
   }

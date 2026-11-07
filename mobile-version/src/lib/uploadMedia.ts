@@ -10,14 +10,14 @@ export type UploadedMedia = {
 };
 
 /** Pick a photo or video and store it on the production media API. */
-export async function pickAndUploadPostMedia(): Promise<UploadedMedia | null> {
+export async function pickAndUploadPostMedia(kind: 'images' | 'videos' | 'any' = 'any'): Promise<UploadedMedia | null> {
   const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
   if (!perm.granted) {
-    Alert.alert('Photos', 'Allow photo and video access to post on your profile.');
+    Alert.alert('Photos', 'Allow photo and video access to post.');
     return null;
   }
   const result = await ImagePicker.launchImageLibraryAsync({
-    mediaTypes: ['images', 'videos'],
+    mediaTypes: kind === 'any' ? ['images', 'videos'] : [kind],
     quality: 0.7,
     videoMaxDuration: 90,
   });

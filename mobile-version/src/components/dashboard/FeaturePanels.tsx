@@ -1,12 +1,11 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Animated, Easing, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
+import { ActivityIndicator, Animated, Easing, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import * as Location from 'expo-location';
 import { adviceAPI, type AdviceQuestion } from '../../api/advice';
 import { aiGuidesAPI, type AiGuideCharacter } from '../../api/aiGuides';
 import { confessionAPI, type ConfessionAiGuide } from '../../api/confession';
 import { dateMatchAPI, type DateMatchCatalog } from '../../api/dateMatch';
 import { discoverAPI, type User } from '../../api/discover';
-import { eventsAPI, type Event } from '../../api/events';
 import { personalSafetyAPI, type ShieldSettings } from '../../api/personalSafety';
 import { settingsAPI, type UserSettings } from '../../api/settings';
 import { formatAxiosError } from '../../lib/apiError';
@@ -118,7 +117,10 @@ export function CompatibilityPanel({ onAsk }: { onAsk?: (guide: AiGuideCharacter
     void aiGuidesAPI
       .list()
       .then((res) => {
-        if (!cancelled) setGuides(res.guides || []);
+        if (cancelled) return;
+        const list = res.guides || [];
+        setGuides(list);
+        setActive((current) => current || list[0] || null);
       })
       .catch((err) => {
         if (!cancelled) setError(formatAxiosError(err, 'Could not load guides.'));
@@ -154,12 +156,14 @@ export function CompatibilityPanel({ onAsk }: { onAsk?: (guide: AiGuideCharacter
       </View>
       {loading ? <ActivityIndicator color={shell.cyan} /> : null}
       {error ? <Notice tone="danger">{error}</Notice> : null}
-      {guides.map((guide) => (
-        <Pressable key={guide.id} onPress={() => setActive(guide)} style={[styles.guide, active?.id === guide.id && styles.guideOn]}>
-          <Text style={styles.personName}>{guide.name}</Text>
-          <Text style={styles.meta}>{guide.tagline || guide.specialty}</Text>
-        </Pressable>
-      ))}
+      <ScrollView style={styles.guideList} nestedScrollEnabled keyboardShouldPersistTaps="handled">
+        {guides.map((guide) => (
+          <Pressable key={guide.id} onPress={() => setActive(guide)} style={[styles.guide, active?.id === guide.id && styles.guideOn]}>
+            <Text style={styles.personName}>{guide.name}</Text>
+            <Text style={styles.meta} numberOfLines={1}>{guide.tagline || guide.specialty}</Text>
+          </Pressable>
+        ))}
+      </ScrollView>
       {active ? (
         <>
           <Hint>{`Ask ${active.name.split(' ')[0]}`}</Hint>
@@ -332,53 +336,6 @@ export function ConfessionPanel() {
             </View>
           ))
         : null}
-    </StageFrame>
-  );
-}
-
-export function EventsPanel({ city, country }: { city?: string; country?: string }) {
-  const [events, setEvents] = useState<Event[]>([]);
-  const [filter, setFilter] = useState(city || '');
-  const [note, setNote] = useState('');
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(true);
-
-  const load = async (nextCity?: string) => {
-    setLoading(true);
-    setError('');
-    try {
-      const res = await eventsAPI.list(nextCity || undefined, country);
-      setEvents(res.events || []);
-      setNote(res.safetyNote || '');
-    } catch (err) {
-      setError(formatAxiosError(err, 'Could not load events.'));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    void load(city);
-  }, [city, country]);
-
-  return (
-    <StageFrame>
-      <PanelTitle icon="📅">Events</PanelTitle>
-      <Hint>Meet at a public place first. Share your plans with someone you trust.</Hint>
-      {note ? <Hint>{note}</Hint> : null}
-      <Field label="City" value={filter} onChangeText={setFilter} autoCapitalize="words" />
-      <NeonButton label="Search events" onPress={() => void load(filter.trim())} />
-      {error ? <Notice tone="danger">{error}</Notice> : null}
-      {loading ? <ActivityIndicator color={shell.cyan} /> : null}
-      {!loading && events.length === 0 ? <Hint>No events in this city yet.</Hint> : null}
-      {events.map((event) => (
-        <View key={event.id} style={styles.card}>
-          <Text style={styles.personName}>{event.title}</Text>
-          <Text style={styles.meta}>
-            {event.city} · {event.startDate} {event.startTime}
-          </Text>
-        </View>
-      ))}
     </StageFrame>
   );
 }
@@ -644,6 +601,7 @@ const styles = StyleSheet.create({
   },
   goldTitle: { color: shell.goldText, fontSize: 14, fontWeight: '700' },
   goldBody: { color: '#e7c9a0', fontSize: 12, lineHeight: 18 },
+  guideList: { maxHeight: 280 },
   guide: {
     paddingVertical: 10,
     borderBottomWidth: StyleSheet.hairlineWidth,

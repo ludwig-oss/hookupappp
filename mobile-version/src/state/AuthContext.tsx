@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { axios } from '../api/http';
 import { profileAPI } from '../api/profile';
 import { settingsAPI } from '../api/settings';
+import { displayFirstName } from '../lib/displayName';
 import { consumeGoogleRedirect } from '../lib/googleAuth';
 import {
   clearAuth,
@@ -51,7 +52,19 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 function toSessionUser(raw: Record<string, unknown>): SessionUser | null {
   const id = normalizeUserId(raw.id);
   if (!id) return null;
-  return { ...userForStorage(raw), id } as SessionUser;
+  const session = { ...userForStorage(raw), id } as SessionUser;
+  const short = displayFirstName(session.name);
+  if (short && (String(session.name || '').includes(' ') || String(session.name || '').length > 6)) {
+    session.name = short;
+  }
+  return session;
+}
+
+function persistShortName(session: SessionUser, previousName: string | undefined): void {
+  const short = session.name || '';
+  if (!short || short === previousName) return;
+  if (!getAuthToken()) return;
+  void profileAPI.updateProfile({ name: short }).catch(() => undefined);
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -153,10 +166,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     void Promise.all([profileAPI.getCurrentUser(), settingsAPI.getSettings().catch(() => null)])
       .then(([fullProfile, settingsRes]) => {
         if (gen !== refreshGen.current || !isPlainObject(fullProfile)) return;
+        const previousName = typeof fullProfile.name === 'string' ? fullProfile.name : '';
         const session = toSessionUser(fullProfile as unknown as Record<string, unknown>);
         if (!session) return;
         setUser(session);
         writeAuthUser(session);
+        persistShortName(session, previousName);
         void settingsRes;
       })
       .catch(() => {
@@ -168,6 +183,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!isPlainObject(userData) || typeof token !== 'string' || !token) {
       throw new Error('Invalid login payload');
     }
+    const previousName = typeof userData.name === 'string' ? userData.name : '';
     const session = toSessionUser(userData);
     if (!session) throw new Error('Invalid login payload');
     refreshGen.current += 1;
@@ -176,6 +192,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     persistAuth(session, token, options?.stayLoggedIn !== false);
     axios.defaults.headers.common.Authorization = `Bearer ${token}`;
     setUser(session);
+    persistShortName(session, previousName);
   }, []);
 
   const logout = useCallback(() => {

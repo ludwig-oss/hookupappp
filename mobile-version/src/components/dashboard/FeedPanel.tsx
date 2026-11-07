@@ -61,11 +61,11 @@ export function FeedPanel({ onShare }: { onShare: () => void }) {
     }
   };
 
-  const publishMedia = async () => {
+  const publishMedia = async (kind: 'images' | 'videos' | 'any' = 'any') => {
     setError('');
     setPosting(true);
     try {
-      const uploaded = await pickAndUploadPostMedia();
+      const uploaded = await pickAndUploadPostMedia(kind);
       if (!uploaded) return;
       const title = draft.trim();
       await postsAPI.createPost({
@@ -106,7 +106,15 @@ export function FeedPanel({ onShare }: { onShare: () => void }) {
           <Text style={styles.postBtnText}>+ Post</Text>
         </Pressable>
       </View>
-      <Hint>Post photos, videos and updates — dating, relationships & marriage only.</Hint>
+      <View style={styles.actions}>
+        <View style={styles.flex}>
+          <NeonButton label={posting ? 'Uploading…' : 'Photo'} tone="magenta" onPress={() => void publishMedia('images')} disabled={posting} />
+        </View>
+        <View style={styles.flex}>
+          <NeonButton label={posting ? 'Uploading…' : 'Video'} tone="magenta" onPress={() => void publishMedia('videos')} disabled={posting} />
+        </View>
+      </View>
+      <Hint>Photo and Video post straight to your profile. Text is optional.</Hint>
       <View style={styles.modes}>
         {MODES.map((item) => (
           <Pressable key={item.id} onPress={() => setMode(item.id)} style={[styles.mode, mode === item.id && styles.modeOn]}>

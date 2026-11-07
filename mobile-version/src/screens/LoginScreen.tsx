@@ -80,15 +80,15 @@ export function LoginScreen() {
     })();
   }, [login, response]);
 
-  const start = async () => {
+  const start = async (intent: OAuthIntent) => {
     setError('');
     clearEntryError();
-    intentRef.current = 'signup';
-    rememberGoogleIntent('signup');
+    intentRef.current = intent;
+    rememberGoogleIntent(intent);
     setBusy(true);
     try {
       if (inExpoGo) {
-        const session = await signInWithGoogleInExpoGo('signup');
+        const session = await signInWithGoogleInExpoGo(intent);
         if (!session) {
           setBusy(false);
           return;
@@ -115,11 +115,16 @@ export function LoginScreen() {
           <Text style={styles.tagline}>Find Your Match</Text>
           <Text style={styles.sub}>Real connections. Real moments.</Text>
           <GoogleButton
-            label={busy ? 'Opening Google…' : 'Sign up or Sign in with Google'}
+            label={busy ? 'Opening Google…' : 'Sign up with Google'}
             disabled={busy || (!inExpoGo && !request)}
-            onPress={() => void start()}
+            onPress={() => void start('signup')}
           />
-          <Text style={styles.caption}>New users will automatically create an account.</Text>
+          <GoogleButton
+            label={busy ? 'Opening Google…' : 'Sign in with Google'}
+            tone="ghost"
+            disabled={busy || (!inExpoGo && !request)}
+            onPress={() => void start('login')}
+          />
           {error ? <Text style={styles.error}>{error}</Text> : null}
         </View>
         <View style={styles.legal}>
@@ -146,18 +151,33 @@ export function LoginScreen() {
   );
 }
 
-function GoogleButton({ label, onPress, disabled }: { label: string; onPress: () => void; disabled?: boolean }) {
+function GoogleButton({
+  label,
+  onPress,
+  disabled,
+  tone = 'solid',
+}: {
+  label: string;
+  onPress: () => void;
+  disabled?: boolean;
+  tone?: 'solid' | 'ghost';
+}) {
   return (
     <Pressable
       accessibilityRole="button"
       disabled={disabled}
       onPress={onPress}
-      style={({ pressed }) => [styles.googleBtn, pressed && styles.pressed, disabled && styles.disabled]}
+      style={({ pressed }) => [
+        styles.googleBtn,
+        tone === 'ghost' && styles.googleBtnGhost,
+        pressed && styles.pressed,
+        disabled && styles.disabled,
+      ]}
     >
       <View style={styles.gBadge}>
         <Text style={styles.gLetter}>G</Text>
       </View>
-      <Text style={styles.googleLabel} numberOfLines={2}>
+      <Text style={[styles.googleLabel, tone === 'ghost' && styles.googleLabelGhost]} numberOfLines={2}>
         {label}
       </Text>
     </Pressable>
@@ -203,6 +223,12 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     textAlign: 'center',
   },
+  googleBtnGhost: {
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: '#fff',
+  },
+  googleLabelGhost: { color: '#fff' },
   googleBtn: {
     width: '100%',
     maxWidth: 340,

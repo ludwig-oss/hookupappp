@@ -10,13 +10,14 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
 import { connectionsAPI } from '../../api/connections';
 import { improvementAPI } from '../../api/improvement';
 import { profileAPI, type ProfileData } from '../../api/profile';
 import { ProfilePosts } from './ProfilePosts';
+import { formatAxiosError } from '../../lib/apiError';
 import { displayFirstName } from '../../lib/displayName';
+import { pickAndUploadLibrary } from '../../lib/uploadMedia';
 import { useAuth } from '../../state/AuthContext';
 
 type Props = {
@@ -37,23 +38,6 @@ const COUNTRY_TO_ISO: Record<string, string> = {
 function flagCode(country: string): string | null {
   const key = country.trim().toLowerCase();
   return key ? COUNTRY_TO_ISO[key] ?? null : null;
-}
-
-async function pickImageDataUrl(): Promise<string | null> {
-  const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-  if (!perm.granted) {
-    Alert.alert('Photos', 'Allow photo access to update your profile.');
-    return null;
-  }
-  const result = await ImagePicker.launchImageLibraryAsync({
-    mediaTypes: ['images'],
-    quality: 0.7,
-    base64: true,
-  });
-  if (result.canceled || !result.assets[0]) return null;
-  const asset = result.assets[0];
-  if (asset.base64) return `data:image/jpeg;base64,${asset.base64}`;
-  return asset.uri;
 }
 
 export function ProfilePanel({ onSignOut, onOpenSettings }: Props) {
@@ -80,12 +64,7 @@ export function ProfilePanel({ onSignOut, onOpenSettings }: Props) {
       const me = await profileAPI.getCurrentUser();
       const extra = me as ProfileData & { age?: number | string; country?: string; city?: string };
       setProfile(me);
-      const short = displayFirstName(me.name);
-      setNameDraft(short);
-      if (short && short !== me.name) {
-        updateUser({ name: short });
-        void profileAPI.updateProfile({ name: short }).catch(() => undefined);
-      }
+      setNameDraft(displayFirstName(me.name) || me.name || '');
       setAge(extra.age != null && extra.age !== '' ? String(extra.age) : '');
       setCountry(extra.country || '');
       setCity(extra.city || '');
@@ -143,9 +122,9 @@ export function ProfilePanel({ onSignOut, onOpenSettings }: Props) {
       setNameDraft(nextName);
       updateUser({ name: nextName, age: age.trim(), country: country.trim(), city: city.trim() });
       setSaving('saved');
-    } catch {
+    } catch (err) {
       setSaving('error');
-      setError('Could not save those details.');
+      setError(formatAxiosError(err, 'Could not save those details.'));
     }
   };
 
@@ -171,16 +150,17 @@ export function ProfilePanel({ onSignOut, onOpenSettings }: Props) {
 
   const changePhoto = async () => {
     if (!user?.id) return;
-    const data = await pickImageDataUrl();
-    if (!data) return;
-    setUploading(true);
     setError('');
     try {
-      const res = await profileAPI.uploadProfilePicture(data, user.id);
-      setProfile((prev) => (prev ? { ...prev, profilePicture: res.profilePicture } : prev));
-      updateUser({ profilePicture: res.profilePicture });
-    } catch {
-      setError('Could not update your photo.');
+      const uploaded = await pickAndUploadLibrary('images', 'profile');
+      if (!uploaded) return;
+      setUploading(true);
+      const res = await profileAPI.uploadProfilePicture(uploaded.url, user.id);
+      const next = res.profilePicture || uploaded.url;
+      setProfile((prev) => (prev ? { ...prev, profilePicture: next } : prev));
+      updateUser({ profilePicture: next });
+    } catch (err) {
+      setError(formatAxiosError(err, 'Could not update your photo.'));
     } finally {
       setUploading(false);
     }
@@ -212,14 +192,15 @@ export function ProfilePanel({ onSignOut, onOpenSettings }: Props) {
   };
 
   const addStory = async () => {
-    const data = await pickImageDataUrl();
-    if (!data) return;
-    setUploading(true);
+    setError('');
     try {
-      await profileAPI.addStory(data, 'all');
+      const uploaded = await pickAndUploadLibrary('any', 'stories');
+      if (!uploaded) return;
+      setUploading(true);
+      await profileAPI.addStory(uploaded.url, 'all');
       await load();
-    } catch {
-      setError('Could not add that story.');
+    } catch (err) {
+      setError(formatAxiosError(err, 'Could not add that story.'));
     } finally {
       setUploading(false);
     }
@@ -227,14 +208,15 @@ export function ProfilePanel({ onSignOut, onOpenSettings }: Props) {
 
   const addHighlight = async () => {
     if (!user?.id) return;
-    const data = await pickImageDataUrl();
-    if (!data) return;
-    setUploading(true);
+    setError('');
     try {
-      await profileAPI.addHighlight(data, user.id);
+      const uploaded = await pickAndUploadLibrary('any', 'highlights');
+      if (!uploaded) return;
+      setUploading(true);
+      await profileAPI.addHighlight(uploaded.url, user.id);
       await load();
-    } catch {
-      setError('Could not add that highlight.');
+    } catch (err) {
+      setError(formatAxiosError(err, 'Could not add that highlight.'));
     } finally {
       setUploading(false);
     }

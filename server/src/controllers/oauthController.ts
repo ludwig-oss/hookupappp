@@ -470,17 +470,20 @@ export async function googleIdToken(req: Request, res: Response) {
     }
     const nonce = parseOAuthState(String(req.body?.state || req.query.state || '')).nonce;
     const profile = await googleProfileFromIdToken(idToken, nonce);
+    const createIfMissing = intentFromRequest(req) !== 'login';
     const user = await upsertOAuthUser({
       provider: 'google',
       providerId: profile.id,
       email: profile.email,
       name: profile.name,
       picture: profile.picture,
-      createIfMissing: true,
+      createIfMissing,
     });
     if (!user) {
       return res.status(400).json({
-        error: 'Could not create your Hook Up account. Try Google again.',
+        error: createIfMissing
+          ? 'Could not create your Hook Up account. Try Google again.'
+          : 'No Hook Up account for this Google login. Use Sign up.',
       });
     }
     const ready = accountReady(user);
@@ -505,16 +508,24 @@ export async function googleCallback(req: Request, res: Response) {
     if (idToken) {
       const nonce = parseOAuthState(String(req.query.state || '')).nonce;
       const profile = await googleProfileFromIdToken(idToken, nonce);
+      const createIfMissing = intentFromRequest(req) !== 'login';
       const user = await upsertOAuthUser({
         provider: 'google',
         providerId: profile.id,
         email: profile.email,
         name: profile.name,
         picture: profile.picture,
-        createIfMissing: true,
+        createIfMissing,
       });
       if (!user) {
-        return redirectError(req, res, 'Could not create your Hook Up account. Try Google again.', origin);
+        return redirectError(
+          req,
+          res,
+          createIfMissing
+            ? 'Could not create your Hook Up account. Try Google again.'
+            : 'No Hook Up account for this Google login. Use Sign up.',
+          origin
+        );
       }
       return issueTokenAndRedirect(req, res, user, origin);
     }
@@ -565,16 +576,24 @@ export async function googleCallback(req: Request, res: Response) {
       return redirectError(req, res, 'Google did not share your Gmail. Allow email access and try again.', origin);
     }
 
+    const createIfMissing = intentFromRequest(req) !== 'login';
     const user = await upsertOAuthUser({
       provider: 'google',
       providerId: profile.id,
       email: profile.email.toLowerCase(),
       name: profile.name || 'Google User',
       picture: profile.picture || null,
-      createIfMissing: true,
+      createIfMissing,
     });
     if (!user) {
-      return redirectError(req, res, 'Could not create your Hook Up account. Try Google again.', origin);
+      return redirectError(
+        req,
+        res,
+        createIfMissing
+          ? 'Could not create your Hook Up account. Try Google again.'
+          : 'No Hook Up account for this Google login. Use Sign up.',
+        origin
+      );
     }
     issueTokenAndRedirect(req, res, user, origin);
   } catch (e: any) {

@@ -96,7 +96,7 @@ export async function getFeedPosts(options?: {
   const { rankFeedPosts } = await import('./feedAlgorithm.js');
   const { getUserFeedProfile } = await import('./feedEngagement.js');
 
-  const posts = await readPosts();
+  const posts = (await readPosts()).filter((post) => !(post.tags || []).includes('profile-gallery'));
   const withViews = await attachViewCounts(posts);
   const profile = options?.userId ? await getUserFeedProfile(options.userId) : null;
   const { posts: ranked } = rankFeedPosts(withViews, {

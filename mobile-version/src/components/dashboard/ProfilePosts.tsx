@@ -34,6 +34,7 @@ export function ProfilePosts({ userId }: { userId: string }) {
         contentType: uploaded.contentType,
         content: uploaded.url,
         title: title || undefined,
+        placement: 'profile',
       });
       setCaption('');
       setPosts((prev) => [post, ...prev.filter((item) => item.id !== post.id)]);

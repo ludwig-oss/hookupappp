@@ -485,7 +485,7 @@ const Profile = ({ embedded = false }: { embedded?: boolean }) => {
         type: 'positive',
         contentType: video ? 'video' : 'image',
         content: mediaUrl,
-        tags: ['dating'],
+        placement: 'profile',
       });
       setProfilePosts((prev) => [post, ...prev.filter((item) => item.id !== post.id)]);
     } catch (err: unknown) {

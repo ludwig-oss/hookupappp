@@ -52,7 +52,7 @@ export async function getFeedPosts(options?: {
     comments: unknown;
     created_at: Date;
   }>('SELECT * FROM dating_posts ORDER BY created_at DESC');
-  const posts = res.rows.map(rowToPost);
+  const posts = res.rows.map(rowToPost).filter((post) => !(post.tags || []).includes('profile-gallery'));
   const { attachViewCounts } = await import('../models/feedEngagement.js');
   const { rankFeedPosts } = await import('../models/feedAlgorithm.js');
   const { getUserFeedProfile } = await import('../models/feedEngagement.js');

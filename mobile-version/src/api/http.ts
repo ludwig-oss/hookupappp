@@ -39,7 +39,9 @@ axios.interceptors.response.use(
     const sentAuth = String(cfg?.headers?.Authorization || cfg?.headers?.authorization || '');
     const hadAuth = sentAuth.length > 0;
     const authAttempt = /\/api\/auth\//.test(url);
-    if (status === 401 && hadAuth && !authAttempt) {
+    const method = String(cfg?.method || 'get').toLowerCase();
+    const profileWrite = method !== 'get' && /\/api\/profile\/(picture|stories|highlights|me|setup)/.test(url);
+    if (status === 401 && hadAuth && !authAttempt && !profileWrite) {
       const current = getAuthToken() || '';
       const sent = sentAuth.replace(/^Bearer\s+/i, '');
       const stale = Boolean(current) && current !== sent;

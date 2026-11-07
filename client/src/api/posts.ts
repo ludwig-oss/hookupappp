@@ -105,6 +105,7 @@ export const postsAPI = {
     content: string;
     title?: string;
     tags?: string[];
+    placement?: 'profile' | 'feed';
   }): Promise<{ post: DatingPost }> => {
     const response = await axios.post(WRITE_API_URL, data, {
       headers: getAuthHeaders(),

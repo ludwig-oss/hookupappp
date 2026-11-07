@@ -10,10 +10,13 @@ export type UploadedMedia = {
 };
 
 /** Pick a photo or video and store it on the production media API. */
-export async function pickAndUploadPostMedia(kind: 'images' | 'videos' | 'any' = 'any'): Promise<UploadedMedia | null> {
+export async function pickAndUploadLibrary(
+  kind: 'images' | 'videos' | 'any',
+  folder: string
+): Promise<UploadedMedia | null> {
   const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
   if (!perm.granted) {
-    Alert.alert('Photos', 'Allow photo and video access to post.');
+    Alert.alert('Photos', 'Allow photo and video access to update your profile.');
     return null;
   }
   const result = await ImagePicker.launchImageLibraryAsync({
@@ -24,7 +27,11 @@ export async function pickAndUploadPostMedia(kind: 'images' | 'videos' | 'any' =
   if (result.canceled || !result.assets[0]) return null;
   const asset = result.assets[0];
   const mime = asset.mimeType || (asset.type === 'video' ? 'video/mp4' : 'image/jpeg');
-  return uploadMediaFile(asset.uri, mime, 'posts');
+  return uploadMediaFile(asset.uri, mime, folder);
+}
+
+export async function pickAndUploadPostMedia(kind: 'images' | 'videos' | 'any' = 'any'): Promise<UploadedMedia | null> {
+  return pickAndUploadLibrary(kind, 'posts');
 }
 
 export async function uploadMediaFile(uri: string, mime: string, folder = 'posts'): Promise<UploadedMedia> {

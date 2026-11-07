@@ -13,7 +13,7 @@ import {
 import { getUserById } from '../models/user.js';
 import { sendPushToUser } from '../realtime/push.js';
 import { runWithSystem } from '../db/context.js';
-import { checkLoveFeedSubmission, LOVE_FEED_SUPPRESSED_OFF_TOPIC } from '../utils/moderation.js';
+import { checkContent, checkLoveFeedSubmission, LOVE_FEED_SUPPRESSED_OFF_TOPIC } from '../utils/moderation.js';
 import { sanitizeMessageContent, sanitizeForStorage, sanitizeTags, LIMITS } from '../utils/sanitize.js';
 import { uploadMedia, uploadMediaBuffer } from '../utils/storage.js';
 import { inferMediaTypeFromUrl } from '../utils/mediaType.js';
@@ -115,12 +115,18 @@ export const createDatingPost = async (req: Request, res: Response) => {
     }
 
     const textBody = !/^https?:\/\//i.test(content) && !content.startsWith('data:') ? content : '';
-    const moderation = checkLoveFeedSubmission({
-      title,
-      content: textBody || content,
-      tags,
-      isComment: false,
-    });
+    const profileGallery = req.body.placement === 'profile';
+    const storedTags = profileGallery
+      ? [...tags.filter((tag) => tag !== 'profile-gallery'), 'profile-gallery']
+      : tags.filter((tag) => tag !== 'profile-gallery');
+    const moderation = profileGallery
+      ? checkContent([title, textBody].filter(Boolean).join(' '))
+      : checkLoveFeedSubmission({
+          title,
+          content: textBody || content,
+          tags: storedTags,
+          isComment: false,
+        });
     if (!moderation.allowed) {
       return res.status(400).json({
         error: moderation.reason || LOVE_FEED_SUPPRESSED_OFF_TOPIC,
@@ -134,7 +140,7 @@ export const createDatingPost = async (req: Request, res: Response) => {
       contentType,
       content,
       title,
-      tags,
+      tags: storedTags,
     }));
 
     const user = await runWithSystem(() => getUserById(userId));

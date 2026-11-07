@@ -3,6 +3,8 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { postsAPI, type DatingPost, type FeedMode } from '../api/posts';
 import { formatAxiosError } from '../lib/apiError';
+import { isVideoMedia, PostMedia } from '../components/dashboard/PostMedia';
+import { pickAndUploadPostMedia } from '../lib/uploadMedia';
 import { Card, ErrorText, Field, Muted, PrimaryButton, Screen, Title } from '../ui/components';
 import { colors } from '../ui/theme';
 
@@ -14,6 +16,7 @@ export function FeedScreen() {
   const [draft, setDraft] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [posting, setPosting] = useState(false);
 
   const load = useCallback(async (next: FeedMode) => {
     setLoading(true);
@@ -38,12 +41,36 @@ export function FeedScreen() {
     const content = draft.trim();
     if (!content) return;
     setError('');
+    setPosting(true);
     try {
       await postsAPI.createPost({ type: 'positive', contentType: 'text', content });
       setDraft('');
       await load(mode);
     } catch (err) {
       setError(formatAxiosError(err, 'Could not publish that post.'));
+    } finally {
+      setPosting(false);
+    }
+  };
+
+  const publishMedia = async () => {
+    setError('');
+    setPosting(true);
+    try {
+      const uploaded = await pickAndUploadPostMedia();
+      if (!uploaded) return;
+      await postsAPI.createPost({
+        type: 'positive',
+        contentType: uploaded.contentType,
+        content: uploaded.url,
+        title: draft.trim() || undefined,
+      });
+      setDraft('');
+      await load(mode);
+    } catch (err) {
+      setError(formatAxiosError(err, 'Could not post that photo or video.'));
+    } finally {
+      setPosting(false);
     }
   };
 
@@ -67,14 +94,19 @@ export function FeedScreen() {
         ))}
       </View>
       <Field label="New post" value={draft} onChangeText={setDraft} multiline placeholder="Share something" />
-      <PrimaryButton label="Post" onPress={() => void publish()} />
+      <PrimaryButton label={posting ? 'Posting…' : 'Post'} onPress={() => void publish()} loading={posting} />
+      <PrimaryButton label="Photo or video" tone="ghost" onPress={() => void publishMedia()} disabled={posting} />
       <PrimaryButton label={loading ? 'Loading…' : 'Reload'} tone="ghost" onPress={() => void load(mode)} loading={loading} />
       <ErrorText>{error}</ErrorText>
       {posts.length === 0 && !loading ? <Muted>Nothing in this feed yet.</Muted> : null}
       {posts.map((post) => (
         <Card key={post.id}>
           <Text style={styles.name}>{post.user?.name || post.title || post.type}</Text>
-          <Text style={styles.body}>{post.content}</Text>
+          {post.contentType === 'image' || post.contentType === 'video' ? (
+            <PostMedia uri={post.content} video={post.contentType === 'video' || isVideoMedia(post.contentType, post.content)} />
+          ) : (
+            <Text style={styles.body}>{post.content}</Text>
+          )}
           <Muted>{post.likes || 0} likes{post.user?.username ? ` · @${post.user.username}` : ''}</Muted>
           <PrimaryButton label="Like" tone="ghost" onPress={() => void like(post.id)} />
         </Card>

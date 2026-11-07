@@ -14,8 +14,8 @@ import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
 import { connectionsAPI } from '../../api/connections';
 import { improvementAPI } from '../../api/improvement';
-import { postsAPI, type DatingPost } from '../../api/posts';
 import { profileAPI, type ProfileData } from '../../api/profile';
+import { ProfilePosts } from './ProfilePosts';
 import { useAuth } from '../../state/AuthContext';
 
 type Props = {
@@ -67,7 +67,6 @@ export function ProfilePanel({ onSignOut, onOpenSettings }: Props) {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
   const [match, setMatch] = useState(0);
-  const [posts, setPosts] = useState<DatingPost[]>([]);
   const [reportsOpen, setReportsOpen] = useState(false);
   const [friendsOpen, setFriendsOpen] = useState(false);
   const [applyOpen, setApplyOpen] = useState(false);
@@ -100,14 +99,7 @@ export function ProfilePanel({ onSignOut, onOpenSettings }: Props) {
     } catch {
       setMatch(0);
     }
-    try {
-      const mine = await postsAPI.getPostsByUser(user.id);
-      setPosts(mine.posts || []);
-    } catch {
-      setPosts([]);
-    } finally {
-      setLoading(false);
-    }
+    setLoading(false);
   }, [user?.id, updateUser]);
 
   useEffect(() => {
@@ -393,22 +385,7 @@ export function ProfilePanel({ onSignOut, onOpenSettings }: Props) {
         <Text style={styles.match}>{loading ? '…' : `${match}% MATCH`}</Text>
       </View>
 
-      <View style={styles.block}>
-        <Text style={styles.sectionTitle}>POSTS</Text>
-        {posts.length === 0 ? (
-          <Text style={styles.empty}>You have not posted yet.</Text>
-        ) : (
-          posts.map((post) => (
-            <View key={post.id} style={styles.post}>
-              {post.contentType === 'image' && post.content ? (
-                <Image source={{ uri: post.content }} style={styles.postImage} />
-              ) : null}
-              <Text style={styles.postText}>{post.title || (post.contentType === 'text' ? post.content : 'Shared a post')}</Text>
-              <Text style={styles.note}>♥ {post.likes || 0}</Text>
-            </View>
-          ))
-        )}
-      </View>
+      {user?.id ? <ProfilePosts userId={user.id} /> : null}
 
       <View style={styles.block}>
         <Text style={styles.sectionTitle}>REVIEWS</Text>
@@ -662,16 +639,6 @@ const styles = StyleSheet.create({
   },
   block: { marginTop: 18, paddingHorizontal: 20 },
   empty: { color: 'rgba(255,255,255,0.55)', fontSize: 13, marginTop: 6 },
-  post: {
-    marginTop: 10,
-    borderRadius: 12,
-    overflow: 'hidden',
-    backgroundColor: 'rgba(0,0,0,0.35)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,143,171,0.4)',
-  },
-  postImage: { width: '100%', height: 180 },
-  postText: { color: '#fff', padding: 10, fontSize: 14 },
   account: { marginTop: 22, paddingHorizontal: 20, gap: 8 },
   spinner: { marginTop: 12 },
 });

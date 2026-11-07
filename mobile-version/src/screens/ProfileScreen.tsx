@@ -8,6 +8,7 @@ import type { AppStackParamList } from '../navigation/types';
 import { onPhotoLockRequired } from '../session/photoLock';
 import { useAuth } from '../state/AuthContext';
 import { useEffect } from 'react';
+import { ProfilePosts } from '../components/dashboard/ProfilePosts';
 import { Card, ErrorText, Field, Muted, PrimaryButton, Screen, Title } from '../ui/components';
 import { colors } from '../ui/theme';
 
@@ -98,6 +99,7 @@ export function ProfileScreen({ showShortcuts = true }: { showShortcuts?: boolea
       <Field label="Country" value={country} onChangeText={setCountry} autoCapitalize="words" />
       <ErrorText>{error}</ErrorText>
       <PrimaryButton label="Save profile" onPress={() => void save()} loading={saving} />
+      {user?.id ? <ProfilePosts userId={user.id} /> : null}
       {showShortcuts
         ? LINKS.map((link) => (
             <Pressable key={link.route} onPress={() => navigation.navigate(link.route)}>

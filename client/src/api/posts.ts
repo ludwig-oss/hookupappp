@@ -65,7 +65,7 @@ export interface DatingPost {
 
 export const postsAPI = {
   getPosts: async (): Promise<{ posts: DatingPost[] }> => {
-    const response = await axios.get(API_URL);
+    const response = await axios.get(API_URL, { headers: getAuthHeaders() });
     return response.data;
   },
 

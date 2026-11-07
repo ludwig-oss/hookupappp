@@ -22,8 +22,8 @@
       "buildNumber": "13",
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "Hookup uses your location to show people nearby and to send a safety signal.",
-        "NSCameraUsageDescription": "Hookup uses the camera for your profile photo.",
-        "NSPhotoLibraryUsageDescription": "Hookup uses your photos for your profile picture.",
+        "NSCameraUsageDescription": "Hookup uses the camera for your profile photo and posts.",
+        "NSPhotoLibraryUsageDescription": "Hookup uses your photos and videos for your profile and posts.",
         "ITSAppUsesNonExemptEncryption": false
       }
     },
@@ -55,12 +55,13 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Hookup uses your photos for your profile picture.",
-          "cameraPermission": "Hookup uses the camera for your profile photo."
+          "photosPermission": "Hookup uses your photos and videos for your profile and posts.",
+          "cameraPermission": "Hookup uses the camera for your profile photo and posts."
         }
       ],
       "expo-web-browser",
-      "expo-router"
+      "expo-router",
+      "expo-video"
     ],
     "extra": {
       "router": {

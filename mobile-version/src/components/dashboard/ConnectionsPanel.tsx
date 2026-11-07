@@ -55,9 +55,27 @@ export function ConnectionsPanel({
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
+  const loadBuzzes = useCallback(async () => {
+    const mine = await connectionsAPI.getMyBuzzes(userId);
+    setBuzzes({ received: mine.received || [], sent: mine.sent || [] });
+  }, [userId]);
+
+  useEffect(() => {
+    void loadBuzzes().catch(() => undefined);
+    const timer = setInterval(() => {
+      void loadBuzzes().catch(() => undefined);
+    }, 20000);
+    return () => clearInterval(timer);
+  }, [loadBuzzes, refreshToken]);
+
   const loadMain = useCallback(async () => {
     setLoading(true);
     setError('');
+    try {
+      await loadBuzzes();
+    } catch (err) {
+      setError(formatAxiosError(err, 'Could not load your buzzes.'));
+    }
     try {
       let lat: number | null = null;
       let lon: number | null = null;
@@ -79,18 +97,14 @@ export function ConnectionsPanel({
       if (geo?.city || geo?.displayName) {
         setPlaceLabel(geo.city && geo.country ? `${geo.city}, ${geo.country}` : geo.displayName);
       }
-      const [found, mine] = await Promise.all([
-        connectionsAPI.getNearby({ lat, lon, userId, radius: 2000 }),
-        connectionsAPI.getMyBuzzes(userId),
-      ]);
+      const found = await connectionsAPI.getNearby({ lat, lon, userId, radius: 2000 });
       setNearby(found.users || []);
-      setBuzzes({ received: mine.received || [], sent: mine.sent || [] });
     } catch (err) {
       setError(formatAxiosError(err, 'Could not load people nearby.'));
     } finally {
       setLoading(false);
     }
-  }, [userId]);
+  }, [loadBuzzes, userId]);
 
   useEffect(() => {
     void loadMain();

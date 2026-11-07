@@ -2,7 +2,9 @@ import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { postsAPI, type DatingPost, type FeedMode } from '../../api/posts';
 import { formatAxiosError } from '../../lib/apiError';
+import { pickAndUploadPostMedia } from '../../lib/uploadMedia';
 import { Field, Hint, NeonButton, Notice, PanelTitle, StageFrame, shell } from './chrome';
+import { isVideoMedia, PostMedia } from './PostMedia';
 
 const MODES: Array<{ id: FeedMode; label: string }> = [
   { id: 'for_you', label: 'For You' },
@@ -18,6 +20,7 @@ export function FeedPanel({ onShare }: { onShare: () => void }) {
   const [posts, setPosts] = useState<DatingPost[]>([]);
   const [draft, setDraft] = useState('');
   const [composing, setComposing] = useState(false);
+  const [posting, setPosting] = useState(false);
   const [description, setDescription] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
@@ -45,6 +48,7 @@ export function FeedPanel({ onShare }: { onShare: () => void }) {
     const content = draft.trim();
     if (!content) return;
     setError('');
+    setPosting(true);
     try {
       await postsAPI.createPost({ type: 'positive', contentType: 'text', content });
       setDraft('');
@@ -52,6 +56,31 @@ export function FeedPanel({ onShare }: { onShare: () => void }) {
       await load(mode);
     } catch (err) {
       setError(formatAxiosError(err, 'Could not publish that post.'));
+    } finally {
+      setPosting(false);
+    }
+  };
+
+  const publishMedia = async () => {
+    setError('');
+    setPosting(true);
+    try {
+      const uploaded = await pickAndUploadPostMedia();
+      if (!uploaded) return;
+      const title = draft.trim();
+      await postsAPI.createPost({
+        type: 'positive',
+        contentType: uploaded.contentType,
+        content: uploaded.url,
+        title: title || undefined,
+      });
+      setDraft('');
+      setComposing(false);
+      await load(mode);
+    } catch (err) {
+      setError(formatAxiosError(err, 'Could not post that photo or video.'));
+    } finally {
+      setPosting(false);
     }
   };
 
@@ -89,7 +118,8 @@ export function FeedPanel({ onShare }: { onShare: () => void }) {
       {composing ? (
         <>
           <Field label="New post" value={draft} onChangeText={setDraft} multiline placeholder="Share something" />
-          <NeonButton label="Post" tone="magenta" onPress={() => void publish()} />
+          <NeonButton label={posting ? 'Posting…' : 'Post'} tone="magenta" onPress={() => void publish()} disabled={posting} />
+          <NeonButton label={posting ? 'Uploading…' : 'Photo or video'} tone="ghost" onPress={() => void publishMedia()} disabled={posting} />
         </>
       ) : null}
       {error ? <Notice tone="danger">{error}</Notice> : null}
@@ -102,7 +132,11 @@ export function FeedPanel({ onShare }: { onShare: () => void }) {
         <View key={post.id} style={styles.card}>
           <Text style={styles.author}>{post.user?.name || post.user?.username || 'Someone'}</Text>
           {post.title ? <Text style={styles.postTitle}>{post.title}</Text> : null}
-          <Text style={styles.body}>{post.content}</Text>
+          {post.contentType === 'image' || post.contentType === 'video' ? (
+            <PostMedia uri={post.content} video={post.contentType === 'video' || isVideoMedia(post.contentType, post.content)} />
+          ) : (
+            <Text style={styles.body}>{post.content}</Text>
+          )}
           <Text style={styles.meta}>
             {post.likes || 0} likes · {post.comments?.length || 0} comments
           </Text>

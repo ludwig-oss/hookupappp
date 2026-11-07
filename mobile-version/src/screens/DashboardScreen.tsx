@@ -13,8 +13,11 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { aiGuidesAPI, type AiGuideCharacter } from '../api/aiGuides';
+import { connectionsAPI } from '../api/connections';
 import { postsAPI } from '../api/posts';
 import { relationshipAPI } from '../api/relationship';
+import { schoolAPI } from '../api/school';
+import { settingsAPI } from '../api/settings';
 import { useAuth } from '../state/AuthContext';
 import { ActivityPanel, AdvicePanel, CompatibilityPanel, ConfessionPanel, DateArenaPanel, EventsPanel, HelpPanel, HighlightsPanel, SafetyPanel, SettingsPanel } from '../components/dashboard/FeaturePanels';
 import { ChatPanel } from '../components/dashboard/ChatPanel';
@@ -73,6 +76,7 @@ export function DashboardScreen() {
   const [guide, setGuide] = useState<AiGuideCharacter | null>(null);
   const [chatUserId, setChatUserId] = useState<string | null>(null);
   const [nearbyPulse, setNearbyPulse] = useState(0);
+  const [liveNote, setLiveNote] = useState('');
   const sidebarWidth = Math.min(Dimensions.get('window').width * 0.7, 320);
   const slide = useRef(new Animated.Value(-sidebarWidth)).current;
 
@@ -110,6 +114,32 @@ export function DashboardScreen() {
       .me()
       .then((res) => setGuide(res.guide || null))
       .catch(() => setGuide(null));
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    let cancelled = false;
+    const pull = async () => {
+      const [school, buzzes] = await Promise.all([
+        schoolAPI.getToday().catch(() => null),
+        connectionsAPI.getMyBuzzes(user.id).catch(() => null),
+        settingsAPI.getSettings().catch(() => null),
+      ]);
+      if (cancelled) return;
+      const pending = (buzzes?.received || []).filter((item) => item.status === 'pending').length;
+      const lesson = school?.showNotification ? school.currentTopic?.lessonTitle : '';
+      const parts = [
+        pending ? `${pending} buzz${pending === 1 ? '' : 'es'} from the live inbox` : '',
+        lesson ? `Class: ${lesson}` : '',
+      ].filter(Boolean);
+      setLiveNote(parts.join(' · '));
+    };
+    void pull();
+    const timer = setInterval(() => void pull(), 25000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
   }, [user?.id]);
 
   useEffect(() => {
@@ -255,6 +285,7 @@ export function DashboardScreen() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
+          {liveNote ? <Text style={styles.liveNote}>{liveNote}</Text> : null}
           {stage}
         </ScrollView>
 
@@ -373,6 +404,13 @@ const styles = StyleSheet.create({
   stageContent: { flexGrow: 1, paddingBottom: 88 },
   placeholder: { flex: 1, minHeight: 320, alignItems: 'center', justifyContent: 'center', padding: 24 },
   placeholderText: { color: shell.muted, fontSize: 18, fontWeight: '500', textAlign: 'center' },
+  liveNote: {
+    color: shell.cyan,
+    fontSize: 13,
+    fontWeight: '700',
+    paddingHorizontal: 16,
+    paddingTop: 10,
+  },
   backdrop: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(0,0,0,0.45)' },
   sidebar: {
     position: 'absolute',

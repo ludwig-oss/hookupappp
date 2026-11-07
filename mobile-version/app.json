@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Hookupapp1",
-    "slug": "hookupapp1",
+    "slug": "hookup-mobile",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",

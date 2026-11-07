@@ -14,7 +14,7 @@ import {
 } from '../models/user.js';
 import { isUsernameReserved, reserveUsername } from '../models/usernameRegistry.js';
 
-const JWT_EXPIRES_IN = '7d';
+const JWT_EXPIRES_IN = '30d';
 
 function getJwtSecret(): string {
   const secret = process.env.JWT_SECRET;

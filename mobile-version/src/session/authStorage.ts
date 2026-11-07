@@ -47,14 +47,15 @@ export async function hydrateAuth(): Promise<void> {
   const pairs = await AsyncStorage.multiGet([TOKEN_KEY, USER_KEY, STAY_KEY, LOGOUT_KEY]);
   const map = Object.fromEntries(pairs);
   loggedOut = map[LOGOUT_KEY] === '1';
-  stayLoggedIn = map[STAY_KEY] === '1';
-  if (loggedOut || !stayLoggedIn) {
+  stayLoggedIn = map[STAY_KEY] !== '0';
+  if (loggedOut) {
     memoryToken = null;
     memoryUser = null;
     return;
   }
   memoryToken = map[TOKEN_KEY] || null;
   memoryUser = map[USER_KEY] || null;
+  if (memoryToken) stayLoggedIn = true;
 }
 
 /**

@@ -1,5 +1,5 @@
 import axios, { type InternalAxiosRequestConfig } from 'axios';
-import { endSession, getAuthToken, isLoggedOutFlag } from '../session/authStorage';
+import { getAuthToken } from '../session/authStorage';
 import { emitPhotoLockRequired, type PhotoLockDetail } from '../session/photoLock';
 
 const RETRY_STATUSES = new Set([502, 503, 504]);
@@ -25,7 +25,7 @@ axios.interceptors.request.use((config) => {
   return config;
 });
 
-/** Retry once when the host is waking from sleep. A real 401 ends the session. */
+/** Retry once when the host is waking from sleep. A failed request never signs the phone out. */
 axios.interceptors.response.use(
   (res) => res,
   async (err) => {
@@ -35,21 +35,6 @@ axios.interceptors.response.use(
     }
     const cfg = err?.config as RetryConfig | undefined;
     const status = err?.response?.status as number | undefined;
-    const url = String(cfg?.url || '');
-    const sentAuth = String(cfg?.headers?.Authorization || cfg?.headers?.authorization || '');
-    const hadAuth = sentAuth.length > 0;
-    const authAttempt = /\/api\/auth\//.test(url);
-    const method = String(cfg?.method || 'get').toLowerCase();
-    const profileWrite = method !== 'get' && /\/api\/profile\/(picture|stories|highlights|me|setup)/.test(url);
-    if (status === 401 && hadAuth && !authAttempt && !profileWrite) {
-      const current = getAuthToken() || '';
-      const sent = sentAuth.replace(/^Bearer\s+/i, '');
-      const stale = Boolean(current) && current !== sent;
-      if (!stale && !(!current && isLoggedOutFlag())) {
-        delete axios.defaults.headers.common.Authorization;
-        endSession();
-      }
-    }
     const message = String(err?.message || '');
     const dropped =
       !status &&

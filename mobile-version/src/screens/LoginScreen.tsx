@@ -96,7 +96,7 @@ export function LoginScreen() {
         login(session.user, session.token, { stayLoggedIn: true });
         return;
       }
-      const result = await promptAsync();
+      const result = await promptAsync({ preferEphemeralSession: false });
       if (result.type === 'cancel' || result.type === 'dismiss') setBusy(false);
     } catch (err) {
       setBusy(false);
@@ -125,6 +125,7 @@ export function LoginScreen() {
             disabled={busy || (!inExpoGo && !request)}
             onPress={() => void start('login')}
           />
+          <Text style={styles.caption}>Pick the Google email already on this phone. Hook Up never asks for a password.</Text>
           {error ? <Text style={styles.error}>{error}</Text> : null}
         </View>
         <View style={styles.legal}>

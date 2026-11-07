@@ -146,7 +146,10 @@ export async function signInWithGoogleInExpoGo(intent: OAuthIntent): Promise<Goo
     throw new Error(typeof data.error === 'string' ? data.error : 'Could not start Google.');
   }
 
-  const result = await WebBrowser.openAuthSessionAsync(next, appReturn);
+  // Share the phone's existing Google login so this is a tap on the email, not a password page.
+  const result = await WebBrowser.openAuthSessionAsync(next, appReturn, {
+    preferEphemeralSession: false,
+  });
   if (result.type === 'cancel' || result.type === 'dismiss') return null;
   if (result.type !== 'success' || !result.url) throw new Error('Google sign-in was cancelled.');
 

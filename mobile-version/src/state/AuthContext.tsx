@@ -139,12 +139,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 writeAuthUser(session);
               }
             }
-          } catch (err: unknown) {
-            const status = (err as { response?: { status?: number } })?.response?.status;
-            if (status === 401 || status === 404) {
-              clearAuth();
-              if (!cancelled) setUser(null);
-            }
+          } catch {
+            /* Keep the saved phone session. Only Log out ends it. */
           }
         }
       } catch {

@@ -47,6 +47,7 @@ import MensRespectSafetyPopup from '../components/MensRespectSafetyPopup';
 import { useTranslation } from '../context/LanguageContext';
 import { postsAPI } from '../api/posts';
 import { relationshipAPI } from '../api/relationship';
+import { datingBattleAPI } from '../api/datingBattle';
 import './Dashboard.css';
 
 type WidgetId = 'activity' | 'compatibility' | 'connections' | 'highlights' | 'lovefeed' | 'advice' | 'confession' | 'chat' | 'events' | 'help' | 'safety' | 'datematch' | null;
@@ -422,6 +423,24 @@ const Dashboard = () => {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
+    const flag = params.get('datingBattle');
+    if (flag !== 'success' && flag !== 'cancel') return;
+    const sessionId = params.get('session_id') || '';
+    const finish = () => {
+      window.history.replaceState({}, '', window.location.pathname);
+      setActiveTab('Connections');
+      setOpenWidget('connections');
+      window.dispatchEvent(new CustomEvent('dating-battle:refresh'));
+    };
+    if (flag === 'success' && sessionId) {
+      datingBattleAPI.confirmPayment(sessionId).catch((err) => console.error('Dating battle payment:', err)).finally(finish);
+      return;
+    }
+    finish();
+  }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
     if (params.get('aiHelp') !== 'success') return;
     const stripeSession = params.get('session_id');
     const finish = () => {
@@ -568,7 +587,7 @@ const Dashboard = () => {
         >
           ☰
         </button>
-        <h1 className="app-header-title">{activeTab.toUpperCase()}</h1>
+        <h1 className="app-header-title">{activeTab === 'Connections' ? 'CONNECTION' : activeTab.toUpperCase()}</h1>
         <div className="app-header-actions">
           {!inRelationship && (
             <button type="button" className="app-header-nearby" onClick={checkNearbyNow}>
@@ -731,7 +750,7 @@ const Dashboard = () => {
       <nav className="app-dock" aria-label="Main">
         <button type="button" className={`app-dock-tab ${activeTab === 'Connections' ? 'is-active' : ''}`} onClick={() => selectTab('Connections')}>
           <span className="app-dock-icon" aria-hidden>👥</span>
-          <span className="app-dock-label">Connections</span>
+          <span className="app-dock-label">Connection</span>
         </button>
         <button type="button" className={`app-dock-tab ${activeTab === 'Feed' ? 'is-active' : ''}`} onClick={() => selectTab('Feed')}>
           <span className="app-dock-icon" aria-hidden>❤️</span>

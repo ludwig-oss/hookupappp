@@ -20,12 +20,15 @@ import {
 } from '../models/textingHelp.js';
 import { SESSION_PRICE_EUR, getRequestById, updateRequestPayment, getGuideById } from '../models/improvement.js';
 import { getHoldByRequestId } from '../models/paypalHolds.js';
+import { PACK_PRICE_EUR } from '../datingBattle/constants.js';
+import { grantDatingBattlePack } from '../datingBattle/service.js';
 
 type CheckoutKind =
   | 'ai_guide_help'
   | 'confession'
   | 'texting_help'
   | 'guide_request'
+  | 'dating_battle'
   | 'generic';
 
 export async function createCheckoutSessionHandler(req: Request, res: Response) {
@@ -98,6 +101,11 @@ export async function createCheckoutSessionHandler(req: Request, res: Response) 
       metadata.requestId = requestId;
       successPath = `/home?stripe=success&kind=guide_request&requestId=${encodeURIComponent(requestId)}&session_id={CHECKOUT_SESSION_ID}`;
       cancelPath = '/home?stripe=cancel';
+    } else if (kind === 'dating_battle') {
+      amountEur = PACK_PRICE_EUR;
+      productName = 'Speed dating battles — 5 more rounds';
+      successPath = '/home?datingBattle=success&session_id={CHECKOUT_SESSION_ID}';
+      cancelPath = '/home?datingBattle=cancel';
     } else if (!Number.isFinite(amountEur) || amountEur < 0.5) {
       return res.status(400).json({ error: 'amountEur is required (min €0.50)' });
     }
@@ -224,6 +232,11 @@ export async function confirmCheckoutSessionHandler(req: Request, res: Response)
         }
       }
       return res.json({ paid: true, kind, requestId, split: splitSessionPayment(SESSION_PRICE_EUR) });
+    }
+
+    if (kind === 'dating_battle') {
+      const granted = await grantDatingBattlePack(userId, checkoutSessionId);
+      return res.json({ paid: true, kind, ...granted });
     }
 
     res.json({ paid: true, kind, checkoutSessionId });

@@ -4,6 +4,8 @@ import * as Location from 'expo-location';
 import { connectionsAPI, type Buzz, type NearbyUser, type VenueCount } from '../../api/connections';
 import { formatAxiosError } from '../../lib/apiError';
 import { Field, Hint, NeonButton, Notice, PanelTitle, PersonRow, StageFrame, shell } from './chrome';
+import { DatingBattlePanel, SpotlightLines } from './DatingBattlePanel';
+import { datingBattleAPI, type SpotlightCard } from '../../api/datingBattle';
 import { UgcSafetyActions } from '../UgcSafetyActions';
 
 const RADII = [
@@ -55,6 +57,7 @@ export function ConnectionsPanel({
   const [placeName, setPlaceName] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [spotlights, setSpotlights] = useState<Record<string, SpotlightCard>>({});
 
   const loadBuzzes = useCallback(async () => {
     const mine = await connectionsAPI.getMyBuzzes(userId);
@@ -110,6 +113,22 @@ export function ConnectionsPanel({
   useEffect(() => {
     void loadMain();
   }, [loadMain, refreshToken]);
+
+  useEffect(() => {
+    const ids = [...new Set([
+      ...nearby.map((person) => person.id),
+      ...buzzes.received.map((item) => item.fromUserId),
+    ].filter(Boolean))].slice(0, 24);
+    if (!ids.length) return;
+    let cancel = false;
+    datingBattleAPI.spotlight(ids).then((res) => {
+      if (cancel) return;
+      const next: Record<string, SpotlightCard> = {};
+      for (const card of res.cards || []) next[card.userId] = card;
+      setSpotlights(next);
+    }).catch(() => undefined);
+    return () => { cancel = true; };
+  }, [nearby, buzzes.received]);
 
   const buzz = async (toUserId: string) => {
     if (!coords) return;
@@ -173,7 +192,7 @@ export function ConnectionsPanel({
 
   return (
     <StageFrame>
-      <PanelTitle icon="🔗">Connections</PanelTitle>
+      <PanelTitle icon="🔗">Connection</PanelTitle>
       {error ? <Notice tone="danger">{error}</Notice> : null}
       {loading ? <ActivityIndicator color={shell.cyan} /> : null}
 
@@ -181,6 +200,7 @@ export function ConnectionsPanel({
         <>
           {placeLabel ? <Text style={styles.place}>📍 {placeLabel}</Text> : null}
           <Hint>Nearby people update when you refresh. Show interest once — they only Accept or Decline.</Hint>
+          <DatingBattlePanel onOpenChat={onOpenChat} />
           {pending.length > 0 ? (
             <Notice tone="magenta">
               {`🔔 ${pending.length} nearby interest${pending.length === 1 ? '' : 's'} — respond below`}
@@ -196,6 +216,7 @@ export function ConnectionsPanel({
                 action="Buzz"
                 onAction={() => void buzz(person.id)}
               />
+              <SpotlightLines card={spotlights[person.id]} />
               <UgcSafetyActions
                 userId={person.id}
                 onBlocked={(id) => setNearby((current) => current.filter((item) => item.id !== id))}

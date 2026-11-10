@@ -14,6 +14,7 @@ export type StripeCheckoutKind =
   | 'confession'
   | 'texting_help'
   | 'guide_request'
+  | 'dating_battle'
   | 'generic';
 
 export const stripeAPI = {

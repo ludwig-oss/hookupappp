@@ -28,7 +28,7 @@ import { shell } from '../components/dashboard/chrome';
 import { RELATIONSHIP_LOCKED, tabForWidget, tabHomeWidget, type MainTab, type WidgetId } from '../components/dashboard/types';
 
 const DOCK: Array<{ id: MainTab; icon: string; label: string }> = [
-  { id: 'Connections', icon: '👥', label: 'Connections' },
+  { id: 'Connections', icon: '👥', label: 'Connection' },
   { id: 'Feed', icon: '❤️', label: 'Feed' },
   { id: 'Communications', icon: '💬', label: 'Comms' },
   { id: 'Profile', icon: '👤', label: 'Profile' },
@@ -260,7 +260,7 @@ export function DashboardScreen() {
           </Pressable>
         </View>
         <Text style={styles.headerTitle} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>
-          {activeTab.toUpperCase()}
+          {activeTab === 'Connections' ? 'CONNECTION' : activeTab.toUpperCase()}
         </Text>
         <View style={[styles.headerSide, styles.headerActions]}>
           {!inRelationship ? (

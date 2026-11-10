@@ -1,6 +1,8 @@
 import { useState, useEffect, useContext, useRef, useCallback } from 'react';
 import { AuthContext } from '../../context/AuthContext';
 import { connectionsAPI, NearbyUser, VenueCount, Buzz } from '../../api/connections';
+import { datingBattleAPI, type SpotlightCard } from '../../api/datingBattle';
+import DatingBattle, { SpotlightLines } from './DatingBattle';
 import { openChatWithUser } from '../../lib/openChat';
 import { formatAxiosError } from '../../lib/apiError';
 import { UgcSafetyActions } from '../UgcSafetyActions';
@@ -76,6 +78,7 @@ const ConnectionsWidget = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [comfortingMessage, setComfortingMessage] = useState<string | null>(null);
+  const [spotlights, setSpotlights] = useState<Record<string, SpotlightCard>>({});
   const locationWatchRef = useRef<number | null>(null);
   const locationIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const buzzInitializedRef = useRef(false);
@@ -100,6 +103,22 @@ const ConnectionsWidget = () => {
     window.addEventListener(NEARBY_HANDLED_EVENT, onHandled);
     return () => window.removeEventListener(NEARBY_HANDLED_EVENT, onHandled);
   }, []);
+
+  useEffect(() => {
+    const ids = [...new Set([
+      ...nearbyUsers.map((person) => person.id),
+      ...buzzes.received.map((buzz) => buzz.fromUserId),
+    ].filter(Boolean))].slice(0, 24);
+    if (!ids.length) return;
+    let cancel = false;
+    datingBattleAPI.spotlight(ids).then((res) => {
+      if (cancel) return;
+      const next: Record<string, SpotlightCard> = {};
+      for (const card of res.cards || []) next[card.userId] = card;
+      setSpotlights(next);
+    }).catch(() => undefined);
+    return () => { cancel = true; };
+  }, [nearbyUsers, buzzes.received]);
 
   const fetchPlaceLabel = async (lat: number, lon: number) => {
     try {
@@ -679,6 +698,7 @@ const ConnectionsWidget = () => {
                     {buzz.fromUsername ? `@${buzz.fromUsername}` : buzz.fromUserName || 'Someone interested'}
                   </div>
                   <div className="nearby-person-status" style={{ fontSize: '11px', color: '#ff00ff', marginTop: 4 }}>Show interest too for Communications — skip if not</div>
+                  <SpotlightLines card={spotlights[buzz.fromUserId]} />
                 </div>
               </div>
               {renderPersonActions(buzz.fromUserId, buzz)}
@@ -721,6 +741,7 @@ const ConnectionsWidget = () => {
                   <div className="nearby-person-status" style={{ fontSize: '11px', color: nearbyUser.isOnline ? '#10b981' : '#9ca3af', marginTop: 4 }}>
                     {nearbyUser.isOnline ? 'Active nearby · your type' : 'Recently nearby · your type'}
                   </div>
+                  <SpotlightLines card={spotlights[nearbyUser.id]} />
                 </div>
               </div>
               {renderPersonActions(nearbyUser.id)}
@@ -816,6 +837,7 @@ const ConnectionsWidget = () => {
           <p style={{ marginBottom: '14px', color: '#9ca3af', fontFamily: 'Orbitron, monospace', fontSize: '12px' }}>
             Nearby people update automatically. Show interest once — they only Accept or Decline (no need to send interest back).
           </p>
+          <DatingBattle />
           {renderLocationPrompt()}
           {buzzes.received.some((b) => b.status === 'pending') && (
             <div

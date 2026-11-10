@@ -11,6 +11,7 @@ export type WidgetId =
   | 'help'
   | 'safety'
   | 'datematch'
+  | 'scout'
   | 'settings';
 
 export type MainTab = 'Connections' | 'Feed' | 'Communications' | 'Profile';

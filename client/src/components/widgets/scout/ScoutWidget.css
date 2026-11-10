@@ -1,0 +1,44 @@
+.scout { color: #f4f4f5; }
+.scout h3 { margin: 0 0 6px; letter-spacing: 0.08em; }
+.scout-lead, .scout-meta { color: #a1a1aa; font-size: 13px; line-height: 1.4; }
+.scout-error { color: #fda4af; font-size: 13px; }
+.scout-card, .scout-panel {
+  margin: 12px 0;
+  padding: 14px;
+  border-radius: 14px;
+  background: #14141c;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+.scout-row { display: flex; justify-content: space-between; gap: 12px; align-items: center; }
+.scout label { display: block; margin: 10px 0; font-size: 13px; }
+.scout input, .scout textarea, .scout select {
+  width: 100%;
+  margin-top: 6px;
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: #0c0c12;
+  color: #fff;
+}
+.scout-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.scout-chip, .scout button {
+  border: 0;
+  border-radius: 8px;
+  padding: 8px 12px;
+  background: #00e6ff;
+  color: #041016;
+  font-weight: 800;
+  cursor: pointer;
+}
+.scout-chip { background: #1f2937; color: #e5e7eb; font-weight: 600; }
+.scout-chip.is-on { outline: 2px solid #00e6ff; }
+.scout-ghost { background: transparent; color: #e5e7eb; border: 1px solid rgba(255,255,255,0.2); }
+.scout-blue { background: #2563eb; color: #fff; }
+.scout-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.scout-contract, .scout-log {
+  white-space: pre-wrap;
+  font-size: 13px;
+  line-height: 1.45;
+  color: #d4d4d8;
+}
+.scout-log { border-top: 1px solid rgba(255,255,255,0.08); padding-top: 8px; margin-top: 8px; }

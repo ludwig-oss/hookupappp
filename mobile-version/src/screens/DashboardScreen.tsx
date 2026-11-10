@@ -24,6 +24,7 @@ import { ConnectionsPanel } from '../components/dashboard/ConnectionsPanel';
 import { FeedPanel } from '../components/dashboard/FeedPanel';
 import { NearbyInterestPopup } from '../components/dashboard/NearbyInterestPopup';
 import { ProfilePanel } from '../components/dashboard/ProfilePanel';
+import { ScoutPanel } from '../components/dashboard/ScoutPanel';
 import { shell } from '../components/dashboard/chrome';
 import { RELATIONSHIP_LOCKED, tabForWidget, tabHomeWidget, type MainTab, type WidgetId } from '../components/dashboard/types';
 
@@ -42,6 +43,7 @@ type SideEntry =
 const SIDE: Record<MainTab, SideEntry[]> = {
   Connections: [
     { kind: 'label', text: 'Meet' },
+    { kind: 'item', id: 'scout', icon: '🔭', label: 'Scout' },
     { kind: 'item', id: 'datematch', icon: '⚔️', label: 'Date Arena' },
     { kind: 'item', id: 'events', icon: '📅', label: 'Events' },
     { kind: 'label', text: 'International' },
@@ -229,6 +231,7 @@ export function DashboardScreen() {
     if (openWidget === 'help') return <HelpPanel onOpen={openFromHelp} />;
     if (openWidget === 'safety') return <SafetyPanel />;
     if (openWidget === 'datematch') return <DateArenaPanel onOpenGuides={() => openFeature('compatibility')} />;
+    if (openWidget === 'scout') return <ScoutPanel onOpenChat={openChat} />;
     if (openWidget === 'settings') return <SettingsPanel />;
     if (activeTab === 'Profile') {
       return <ProfilePanel onSignOut={logout} onOpenSettings={() => openFeature('settings')} />;

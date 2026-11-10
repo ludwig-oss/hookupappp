@@ -18,6 +18,7 @@ import LoveFeedWidget from '../components/widgets/LoveFeedWidget';
 import EventsWidget from '../components/widgets/EventsWidget';
 import HelpWidget from '../components/widgets/HelpWidget';
 import DateMatchWidget from '../components/widgets/DateMatchWidget';
+import ScoutWidget from '../components/widgets/scout/ScoutWidget';
 import InterestPitchPopup from '../components/InterestPitchPopup';
 import DatingAdviceWidget from '../components/widgets/DatingAdviceWidget';
 import ConfessionBoothWidget from '../components/widgets/ConfessionBoothWidget';
@@ -50,7 +51,7 @@ import { relationshipAPI } from '../api/relationship';
 import { datingBattleAPI } from '../api/datingBattle';
 import './Dashboard.css';
 
-type WidgetId = 'activity' | 'compatibility' | 'connections' | 'highlights' | 'lovefeed' | 'advice' | 'confession' | 'chat' | 'events' | 'help' | 'safety' | 'datematch' | null;
+type WidgetId = 'activity' | 'compatibility' | 'connections' | 'highlights' | 'lovefeed' | 'advice' | 'confession' | 'chat' | 'events' | 'help' | 'safety' | 'datematch' | 'scout' | null;
 type MainTab = 'Connections' | 'Feed' | 'Communications' | 'Profile';
 
 function tabForWidget(id: Exclude<WidgetId, null>): MainTab {
@@ -666,6 +667,9 @@ const Dashboard = () => {
                 onNavigate={navigateFromHelp}
               />
             )}
+            {openWidget === 'scout' && (
+              <ScoutWidget onOpenChat={(userId) => { setOpenChatWithUserId(userId); setOpenWidget('chat'); }} />
+            )}
             {openWidget === 'datematch' && (
               <DateMatchWidget
                 onOpenChat={(userId) => { setOpenChatWithUserId(userId); setOpenWidget('chat'); }}
@@ -725,6 +729,7 @@ const Dashboard = () => {
           ) : activeTab === 'Connections' ? (
             <>
               <p className="app-side-label">Meet</p>
+              {sideItem('scout', '🔭', 'Scout')}
               {sideItem('datematch', '⚔️', 'Date Arena')}
               {sideItem('events', '📅', 'Events')}
               <p className="app-side-label">International</p>

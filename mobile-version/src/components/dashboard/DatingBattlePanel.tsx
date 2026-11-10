@@ -1,17 +1,51 @@
 import { useEffect, useRef, useState } from 'react';
 import {
+  Animated,
   Image,
   Linking,
+  Modal,
   Pressable,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 import { datingBattleAPI, type BattleState, type PersonCard, type SpotlightCard } from '../../api/datingBattle';
 import { formatAxiosError } from '../../lib/apiError';
 import { shell } from './chrome';
+
+const TUTORIAL_KEY = '@seen_connection_tutorial';
+
+type TutorialTarget = 'filters' | 'aiStats' | 'wingman' | 'eject';
+
+const TUTORIAL_STEPS: Array<{ title: string; description: string; target: TutorialTarget }> = [
+  {
+    title: '⚡ DER GEGNER-RADAR',
+    description:
+      'Gib ein, wonach du suchst, und wähle deinen Tinder-Style Radius. Unser Algorithmus matcht dich anhand deiner aktuellen Lebensphase!',
+    target: 'filters',
+  },
+  {
+    title: '🤖 DIE KI-CHARME-BORE',
+    description:
+      "Deine Angaben werden von unserer KI extrem gepusht. Aus 'Lehrer' wird automatisch ein 'Retter der Erde' – das wird deinem Date sofort angezeigt!",
+    target: 'aiStats',
+  },
+  {
+    title: '🛡️ DEIN DEUTSCHER WINGMAN',
+    description:
+      'Die ersten 5 Minuten versucht dieser Button euch zu verkuppeln. Er zeigt euch die besten Qualitäten des anderen, damit ihr euch eine echte Chance gebt.',
+    target: 'wingman',
+  },
+  {
+    title: '🚨 DER EJECTION-KNOPF',
+    description:
+      'Nach 5 Minuten wird der Button BLAU und dann ROT. Gefällt dir dein Date nicht? Drücke drauf und katapultiere sie/ihn sofort aus dem Stream!',
+    target: 'eject',
+  },
+];
 
 const REASONS = [
   'No chemistry',
@@ -43,7 +77,7 @@ export function DatingBattlePanel({ onOpenChat }: { onOpenChat: (userId: string)
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [now, setNow] = useState(() => Date.now());
-  const [hot, setHot] = useState(false);
+  const [hotFlash, setHotFlash] = useState(false);
   const [reasonOpen, setReasonOpen] = useState(false);
   const [reason, setReason] = useState('');
   const [quality, setQuality] = useState('');
@@ -61,6 +95,35 @@ export function DatingBattlePanel({ onOpenChat }: { onOpenChat: (userId: string)
   const skewRef = useRef(0);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const openedChat = useRef('');
+  const [showTutorial, setShowTutorial] = useState(false);
+  const [tutorialStep, setTutorialStep] = useState(0);
+  const fadeAnim = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    let cancel = false;
+    AsyncStorage.getItem(TUTORIAL_KEY)
+      .then((value) => {
+        if (!cancel && value !== 'true') setShowTutorial(true);
+      })
+      .catch(() => {
+        if (!cancel) setShowTutorial(true);
+      });
+    return () => {
+      cancel = true;
+    };
+  }, []);
+
+  const nextTutorialStep = () => {
+    if (tutorialStep < TUTORIAL_STEPS.length - 1) {
+      Animated.timing(fadeAnim, { toValue: 0, duration: 150, useNativeDriver: true }).start(() => {
+        setTutorialStep((step) => step + 1);
+        Animated.timing(fadeAnim, { toValue: 1, duration: 250, useNativeDriver: true }).start();
+      });
+      return;
+    }
+    setShowTutorial(false);
+    void AsyncStorage.setItem(TUTORIAL_KEY, 'true');
+  };
 
   const apply = (next: BattleState, takeProfile: boolean) => {
     if (next.battle) skewRef.current = new Date(next.battle.serverNow).getTime() - Date.now();
@@ -102,7 +165,7 @@ export function DatingBattlePanel({ onOpenChat }: { onOpenChat: (userId: string)
 
   useEffect(() => {
     if (phase !== 'ejection') return;
-    const id = setInterval(() => setHot((value) => !value), 350);
+    const id = setInterval(() => setHotFlash((value) => !value), 350);
     return () => clearInterval(id);
   }, [phase]);
 
@@ -201,6 +264,8 @@ export function DatingBattlePanel({ onOpenChat }: { onOpenChat: (userId: string)
   const ms = battle && battle.status === 'live'
     ? Math.max(0, (phase === 'wingman' ? new Date(battle.wingmanEndsAt).getTime() : new Date(battle.ejectEndsAt).getTime()) - (now + skewRef.current))
     : 0;
+  const tourTarget = showTutorial ? TUTORIAL_STEPS[tutorialStep].target : null;
+  const hot = (target: TutorialTarget) => (tourTarget === target ? styles.fcHot : null);
   const triesLabel = data.freeRemaining > 0
     ? `Free rounds left: ${data.freeRemaining} / 5`
     : data.paidRemaining > 0
@@ -217,6 +282,7 @@ export function DatingBattlePanel({ onOpenChat }: { onOpenChat: (userId: string)
 
       {!battle && !data.blocked ? (
         <>
+        <View style={hot('filters')}>
           <Text style={styles.label}>Who or what are you searching for?</Text>
           <TextInput
             value={searchText}
@@ -255,6 +321,7 @@ export function DatingBattlePanel({ onOpenChat }: { onOpenChat: (userId: string)
               <View style={[styles.fill, { width: `${((distance - 1) / 99) * 100}%` }]} />
             </View>
           </View>
+        </View>
           <Text style={styles.label}>Your best dating quality</Text>
           <TextInput
             value={bestQuality}
@@ -320,7 +387,23 @@ export function DatingBattlePanel({ onOpenChat }: { onOpenChat: (userId: string)
         </View>
       ) : null}
 
-      {!battle && data.preview && !data.coachLocked && !data.blocked ? <Preview card={data.preview} /> : null}
+      {!battle && data.preview && !data.coachLocked && !data.blocked ? <Preview card={data.preview} hot={tourTarget === 'aiStats'} /> : null}
+      {tourTarget === 'aiStats' && !data.preview ? (
+        <View style={[styles.card, styles.fcHot]}>
+          <Text style={styles.kicker}>KI-POLISH</Text>
+          <Text style={styles.quality}>Lehrer → Retter der Erde</Text>
+        </View>
+      ) : null}
+      {tourTarget === 'wingman' && phase !== 'wingman' ? (
+        <View style={[styles.wingman, styles.fcHot]}>
+          <Text style={styles.primaryText}>🤖 Wingman-Modus aktiv</Text>
+        </View>
+      ) : null}
+      {tourTarget === 'eject' && phase !== 'ejection' ? (
+        <View style={[styles.eject, styles.fcHot, { backgroundColor: '#2563eb' }]}>
+          <Text style={styles.primaryText}>Eject</Text>
+        </View>
+      ) : null}
       {data.allocationNote && !battle ? <Text style={styles.note}>{data.allocationNote}</Text> : null}
       {!battle && data.emptyReason && !data.blocked && !data.coachLocked ? <Text style={styles.empty}>{data.emptyReason}</Text> : null}
       {!battle && data.outcome?.status === 'ejected' ? (
@@ -372,7 +455,7 @@ export function DatingBattlePanel({ onOpenChat }: { onOpenChat: (userId: string)
           {phase === 'wingman' ? (
             <Pressable
               disabled={busy || battle.myConfirmed}
-              style={styles.wingman}
+              style={[styles.wingman, hot('wingman')]}
               onPress={() => void run(() => datingBattleAPI.confirm(battle.id))}
             >
               <Text style={styles.primaryText}>Wingman — give them a fair chance</Text>
@@ -380,7 +463,7 @@ export function DatingBattlePanel({ onOpenChat }: { onOpenChat: (userId: string)
               <Text style={styles.lead}>Them: {battle.partner.bestQuality}</Text>
             </Pressable>
           ) : (
-            <Pressable disabled={busy} style={[styles.eject, { backgroundColor: hot ? '#dc2626' : '#2563eb' }]} onPress={() => setReasonOpen(true)}>
+            <Pressable disabled={busy} style={[styles.eject, hot('eject'), { backgroundColor: hotFlash ? '#dc2626' : '#2563eb' }]} onPress={() => setReasonOpen(true)}>
               <Text style={styles.primaryText}>Eject</Text>
             </Pressable>
           )}
@@ -414,13 +497,29 @@ export function DatingBattlePanel({ onOpenChat }: { onOpenChat: (userId: string)
           ) : null}
         </>
       ) : null}
+      <Modal visible={showTutorial} transparent animationType="fade" onRequestClose={nextTutorialStep}>
+        <View style={styles.fcOverlay}>
+          <Animated.View style={[styles.fcCard, { opacity: fadeAnim }]}>
+            <View style={styles.fcDots}>
+              {TUTORIAL_STEPS.map((step, index) => (
+                <View key={step.target} style={[styles.fcDot, index === tutorialStep ? styles.fcDotOn : styles.fcDotOff]} />
+              ))}
+            </View>
+            <Text style={styles.fcTitle}>{TUTORIAL_STEPS[tutorialStep].title}</Text>
+            <Text style={styles.fcBody}>{TUTORIAL_STEPS[tutorialStep].description}</Text>
+            <Pressable style={styles.fcNext} onPress={nextTutorialStep}>
+              <Text style={styles.fcNextText}>{tutorialStep === TUTORIAL_STEPS.length - 1 ? 'LOSLEGEN 🚀' : 'WEITER →'}</Text>
+            </Pressable>
+          </Animated.View>
+        </View>
+      </Modal>
     </View>
   );
 }
 
-function Preview({ card }: { card: PersonCard }) {
+function Preview({ card, hot = false }: { card: PersonCard; hot?: boolean }) {
   return (
-    <View style={styles.card}>
+    <View style={[styles.card, hot && styles.fcHot]}>
       <Text style={styles.kicker}>NEXT CONTESTANT</Text>
       <Text style={styles.label}>{card.username ? `@${card.username}` : card.name}{card.age ? ` · ${card.age}` : ''}</Text>
       <Text style={styles.quality}>{card.polishedQuality}</Text>
@@ -521,4 +620,45 @@ const styles = StyleSheet.create({
   prompt: { color: shell.white, fontSize: 16, lineHeight: 22, marginBottom: 8 },
   wingman: { backgroundColor: '#c026d3', borderRadius: 12, padding: 12, marginTop: 8 },
   eject: { borderRadius: 12, padding: 14, marginTop: 8 },
+  fcHot: {
+    borderColor: '#00E6FF',
+    borderWidth: 2.5,
+    borderRadius: 12,
+    zIndex: 5,
+    backgroundColor: '#1f1f2e',
+    shadowColor: '#00E6FF',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.8,
+    shadowRadius: 15,
+    elevation: 8,
+  },
+  fcOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    padding: 24,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+  },
+  fcCard: {
+    backgroundColor: '#161622',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.15)',
+    borderRadius: 16,
+    padding: 24,
+    width: '100%',
+    maxWidth: 360,
+    alignSelf: 'center',
+  },
+  fcDots: { flexDirection: 'row', marginBottom: 15 },
+  fcDot: { height: 4, borderRadius: 2, marginRight: 6 },
+  fcDotOn: { width: 24, backgroundColor: '#00E6FF' },
+  fcDotOff: { width: 6, backgroundColor: 'rgba(255,255,255,0.2)' },
+  fcTitle: { color: '#fff', fontSize: 18, fontWeight: '900', letterSpacing: 0.5, marginBottom: 8 },
+  fcBody: { color: '#aaa', fontSize: 14, lineHeight: 20, marginBottom: 24 },
+  fcNext: {
+    backgroundColor: '#00E6FF',
+    paddingVertical: 14,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  fcNextText: { color: '#000', fontWeight: '900', fontSize: 14, letterSpacing: 0.5 },
 });

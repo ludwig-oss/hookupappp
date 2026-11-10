@@ -150,6 +150,8 @@ export interface User {
   photoLockNotBefore?: string | null;
   /** OAuth provider ids (Google / Facebook). */
   googleId?: string | null;
+  /** Other Google subjects for this mailbox (web, iPhone, and Android clients differ). */
+  googleIds?: string[] | null;
   facebookId?: string | null;
 
   /** Style/Problem Coach — set when admin approves guide application. */
@@ -757,14 +759,20 @@ export async function viewDisappearingPhoto(photoId: string, viewerId: string, o
   return { canView: true, imageUrl: photo.imageUrl };
 }
 
+function googleIdsOf(user: User): string[] {
+  return [...(Array.isArray(user.googleIds) ? user.googleIds : []), user.googleId || '']
+    .map((id) => String(id || '').trim())
+    .filter(Boolean);
+}
+
 function pickGoogleUser(users: User[], googleId: string, email: string): User | null {
   const matches = users.filter(
-    (u) => String(u.googleId || '') === String(googleId) || sameMailbox(u.email || '', email)
+    (u) => googleIdsOf(u).includes(String(googleId)) || sameMailbox(u.email || '', email)
   );
   matches.sort((a, b) => {
     const score = (u: User) =>
       (u.profileSetupComplete ? 4 : 0) +
-      (String(u.googleId || '') === String(googleId) ? 2 : 0) +
+      (googleIdsOf(u).includes(String(googleId)) ? 2 : 0) +
       (u.profilePicture && (u.gender === 'female' || u.gender === 'male') ? 1 : 0);
     return score(b) - score(a);
   });

@@ -4,6 +4,34 @@ import type { OAuthProvider } from '../lib/oauth';
 import './Auth.css';
 
 const VALID: OAuthProvider[] = ['google', 'facebook', 'apple'];
+const RENDER_API = 'https://hookupappp.onrender.com';
+
+/** hookupapp.dev's own /api proxy stops at 10s. Phones are slower than a desk browser, so call Render directly. */
+function apiBases(): string[] {
+  const host = window.location.hostname;
+  const direct = host === 'hookupapp.dev' || host.endsWith('.hookupapp.dev') || host.endsWith('.vercel.app');
+  const bases = direct ? [RENDER_API] : [];
+  if (!bases.includes(window.location.origin)) bases.push(window.location.origin);
+  return bases;
+}
+
+async function fetchApi(path: string, init: RequestInit): Promise<{ res: Response; raw: string }> {
+  let last = 'Sign-in failed. Try again.';
+  for (const base of apiBases()) {
+    try {
+      const res = await fetch(`${base}${path}`, init);
+      const raw = await res.text();
+      if (looksLikeHostPage(raw, res.headers.get('content-type'))) {
+        last = 'Server is waking up. Wait a few seconds and try again.';
+        continue;
+      }
+      return { res, raw };
+    } catch {
+      last = 'Server is waking up. Wait a few seconds and try again.';
+    }
+  }
+  throw new Error(last);
+}
 
 function looksLikeHostPage(raw: string, contentType: string | null): boolean {
   return !contentType?.includes('json') || /<html|onrender\.com/i.test(raw);
@@ -59,19 +87,14 @@ const OAuthReturn = () => {
         setError(hashError);
         return;
       }
-      const idToken = hashParams.get('id_token');
+      const idToken = hashParams.get('id_token') || searchParams.get('id_token');
       if (cancelled) return;
       if (provider === 'google' && idToken) {
-        const res = await fetch(`${window.location.origin}/api/auth/google/id-token`, {
+        const { res, raw } = await fetchApi('/api/auth/google/id-token', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-          body: JSON.stringify({ idToken, state: hashParams.get('state') || '' }),
+          body: JSON.stringify({ idToken, state }),
         });
-        const raw = await res.text();
-        if (looksLikeHostPage(raw, res.headers.get('content-type'))) {
-          setError('Server is waking up. Wait a few seconds and try again.');
-          return;
-        }
         const data = JSON.parse(raw) as { token?: string; setup?: string; error?: string };
         if (!res.ok || !data.token) {
           setError(data.error || 'Google sign-in failed. Try again.');
@@ -83,17 +106,11 @@ const OAuthReturn = () => {
       }
       const qs = new URLSearchParams(searchParams);
       qs.set('format', 'json');
-      const res = await fetch(`${window.location.origin}/api/auth/${provider}/callback?${qs.toString()}`, {
+      const { res, raw } = await fetchApi(`/api/auth/${provider}/callback?${qs.toString()}`, {
         headers: { Accept: 'application/json' },
         cache: 'no-store',
-        credentials: 'same-origin',
       });
-      const raw = await res.text();
       if (cancelled) return;
-      if (looksLikeHostPage(raw, res.headers.get('content-type'))) {
-        setError('Server is waking up. Wait a few seconds and try again.');
-        return;
-      }
       const data = JSON.parse(raw) as { token?: string; setup?: string; error?: string };
       if (!res.ok || !data.token) {
         setError(data.error || 'Sign-in failed. Try again.');

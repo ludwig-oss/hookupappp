@@ -121,6 +121,7 @@ function rowToUser(row: { id: string; email: string; password: string; name: str
     schoolHomeMinute: (data.schoolHomeMinute as number) ?? undefined,
     schoolNotifyEnabled: (data.schoolNotifyEnabled as boolean) ?? undefined,
     googleId: (data.googleId as string) ?? null,
+    googleIds: Array.isArray(data.googleIds) ? data.googleIds.map((id) => String(id)) : undefined,
     facebookId: (data.facebookId as string) ?? null,
     qualifiedCoach: Boolean(data.qualifiedCoach),
     coachStarRating: typeof data.coachStarRating === 'number' ? data.coachStarRating : undefined,
@@ -171,7 +172,7 @@ function userToData(u: Partial<User>): Record<string, unknown> {
     'visibilityReducedUntil', 'visibilityReducedReason',
     'guideProgramAreasChosenAt', 'guideProgramStartedAt', 'guideProgramEvalDueAt', 'guideProgramEvaluatedAt',
     'guideProgramGrade', 'guideProgramProgressed', 'guideProgramGuideId', 'aiGuideId', 'dateLookingFor', 'isPaused',
-    'googleId', 'facebookId',
+    'googleId', 'googleIds', 'facebookId',
     'qualifiedCoach', 'coachStarRating', 'loginCode', 'loginCodeExpiry'] as const;
   for (const k of keys) {
     if ((u as any)[k] !== undefined) data[k] = (u as any)[k];
@@ -271,6 +272,7 @@ export async function findUserForGoogle(googleId: string, email: string): Promis
   const res = await query<{ id: string; email: string; password: string; name: string; username: string; data: unknown }>(
     `SELECT ${USER_COLS} FROM users
      WHERE data->>'googleId' = $1
+        OR COALESCE(data->'googleIds', '[]'::jsonb) @> to_jsonb($1::text)
         OR lower(btrim(email)) = lower(btrim($2))
         OR lower(btrim(coalesce(data->>'email', ''))) = lower(btrim($2))
         OR (

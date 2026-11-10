@@ -11,10 +11,14 @@
   "functions": {
     "api/[...path].js": {
       "maxDuration": 10
+    },
+    "api/oauth-google-form.js": {
+      "maxDuration": 10
     }
   },
   "routes": [
     { "handle": "filesystem" },
+    { "src": "/auth/oauth-return/google", "methods": ["POST"], "dest": "/api/oauth-google-form.js" },
     { "src": "/api/(.*)", "dest": "/api/[...path].js" },
     { "src": "/(.*)", "dest": "/index.html" }
   ],

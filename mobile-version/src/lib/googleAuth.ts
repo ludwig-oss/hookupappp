@@ -1,5 +1,6 @@
 import * as WebBrowser from 'expo-web-browser';
 import { makeRedirectUri } from 'expo-auth-session';
+import Constants, { ExecutionEnvironment } from 'expo-constants';
 import { API_BASE } from '../api/config';
 
 export type OAuthIntent = 'login' | 'signup';
@@ -111,7 +112,7 @@ export async function exchangeGoogleIdToken(idToken: string, intent: OAuthIntent
   const res = await fetch(`${API_BASE}/api/auth/google/id-token?intent=${intent}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-    body: JSON.stringify({ idToken }),
+    body: JSON.stringify({ idToken, intent }),
   });
   const data = await readJson(res);
   if (!res.ok || typeof data.token !== 'string') {
@@ -125,17 +126,32 @@ function queryParam(url: string, key: string): string {
   return new URLSearchParams(query).get(key) || '';
 }
 
-/**
- * Expo Go cannot use the iOS Google client. Google rejects that redirect because
- * Expo Go's bundle id is not app.hookup.mobile. Use the website's HTTPS client
- * instead, then catch the exp:// return that brings the session back.
- */
-export async function signInWithGoogleInExpoGo(intent: OAuthIntent): Promise<GoogleSession | null> {
-  let appReturn = makeRedirectUri({ path: 'oauth', scheme: 'exp' });
-  if (!appReturn.startsWith('exp://') && !appReturn.startsWith('exps://')) {
-    const host = appReturn.replace(/^https?:\/\//, '').replace(/\/+$/, '');
-    appReturn = `exp://${host}/--/oauth`;
+/** Where Google should send the phone after the website finishes the same login the browser uses. */
+function phoneReturnUri(): string {
+  if (Constants.executionEnvironment === ExecutionEnvironment.StoreClient) {
+    let appReturn = makeRedirectUri({ path: 'oauth', scheme: 'exp' });
+    if (!appReturn.startsWith('exp://') && !appReturn.startsWith('exps://')) {
+      const host = appReturn.replace(/^https?:\/\//, '').replace(/\/+$/, '');
+      appReturn = `exp://${host}/--/oauth`;
+    }
+    return appReturn;
   }
+  const uri = makeRedirectUri({
+    scheme: 'app.hookup.mobile',
+    path: 'oauth',
+    native: 'app.hookup.mobile://oauth',
+  });
+  if (uri.startsWith('app.hookup.mobile:') || uri.startsWith('hookup:')) return uri;
+  return 'app.hookup.mobile://oauth';
+}
+
+/**
+ * Phone and website share one Google login. The phone opens the website client,
+ * then the session comes back through the app link. A separate iPhone or Android
+ * Google client would be a different account id and miss the profile created on the web.
+ */
+export async function signInWithGoogleOnPhone(intent: OAuthIntent): Promise<GoogleSession | null> {
+  const appReturn = phoneReturnUri();
   const startUrl =
     `${API_BASE}/api/auth/google?return_origin=${encodeURIComponent('https://hookupapp.dev')}` +
     `&intent=${intent}&format=json&app_return=${encodeURIComponent(appReturn)}`;
@@ -166,6 +182,9 @@ export async function signInWithGoogleInExpoGo(intent: OAuthIntent): Promise<Goo
   if (!me.ok) throw new Error(typeof user.error === 'string' ? user.error : 'Could not finish sign-in.');
   return { user, token };
 }
+
+/** @deprecated Use signInWithGoogleOnPhone. Kept so older screens keep compiling. */
+export const signInWithGoogleInExpoGo = signInWithGoogleOnPhone;
 
 /** Finish a Google redirect that landed back on this app. */
 export async function consumeGoogleRedirect(): Promise<GoogleSession | null> {

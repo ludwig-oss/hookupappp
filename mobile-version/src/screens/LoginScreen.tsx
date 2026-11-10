@@ -1,18 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Image, Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import Constants, { ExecutionEnvironment } from 'expo-constants';
 import * as WebBrowser from 'expo-web-browser';
-import { makeRedirectUri, ResponseType } from 'expo-auth-session';
-import * as Google from 'expo-auth-session/providers/google';
 import {
-  exchangeGoogleIdToken,
-  GOOGLE_ANDROID_CLIENT_ID,
-  GOOGLE_IOS_CLIENT_ID,
-  GOOGLE_IOS_URL_SCHEME,
-  GOOGLE_WEB_CLIENT_ID,
   rememberGoogleIntent,
-  signInWithGoogleInExpoGo,
+  signInWithGoogleOnPhone,
+  startGoogle,
   type OAuthIntent,
 } from '../lib/googleAuth';
 import { useAuth } from '../state/AuthContext';
@@ -27,77 +20,29 @@ export function LoginScreen() {
   const [error, setError] = useState(entryError);
   const [busy, setBusy] = useState(false);
   const [privacyOpen, setPrivacyOpen] = useState(false);
-  const intentRef = useRef<OAuthIntent>('signup');
-  const handledToken = useRef('');
 
   const isBrowser = Platform.OS === 'web' && typeof window !== 'undefined';
-  const inExpoGo = Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
-  const [request, response, promptAsync] = Google.useAuthRequest({
-    webClientId: GOOGLE_WEB_CLIENT_ID,
-    iosClientId: GOOGLE_IOS_CLIENT_ID,
-    androidClientId: GOOGLE_ANDROID_CLIENT_ID,
-    selectAccount: true,
-    ...(isBrowser
-      ? {
-          responseType: ResponseType.IdToken,
-          shouldAutoExchangeCode: false,
-          redirectUri: `${window.location.origin}/auth/oauth-return/google`,
-        }
-      : {
-          redirectUri: makeRedirectUri({
-            native:
-              Platform.OS === 'ios'
-                ? `${GOOGLE_IOS_URL_SCHEME}:/oauth2redirect`
-                : 'app.hookup.mobile:/oauthredirect',
-          }),
-        }),
-  });
 
   useEffect(() => {
     if (entryError) setError(entryError);
   }, [entryError]);
 
-  useEffect(() => {
-    if (response?.type !== 'success') {
-      if (response?.type === 'error') {
-        setBusy(false);
-        setError(response.error?.message || 'Google sign-in failed. Try again.');
-      }
-      return;
-    }
-    const idToken = response.authentication?.idToken || response.params.id_token;
-    if (!idToken || handledToken.current === idToken) return;
-    handledToken.current = idToken;
-    void (async () => {
-      try {
-        const session = await exchangeGoogleIdToken(idToken, intentRef.current);
-        login(session.user, session.token, { stayLoggedIn: true });
-      } catch (err) {
-        handledToken.current = '';
-        setBusy(false);
-        setError(err instanceof Error ? err.message : 'Google sign-in failed.');
-      }
-    })();
-  }, [login, response]);
-
   const start = async (intent: OAuthIntent) => {
     setError('');
     clearEntryError();
-    intentRef.current = intent;
     rememberGoogleIntent(intent);
     setBusy(true);
     try {
-      if (inExpoGo) {
-        const session = await signInWithGoogleInExpoGo(intent);
-        if (!session) {
-          setBusy(false);
-          return;
-        }
-        login(session.user, session.token, { stayLoggedIn: true });
+      if (isBrowser) {
+        await startGoogle(intent);
         return;
       }
-      const result = await promptAsync({ preferEphemeralSession: false });
-      if (result.type === 'cancel' || result.type === 'dismiss') setBusy(false);
+      const session = await signInWithGoogleOnPhone(intent);
+      if (!session) {
+        setBusy(false);
+        return;
+      }
+      login(session.user, session.token, { stayLoggedIn: true });
     } catch (err) {
       setBusy(false);
       setError(err instanceof Error ? err.message : 'Could not start Google.');
@@ -116,13 +61,13 @@ export function LoginScreen() {
           <Text style={styles.sub}>Real connections. Real moments.</Text>
           <GoogleButton
             label={busy ? 'Opening Google…' : 'Sign up with Google'}
-            disabled={busy || (!inExpoGo && !request)}
+            disabled={busy}
             onPress={() => void start('signup')}
           />
           <GoogleButton
             label={busy ? 'Opening Google…' : 'Sign in with Google'}
             tone="ghost"
-            disabled={busy || (!inExpoGo && !request)}
+            disabled={busy}
             onPress={() => void start('login')}
           />
           <Text style={styles.caption}>Pick the Google email already on this phone. Hook Up never asks for a password.</Text>

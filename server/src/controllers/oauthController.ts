@@ -118,10 +118,19 @@ function googleWebClientId(): string {
   return process.env.GOOGLE_CLIENT_ID?.trim() || PUBLIC_GOOGLE_WEB_CLIENT_ID;
 }
 
-function googleIdTokenAudienceOk(aud: string | undefined): boolean {
-  if (!aud) return false;
-  if (aud === googleWebClientId()) return true;
-  return aud === PUBLIC_GOOGLE_ANDROID_CLIENT_ID || aud === PUBLIC_GOOGLE_IOS_CLIENT_ID;
+function googleIdTokenAudienceOk(aud: string | string[] | undefined): boolean {
+  const values = (Array.isArray(aud) ? aud : aud ? [aud] : []).map((value) => String(value || '').trim()).filter(Boolean);
+  const allowed = new Set(
+    [
+      googleWebClientId(),
+      PUBLIC_GOOGLE_WEB_CLIENT_ID,
+      PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
+      PUBLIC_GOOGLE_IOS_CLIENT_ID,
+      process.env.GOOGLE_ANDROID_CLIENT_ID?.trim() || '',
+      process.env.GOOGLE_IOS_CLIENT_ID?.trim() || '',
+    ].filter(Boolean)
+  );
+  return values.some((value) => allowed.has(value));
 }
 
 function parseOAuthState(state: string): { o?: string; nonce?: string; i?: string } {
@@ -167,7 +176,7 @@ function encodeOAuthState(origin: string, nonce?: string, intent: OAuthIntent = 
 function intentFromRequest(req: Request): OAuthIntent {
   const fromState = parseOAuthState(String(req.query.state || req.body?.state || '')).i;
   if (fromState === 'login' || fromState === 'signup') return fromState;
-  return oauthIntent(req.query.intent);
+  return oauthIntent(req.body?.intent || req.query.intent);
 }
 
 function originFromOAuthState(state: string, req: Request): string {
@@ -288,6 +297,16 @@ function displayFirstName(raw: string): string {
 async function linkExistingGoogle(user: User, providerId: string, picture?: string | null, googleName?: string): Promise<User> {
   const patch: Partial<User> = {};
   if (!user.googleId) patch.googleId = providerId;
+  // Web, iPhone, and Android each issue a different Google subject for the same mailbox.
+  const known = new Set(
+    [...(Array.isArray(user.googleIds) ? user.googleIds : []), user.googleId || '']
+      .map((id) => String(id || '').trim())
+      .filter(Boolean)
+  );
+  if (providerId && !known.has(providerId)) {
+    known.add(providerId);
+    patch.googleIds = [...known].slice(-8);
+  }
   if (picture && !user.profilePicture) patch.profilePicture = picture;
   const current = user.name || googleName || '';
   if (current.includes(' ') || current.length > 6) {
@@ -411,10 +430,12 @@ export function startGoogle(req: Request, res: Response) {
     url.searchParams.set('access_type', 'online');
     url.searchParams.set('include_granted_scopes', 'true');
   } else {
-    // No client secret on the host (typical Render miss). ID token in the URL hash still works on phones.
+    // No client secret on the host. A URL hash is dropped by phone browsers, so production
+    // posts the token. Local Vite still uses the hash because it has no POST handler.
     url.searchParams.set('response_type', 'id_token');
     url.searchParams.set('nonce', nonce);
-    url.searchParams.set('response_mode', 'fragment');
+    const local = /localhost|127\.0\.0\.1/.test(origin);
+    url.searchParams.set('response_mode', local ? 'fragment' : 'form_post');
   }
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
   res.setHeader('Referrer-Policy', 'no-referrer-when-downgrade');
@@ -428,7 +449,7 @@ async function googleProfileFromIdToken(idToken: string, expectedNonce?: string)
   );
   const payload = (await tokenRes.json()) as {
     error?: string;
-    aud?: string;
+    aud?: string | string[];
     iss?: string;
     sub?: string;
     email?: string;

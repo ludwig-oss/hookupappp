@@ -196,6 +196,14 @@ export function DatingBattlePanel({
   }, [data?.battle?.id, data?.battle?.status]);
 
   useEffect(() => {
+    if (!data?.searching) return;
+    const id = setInterval(() => {
+      datingBattleAPI.getState().then((next) => applyRef.current(next, false)).catch(() => undefined);
+    }, 2000);
+    return () => clearInterval(id);
+  }, [data?.searching]);
+
+  useEffect(() => {
     const outcome = data?.outcome;
     if (!outcome || outcome.status !== 'matched' || !outcome.matchedUserId) return;
     if (openedChat.current === outcome.id) return;
@@ -452,9 +460,12 @@ export function DatingBattlePanel({
         </View>
       ) : null}
 
+      {data.searching && !battle ? (
+        <Text style={styles.note}>You’re live. The pool is open — a match starts the moment someone compatible joins.</Text>
+      ) : null}
       {!battle && !paywall && !data.coachLocked && !data.blocked ? (
-        <Pressable disabled={busy || !data.preview} style={styles.primary} onPress={() => void run(() => datingBattleAPI.start())}>
-          <Text style={styles.primaryText}>Start 5:00 battle</Text>
+        <Pressable disabled={busy || Boolean(data.searching)} style={styles.primary} onPress={() => void run(() => datingBattleAPI.start())}>
+          <Text style={styles.primaryText}>{data.searching ? 'Live — finding a match' : 'Start Live Battle'}</Text>
         </Pressable>
       ) : null}
       {!battle ? (

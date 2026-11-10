@@ -75,6 +75,8 @@ export interface BattleState {
   allocationNote: string | null;
   blocked: BattleBlock | null;
   emptyReason: string | null;
+  /** True once Start Live Battle has put this user in the open pool. */
+  searching: boolean;
 }
 
 export interface SpotlightCard {

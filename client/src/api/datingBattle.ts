@@ -70,6 +70,7 @@ export interface BattleState {
   allocationNote: string | null;
   blocked: { code: 'underage' | 'need_gender' | 'need_age'; message: string } | null;
   emptyReason: string | null;
+  searching?: boolean;
 }
 
 export interface SpotlightCard {

@@ -110,10 +110,16 @@ interface StoredBattle {
   prompts: Prompt[];
 }
 
+interface QueuedLive {
+  userId: string;
+  joinedAt: string;
+}
+
 interface Db {
   profiles: StoredProfile[];
   wallets: Wallet[];
   battles: StoredBattle[];
+  queue: QueuedLive[];
 }
 
 type PublicUser = Awaited<ReturnType<typeof getAllUsers>>[number];
@@ -213,10 +219,11 @@ async function readDb(): Promise<Db> {
       profiles: Array.isArray(parsed.profiles) ? parsed.profiles : [],
       wallets: Array.isArray(parsed.wallets) ? parsed.wallets : [],
       battles: Array.isArray(parsed.battles) ? parsed.battles : [],
+      queue: Array.isArray(parsed.queue) ? parsed.queue : [],
     };
   } catch (err) {
     const code = (err as NodeJS.ErrnoException).code;
-    if (code === 'ENOENT') return { profiles: [], wallets: [], battles: [] };
+    if (code === 'ENOENT') return { profiles: [], wallets: [], battles: [], queue: [] };
     throw err;
   }
 }
@@ -386,7 +393,23 @@ interface Allocation {
   emptyReason: string | null;
 }
 
-async function allocate(db: Db, viewer: PublicUser): Promise<Allocation> {
+const QUEUE_TTL_MS = 30 * 60 * 1000;
+
+/** Drops people who left the app. An open client refreshes its place while it polls. */
+function pruneQueue(db: Db): boolean {
+  const floor = Date.now() - QUEUE_TTL_MS;
+  const next = db.queue.filter((entry) => new Date(entry.joinedAt).getTime() > floor);
+  const changed = next.length !== db.queue.length;
+  db.queue = next;
+  return changed;
+}
+
+function dropQueued(db: Db, ...ids: string[]) {
+  const gone = new Set(ids);
+  db.queue = db.queue.filter((entry) => !gone.has(entry.userId));
+}
+
+async function allocate(db: Db, viewer: PublicUser, restrictTo?: Set<string>): Promise<Allocation> {
   const side = datingSide(viewer.gender);
   const age = Number(viewer.age);
   if (!side || !Number.isFinite(age)) {
@@ -417,6 +440,7 @@ async function allocate(db: Db, viewer: PublicUser): Promise<Allocation> {
 
   for (const candidate of users) {
     if (candidate.id === viewer.id || busy.has(candidate.id)) continue;
+    if (restrictTo && !restrictTo.has(candidate.id)) continue;
     if (candidate.suspensionUntil && new Date(candidate.suspensionUntil).getTime() > Date.now()) continue;
     const otherSide = datingSide(candidate.gender);
     if (otherSide !== (side === 'male' ? 'female' : 'male')) continue;
@@ -604,6 +628,7 @@ async function buildState(db: Db, userId: string, withPreview: boolean): Promise
     allocationNote: null,
     blocked,
     emptyReason: null,
+    searching: false,
   };
   if (blocked?.code === 'underage') return base;
   const battle = liveFor(db, userId);
@@ -618,6 +643,11 @@ async function buildState(db: Db, userId: string, withPreview: boolean): Promise
       base.outcome = await toView(db, latest, userId);
     }
   }
+  const queued = db.queue.some((entry) => entry.userId === userId);
+  if (queued) {
+    base.searching = true;
+    base.emptyReason = null;
+  }
   if (!withPreview || blocked || wallet.coachLocked) return base;
   const allocation = await allocate(db, publicViewer);
   base.allocationNote = allocation.note;
@@ -626,6 +656,7 @@ async function buildState(db: Db, userId: string, withPreview: boolean): Promise
     const theirs = db.profiles.find((item) => item.userId === allocation.user!.id) || defaultProfile(allocation.user.id);
     base.preview = buildCard(allocation.user, theirs, distanceBetween(publicViewer, allocation.user));
   }
+  if (base.searching) base.emptyReason = null;
   return base;
 }
 
@@ -640,7 +671,21 @@ function requireBattle(db: Db, userId: string, battleId: string): StoredBattle {
 export async function getBattleState(userId: string): Promise<BattleState> {
   return withLock(async () => {
     const db = await readDb();
-    const changed = await settle(db);
+    let changed = await settle(db);
+    if (pruneQueue(db)) changed = true;
+    const queued = db.queue.find((entry) => entry.userId === userId);
+    if (queued && !liveFor(db, userId)) {
+      if (Date.now() - new Date(queued.joinedAt).getTime() > 60_000) {
+        queued.joinedAt = new Date().toISOString();
+        changed = true;
+      }
+      const viewer = await getUserById(userId);
+      if (viewer && await openQueuedBattle(db, userId, viewer as PublicUser)) changed = true;
+    }
+    if (liveFor(db, userId) && db.queue.some((entry) => entry.userId === userId)) {
+      dropQueued(db, userId);
+      changed = true;
+    }
     if (changed) await writeDb(db);
     const battle = liveFor(db, userId);
     return buildState(db, userId, !battle);
@@ -665,63 +710,78 @@ export async function saveBattleProfile(userId: string, input: Partial<ProfileIn
   });
 }
 
+async function openQueuedBattle(db: Db, userId: string, viewer: PublicUser): Promise<boolean> {
+  const waiting = new Set(
+    db.queue.filter((entry) => entry.userId !== userId).map((entry) => entry.userId)
+  );
+  if (!waiting.size) return false;
+  const allocation = await allocate(db, viewer, waiting);
+  if (!allocation.user) return false;
+  const wallet = ensureWallet(db, userId);
+  const partnerWallet = ensureWallet(db, allocation.user.id);
+  wallet.roundsJoined += 1;
+  partnerWallet.roundsJoined += 1;
+  pushRecent(wallet, allocation.user.id);
+  pushRecent(partnerWallet, userId);
+  const seen = new Set([...wallet.seenPromptIds, ...partnerWallet.seenPromptIds]);
+  const prompt = nextPrompt(seen);
+  rememberPrompt(wallet, prompt.id);
+  rememberPrompt(partnerWallet, prompt.id);
+  db.battles.push({
+    id: nid(),
+    user1Id: userId,
+    user2Id: allocation.user.id,
+    startedAt: new Date().toISOString(),
+    status: 'live',
+    user1Confirmed: false,
+    user2Confirmed: false,
+    ejectedBy: null,
+    ejectReason: null,
+    resolvedAt: null,
+    currentPrompt: prompt,
+    prompts: [prompt],
+  });
+  dropQueued(db, userId, allocation.user.id);
+  return true;
+}
+
 export async function startBattle(userId: string): Promise<BattleState> {
   return withLock(async () => {
     const db = await readDb();
     await settle(db);
+    pruneQueue(db);
     if (liveFor(db, userId)) {
+      dropQueued(db, userId);
       await writeDb(db);
       return buildState(db, userId, false);
     }
     const viewer = await getUserById(userId);
     if (!viewer) throw new BattleError(401, 'Unauthorized');
+    // Open pool: follower count, photo verification, and account age are not gates.
     const blocked = viewerBlock(viewer as PublicUser);
     if (blocked) throw new BattleError(403, blocked.message, { blocked });
     const wallet = ensureWallet(db, userId);
     if (wallet.coachLocked) {
       throw new BattleError(423, 'Too many rejections. Finish the dating coach first.', { coachLocked: true });
     }
-    const triesLeft = wallet.freeRemaining + wallet.paidRemaining;
-    if (triesLeft <= 0) {
-      throw new BattleError(402, 'Free rounds are used up.', {
-        paywall: true,
-        priceEur: PACK_PRICE_EUR,
-        triesLeft: 0,
-      });
+    const alreadyQueued = db.queue.some((entry) => entry.userId === userId);
+    if (!alreadyQueued) {
+      const triesLeft = wallet.freeRemaining + wallet.paidRemaining;
+      if (triesLeft <= 0) {
+        throw new BattleError(402, 'Free rounds are used up.', {
+          paywall: true,
+          priceEur: PACK_PRICE_EUR,
+          triesLeft: 0,
+        });
+      }
+      if (wallet.freeRemaining > 0) wallet.freeRemaining -= 1;
+      else wallet.paidRemaining -= 1;
+      wallet.roundsStarted += 1;
+      db.queue.push({ userId, joinedAt: new Date().toISOString() });
     }
-    const allocation = await allocate(db, viewer as PublicUser);
-    if (!allocation.user) {
-      throw new BattleError(404, allocation.emptyReason || 'No match in range.', { emptyReason: allocation.emptyReason });
-    }
-    if (wallet.freeRemaining > 0) wallet.freeRemaining -= 1;
-    else wallet.paidRemaining -= 1;
-    wallet.roundsStarted += 1;
-    wallet.roundsJoined += 1;
-    const partnerWallet = ensureWallet(db, allocation.user.id);
-    partnerWallet.roundsJoined += 1;
-    pushRecent(wallet, allocation.user.id);
-    pushRecent(partnerWallet, userId);
-    const seen = new Set([...wallet.seenPromptIds, ...partnerWallet.seenPromptIds]);
-    const prompt = nextPrompt(seen);
-    rememberPrompt(wallet, prompt.id);
-    rememberPrompt(partnerWallet, prompt.id);
-    const startedAt = new Date().toISOString();
-    db.battles.push({
-      id: nid(),
-      user1Id: userId,
-      user2Id: allocation.user.id,
-      startedAt,
-      status: 'live',
-      user1Confirmed: false,
-      user2Confirmed: false,
-      ejectedBy: null,
-      ejectReason: null,
-      resolvedAt: null,
-      currentPrompt: prompt,
-      prompts: [prompt],
-    });
+    await openQueuedBattle(db, userId, viewer as PublicUser);
     await writeDb(db);
-    return buildState(db, userId, false);
+    return buildState(db, userId, !liveFor(db, userId));
   });
 }
 

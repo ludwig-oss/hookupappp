@@ -169,6 +169,14 @@ export default function DatingBattle() {
   }, [data?.battle?.id, data?.battle?.status]);
 
   useEffect(() => {
+    if (!data?.searching) return;
+    const id = window.setInterval(() => {
+      datingBattleAPI.getState().then((next) => applyRef.current(next, false)).catch(() => undefined);
+    }, 2000);
+    return () => window.clearInterval(id);
+  }, [data?.searching]);
+
+  useEffect(() => {
     const outcome = data?.outcome;
     if (!outcome || outcome.status !== 'matched' || !outcome.matchedUserId) return;
     if (openedChat.current === outcome.id) return;
@@ -445,9 +453,12 @@ export default function DatingBattle() {
         </div>
       ) : null}
 
+      {data.searching && !battle ? (
+        <p className="dbattle-note">You’re live. The pool is open — a match starts the moment someone compatible joins.</p>
+      ) : null}
       {!battle && !paywall && !data.coachLocked && !data.blocked ? (
-        <button type="button" className="dbattle-start" disabled={busy || !data.preview} onClick={() => void run(() => datingBattleAPI.start())}>
-          Start 5:00 battle
+        <button type="button" className="dbattle-start" disabled={busy || Boolean(data.searching)} onClick={() => void run(() => datingBattleAPI.start())}>
+          {data.searching ? 'Live — finding a match' : 'Start Live Battle'}
         </button>
       ) : null}
       {!battle ? (

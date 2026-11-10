@@ -1,6 +1,7 @@
 import { query } from './index.js';
 import type { User, Highlight, HighlightItem, DisappearingPhoto, Story, StoryAudience } from '../models/user.js';
 import { inferMediaTypeFromUrl } from '../utils/mediaType.js';
+import { gmailLocal } from '../utils/mailbox.js';
 import * as profileMedia from './pg-profile-media.js';
 
 const USER_COLS = 'id, email, password, name, username, data';
@@ -265,26 +266,52 @@ async function hydrateUserMedia(user: User): Promise<User> {
   }
 }
 
-/** Prefer the Google id, then the same email, and a finished profile over a blank duplicate. */
+/** Prefer the Google id, then the same mailbox, including Gmail dots and googlemail.com. */
 export async function findUserForGoogle(googleId: string, email: string): Promise<User | null> {
   const res = await query<{ id: string; email: string; password: string; name: string; username: string; data: unknown }>(
     `SELECT ${USER_COLS} FROM users
      WHERE data->>'googleId' = $1
         OR lower(btrim(email)) = lower(btrim($2))
+        OR lower(btrim(coalesce(data->>'email', ''))) = lower(btrim($2))
+        OR (
+          $3 <> ''
+          AND (
+            regexp_replace(split_part(split_part(lower(btrim(email)), '@', 1), '+', 1), '\\.', '', 'g') = $3
+            OR regexp_replace(split_part(split_part(lower(btrim(coalesce(data->>'email', ''))), '@', 1), '+', 1), '\\.', '', 'g') = $3
+          )
+          AND (
+            split_part(lower(btrim(email)), '@', 2) IN ('gmail.com', 'googlemail.com')
+            OR split_part(lower(btrim(coalesce(data->>'email', ''))), '@', 2) IN ('gmail.com', 'googlemail.com')
+          )
+        )
      ORDER BY
        CASE WHEN data->>'profileSetupComplete' = 'true' THEN 0 ELSE 1 END,
        CASE WHEN data->>'googleId' = $1 THEN 0 ELSE 1 END,
        CASE WHEN coalesce(data->>'gender', '') IN ('female', 'male') AND coalesce(data->>'profilePicture', '') <> '' THEN 0 ELSE 1 END
      LIMIT 1`,
-    [googleId, email]
+    [googleId, email, gmailLocal(email)]
   );
   return res.rows[0] ? hydrateUserMedia(rowToUser(res.rows[0])) : null;
 }
 
 export async function getUserByEmail(email: string): Promise<User | null> {
   const res = await query<{ id: string; email: string; password: string; name: string; username: string; data: unknown }>(
-    `SELECT ${USER_COLS} FROM users WHERE lower(btrim(email)) = lower(btrim($1))`,
-    [email]
+    `SELECT ${USER_COLS} FROM users
+     WHERE lower(btrim(email)) = lower(btrim($1))
+        OR lower(btrim(coalesce(data->>'email', ''))) = lower(btrim($1))
+        OR (
+          $2 <> ''
+          AND (
+            split_part(lower(btrim(email)), '@', 2) IN ('gmail.com', 'googlemail.com')
+            OR split_part(lower(btrim(coalesce(data->>'email', ''))), '@', 2) IN ('gmail.com', 'googlemail.com')
+          )
+          AND (
+            regexp_replace(split_part(split_part(lower(btrim(email)), '@', 1), '+', 1), '\\.', '', 'g') = $2
+            OR regexp_replace(split_part(split_part(lower(btrim(coalesce(data->>'email', ''))), '@', 1), '+', 1), '\\.', '', 'g') = $2
+          )
+        )
+     LIMIT 1`,
+    [email, gmailLocal(email)]
   );
   return res.rows[0] ? hydrateUserMedia(rowToUser(res.rows[0])) : null;
 }

@@ -483,7 +483,7 @@ export async function googleIdToken(req: Request, res: Response) {
       return res.status(400).json({
         error: createIfMissing
           ? 'Could not create your Hook Up account. Try Google again.'
-          : 'No Hook Up account for this Google login. Use Sign up.',
+          : 'This Google account is not linked to your Hook Up profile. Sign in with the username or email you used when you signed up.',
       });
     }
     const ready = accountReady(user);
@@ -523,7 +523,7 @@ export async function googleCallback(req: Request, res: Response) {
           res,
           createIfMissing
             ? 'Could not create your Hook Up account. Try Google again.'
-            : 'No Hook Up account for this Google login. Use Sign up.',
+            : 'This Google account is not linked to your Hook Up profile. Sign in with the username or email you used when you signed up.',
           origin
         );
       }
@@ -591,7 +591,7 @@ export async function googleCallback(req: Request, res: Response) {
         res,
         createIfMissing
           ? 'Could not create your Hook Up account. Try Google again.'
-          : 'No Hook Up account for this Google login. Use Sign up.',
+          : 'This Google account is not linked to your Hook Up profile. Sign in with the username or email you used when you signed up.',
         origin
       );
     }

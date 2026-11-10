@@ -6,6 +6,7 @@ import * as pgUsers from '../db/pg-users.js';
 import { inferMediaTypeFromUrl } from '../utils/mediaType.js';
 import { STORY_TTL_MS } from '../constants/socialMedia.js';
 import { writeMergedRows } from '../utils/writeJsonFile.js';
+import { sameMailbox } from '../utils/mailbox.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -399,9 +400,16 @@ export async function createUser(userData: Omit<User, 'id' | 'resetToken' | 'res
 }
 
 export async function getUserByEmail(email: string): Promise<User | null> {
-  if (usePostgres()) return pgUsers.getUserByEmail(email);
+  if (usePostgres()) {
+    try {
+      const hit = await pgUsers.getUserByEmail(email);
+      if (hit) return hit;
+    } catch (err) {
+      console.error('Postgres email lookup failed:', err);
+    }
+  }
   const users = await readUsers();
-  return users.find(u => u.email === email) || null;
+  return users.find((u) => sameMailbox(u.email || '', email)) || null;
 }
 
 export async function getUserByUsername(username: string): Promise<User | null> {
@@ -749,21 +757,30 @@ export async function viewDisappearingPhoto(photoId: string, viewerId: string, o
   return { canView: true, imageUrl: photo.imageUrl };
 }
 
-export async function findUserForGoogle(googleId: string, email: string): Promise<User | null> {
-  if (usePostgres()) return pgUsers.findUserForGoogle(googleId, email);
-  const users = await readUsers();
-  const needle = email.trim().toLowerCase();
+function pickGoogleUser(users: User[], googleId: string, email: string): User | null {
   const matches = users.filter(
-    (u) => u.googleId === googleId || String(u.email || '').trim().toLowerCase() === needle
+    (u) => String(u.googleId || '') === String(googleId) || sameMailbox(u.email || '', email)
   );
   matches.sort((a, b) => {
     const score = (u: User) =>
       (u.profileSetupComplete ? 4 : 0) +
-      (u.googleId === googleId ? 2 : 0) +
+      (String(u.googleId || '') === String(googleId) ? 2 : 0) +
       (u.profilePicture && (u.gender === 'female' || u.gender === 'male') ? 1 : 0);
     return score(b) - score(a);
   });
   return matches[0] || null;
+}
+
+export async function findUserForGoogle(googleId: string, email: string): Promise<User | null> {
+  if (usePostgres()) {
+    try {
+      const hit = await pgUsers.findUserForGoogle(googleId, email);
+      if (hit) return hit;
+    } catch (err) {
+      console.error('Postgres Google lookup failed:', err);
+    }
+  }
+  return pickGoogleUser(await readUsers(), googleId, email);
 }
 
 export async function getAllUsers(): Promise<Omit<User, 'password' | 'resetToken' | 'resetTokenExpiry'>[]> {

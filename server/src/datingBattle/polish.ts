@@ -3,7 +3,7 @@ function clean(raw: string): string {
 }
 
 const FUTURE_RULES: Array<{ test: RegExp; line: string }> = [
-  { test: /\bteach/, line: 'Training the future saviors of Earth' },
+  { test: /\bteach/, line: 'Training the future saviors of planet Earth' },
   { test: /\b(youtube|content creator|influencer|tiktok)\b/, line: 'Building a channel the rest of the internet will study' },
   { test: /\bnurs/, line: 'The night shift’s last calm voice' },
   { test: /\bdoctor|medic|surgeon/, line: 'Putting people back together before the credits roll' },

@@ -84,7 +84,7 @@ assert.equal(isRarelyRejected(4, 0), true);
 assert.equal(isRarelyRejected(4, 1), false);
 assert.equal(isRarelyRejected(3, 0), false);
 assert.equal(isRarelyRejected(10, 1), true);
-assert.equal(polishFuture('Teacher'), 'Training the future saviors of Earth');
+assert.equal(polishFuture('Teacher'), 'Training the future saviors of planet Earth');
 
 const catalog = promptCatalog();
 assert.ok(catalog.length >= 2000, `catalog ${catalog.length}`);

@@ -79,6 +79,7 @@ export function DashboardScreen() {
   const [liveNote, setLiveNote] = useState('');
   const sidebarWidth = Math.min(Dimensions.get('window').width * 0.7, 320);
   const slide = useRef(new Animated.Value(-sidebarWidth)).current;
+  const stageScroll = useRef<React.ComponentRef<typeof ScrollView>>(null);
 
   useEffect(() => {
     Animated.timing(slide, {
@@ -213,7 +214,7 @@ export function DashboardScreen() {
   const stage = useMemo(() => {
     if (!user?.id) return null;
     if (openWidget === 'connections') {
-      return <ConnectionsPanel userId={user.id} refreshToken={nearbyPulse} onOpenChat={openChat} />;
+      return <ConnectionsPanel userId={user.id} refreshToken={nearbyPulse} onOpenChat={openChat} scrollRef={stageScroll} />;
     }
     if (openWidget === 'lovefeed') return <FeedPanel onShare={() => openFeature('chat')} />;
     if (openWidget === 'chat') {
@@ -280,6 +281,7 @@ export function DashboardScreen() {
 
       <View style={styles.stage}>
         <ScrollView
+          ref={stageScroll}
           key={`${activeTab}-${openWidget || 'home'}`}
           contentContainerStyle={styles.stageContent}
           keyboardShouldPersistTaps="handled"

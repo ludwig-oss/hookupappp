@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useState, type RefObject } from 'react';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import * as Location from 'expo-location';
 import { connectionsAPI, type Buzz, type NearbyUser, type VenueCount } from '../../api/connections';
 import { formatAxiosError } from '../../lib/apiError';
@@ -38,10 +38,12 @@ export function ConnectionsPanel({
   userId,
   refreshToken,
   onOpenChat,
+  scrollRef,
 }: {
   userId: string;
   refreshToken: number;
   onOpenChat: (userId: string) => void;
+  scrollRef?: RefObject<React.ComponentRef<typeof ScrollView> | null>;
 }) {
   const [view, setView] = useState<ViewId>('main');
   const [placeLabel, setPlaceLabel] = useState('');
@@ -200,7 +202,7 @@ export function ConnectionsPanel({
         <>
           {placeLabel ? <Text style={styles.place}>📍 {placeLabel}</Text> : null}
           <Hint>Nearby people update when you refresh. Show interest once — they only Accept or Decline.</Hint>
-          <DatingBattlePanel onOpenChat={onOpenChat} />
+          <DatingBattlePanel onOpenChat={onOpenChat} scrollRef={scrollRef} />
           {pending.length > 0 ? (
             <Notice tone="magenta">
               {`🔔 ${pending.length} nearby interest${pending.length === 1 ? '' : 's'} — respond below`}

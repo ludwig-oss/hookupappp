@@ -7,6 +7,7 @@ import {
 } from '../../api/datingBattle';
 import { formatAxiosError } from '../../lib/apiError';
 import { openChatWithUser } from '../../lib/openChat';
+import { FeatureCoach } from './FeatureCoach';
 import './DatingBattle.css';
 
 const REASONS = [
@@ -97,7 +98,11 @@ export default function DatingBattle() {
   const [hideTips, setHideTips] = useState(() => localStorage.getItem(TIPS_KEY) === '1');
   const [showTutorial, setShowTutorial] = useState(() => localStorage.getItem(TUTORIAL_KEY) !== 'true');
   const [tutorialStep, setTutorialStep] = useState(0);
-  const [tutorialOpacity, setTutorialOpacity] = useState(1);
+  const [coachTarget, setCoachTarget] = useState<HTMLElement | null>(null);
+  const filtersRef = useRef<HTMLDivElement>(null);
+  const cardsRef = useRef<HTMLDivElement>(null);
+  const wingmanRef = useRef<HTMLButtonElement>(null);
+  const ejectRef = useRef<HTMLButtonElement>(null);
   const skewRef = useRef(0);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const openedChat = useRef('');
@@ -203,16 +208,28 @@ export default function DatingBattle() {
 
   const nextTutorialStep = () => {
     if (tutorialStep < TUTORIAL_STEPS.length - 1) {
-      setTutorialOpacity(0);
-      window.setTimeout(() => {
-        setTutorialStep((step) => step + 1);
-        setTutorialOpacity(1);
-      }, 150);
+      setTutorialStep((step) => step + 1);
       return;
     }
     localStorage.setItem(TUTORIAL_KEY, 'true');
     setShowTutorial(false);
   };
+
+  useEffect(() => {
+    if (!showTutorial) {
+      setCoachTarget(null);
+      return;
+    }
+    const target = TUTORIAL_STEPS[tutorialStep].target;
+    const node = target === 'filters'
+      ? filtersRef.current
+      : target === 'aiStats'
+        ? cardsRef.current
+        : target === 'wingman'
+          ? wingmanRef.current
+          : ejectRef.current;
+    setCoachTarget(node);
+  }, [showTutorial, tutorialStep, Boolean(data), data?.battle?.id, data?.battle?.status]);
 
   const pay = async () => {
     setBusy(true);
@@ -233,7 +250,7 @@ export default function DatingBattle() {
   const timing = liveClock(data, now, skewRef.current);
   const battle = data.battle;
   const paywall = !battle && data.triesLeft <= 0 && !data.blocked && !data.coachLocked;
-  const tourTarget = showTutorial ? TUTORIAL_STEPS[tutorialStep].target : null;
+  const coachStep = TUTORIAL_STEPS[tutorialStep];
   const triesLabel = data.freeRemaining > 0
     ? `Free rounds left: ${data.freeRemaining} / 5`
     : data.paidRemaining > 0
@@ -241,7 +258,7 @@ export default function DatingBattle() {
       : 'Free rounds left: 0 / 5';
 
   return (
-    <section className={`dbattle${showTutorial ? ' is-tour' : ''}`}>
+    <section className="dbattle">
       <h3>CONNECTION</h3>
       <p className="dbattle-lead">
         Search, set a distance, then take a 5-minute split-screen battle. No ejection means you land in Communications.
@@ -252,7 +269,7 @@ export default function DatingBattle() {
 
       {!battle && !data.blocked ? (
         <>
-          <div className={tourTarget === 'filters' ? 'fc-hot' : undefined}>
+          <div ref={filtersRef}>
           <label className="dbattle-field">
             Who or what are you searching for?
             <input
@@ -369,7 +386,7 @@ export default function DatingBattle() {
       ) : null}
 
       {!battle && data.preview && !data.coachLocked && !data.blocked ? (
-        <article className={`dbattle-card${tourTarget === 'aiStats' ? ' fc-hot' : ''}`}>
+        <article className="dbattle-card">
           <div className="dbattle-kicker">NEXT CONTESTANT</div>
           <strong>{data.preview.username ? `@${data.preview.username}` : data.preview.name}</strong>
           <span> {data.preview.age ? `· ${data.preview.age}` : ''}{data.preview.distanceKm != null ? ` · ${data.preview.distanceKm} km` : ''}</span>
@@ -377,17 +394,26 @@ export default function DatingBattle() {
           <p className="dbattle-plan">{data.preview.polishedFuture}</p>
         </article>
       ) : null}
-      {tourTarget === 'aiStats' && !data.preview ? (
-        <article className="dbattle-card fc-hot">
-          <div className="dbattle-kicker">KI-POLISH</div>
-          <p className="dbattle-quality">Lehrer → Retter der Erde</p>
-        </article>
-      ) : null}
-      {tourTarget === 'wingman' && timing.phase !== 'wingman' ? (
-        <button type="button" className="dbattle-wingman fc-hot" disabled>🤖 Wingman-Modus aktiv</button>
-      ) : null}
-      {tourTarget === 'eject' && timing.phase !== 'ejection' ? (
-        <button type="button" className="dbattle-eject fc-hot" style={{ animation: 'none' }} disabled>Eject</button>
+      {!battle ? (
+        <div ref={cardsRef} className="dbattle-stage" aria-label="AI fighter cards">
+          <div className="dbattle-side is-me">
+            <div className="dbattle-shade" />
+            <div className="dbattle-copy">
+              <div className="dbattle-kicker">YOU</div>
+              <strong>{bestQuality || 'Your quality'}</strong>
+              <p className="dbattle-plan">{futurePlans || 'Your future plan'}</p>
+            </div>
+          </div>
+          <div className="dbattle-side is-them">
+            <div className="dbattle-shade" />
+            <div className="dbattle-copy">
+              <div className="dbattle-kicker">THEM</div>
+              <strong>{data.preview?.name || 'Fighter'}</strong>
+              <p className="dbattle-quality">{data.preview?.polishedQuality || 'Lehrer → Retter der Erde'}</p>
+              <p className="dbattle-plan">{data.preview?.polishedFuture || 'The polished plan lands on this card.'}</p>
+            </div>
+          </div>
+        </div>
       ) : null}
       {data.allocationNote && !battle ? <p className="dbattle-note">{data.allocationNote}</p> : null}
       {!battle && data.emptyReason && !data.blocked && !data.coachLocked ? <p className="dbattle-empty">{data.emptyReason}</p> : null}
@@ -424,10 +450,24 @@ export default function DatingBattle() {
           Start 5:00 battle
         </button>
       ) : null}
+      {!battle ? (
+        <>
+          <button ref={wingmanRef} type="button" className="dbattle-wingman" disabled>
+            Wingman — give them a fair chance
+            <small>You: {bestQuality || 'Your best quality'}</small>
+            <small>Them: {data.preview?.bestQuality || 'Their best quality'}</small>
+          </button>
+          {showTutorial ? (
+            <button ref={ejectRef} type="button" className="dbattle-eject" disabled>
+              Eject
+            </button>
+          ) : null}
+        </>
+      ) : null}
 
       {battle ? (
         <>
-          <div className="dbattle-stage" aria-label="Dating battle">
+          <div ref={cardsRef} className="dbattle-stage" aria-label="Dating battle">
             <Side card={battle.me} kicker="YOU" mine />
             <Side card={battle.partner} kicker="THEM" />
             <div className="dbattle-vs">VS</div>
@@ -447,7 +487,8 @@ export default function DatingBattle() {
               {timing.phase === 'wingman' ? (
                 <button
                   type="button"
-                  className={`dbattle-wingman${tourTarget === 'wingman' ? ' fc-hot' : ''}`}
+                  ref={wingmanRef}
+                  className="dbattle-wingman"
                   disabled={busy || battle.myConfirmed}
                   onClick={() => void run(() => datingBattleAPI.confirm(battle.id))}
                 >
@@ -458,7 +499,7 @@ export default function DatingBattle() {
                 </button>
               ) : (
                 <>
-                  <button type="button" className={`dbattle-eject${tourTarget === 'eject' ? ' fc-hot' : ''}`} disabled={busy} onClick={() => setReasonOpen(true)}>
+                  <button ref={ejectRef} type="button" className="dbattle-eject" disabled={busy} onClick={() => setReasonOpen(true)}>
                     Eject
                   </button>
                   <p className="dbattle-lead">Blue, then red. Press it to eliminate this date, or let the window close and move to Communications.</p>
@@ -512,22 +553,16 @@ export default function DatingBattle() {
           ) : null}
         </>
       ) : null}
-      {showTutorial ? (
-        <div className="fc-overlay">
-          <div className="fc-card" style={{ opacity: tutorialOpacity }}>
-            <div className="fc-dots">
-              {TUTORIAL_STEPS.map((step, index) => (
-                <span key={step.target} className={index === tutorialStep ? 'fc-dot is-on' : 'fc-dot'} />
-              ))}
-            </div>
-            <div className="fc-title">{TUTORIAL_STEPS[tutorialStep].title}</div>
-            <p className="fc-body">{TUTORIAL_STEPS[tutorialStep].description}</p>
-            <button type="button" className="fc-next" onClick={nextTutorialStep}>
-              {tutorialStep === TUTORIAL_STEPS.length - 1 ? 'LOSLEGEN 🚀' : 'WEITER →'}
-            </button>
-          </div>
-        </div>
-      ) : null}
+      <FeatureCoach
+        active={showTutorial}
+        stepIndex={tutorialStep}
+        stepCount={TUTORIAL_STEPS.length}
+        title={coachStep.title}
+        body={coachStep.description}
+        cta={tutorialStep === TUTORIAL_STEPS.length - 1 ? 'LOSLEGEN 🚀' : 'WEITER →'}
+        target={coachTarget}
+        onNext={nextTutorialStep}
+      />
     </section>
   );
 }

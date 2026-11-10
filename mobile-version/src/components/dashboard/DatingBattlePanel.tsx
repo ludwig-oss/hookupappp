@@ -1,16 +1,16 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type RefObject } from 'react';
 import {
-  Animated,
   Image,
   Linking,
-  Modal,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { FeatureCoach } from './FeatureCoach';
 import axios from 'axios';
 import { datingBattleAPI, type BattleState, type PersonCard, type SpotlightCard } from '../../api/datingBattle';
 import { formatAxiosError } from '../../lib/apiError';
@@ -72,7 +72,13 @@ export function SpotlightLines({ card }: { card?: Pick<SpotlightCard, 'polishedQ
   );
 }
 
-export function DatingBattlePanel({ onOpenChat }: { onOpenChat: (userId: string) => void }) {
+export function DatingBattlePanel({
+  onOpenChat,
+  scrollRef,
+}: {
+  onOpenChat: (userId: string) => void;
+  scrollRef?: RefObject<React.ComponentRef<typeof ScrollView> | null>;
+}) {
   const [data, setData] = useState<BattleState | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -97,7 +103,10 @@ export function DatingBattlePanel({ onOpenChat }: { onOpenChat: (userId: string)
   const openedChat = useRef('');
   const [showTutorial, setShowTutorial] = useState(false);
   const [tutorialStep, setTutorialStep] = useState(0);
-  const fadeAnim = useRef(new Animated.Value(1)).current;
+  const filtersRef = useRef<React.ComponentRef<typeof View>>(null);
+  const cardsRef = useRef<React.ComponentRef<typeof View>>(null);
+  const wingmanRef = useRef<React.ComponentRef<typeof View>>(null);
+  const ejectRef = useRef<React.ComponentRef<typeof View>>(null);
 
   useEffect(() => {
     let cancel = false;
@@ -115,10 +124,7 @@ export function DatingBattlePanel({ onOpenChat }: { onOpenChat: (userId: string)
 
   const nextTutorialStep = () => {
     if (tutorialStep < TUTORIAL_STEPS.length - 1) {
-      Animated.timing(fadeAnim, { toValue: 0, duration: 150, useNativeDriver: true }).start(() => {
-        setTutorialStep((step) => step + 1);
-        Animated.timing(fadeAnim, { toValue: 1, duration: 250, useNativeDriver: true }).start();
-      });
+      setTutorialStep((step) => step + 1);
       return;
     }
     setShowTutorial(false);
@@ -265,7 +271,14 @@ export function DatingBattlePanel({ onOpenChat }: { onOpenChat: (userId: string)
     ? Math.max(0, (phase === 'wingman' ? new Date(battle.wingmanEndsAt).getTime() : new Date(battle.ejectEndsAt).getTime()) - (now + skewRef.current))
     : 0;
   const tourTarget = showTutorial ? TUTORIAL_STEPS[tutorialStep].target : null;
-  const hot = (target: TutorialTarget) => (tourTarget === target ? styles.fcHot : null);
+  const coachRef = tourTarget === 'filters'
+    ? filtersRef
+    : tourTarget === 'aiStats'
+      ? cardsRef
+      : tourTarget === 'wingman'
+        ? wingmanRef
+        : ejectRef;
+  const coachStep = TUTORIAL_STEPS[tutorialStep];
   const triesLabel = data.freeRemaining > 0
     ? `Free rounds left: ${data.freeRemaining} / 5`
     : data.paidRemaining > 0
@@ -282,7 +295,7 @@ export function DatingBattlePanel({ onOpenChat }: { onOpenChat: (userId: string)
 
       {!battle && !data.blocked ? (
         <>
-        <View style={hot('filters')}>
+        <View ref={filtersRef} collapsable={false}>
           <Text style={styles.label}>Who or what are you searching for?</Text>
           <TextInput
             value={searchText}
@@ -387,21 +400,26 @@ export function DatingBattlePanel({ onOpenChat }: { onOpenChat: (userId: string)
         </View>
       ) : null}
 
-      {!battle && data.preview && !data.coachLocked && !data.blocked ? <Preview card={data.preview} hot={tourTarget === 'aiStats'} /> : null}
-      {tourTarget === 'aiStats' && !data.preview ? (
-        <View style={[styles.card, styles.fcHot]}>
-          <Text style={styles.kicker}>KI-POLISH</Text>
-          <Text style={styles.quality}>Lehrer → Retter der Erde</Text>
-        </View>
-      ) : null}
-      {tourTarget === 'wingman' && phase !== 'wingman' ? (
-        <View style={[styles.wingman, styles.fcHot]}>
-          <Text style={styles.primaryText}>🤖 Wingman-Modus aktiv</Text>
-        </View>
-      ) : null}
-      {tourTarget === 'eject' && phase !== 'ejection' ? (
-        <View style={[styles.eject, styles.fcHot, { backgroundColor: '#2563eb' }]}>
-          <Text style={styles.primaryText}>Eject</Text>
+      {!battle && data.preview && !data.coachLocked && !data.blocked ? <Preview card={data.preview} /> : null}
+      {!battle ? (
+        <View ref={cardsRef} collapsable={false} style={styles.stage}>
+          <View style={styles.half}>
+            <View style={styles.shade} />
+            <View style={styles.copy}>
+              <Text style={styles.kicker}>YOU</Text>
+              <Text style={styles.halfName}>{bestQuality || 'Your quality'}</Text>
+              <Text style={styles.plan}>{futurePlans || 'Your future plan'}</Text>
+            </View>
+          </View>
+          <View style={styles.half}>
+            <View style={styles.shade} />
+            <View style={styles.copy}>
+              <Text style={styles.kicker}>THEM</Text>
+              <Text style={styles.halfName}>{data.preview?.name || 'Fighter'}</Text>
+              <Text style={styles.quality}>{data.preview?.polishedQuality || 'Lehrer → Retter der Erde'}</Text>
+              <Text style={styles.plan}>{data.preview?.polishedFuture || 'The polished plan lands on this card.'}</Text>
+            </View>
+          </View>
         </View>
       ) : null}
       {data.allocationNote && !battle ? <Text style={styles.note}>{data.allocationNote}</Text> : null}
@@ -439,10 +457,26 @@ export function DatingBattlePanel({ onOpenChat }: { onOpenChat: (userId: string)
           <Text style={styles.primaryText}>Start 5:00 battle</Text>
         </Pressable>
       ) : null}
+      {!battle ? (
+        <View ref={wingmanRef} collapsable={false}>
+          <Pressable disabled style={styles.wingman}>
+            <Text style={styles.primaryText}>Wingman — give them a fair chance</Text>
+            <Text style={styles.lead}>You: {bestQuality || 'Your best quality'}</Text>
+            <Text style={styles.lead}>Them: {data.preview?.bestQuality || 'Their best quality'}</Text>
+          </Pressable>
+        </View>
+      ) : null}
+      {!battle && showTutorial ? (
+        <View ref={ejectRef} collapsable={false}>
+          <Pressable disabled style={[styles.eject, { backgroundColor: '#2563eb' }]}>
+            <Text style={styles.primaryText}>Eject</Text>
+          </Pressable>
+        </View>
+      ) : null}
 
       {battle && battle.status === 'live' ? (
         <>
-          <View style={styles.stage}>
+          <View ref={cardsRef} collapsable={false} style={styles.stage}>
             <Half card={battle.me} kicker="YOU" />
             <Half card={battle.partner} kicker="THEM" />
             <View style={styles.vs}><Text style={styles.vsText}>VS</Text></View>
@@ -453,19 +487,23 @@ export function DatingBattlePanel({ onOpenChat }: { onOpenChat: (userId: string)
             <Text style={styles.primaryText}>New question</Text>
           </Pressable>
           {phase === 'wingman' ? (
+            <View ref={wingmanRef} collapsable={false}>
             <Pressable
               disabled={busy || battle.myConfirmed}
-              style={[styles.wingman, hot('wingman')]}
+              style={styles.wingman}
               onPress={() => void run(() => datingBattleAPI.confirm(battle.id))}
             >
               <Text style={styles.primaryText}>Wingman — give them a fair chance</Text>
               <Text style={styles.lead}>You: {battle.me.bestQuality}</Text>
               <Text style={styles.lead}>Them: {battle.partner.bestQuality}</Text>
             </Pressable>
+            </View>
           ) : (
-            <Pressable disabled={busy} style={[styles.eject, hot('eject'), { backgroundColor: hotFlash ? '#dc2626' : '#2563eb' }]} onPress={() => setReasonOpen(true)}>
-              <Text style={styles.primaryText}>Eject</Text>
-            </Pressable>
+            <View ref={ejectRef} collapsable={false}>
+              <Pressable disabled={busy} style={[styles.eject, { backgroundColor: hotFlash ? '#dc2626' : '#2563eb' }]} onPress={() => setReasonOpen(true)}>
+                <Text style={styles.primaryText}>Eject</Text>
+              </Pressable>
+            </View>
           )}
           {reasonOpen ? (
             <View>
@@ -497,29 +535,24 @@ export function DatingBattlePanel({ onOpenChat }: { onOpenChat: (userId: string)
           ) : null}
         </>
       ) : null}
-      <Modal visible={showTutorial} transparent animationType="fade" onRequestClose={nextTutorialStep}>
-        <View style={styles.fcOverlay}>
-          <Animated.View style={[styles.fcCard, { opacity: fadeAnim }]}>
-            <View style={styles.fcDots}>
-              {TUTORIAL_STEPS.map((step, index) => (
-                <View key={step.target} style={[styles.fcDot, index === tutorialStep ? styles.fcDotOn : styles.fcDotOff]} />
-              ))}
-            </View>
-            <Text style={styles.fcTitle}>{TUTORIAL_STEPS[tutorialStep].title}</Text>
-            <Text style={styles.fcBody}>{TUTORIAL_STEPS[tutorialStep].description}</Text>
-            <Pressable style={styles.fcNext} onPress={nextTutorialStep}>
-              <Text style={styles.fcNextText}>{tutorialStep === TUTORIAL_STEPS.length - 1 ? 'LOSLEGEN 🚀' : 'WEITER →'}</Text>
-            </Pressable>
-          </Animated.View>
-        </View>
-      </Modal>
+      <FeatureCoach
+        visible={showTutorial}
+        stepIndex={tutorialStep}
+        stepCount={TUTORIAL_STEPS.length}
+        title={coachStep.title}
+        body={coachStep.description}
+        cta={tutorialStep === TUTORIAL_STEPS.length - 1 ? 'LOSLEGEN 🚀' : 'WEITER →'}
+        targetRef={coachRef}
+        scrollRef={scrollRef}
+        onNext={nextTutorialStep}
+      />
     </View>
   );
 }
 
-function Preview({ card, hot = false }: { card: PersonCard; hot?: boolean }) {
+function Preview({ card }: { card: PersonCard }) {
   return (
-    <View style={[styles.card, hot && styles.fcHot]}>
+    <View style={styles.card}>
       <Text style={styles.kicker}>NEXT CONTESTANT</Text>
       <Text style={styles.label}>{card.username ? `@${card.username}` : card.name}{card.age ? ` · ${card.age}` : ''}</Text>
       <Text style={styles.quality}>{card.polishedQuality}</Text>
@@ -618,47 +651,16 @@ const styles = StyleSheet.create({
   },
   clockText: { color: '#fff', textAlign: 'center', fontWeight: '800', fontSize: 18 },
   prompt: { color: shell.white, fontSize: 16, lineHeight: 22, marginBottom: 8 },
-  wingman: { backgroundColor: '#c026d3', borderRadius: 12, padding: 12, marginTop: 8 },
-  eject: { borderRadius: 12, padding: 14, marginTop: 8 },
-  fcHot: {
-    borderColor: '#00E6FF',
-    borderWidth: 2.5,
+  wingman: {
+    backgroundColor: '#16a34a',
     borderRadius: 12,
-    zIndex: 5,
-    backgroundColor: '#1f1f2e',
-    shadowColor: '#00E6FF',
+    padding: 12,
+    marginTop: 8,
+    shadowColor: '#22c55e',
     shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.8,
-    shadowRadius: 15,
+    shadowOpacity: 0.85,
+    shadowRadius: 14,
     elevation: 8,
   },
-  fcOverlay: {
-    flex: 1,
-    justifyContent: 'flex-end',
-    padding: 24,
-    backgroundColor: 'rgba(0,0,0,0.45)',
-  },
-  fcCard: {
-    backgroundColor: '#161622',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.15)',
-    borderRadius: 16,
-    padding: 24,
-    width: '100%',
-    maxWidth: 360,
-    alignSelf: 'center',
-  },
-  fcDots: { flexDirection: 'row', marginBottom: 15 },
-  fcDot: { height: 4, borderRadius: 2, marginRight: 6 },
-  fcDotOn: { width: 24, backgroundColor: '#00E6FF' },
-  fcDotOff: { width: 6, backgroundColor: 'rgba(255,255,255,0.2)' },
-  fcTitle: { color: '#fff', fontSize: 18, fontWeight: '900', letterSpacing: 0.5, marginBottom: 8 },
-  fcBody: { color: '#aaa', fontSize: 14, lineHeight: 20, marginBottom: 24 },
-  fcNext: {
-    backgroundColor: '#00E6FF',
-    paddingVertical: 14,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  fcNextText: { color: '#000', fontWeight: '900', fontSize: 14, letterSpacing: 0.5 },
+  eject: { borderRadius: 12, padding: 14, marginTop: 8 },
 });

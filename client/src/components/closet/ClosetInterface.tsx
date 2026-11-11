@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   CLOSET_CATEGORIES,
   itemsFor,
@@ -9,17 +9,8 @@ import {
 } from '../../data/closetCatalog';
 import { fashionAPI, type FashionLookCard } from '../../api/fashion';
 import CluelessClosetApp from './CluelessClosetApp';
+import GarmentSlot from './GarmentSlot';
 import './ClosetInterface.css';
-
-/** High-fidelity full-body stand-ins until the user’s body photo / VTON result lands. */
-const MODEL_FULL_BODY: Record<'masc' | 'fem', string> = {
-  masc: 'https://images.unsplash.com/photo-1488161628813-04466f872be2?auto=format&fit=crop&w=900&q=85',
-  fem: 'https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?auto=format&fit=crop&w=900&q=85',
-};
-
-function delay(ms: number) {
-  return new Promise((r) => setTimeout(r, ms));
-}
 
 function asTryOnLook(item: ClosetItem): FashionLookCard {
   const garment =
@@ -67,18 +58,13 @@ export default function ClosetInterface({
   const [occasion, setOccasion] = useState<'everyday' | 'special_event' | 'work' | 'night_out'>('everyday');
   const [cluelessLine, setCluelessLine] = useState<string | null>(null);
 
-  const initialModelUrl = useMemo(() => {
-    if (bodyUrl) return bodyUrl;
-    return MODEL_FULL_BODY[gender === 'fem' ? 'fem' : 'masc'];
-  }, [bodyUrl, gender]);
-
-  const [tryOnImage, setTryOnImage] = useState(initialModelUrl);
+  const [tryOnImage, setTryOnImage] = useState('');
 
   useEffect(() => {
     setEquipped({});
     setCategory('tops');
     setTryOnLabel(null);
-    setTryOnImage(bodyUrl || MODEL_FULL_BODY[genderProp === 'fem' ? 'fem' : 'masc']);
+    setTryOnImage('');
   }, []);
 
   useEffect(() => {
@@ -86,9 +72,8 @@ export default function ClosetInterface({
   }, [genderProp]);
 
   useEffect(() => {
-    // Gender / body plate change resets to a clean full-body model (not a vector mannequin).
     if (!tryOnLoading) {
-      setTryOnImage(bodyUrl || MODEL_FULL_BODY[gender === 'fem' ? 'fem' : 'masc']);
+      setTryOnImage('');
       setTryOnLabel(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -152,29 +137,25 @@ export default function ClosetInterface({
   const runVirtualTryOn = async (item: ClosetItem) => {
     setTryOnLoading(true);
     setTryOnLabel(item.title);
-    const personPlate = bodyUrl || initialModelUrl;
+    const personPlate = bodyUrl && /^https?:\/\//i.test(bodyUrl) ? bodyUrl : null;
     try {
-      // Prefer live Fashn / IDM-VTON when the server has keys; otherwise premium preview swap.
-      const look = asTryOnLook(item);
-      try {
-        const r = await fashionAPI.tryOn(look, personPlate);
-        if (r.tryOnUrl) {
-          setTryOnImage(r.tryOnUrl);
-          setTryOnLabel(`${item.title} · ${r.engine || 'try-on'}`);
-          return;
-        }
-      } catch {
-        /* fall through to local preview */
+      if (!personPlate) {
+        setTryOnImage('');
+        setTryOnLabel('Upload a full-body photo, then try this piece on.');
+        return;
       }
-
-      await delay(850);
-      const preview =
-        item.tryOnPreviewUrl ||
-        item.thumbUrl ||
-        // Keep a realistic full-body frame — garment activation still refreshes the plate for pipeline UX
-        `${personPlate}${personPlate.includes('?') ? '&' : '?'}tryOn=${encodeURIComponent(item.id)}`;
-      setTryOnImage(preview);
-      setTryOnLabel(`${item.title} · preview`);
+      const look = asTryOnLook(item);
+      const r = await fashionAPI.tryOn(look, personPlate);
+      if (r.tryOnUrl) {
+        setTryOnImage(r.tryOnUrl);
+        setTryOnLabel(`${item.title} · ${r.engine || 'try-on'}`);
+        return;
+      }
+      setTryOnImage('');
+      setTryOnLabel(r.detail || 'Add FASHN_API_KEY or REPLICATE_API_TOKEN.');
+    } catch {
+      setTryOnImage('');
+      setTryOnLabel('Try-on did not answer.');
     } finally {
       setTryOnLoading(false);
     }
@@ -187,8 +168,7 @@ export default function ClosetInterface({
       const match = await fashionAPI.clutchMatch({ occasion });
       setCluelessLine(match.guideLine);
       const first = match.outfit.top || match.outfit.bottom || match.outfit.outerwear;
-      if (first?.imageUrl) {
-        setTryOnImage(first.imageUrl);
+      if (first?.imageUrl && bodyUrl) {
         setTryOnLabel(match.context.isShoppingAssisted ? 'Clueless · shop assist' : 'Clueless · closet match');
       }
     } catch {
@@ -207,7 +187,7 @@ export default function ClosetInterface({
         : { ...prev, [item.category]: item };
 
       if (clearing) {
-        setTryOnImage(bodyUrl || MODEL_FULL_BODY[gender === 'fem' ? 'fem' : 'masc']);
+        setTryOnImage('');
         setTryOnLabel(null);
         setTryOnLoading(false);
       } else {
@@ -223,13 +203,17 @@ export default function ClosetInterface({
     <div className="closet-root">
       <div className="closet-stage">
         <div className="closet-tryon-frame" aria-busy={tryOnLoading}>
-          <img
-            key={tryOnImage}
-            className={`closet-tryon-image${tryOnLoading ? ' is-dim' : ''}`}
-            src={tryOnImage}
-            alt="Virtual try-on preview"
-            referrerPolicy="no-referrer"
-          />
+          {tryOnImage ? (
+            <img
+              key={tryOnImage}
+              className={`closet-tryon-image${tryOnLoading ? ' is-dim' : ''}`}
+              src={tryOnImage}
+              alt="Virtual try-on of your photo"
+              referrerPolicy="no-referrer"
+            />
+          ) : (
+            <p className="closet-hint">Your dressed photo shows here after a real try-on. Closet rows above stay garment-only.</p>
+          )}
           {tryOnLoading && (
             <div className="closet-tryon-skeleton" aria-hidden>
               <div className="closet-tryon-skeleton-glow" />
@@ -303,7 +287,11 @@ export default function ClosetInterface({
                 disabled={tryOnLoading}
               >
                 {item.thumbUrl || item.tryOnPreviewUrl ? (
-                  <img src={item.thumbUrl || item.tryOnPreviewUrl} alt="" referrerPolicy="no-referrer" />
+                  <GarmentSlot
+                    url={item.thumbUrl || item.tryOnPreviewUrl || ''}
+                    slot={item.category === 'bottoms' ? 'bottom' : item.category === 'shoes' ? 'shoes' : 'top'}
+                    title={item.title}
+                  />
                 ) : (
                   <span className="closet-swatch" style={{ background: item.color, borderColor: item.accent }} />
                 )}

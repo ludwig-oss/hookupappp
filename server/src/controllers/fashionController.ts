@@ -1,10 +1,13 @@
 import { Request, Response } from 'express';
+import https from 'https';
+import tls from 'tls';
 import { getGuide } from '../data/aiGuideCatalog.js';
 import { getUserById } from '../models/user.js';
 import { parseFashionIntent } from '../services/fashionIntent.js';
 import { mixWardrobeIntoLook, pairForCompare, sourceLooks } from '../services/fashionSourcing.js';
 import { critiqueLooks } from '../services/fashionCritic.js';
-import { categoryForLook, runVirtualTryOn } from '../services/fashionTryOn.js';
+import { categoryForLook, runOutfitTryOn } from '../services/fashionTryOn.js';
+import { fetchRedCarpetRacks } from '../services/fashionPinterest.js';
 import { deleteWardrobeItem, listWardrobe, saveWardrobeItem, type PieceSlot } from '../models/fashionWardrobe.js';
 import type { FashionLook } from '../data/fashionCatalog.js';
 import {
@@ -81,15 +84,17 @@ async function buildStylePayload(
   }
 
   const [a, b] = pairForCompare(sourced, excludeLookIds);
-  const critic = await critiqueLooks(a, b, intent, first, guide);
+  const [critic, racks] = await Promise.all([
+    critiqueLooks(a, b, intent, first, guide),
+    fetchRedCarpetRacks(prompt),
+  ]);
   const cue = guide?.charStyle?.actionCue;
   const hook = guide?.charStyle?.catchphrases?.[0];
+  const eventName = intent.event.replace('-', ' ');
   const ask =
     cue && hook
-      ? `${cue}\n${hook}. I heard ${intent.event.replace('-', ' ')}. Two looks — compare them, then pick or shuffle.`
-      : guideId === 'elena'
-        ? `Got it — ${intent.event.replace('-', ' ')}. Two looks. Compare them full-size, then pick or shuffle.`
-        : `I heard ${intent.event.replace('-', ' ')}. Two looks. ${first} is still in this call.`;
+      ? `${cue}\n${hook}. I heard ${eventName}. Cycle the closet, then hit dress me.`
+      : `Got it — ${eventName}. Cycle tops, bottoms, and shoes, then hit dress me. ${first} is on the call.`;
 
   return {
     prompt,
@@ -97,6 +102,7 @@ async function buildStylePayload(
     intent,
     optionA: serializeLook(a),
     optionB: serializeLook(b),
+    racks,
     critic,
     personUrl: user?.profilePicture || null,
     tryOnReady: Boolean(
@@ -124,16 +130,126 @@ export const styleLooksHandler = async (req: Request, res: Response) => {
   }
 };
 
+function blockedImageHost(hostname: string): boolean {
+  const host = hostname.toLowerCase().replace(/\.$/, '');
+  if (!host || host === 'localhost' || host.endsWith('.local') || host.endsWith('.internal')) return true;
+  if (host === 'metadata.google.internal' || host === '169.254.169.254') return true;
+  const ipv4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(host);
+  if (ipv4) {
+    const a = Number(ipv4[1]);
+    const b = Number(ipv4[2]);
+    if (a === 10 || a === 127 || a === 0 || a >= 224) return true;
+    if (a === 169 && b === 254) return true;
+    if (a === 192 && b === 168) return true;
+    if (a === 172 && b >= 16 && b <= 31) return true;
+  }
+  if (host.includes(':')) return true;
+  return false;
+}
+
+function fetchImageBuffer(url: string, hops = 0): Promise<{ status: number; type: string; body: Buffer; finalUrl: string }> {
+  const ca = (tls as typeof tls & { getCACertificates?: (scope?: string) => string[] }).getCACertificates?.('system');
+  return new Promise((resolve, reject) => {
+    const req = https.get(
+      url,
+      { ca, headers: { Accept: 'image/*', 'User-Agent': 'HookUpFashion/1.0' } },
+      (upstream) => {
+        const status = upstream.statusCode || 0;
+        const location = upstream.headers.location;
+        if (status >= 300 && status < 400 && location && hops < 3) {
+          upstream.resume();
+          const next = new URL(location, url);
+          if (next.protocol !== 'https:' || blockedImageHost(next.hostname)) {
+            reject(new Error('redirect blocked'));
+            return;
+          }
+          fetchImageBuffer(next.href, hops + 1).then(resolve, reject);
+          return;
+        }
+        const chunks: Buffer[] = [];
+        upstream.on('data', (chunk: Buffer) => chunks.push(chunk));
+        upstream.on('end', () => {
+          resolve({
+            status,
+            type: String(upstream.headers['content-type'] || '').split(';')[0].trim().toLowerCase(),
+            body: Buffer.concat(chunks),
+            finalUrl: url,
+          });
+        });
+      }
+    );
+    req.on('error', reject);
+    req.setTimeout(12000, () => req.destroy(new Error('timeout')));
+  });
+}
+
+export const garmentImageHandler = async (req: Request, res: Response) => {
+  try {
+    const raw = String(req.query.url || '').trim();
+    let target: URL;
+    try {
+      target = new URL(raw);
+    } catch {
+      return res.status(400).json({ error: 'Bad image url' });
+    }
+    if (target.protocol !== 'https:' || blockedImageHost(target.hostname)) {
+      return res.status(400).json({ error: 'That image host is not allowed' });
+    }
+    const upstream = await fetchImageBuffer(target.href);
+    const finalUrl = new URL(upstream.finalUrl);
+    if (finalUrl.protocol !== 'https:' || blockedImageHost(finalUrl.hostname)) {
+      return res.status(400).json({ error: 'That image host is not allowed' });
+    }
+    if (upstream.status < 200 || upstream.status >= 300) return res.status(502).json({ error: 'Image host refused the photo' });
+    if (!upstream.type.startsWith('image/')) return res.status(415).json({ error: 'Not an image' });
+    if (upstream.body.length > 8_000_000) return res.status(413).json({ error: 'Image is too large' });
+    res.setHeader('Content-Type', upstream.type);
+    res.setHeader('Cache-Control', 'private, max-age=3600');
+    res.send(upstream.body);
+  } catch (error) {
+    console.error('Garment image proxy error:', error);
+    res.status(502).json({ error: 'Could not fetch that garment photo' });
+  }
+};
+
+export const redCarpetHandler = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).userId as string | undefined;
+    if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+    const prompt = String(req.body?.prompt || req.query?.prompt || 'red carpet').trim();
+    const racks = await fetchRedCarpetRacks(prompt);
+    res.json(racks);
+  } catch (error) {
+    console.error('Red carpet search error:', error);
+    res.status(500).json({ error: 'Could not load the closet' });
+  }
+};
+
 export const tryOnHandler = async (req: Request, res: Response) => {
   try {
     const userId = (req as any).userId as string | undefined;
     if (!userId) return res.status(401).json({ error: 'Unauthorized' });
     const user = await getUserById(userId);
-    const garmentUrl = String(req.body?.garmentUrl || '').trim();
-    if (!garmentUrl) return res.status(400).json({ error: 'garmentUrl is required' });
-    const result = await runVirtualTryOn({
-      personUrl: String(req.body?.personUrl || user?.profilePicture || '') || null,
+    const garmentUrl = String(req.body?.garment_image || req.body?.garmentImage || req.body?.garmentUrl || '').trim();
+    if (!garmentUrl) return res.status(400).json({ error: 'garment_image is required' });
+    const personRaw = String(
+      req.body?.user_image || req.body?.userImage || req.body?.personUrl || user?.profilePicture || ''
+    ).trim();
+    const bottomUrl = String(req.body?.garment_image_bottom || req.body?.bottomImage || '').trim();
+    const categoryRaw = String(req.body?.category || '');
+    const category =
+      categoryRaw === 'dresses' || categoryRaw === 'lower_body' || categoryRaw === 'upper_body'
+        ? categoryRaw
+        : categoryForLook(
+            req.body?.warp === 'drape' || req.body?.warp === 'layer' ? req.body.warp : 'tailored',
+            String(req.body?.event || ''),
+            String(req.body?.title || '')
+          );
+    const result = await runOutfitTryOn({
+      personUrl: personRaw || null,
       garmentUrl,
+      bottomUrl: bottomUrl || null,
+      category,
       warp: (req.body?.warp === 'drape' || req.body?.warp === 'layer' ? req.body.warp : 'tailored') as
         | 'tailored'
         | 'drape'

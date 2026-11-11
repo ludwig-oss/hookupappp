@@ -31,12 +31,32 @@ export interface FashionCritic {
   line: string;
 }
 
+export type RackSlot = 'top' | 'bottom' | 'dress' | 'shoes';
+
+export interface RackPiece {
+  id: string;
+  slot: RackSlot;
+  title: string;
+  imageUrl: string;
+  sourceUrl: string;
+}
+
+export interface RedCarpetRacks {
+  tops: RackPiece[];
+  bottoms: RackPiece[];
+  dresses: RackPiece[];
+  shoes: RackPiece[];
+  source: 'pinterest' | 'catalog';
+  detail: string;
+}
+
 export interface FashionStyleResponse {
   prompt: string;
   guideLine: string;
   intent: { event: string; formality: string; colors: string[]; vibe: string };
   optionA: FashionLookCard;
   optionB: FashionLookCard;
+  racks?: RedCarpetRacks;
   critic: FashionCritic;
   personUrl: string | null;
   tryOnReady?: boolean;
@@ -85,15 +105,43 @@ export const fashionAPI = {
     const response = await axios.post(
       `${API_URL}/try-on`,
       {
+        user_image: personUrl || undefined,
+        garment_image: look.imageUrl,
         garmentUrl: look.imageUrl,
+        personUrl: personUrl || undefined,
         warp: look.warp,
         event: look.event,
         title: look.title,
         pieces: look.pieces,
-        personUrl: personUrl || undefined,
       },
-      { timeout: 70000 }
+      { timeout: 120000 }
     );
+    return response.data;
+  },
+  dress: async (body: {
+    userImage: string;
+    garmentImage: string;
+    bottomImage?: string | null;
+    category: 'upper_body' | 'lower_body' | 'dresses';
+    title: string;
+    pieces: string[];
+  }): Promise<{ tryOnUrl: string | null; engine: string; status: string; detail?: string }> => {
+    const response = await axios.post(
+      `${API_URL}/try-on`,
+      {
+        user_image: body.userImage,
+        garment_image: body.garmentImage,
+        garment_image_bottom: body.bottomImage || undefined,
+        category: body.category,
+        title: body.title,
+        pieces: body.pieces,
+      },
+      { timeout: 120000 }
+    );
+    return response.data;
+  },
+  redCarpet: async (prompt?: string): Promise<RedCarpetRacks> => {
+    const response = await axios.post(`${API_URL}/red-carpet`, { prompt: prompt || 'red carpet' });
     return response.data;
   },
   wardrobe: async (): Promise<{

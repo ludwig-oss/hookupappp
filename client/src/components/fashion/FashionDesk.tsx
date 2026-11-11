@@ -8,12 +8,12 @@ import {
   type PieceSlot,
   type WardrobeItem,
 } from '../../api/fashion';
-import { paintFashionTryOn, renderBodyAvatarDataUrl, type BodyAvatarOpts } from '../../lib/fashionTryOnCanvas';
 import { speakGuideLine, speechLangFor } from '../../lib/aiGuideSpeech';
 import { checkFaceInPhoto } from '../../lib/fashionFaceCheck';
 import { prepareAndUploadFile } from '../../lib/uploadMedia';
 import { restoredRecordsForEmail } from '../../lib/googleAuthSession';
 import ClosetInterface from '../closet/ClosetInterface';
+import ChersWardrobe from '../closet/ChersWardrobe';
 import './FashionDesk.css';
 
 function stripRoleplay(text: string) {
@@ -42,76 +42,6 @@ type SpeechRec = {
   start: () => void;
   stop: () => void;
 };
-
-function LookPane({
-  look,
-  personUrl,
-  bodyUrl,
-  bodyAvatar,
-  fitting,
-  label,
-  isWinner,
-  onChoose,
-  onDraft,
-}: {
-  look: FashionLookCard;
-  personUrl: string | null;
-  bodyUrl: string | null;
-  bodyAvatar: BodyAvatarOpts;
-  fitting: boolean;
-  label: 'A' | 'B';
-  isWinner: boolean;
-  onChoose: () => void;
-  onDraft: () => void;
-}) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const modelUrl = look.tryOnUrl;
-
-  useEffect(() => {
-    if (modelUrl) return;
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    canvas.width = 720;
-    canvas.height = 960;
-    void paintFashionTryOn(canvas, personUrl, look.imageUrl, look.warp, look.fallback, bodyUrl, bodyAvatar);
-  }, [modelUrl, personUrl, bodyUrl, bodyAvatar, look.imageUrl, look.warp, look.fallback]);
-
-  const badge = modelUrl ? 'On you' : fitting ? 'Fitting…' : 'On figure';
-
-  return (
-    <article className={`fashion-card${isWinner ? ' is-winner' : ''}`}>
-      <div className="fashion-card-photo fashion-wardrobe-stage" style={{ background: look.fallback }}>
-        {modelUrl ? (
-          <img className="fashion-tryon" src={modelUrl} alt="" />
-        ) : (
-          <canvas ref={canvasRef} className="fashion-tryon-canvas" />
-        )}
-        <span className="fashion-fit-badge">{badge}</span>
-      </div>
-      <div className="fashion-card-copy">
-        <span className="fashion-opt">
-          Option {label}
-          {isWinner ? ' · guide pick' : ''}
-        </span>
-        <h3>{look.title}</h3>
-        <p>{look.vibe}</p>
-        <ul>
-          {look.pieces.map((p) => (
-            <li key={p}>{p}</li>
-          ))}
-        </ul>
-      </div>
-      <div className="fashion-card-actions">
-        <button type="button" onClick={onChoose}>
-          Choose {label}
-        </button>
-        <button type="button" className="ghost" onClick={onDraft}>
-          Save draft
-        </button>
-      </div>
-    </article>
-  );
-}
 
 export default function FashionDesk({
   guide,
@@ -145,33 +75,19 @@ export default function FashionDesk({
   const [drafts, setDrafts] = useState<WardrobeItem[]>([]);
   const [pieces, setPieces] = useState<WardrobeItem[]>([]);
   const [group, setGroup] = useState('Saved looks');
-  const [fitting, setFitting] = useState(false);
   const [faceUrl, setFaceUrl] = useState<string | null>(
     typeof user?.profilePicture === 'string' ? user.profilePicture : null
   );
   const [bodyUrl, setBodyUrl] = useState<string | null>(() => {
     try {
-      return localStorage.getItem('fashion-body-url') || null;
+      const stored = localStorage.getItem('fashion-body-url') || '';
+      return stored.startsWith('http') ? stored : null;
     } catch {
       return null;
     }
   });
-  const [bodyAvatar, setBodyAvatar] = useState<BodyAvatarOpts>(() => {
-    try {
-      const raw = localStorage.getItem('fashion-body-avatar');
-      if (raw) return JSON.parse(raw) as BodyAvatarOpts;
-    } catch {
-      /* */
-    }
-    const g = String((user as { gender?: string } | null)?.gender || '').toLowerCase();
-    return {
-      gender: g === 'female' || g === 'woman' ? 'fem' : g === 'male' || g === 'man' ? 'masc' : 'any',
-      skinTone: '#c4a484',
-      build: 0.45,
-      height: 0.55,
-    };
-  });
-  const [showBodyEditor, setShowBodyEditor] = useState(false);
+  const profileGender = String((user as { gender?: string } | null)?.gender || '').toLowerCase();
+  const closetGender = profileGender === 'female' || profileGender === 'woman' ? 'fem' : 'masc';
   const [weekPlan, setWeekPlan] = useState<'ask' | 'yes' | 'no' | 'later'>(() => {
     try {
       const raw = localStorage.getItem('fashion-week-plan');
@@ -241,43 +157,15 @@ export default function FashionDesk({
       setFaceNote(
         check.ok
           ? bodyUrl
-            ? 'Face + body ready — looks drape on your figure.'
-            : 'Face ready — adjust the body figure below, or upload a full-body photo.'
-          : check.reason || 'Upload a clear face photo for try-on.'
+            ? 'Face and body photos are ready. Press DRESS ME.'
+            : 'Face photo saved. Upload a full-body photo, then press DRESS ME.'
+          : check.reason || 'Upload a clear face photo, plus a full-body photo for try-on.'
       );
     })();
     return () => {
       cancelled = true;
     };
   }, [faceUrl]);
-
-  const applyFits = async (r: FashionStyleResponse, person: string | null) => {
-    setFitting(true);
-    try {
-      if (!person || !(await checkFaceInPhoto(person)).ok) {
-        setError('Need a clear face photo before I drape outfits on you.');
-        return;
-      }
-      const [fitA, fitB] = await Promise.all([
-        fashionAPI.tryOn(r.optionA, person).catch(() => null),
-        fashionAPI.tryOn(r.optionB, person).catch(() => null),
-      ]);
-      setResult((prev) => {
-        if (!prev) return prev;
-        return {
-          ...prev,
-          optionA: fitA?.tryOnUrl
-            ? { ...prev.optionA, tryOnUrl: fitA.tryOnUrl, tryOnEngine: fitA.engine }
-            : prev.optionA,
-          optionB: fitB?.tryOnUrl
-            ? { ...prev.optionB, tryOnUrl: fitB.tryOnUrl, tryOnEngine: fitB.engine }
-            : prev.optionB,
-        };
-      });
-    } finally {
-      setFitting(false);
-    }
-  };
 
   const runStyle = async (
     text: string,
@@ -302,13 +190,11 @@ export default function FashionDesk({
       speakLine(guide, r.critic.line, () => onSpeaking(true), () => onSpeaking(false));
       const person = faceUrl || r.personUrl;
       if (person) setFaceUrl(person);
-      await applyFits(r, person);
     } catch (e: unknown) {
       const msg = (e as { response?: { data?: { error?: string } } })?.response?.data?.error;
       setError(msg || 'Could not read that. Try “first date tomorrow night”.');
     } finally {
       setBusy(false);
-      setFitting(false);
     }
   };
 
@@ -425,8 +311,7 @@ export default function FashionDesk({
       }
       setFaceUrl(url);
       setFaceOk(true);
-      setFaceNote('Face on the mannequin — upload a body photo for your real build.');
-      if (result) await applyFits(result, url);
+      setFaceNote('Face photo saved. Upload a full-body photo, then press DRESS ME.');
     } catch {
       setError('Could not upload that face photo.');
     } finally {
@@ -448,8 +333,8 @@ export default function FashionDesk({
       }
       setFaceNote(
         faceOk
-          ? 'Body photo set — face sits on your body in the wardrobe preview.'
-          : 'Body photo set — still need a clear face for the head.'
+          ? 'Body photo saved. Press DRESS ME.'
+          : 'Body photo saved. A clear face photo still helps the stylist.'
       );
     } catch {
       setError('Could not upload that body photo.');
@@ -526,7 +411,6 @@ export default function FashionDesk({
     setResult(fake);
     setTab('compare');
     setChosenId(null);
-    await applyFits(fake, faceUrl);
   };
 
   const personUrl = faceUrl || result?.personUrl || null;
@@ -572,12 +456,7 @@ export default function FashionDesk({
       )}
 
       {tab === 'closet' && (
-        <ClosetInterface
-          faceUrl={faceUrl}
-          bodyUrl={bodyUrl}
-          skinTone={bodyAvatar.skinTone}
-          gender={bodyAvatar.gender === 'fem' ? 'fem' : bodyAvatar.gender === 'masc' ? 'masc' : 'masc'}
-        />
+        <ClosetInterface faceUrl={faceUrl} bodyUrl={bodyUrl} gender={closetGender} />
       )}
 
       {tab !== 'closet' && (
@@ -619,104 +498,7 @@ export default function FashionDesk({
           <button type="button" className="ghost" disabled={uploading} onClick={() => bodyInputRef.current?.click()}>
             {bodyUrl ? 'Change body photo' : 'Upload body photo'}
           </button>
-          <button type="button" className="ghost" onClick={() => setShowBodyEditor((v) => !v)}>
-            {showBodyEditor ? 'Hide body editor' : 'Adjust body figure'}
-          </button>
         </div>
-        {showBodyEditor && (
-          <div className="fashion-body-editor">
-            <p>No body photo? Build a stand-in — skin tone, build, height — then your face sits on the head.</p>
-            <label>
-              Skin
-              <input
-                type="color"
-                value={bodyAvatar.skinTone}
-                onChange={(e) => {
-                  const next = { ...bodyAvatar, skinTone: e.target.value };
-                  setBodyAvatar(next);
-                  try {
-                    localStorage.setItem('fashion-body-avatar', JSON.stringify(next));
-                    if (!bodyUrl) localStorage.setItem('fashion-body-url', renderBodyAvatarDataUrl(next));
-                  } catch {
-                    /* */
-                  }
-                }}
-              />
-            </label>
-            <label>
-              Build
-              <input
-                type="range"
-                min={0}
-                max={100}
-                value={Math.round(bodyAvatar.build * 100)}
-                onChange={(e) => {
-                  const next = { ...bodyAvatar, build: Number(e.target.value) / 100 };
-                  setBodyAvatar(next);
-                  try {
-                    localStorage.setItem('fashion-body-avatar', JSON.stringify(next));
-                  } catch {
-                    /* */
-                  }
-                }}
-              />
-            </label>
-            <label>
-              Height
-              <input
-                type="range"
-                min={0}
-                max={100}
-                value={Math.round(bodyAvatar.height * 100)}
-                onChange={(e) => {
-                  const next = { ...bodyAvatar, height: Number(e.target.value) / 100 };
-                  setBodyAvatar(next);
-                  try {
-                    localStorage.setItem('fashion-body-avatar', JSON.stringify(next));
-                  } catch {
-                    /* */
-                  }
-                }}
-              />
-            </label>
-            <label>
-              Shape
-              <select
-                value={bodyAvatar.gender}
-                onChange={(e) => {
-                  const next = { ...bodyAvatar, gender: e.target.value as BodyAvatarOpts['gender'] };
-                  setBodyAvatar(next);
-                  try {
-                    localStorage.setItem('fashion-body-avatar', JSON.stringify(next));
-                  } catch {
-                    /* */
-                  }
-                }}
-              >
-                <option value="masc">Masculine</option>
-                <option value="fem">Feminine</option>
-                <option value="any">Neutral</option>
-              </select>
-            </label>
-            <button
-              type="button"
-              className="ghost"
-              onClick={() => {
-                const url = renderBodyAvatarDataUrl(bodyAvatar);
-                setBodyUrl(url);
-                try {
-                  localStorage.setItem('fashion-body-url', url);
-                  localStorage.setItem('fashion-body-avatar', JSON.stringify(bodyAvatar));
-                } catch {
-                  /* */
-                }
-                setFaceNote('Custom body figure saved — face sits on the head.');
-              }}
-            >
-              Apply figure
-            </button>
-          </div>
-        )}
         {weekPlan === 'ask' && (
           <div className="fashion-week-ask">
             <p>Any plans this week or weekend I should dress you for?</p>
@@ -810,96 +592,15 @@ export default function FashionDesk({
       </form>
 
       {tab === 'compare' && result && (
-        <div className="fashion-compare-wrap">
-          <div>
-            <p className="fashion-compare-label">Compare outfits · Option A vs Option B</p>
-            <div className="fashion-pair">
-              <LookPane
-                look={result.optionA}
-                personUrl={personUrl}
-                bodyUrl={bodyUrl}
-                bodyAvatar={bodyAvatar}
-                fitting={fitting}
-                label="A"
-                isWinner={result.critic.winner === 'A' || chosenId === result.optionA.id}
-                onChoose={() => void chooseLook(result.optionA, 'A')}
-                onDraft={() => void saveLook(result.optionA, 'draft')}
-              />
-              <LookPane
-                look={result.optionB}
-                personUrl={personUrl}
-                bodyUrl={bodyUrl}
-                bodyAvatar={bodyAvatar}
-                fitting={fitting}
-                label="B"
-                isWinner={result.critic.winner === 'B' || chosenId === result.optionB.id}
-                onChoose={() => void chooseLook(result.optionB, 'B')}
-                onDraft={() => void saveLook(result.optionB, 'draft')}
-              />
-            </div>
-          </div>
-          <aside className="fashion-critic">
-            <p className="fashion-winner">
-              Winner: Option {result.critic.winner} ·{' '}
-              {result.critic.winner === 'A' ? result.optionA.title : result.optionB.title}
-            </p>
-            {fitting && <p className="fashion-fitting">Draping both looks on your body…</p>}
-            {!fitting && !result.optionA.tryOnUrl && !result.optionB.tryOnUrl && (
-              <p className="fashion-fitting-note">
-                {faceOk === false
-                  ? 'Upload a clear face photo — it goes on the wardrobe body.'
-                  : bodyUrl
-                    ? 'Wardrobe preview: your face on your body photo with the outfit draped.'
-                    : 'Upload a full-body photo to replace the mannequin. Face photo sits on the head.'}
-              </p>
-            )}
-            <p>{result.critic.line}</p>
-            <ul>
-              {result.critic.reasons.map((r) => (
-                <li key={r}>{r}</li>
-              ))}
-            </ul>
-            <p className="fashion-skip">{result.critic.skip}</p>
-            <div className="fashion-actions">
-              <button type="button" className="danger" disabled={busy} onClick={() => void dislikeAndShuffle()}>
-                Don&apos;t like — show better
-              </button>
-              <button type="button" className="ghost" disabled={busy} onClick={() => void shuffleMix()}>
-                Shuffle / mix closet
-              </button>
-              <button
-                type="button"
-                className="ghost"
-                disabled={busy}
-                onClick={() => void runStyle(prompt || result.prompt, { shuffle: true, exclude: seenIds })}
-              >
-                New pair
-              </button>
-            </div>
-            <div className="fashion-save-row">
-              <input value={group} onChange={(e) => setGroup(e.target.value)} placeholder="Folder name" />
-              <button type="button" onClick={() => void saveLook(result.optionA, 'look', result.critic.winner === 'A')}>
-                Save A
-              </button>
-              <button type="button" onClick={() => void saveLook(result.optionB, 'look', result.critic.winner === 'B')}>
-                Save B
-              </button>
-              <button type="button" className="ghost" onClick={() => void saveLook(result.optionA, 'draft')}>
-                Draft A
-              </button>
-              <button type="button" className="ghost" onClick={() => void saveLook(result.optionB, 'draft')}>
-                Draft B
-              </button>
-              <a
-                href={result.critic.winner === 'A' ? result.optionA.shopUrl : result.optionB.shopUrl}
-                target="_blank"
-                rel="noreferrer"
-              >
-                Shop winner
-              </a>
-            </div>
-          </aside>
-        </div>
+        <ChersWardrobe
+          racks={result.racks}
+          prompt={result.prompt}
+          userImage={bodyUrl}
+          guideLine={result.guideLine || result.critic.line}
+          onSave={(look) => void saveLook(look, 'look', true)}
+          onDraft={(look) => void saveLook(look, 'draft')}
+          onShuffle={() => void dislikeAndShuffle()}
+        />
       )}
 
       {tab === 'wardrobe' && (

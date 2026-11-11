@@ -60,15 +60,16 @@ async function callCustomWorker(person: string, garment: string, category: TryOn
   return typeof out === 'string' && out ? out : null;
 }
 
-async function callFashn(person: string, garment: string): Promise<string | null> {
+async function callFashn(person: string, garment: string, category: TryOnCategory): Promise<string | null> {
   const key = process.env.FASHN_API_KEY?.trim();
   if (!key) return null;
+  const fashnCategory = category === 'dresses' ? 'one-pieces' : category === 'lower_body' ? 'bottoms' : 'tops';
   const run = await fetch('https://api.fashn.ai/v1/run', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
     body: JSON.stringify({
       model_name: 'tryon-v1.6',
-      inputs: { model_image: person, garment_image: garment },
+      inputs: { model_image: person, garment_image: garment, category: fashnCategory },
     }),
   });
   if (!run.ok) return null;
@@ -141,19 +142,25 @@ export async function runVirtualTryOn(opts: {
   event: string;
   title: string;
   pieces?: string[];
+  category?: TryOnCategory;
 }): Promise<TryOnResult> {
   const personRaw = (opts.personUrl || '').trim();
   if (!personRaw) {
-    return { tryOnUrl: null, engine: 'preview', status: 'unavailable', detail: 'Add a profile photo to see clothes on you.' };
+    return {
+      tryOnUrl: null,
+      engine: 'preview',
+      status: 'unavailable',
+      detail: 'Upload a full-body photo, then press DRESS ME.',
+    };
   }
-  const category = categoryForLook(opts.warp, opts.event, opts.title);
+  const category = opts.category || categoryForLook(opts.warp, opts.event, opts.title);
   const description = [opts.title, ...(opts.pieces || []).slice(0, 3)].join(', ');
   try {
     const person = await publicize(personRaw);
     const garment = await publicize(opts.garmentUrl);
     const custom = await callCustomWorker(person, garment, category, opts.warp);
     if (custom) return { tryOnUrl: custom, engine: 'custom', status: 'ready' };
-    const fashn = await callFashn(person, garment);
+    const fashn = await callFashn(person, garment, category);
     if (fashn) return { tryOnUrl: fashn, engine: 'fashn', status: 'ready' };
     const idm = await callIdmVton(person, garment, category, description);
     if (idm) return { tryOnUrl: idm, engine: 'idm-vton', status: 'ready' };
@@ -164,6 +171,40 @@ export async function runVirtualTryOn(opts: {
     tryOnUrl: null,
     engine: 'preview',
     status: 'unavailable',
-    detail: 'Live fit preview is on. Connect REPLICATE_API_TOKEN, FASHN_API_KEY, or VTON_API_URL for full IDM-VTON drape.',
+    detail: 'Add FASHN_API_KEY or REPLICATE_API_TOKEN in server/.env. Fashn runs first, then Replicate idm-vton.',
   };
+}
+
+/** Dress the user's photo. A gown is one pass. Separates run upper body, then lower body on that result. */
+export async function runOutfitTryOn(opts: {
+  personUrl: string | null;
+  garmentUrl: string;
+  bottomUrl?: string | null;
+  category: TryOnCategory;
+  warp: FashionWarp;
+  event: string;
+  title: string;
+  pieces?: string[];
+}): Promise<TryOnResult> {
+  const upper = await runVirtualTryOn({
+    personUrl: opts.personUrl,
+    garmentUrl: opts.garmentUrl,
+    warp: opts.warp,
+    event: opts.event,
+    title: opts.title,
+    pieces: opts.pieces,
+    category: opts.category,
+  });
+  const bottom = (opts.bottomUrl || '').trim();
+  if (opts.category === 'dresses' || !bottom || !upper.tryOnUrl) return upper;
+  const lower = await runVirtualTryOn({
+    personUrl: upper.tryOnUrl,
+    garmentUrl: bottom,
+    warp: opts.warp,
+    event: opts.event,
+    title: opts.title,
+    pieces: opts.pieces,
+    category: 'lower_body',
+  });
+  return lower.tryOnUrl ? lower : upper;
 }

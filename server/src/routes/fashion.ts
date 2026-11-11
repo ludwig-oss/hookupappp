@@ -5,6 +5,8 @@ import { internetTrendClosetHandler, internetTrendsHandler } from '../controller
 import {
   clutchMatchHandler,
   deleteWardrobeHandler,
+  garmentImageHandler,
+  redCarpetHandler,
   tryOnHandler,
   listWardrobeHandler,
   monthlyCheckInHandler,
@@ -14,6 +16,8 @@ import {
 
 const router = express.Router();
 router.use(authenticateToken);
+router.get('/garment-image', garmentImageHandler);
+router.post('/red-carpet', redCarpetHandler);
 router.post('/style', styleLooksHandler);
 router.post('/clutch-match', clutchMatchHandler);
 router.post('/match-score', closetMatchScoreHandler);

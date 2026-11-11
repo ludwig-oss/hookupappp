@@ -1,8 +1,8 @@
 import type { ClosetGender, EquippedCloset } from '../../data/closetCatalog';
-import OutfitStage from './OutfitStage';
+import OutfitOptionCard from '../fashion/OutfitOptionCard';
 
 export default function ClosetInterface({
-  faceUrl: _faceUrl,
+  faceUrl,
   bodyUrl,
   skinTone: _skinTone,
   gender: _gender,
@@ -16,5 +16,12 @@ export default function ClosetInterface({
   outfitHint?: { top?: string; bottom?: string; outer?: string; shoeColor?: string };
   onEquipChange?: (eq: EquippedCloset) => void;
 }) {
-  return <OutfitStage userImage={bodyUrl} />;
+  return (
+    <OutfitOptionCard
+      label="A"
+      seed={1}
+      avatarUrl={faceUrl || bodyUrl}
+      personUrl={bodyUrl || faceUrl}
+    />
+  );
 }

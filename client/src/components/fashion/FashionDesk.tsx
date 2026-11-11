@@ -14,8 +14,7 @@ import { speakGuideLine, speechLangFor } from '../../lib/aiGuideSpeech';
 import { checkFaceInPhoto } from '../../lib/fashionFaceCheck';
 import { prepareAndUploadFile } from '../../lib/uploadMedia';
 import { restoredRecordsForEmail } from '../../lib/googleAuthSession';
-import ClosetInterface from '../closet/ClosetInterface';
-import OutfitStage from '../closet/OutfitStage';
+import OutfitOptionCard from './OutfitOptionCard';
 import './FashionDesk.css';
 
 function stripRoleplay(text: string) {
@@ -91,8 +90,6 @@ export default function FashionDesk({
       return null;
     }
   });
-  const profileGender = String((user as { gender?: string } | null)?.gender || '').toLowerCase();
-  const closetGender = profileGender === 'female' || profileGender === 'woman' ? 'fem' : 'masc';
   const [weekPlan, setWeekPlan] = useState<'ask' | 'yes' | 'no' | 'later'>(() => {
     try {
       const raw = localStorage.getItem('fashion-week-plan');
@@ -465,7 +462,10 @@ export default function FashionDesk({
       )}
 
       {tab === 'closet' && (
-        <ClosetInterface faceUrl={faceUrl} bodyUrl={bodyUrl} gender={closetGender} />
+        <div className="fashion-pair">
+          <OutfitOptionCard label="A" seed={1} avatarUrl={faceUrl} personUrl={bodyUrl || faceUrl} />
+          <OutfitOptionCard label="B" seed={2} avatarUrl={faceUrl} personUrl={bodyUrl || faceUrl} />
+        </div>
       )}
 
       {tab !== 'closet' && (
@@ -606,14 +606,31 @@ export default function FashionDesk({
         {error && <p className="fashion-error">{error}</p>}
       </form>
 
-      {tab === 'compare' && result && (
-        <OutfitStage
-          racks={result.racks}
-          prompt={result.prompt}
-          userImage={bodyUrl}
-          onSave={(look) => void saveLook(look, 'look', true)}
-          onDraft={(look) => void saveLook(look, 'draft')}
-        />
+      {tab === 'compare' && (
+        <div className="fashion-compare-wrap">
+          <div className="fashion-pair">
+            <OutfitOptionCard
+              label="A"
+              seed={3}
+              avatarUrl={faceUrl}
+              personUrl={bodyUrl || faceUrl}
+              winner={result?.critic.winner === 'A'}
+            />
+            <OutfitOptionCard
+              label="B"
+              seed={8}
+              avatarUrl={faceUrl}
+              personUrl={bodyUrl || faceUrl}
+              winner={result?.critic.winner === 'B'}
+            />
+          </div>
+          {result ? (
+            <aside className="fashion-critic">
+              <p className="fashion-compare-label">Option {result.critic.winner}</p>
+              <p>{result.critic.line}</p>
+            </aside>
+          ) : null}
+        </div>
       )}
 
       {tab === 'wardrobe' && (

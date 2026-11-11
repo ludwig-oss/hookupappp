@@ -300,6 +300,192 @@
   margin-top: 4px;
 }
 
+.fashion-card-photo {
+  flex-direction: column;
+  align-items: stretch;
+  min-height: 520px;
+  max-height: none;
+  aspect-ratio: auto;
+}
+
+.fashion-card-avatar {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  z-index: 3;
+  width: 48px;
+  height: 48px;
+  margin-left: -24px;
+  border-radius: 50%;
+  overflow: hidden;
+  border: 2px solid #f59e0b;
+  background: #2a2118;
+}
+
+.fashion-card-avatar img,
+.fashion-card-avatar span {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.fashion-view-toggle {
+  position: absolute;
+  top: 12px;
+  right: 10px;
+  z-index: 3;
+  display: flex;
+  gap: 4px;
+}
+
+.fashion-view-toggle button {
+  border: 1px solid rgba(245, 158, 11, 0.45);
+  background: rgba(0, 0, 0, 0.72);
+  color: #e7c9a0;
+  border-radius: 999px;
+  padding: 4px 8px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.fashion-view-toggle button.is-on {
+  background: #f59e0b;
+  color: #111;
+}
+
+.fashion-stack {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 64px 10px 12px;
+  box-sizing: border-box;
+}
+
+.fashion-slot {
+  flex: 1;
+  min-height: 128px;
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) 32px;
+  align-items: stretch;
+  background: #f3f1ec;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.fashion-slot.is-dress {
+  flex: 2.2;
+  min-height: 250px;
+}
+
+.fashion-slot-arrow,
+.fashion-slot-photo {
+  border: none;
+  background: transparent;
+  color: #111;
+  cursor: pointer;
+  height: 128px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.fashion-slot.is-dress .fashion-slot-photo,
+.fashion-slot.is-dress .fashion-slot-arrow {
+  height: 250px;
+}
+
+.fashion-slot-photo img {
+  width: 100%;
+  height: 128px;
+  object-fit: contain;
+  background: #f3f1ec;
+  display: block;
+}
+
+.fashion-slot.is-dress .fashion-slot-photo img {
+  height: 250px;
+}
+
+.fashion-on-body {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 64px 16px 16px;
+  box-sizing: border-box;
+  text-align: center;
+}
+
+.fashion-piece-name {
+  border: none;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+  padding: 0;
+  font: inherit;
+}
+
+.fashion-card-copy li {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: baseline;
+  margin: 4px 0;
+}
+
+.fashion-shop-link {
+  color: #f59e0b;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-decoration: none;
+  flex: 0 0 auto;
+}
+
+.fashion-buy {
+  margin-top: 10px;
+  padding: 10px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.fashion-buy-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.fashion-buy-head button {
+  border: none;
+  background: transparent;
+  color: #e7c9a0;
+  cursor: pointer;
+}
+
+.fashion-store-btn,
+.fashion-photo-pick {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  padding: 10px 14px;
+  font-weight: 700;
+  background: transparent;
+  color: #e7c9a0;
+  border: 1px solid rgba(245, 158, 11, 0.45);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.fashion-critic {
+  color: #f5efe6;
+}
+
 .fashion-card-actions {
   display: flex;
   flex-wrap: wrap;

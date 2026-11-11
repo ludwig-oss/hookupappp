@@ -15,7 +15,7 @@ const MEN_IDS = new Set([
   'sm-keller',
 ]);
 
-const WOMEN_WORD = /\b(women|woman|womens|female|ladies|skirt|dress|heel|stiletto|corset|ballet)\b/i;
+const WOMEN_WORD = /\b(women|woman|womens|female|ladies|skirt|dress|heel|stiletto|corset|ballet|frock|blouse)\b/i;
 const MEN_WORD = /\b(mens|men's|for men|male)\b/i;
 
 export function wardrobeAudience(gender: string | null | undefined): WardrobeAudience | null {

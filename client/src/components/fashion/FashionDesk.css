@@ -410,14 +410,35 @@
   display: block;
 }
 
+.fashion-slot.is-picked {
+  outline: 2px solid #f59e0b;
+  outline-offset: -2px;
+}
+
+.fashion-slot.is-top .fashion-slot-photo,
+.fashion-slot.is-top .fashion-slot-arrow {
+  height: 240px;
+}
+
 .fashion-slot.is-top .fashion-slot-photo img {
-  object-fit: cover;
-  object-position: center 46%;
+  object-fit: contain;
+  object-position: center center;
+  height: 240px;
+}
+
+.fashion-slot.is-bottom .fashion-slot-photo,
+.fashion-slot.is-bottom .fashion-slot-arrow {
+  height: 280px;
+}
+
+.fashion-slot.is-bottom .fashion-slot-photo {
+  overflow: hidden;
 }
 
 .fashion-slot.is-bottom .fashion-slot-photo img {
   object-fit: contain;
-  object-position: center;
+  object-position: center top;
+  height: 370px;
 }
 
 .fashion-slot.is-shoes .fashion-slot-photo img {
@@ -734,8 +755,23 @@
   }
 
   .fashion-card-photo {
-    min-height: 180px;
-    max-height: 38vh;
+    min-height: 480px;
+    max-height: none;
+  }
+
+  .fashion-slot.is-top .fashion-slot-photo,
+  .fashion-slot.is-top .fashion-slot-arrow,
+  .fashion-slot.is-top .fashion-slot-photo img {
+    height: 200px;
+  }
+
+  .fashion-slot.is-bottom .fashion-slot-photo,
+  .fashion-slot.is-bottom .fashion-slot-arrow {
+    height: 230px;
+  }
+
+  .fashion-slot.is-bottom .fashion-slot-photo img {
+    height: 290px;
   }
 
   .fashion-card-copy {

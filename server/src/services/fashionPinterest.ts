@@ -217,7 +217,7 @@ function shopScore(page: string): number {
 
 export type ShopAudience = 'men' | 'women';
 
-const WOMEN_WORD = /\b(women|woman|womens|female|ladies|skirt|dress|heel|stiletto|corset|ballet)\b/i;
+const WOMEN_WORD = /\b(women|woman|womens|female|ladies|skirt|dress|heel|stiletto|corset|ballet|frock|blouse)\b/i;
 const MEN_WORD = /\b(mens|men's|for men|male)\b/i;
 
 export function shopAudience(gender: string | null | undefined): ShopAudience | null {
@@ -238,14 +238,16 @@ const TOP_KINDS = [
   'oxford shirt', 'crewneck sweater', 'polo shirt', 'blazer', 'bomber jacket', 'cardigan', 'overshirt',
   'turtleneck', 'tee', 'denim jacket', 'linen shirt', 'flannel shirt', 'zip jacket', 'knit polo',
   'coach jacket', 'shirt jacket', 'rugby shirt', 'chore coat', 'hoodie', 'vest',
+  'graphic tee', 'varsity jacket', 'track jacket', 'oversize tee',
 ];
 const BOTTOM_KINDS = [
   'straight jeans', 'slim jeans', 'chinos', 'dress trousers', 'pleated trousers', 'wide trousers',
-  'corduroy pants', 'cargo pants',
+  'corduroy pants', 'cargo pants', 'baggy jeans', 'carpenter pants',
 ];
 const SHOE_KINDS = [
   'leather sneakers pair', 'canvas sneakers pair', 'loafers pair', 'chelsea boots pair',
   'derby shoes pair', 'oxford shoes pair', 'desert boots pair', 'runner sneakers pair',
+  'skate sneakers pair', 'retro runners pair',
 ];
 const DRESS_KINDS = ['slip dress', 'shirt dress', 'column dress', 'mini dress', 'knit dress'];
 const DEPTHS = 40;
@@ -256,6 +258,11 @@ type RackQuery = { slot: RackSlot; era: GarmentEra; q: string; first: number };
 function hueOf(prompt: string): string | null {
   const found = prompt.match(/\bhue:([a-z]+)\b/)?.[1] || '';
   return COLORS.includes(found) ? found : null;
+}
+
+function slotOf(prompt: string): RackSlot | null {
+  const found = prompt.match(/\bslot:(top|bottom|shoes|dress)\b/)?.[1] || '';
+  return found === 'top' || found === 'bottom' || found === 'shoes' || found === 'dress' ? found : null;
 }
 
 function kindsFor(audience: ShopAudience): { slot: RackSlot; kind: string }[] {
@@ -273,8 +280,8 @@ export function rackSupply(audience: ShopAudience): number {
   return kindsFor(audience).length * COLORS.length * ANGLES.length * DEPTHS;
 }
 
-function queryAt(audience: ShopAudience, n: number, hue: string | null): RackQuery {
-  const kinds = kindsFor(audience);
+function queryAt(audience: ShopAudience, n: number, hue: string | null, only: RackSlot | null = null): RackQuery {
+  const kinds = kindsFor(audience).filter((row) => !only || row.slot === only);
   const colors = hue ? [hue] : COLORS;
   const perKind = colors.length * ANGLES.length * DEPTHS;
   const total = Math.max(1, kinds.length * perKind);
@@ -286,25 +293,26 @@ function queryAt(audience: ShopAudience, n: number, hue: string | null): RackQue
   const depth = Math.floor(rest / (colors.length * ANGLES.length)) % DEPTHS;
   const who = audience === 'men' ? "men's" : "women's";
   const avoid = audience === 'men' ? '-women -woman -female -skirt -dress -heel' : '-mens -"for men"';
+  const mood = index % 3 === 0 ? '90s vintage' : index % 3 === 1 ? 'street style' : 'modern';
   const framed =
     row.slot === 'top'
-      ? 'collar and chest only front'
+      ? 'from the neck to the waist full garment front -closeup -crop'
       : row.slot === 'bottom'
-        ? 'from the waist down front'
+        ? 'full length front product photo from waist to ankle hem'
         : row.slot === 'shoes'
           ? 'a pair side by side front -sole -single'
           : 'front';
   return {
     slot: row.slot,
-    era: depth % 2 === 0 ? 'modern' : 'vintage',
-    q: `${color} ${who} ${row.kind} ${angle} ${framed} product photo ${SHOT} ${avoid}`,
+    era: index % 3 === 0 ? 'vintage' : 'modern',
+    q: `${color} ${who} ${mood} ${row.kind} ${angle} ${framed} product photo ${SHOT} ${avoid}`,
     first: 1 + depth * 35,
   };
 }
 
-function dailyQueries(audience: ShopAudience, page = 0, hue: string | null = null): RackQuery[] {
+function dailyQueries(audience: ShopAudience, page = 0, hue: string | null = null, only: RackSlot | null = null): RackQuery[] {
   const size = 6;
-  return Array.from({ length: size }, (_, index) => queryAt(audience, page * size + index, hue));
+  return Array.from({ length: size }, (_, index) => queryAt(audience, page * size + index, hue, only));
 }
 
 function looksLikeShop(page: string, image: string): boolean {
@@ -315,7 +323,7 @@ const BAD_SHOE = /\b(sole|outsole|underside|bottom view|shoe bottom|single shoe|
 
 function badShot(hay: string, slot: RackSlot): boolean {
   const text = hay.toLowerCase();
-  if (/\b(back view|rear view|from behind|backside|seen from behind|full body|full-length|head to toe|on model|worn by|street style|lookbook|holding|in hand|handheld|hand holding)\b/.test(text)) {
+  if (/\b(back view|rear view|from behind|backside|seen from behind|full body|full-length|head to toe|on model|worn by|lookbook|holding|in hand|handheld|hand holding|mirror|selfie)\b/.test(text)) {
     return true;
   }
   const stripped = text.replace(/background|backyard|backpack/g, '');
@@ -330,7 +338,8 @@ function pieceFromHit(row: WebHit, slot: RackSlot, era: GarmentEra, audience: Sh
   if (!row.imageUrl.startsWith('https://') || !row.page.startsWith('https://')) return null;
   if (BLOCKED.test(hay) || badShot(hay, slot)) return null;
   if (audience === 'men' ? WOMEN_WORD.test(hay) : MEN_WORD.test(hay)) return null;
-  if (/\b(feet|foot|toes|legs)\b/i.test(hay)) return null;
+  if (slot !== 'bottom' && /\b(feet|foot|toes|legs)\b/i.test(hay)) return null;
+  if (slot === 'bottom' && /\b(sneakers?|loafers?|oxfords?|derbys?|heels?|boots|shoes|footwear)\b/i.test(row.title) && !/bootcut|boot-cut/i.test(row.title)) return null;
   if (!looksLikeShop(row.page, row.imageUrl)) return null;
   const title = row.title.split('|')[0].split(' - ')[0].replace(/\s+/g, ' ').trim().slice(0, 72);
   if (title.length < 3) return null;
@@ -349,7 +358,8 @@ function pieceFromHit(row: WebHit, slot: RackSlot, era: GarmentEra, audience: Sh
 
 async function dailyPool(audience: ShopAudience, page = 0, prompt = ''): Promise<RackPiece[]> {
   const hue = hueOf(prompt);
-  const slice = dailyQueries(audience, page, hue);
+  const only = slotOf(prompt);
+  const slice = dailyQueries(audience, page, hue, only);
   const batches = await mapPool(slice, 4, async (row) => {
     const hits = await webImages(row.q, row.first).catch(() => [] as WebHit[]);
     const pieces: RackPiece[] = [];

@@ -1,7 +1,8 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 import { API_BASE } from '../../api/config';
-import { wardrobeCatalog, type WardrobePiece } from '../../data/wardrobeCatalog';
+import { fashionAPI, type RackPiece } from '../../api/fashion';
+import { catalogFor, pieceMatchesAudience, type WardrobeAudience, type WardrobePiece } from '../../data/wardrobeCatalog';
 import { freeVirtualTryOn } from '../../lib/freeTryOn';
 
 type Mode = 'clothes' | 'body';
@@ -9,6 +10,40 @@ type Mode = 'clothes' | 'body';
 function at(list: WardrobePiece[], index: number) {
   if (!list.length) return null;
   return list[((index % list.length) + list.length) % list.length];
+}
+
+function fromShop(row: RackPiece): WardrobePiece | null {
+  if (!row.imageUrl.startsWith('https://')) return null;
+  const slot = row.slot === 'top' ? 'tops' : row.slot === 'bottom' ? 'bottoms' : row.slot === 'dress' ? 'dresses' : 'shoes';
+  const buy = row.buyUrl || row.sourceUrl;
+  const price = row.price || 'See store';
+  const query = encodeURIComponent(row.title);
+  return {
+    id: row.id,
+    slot,
+    title: row.title,
+    brand: row.store || 'Shop',
+    price,
+    store: row.store || 'Online',
+    buyUrl: buy.startsWith('https://') ? buy : `https://www.google.com/search?tbm=shop&q=${query}`,
+    imageUrl: row.imageUrl,
+    vibe: row.era === 'vintage' ? '90s-vintage' : 'street-luxe',
+    similar: [
+      { store: 'Nordstrom', price, buyUrl: `https://www.nordstrom.com/sr?keyword=${query}` },
+      { store: 'SSENSE', price, buyUrl: `https://www.ssense.com/en-us/search?q=${query}` },
+    ],
+  };
+}
+
+function mergeSlot(online: WardrobePiece[], saved: WardrobePiece[]) {
+  const seen = new Set<string>();
+  const out: WardrobePiece[] = [];
+  for (const item of [...online, ...saved]) {
+    if (seen.has(item.imageUrl)) continue;
+    seen.add(item.imageUrl);
+    out.push(item);
+  }
+  return out;
 }
 
 function mixIndex(list: WardrobePiece[], avoid: string | undefined, salt: number) {
@@ -67,17 +102,22 @@ export default function OutfitOptionCard({
   avatarUrl,
   personUrl,
   winner,
+  audience = null,
 }: {
   label: 'A' | 'B';
   seed: number;
   avatarUrl?: string | null;
   personUrl?: string | null;
   winner?: boolean;
+  audience?: WardrobeAudience | null;
 }) {
-  const [topIndex, setTopIndex] = useState(seed % wardrobeCatalog.tops.length);
-  const [bottomIndex, setBottomIndex] = useState((seed + 3) % wardrobeCatalog.bottoms.length);
-  const [shoeIndex, setShoeIndex] = useState((seed + 5) % wardrobeCatalog.shoes.length);
-  const [dressIndex, setDressIndex] = useState(seed % wardrobeCatalog.dresses.length);
+  const saved = useMemo(() => catalogFor(audience), [audience]);
+  const [lists, setLists] = useState(saved);
+  const [fresh, setFresh] = useState(audience === 'women' ? "Pulling today's women's clothes..." : "Pulling today's men's clothes...");
+  const [topIndex, setTopIndex] = useState(seed % Math.max(saved.tops.length, 1));
+  const [bottomIndex, setBottomIndex] = useState((seed + 3) % Math.max(saved.bottoms.length, 1));
+  const [shoeIndex, setShoeIndex] = useState((seed + 5) % Math.max(saved.shoes.length, 1));
+  const [dressIndex, setDressIndex] = useState(seed % Math.max(saved.dresses.length, 1));
   const [dressOn, setDressOn] = useState(false);
   const [mode, setMode] = useState<Mode>('clothes');
   const [shop, setShop] = useState<WardrobePiece | null>(null);
@@ -86,10 +126,52 @@ export default function OutfitOptionCard({
   const [note, setNote] = useState('');
   const [localPerson, setLocalPerson] = useState<string | null>(null);
 
-  const top = at(wardrobeCatalog.tops, topIndex);
-  const bottom = at(wardrobeCatalog.bottoms, bottomIndex);
-  const shoe = at(wardrobeCatalog.shoes, shoeIndex);
-  const dress = at(wardrobeCatalog.dresses, dressIndex);
+  useEffect(() => {
+    let cancel = false;
+    setLists(saved);
+    setDressOn(false);
+    const who = audience === 'women' ? "women's" : "men's";
+    setFresh(`Pulling today's ${who} clothes...`);
+    const day = new Date().toISOString().slice(0, 10);
+    fashionAPI
+      .redCarpet(`daily ${day} ${audience === 'women' ? 'women' : 'men'}`)
+      .then((racks) => {
+        if (cancel) return;
+        const take = (rows: RackPiece[]) =>
+          rows
+            .map(fromShop)
+            .filter((item): item is WardrobePiece => Boolean(item))
+            .filter((item) => pieceMatchesAudience(`${item.title} ${item.buyUrl}`, audience));
+        const tops = take(racks.tops || []);
+        const bottoms = take(racks.bottoms || []);
+        const dresses = audience === 'men' ? [] : take(racks.dresses || []);
+        const shoes = take(racks.shoes || []);
+        const next = {
+          tops: mergeSlot(tops, saved.tops),
+          bottoms: mergeSlot(bottoms, saved.bottoms),
+          dresses: mergeSlot(dresses, saved.dresses),
+          shoes: mergeSlot(shoes, saved.shoes),
+        };
+        setLists(next);
+        const found = tops.length + bottoms.length + dresses.length + shoes.length;
+        setFresh(found ? `Today's ${who} clothes · ${found} new pieces` : `Showing the saved ${who} closet.`);
+        setTopIndex(seed % Math.max(next.tops.length, 1));
+        setBottomIndex((seed + 3) % Math.max(next.bottoms.length, 1));
+        setShoeIndex((seed + 5) % Math.max(next.shoes.length, 1));
+        setDressIndex(seed % Math.max(next.dresses.length, 1));
+      })
+      .catch(() => {
+        if (!cancel) setFresh(`Shops were slow, so the saved ${who} closet is still here.`);
+      });
+    return () => {
+      cancel = true;
+    };
+  }, [audience, saved, seed]);
+
+  const top = at(lists.tops, topIndex);
+  const bottom = at(lists.bottoms, bottomIndex);
+  const shoe = at(lists.shoes, shoeIndex);
+  const dress = at(lists.dresses, dressIndex);
   const worn = useMemo(() => {
     const rows = dressOn && dress ? [dress, shoe] : [top, bottom, shoe];
     return rows.filter((item): item is WardrobePiece => Boolean(item));
@@ -99,11 +181,11 @@ export default function OutfitOptionCard({
     const salt = Math.floor(Math.random() * 97) + 1;
     const useDress = Math.random() < 0.34;
     setDressOn(useDress);
-    setTopIndex(mixIndex(wardrobeCatalog.tops, undefined, salt));
-    const topVibe = wardrobeCatalog.tops[mixIndex(wardrobeCatalog.tops, undefined, salt)]?.vibe;
-    setBottomIndex(mixIndex(wardrobeCatalog.bottoms, topVibe, salt + 4));
-    setShoeIndex(mixIndex(wardrobeCatalog.shoes, topVibe, salt + 9));
-    setDressIndex(mixIndex(wardrobeCatalog.dresses, topVibe, salt + 2));
+    setTopIndex(mixIndex(lists.tops, undefined, salt));
+    const topVibe = lists.tops[mixIndex(lists.tops, undefined, salt)]?.vibe;
+    setBottomIndex(mixIndex(lists.bottoms, topVibe, salt + 4));
+    setShoeIndex(mixIndex(lists.shoes, topVibe, salt + 9));
+    setDressIndex(mixIndex(lists.dresses, topVibe, salt + 2));
     setMode('clothes');
     setTryOnUrl(null);
     setNote('');
@@ -191,6 +273,7 @@ export default function OutfitOptionCard({
       </div>
       <div className="fashion-card-copy">
         <div className="fashion-opt">Option {label}</div>
+        <p className="fashion-fresh">{fresh}</p>
         <h3>{worn.map((item) => item.title).join(' + ')}</h3>
         <ul>
           {worn.map((item) => (
@@ -238,9 +321,11 @@ export default function OutfitOptionCard({
         <button type="button" onClick={shuffle}>
           Shuffle
         </button>
-        <button type="button" onClick={() => setDressOn((on) => !on)}>
-          {dressOn ? 'Separates' : 'Dress'}
-        </button>
+        {lists.dresses.length ? (
+          <button type="button" onClick={() => setDressOn((on) => !on)}>
+            {dressOn ? 'Separates' : 'Dress'}
+          </button>
+        ) : null}
         <button type="button" onClick={() => void tryOn()} disabled={fitting}>
           Try On
         </button>

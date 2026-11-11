@@ -7,7 +7,7 @@ import { parseFashionIntent } from '../services/fashionIntent.js';
 import { mixWardrobeIntoLook, pairForCompare, sourceLooks } from '../services/fashionSourcing.js';
 import { critiqueLooks } from '../services/fashionCritic.js';
 import { categoryForLook, runOutfitTryOn } from '../services/fashionTryOn.js';
-import { fetchRedCarpetRacks } from '../services/fashionPinterest.js';
+import { fetchRedCarpetRacks, shopAudience } from '../services/fashionPinterest.js';
 import { deleteWardrobeItem, listWardrobe, saveWardrobeItem, type PieceSlot } from '../models/fashionWardrobe.js';
 import type { FashionLook } from '../data/fashionCatalog.js';
 import {
@@ -217,7 +217,10 @@ export const redCarpetHandler = async (req: Request, res: Response) => {
     const userId = (req as any).userId as string | undefined;
     if (!userId) return res.status(401).json({ error: 'Unauthorized' });
     const prompt = String(req.body?.prompt || req.query?.prompt || 'red carpet').trim();
-    const racks = await fetchRedCarpetRacks(prompt);
+    const user = await getUserById(userId);
+    const fromProfile = shopAudience(user?.gender);
+    const fromPrompt = /\bwomen\b/.test(prompt) ? 'women' : /\bmen\b/.test(prompt) ? 'men' : null;
+    const racks = await fetchRedCarpetRacks(prompt, fromProfile || fromPrompt || 'men');
     res.json(racks);
   } catch (error) {
     console.error('Red carpet search error:', error);

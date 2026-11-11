@@ -15,6 +15,7 @@ import { checkFaceInPhoto } from '../../lib/fashionFaceCheck';
 import { prepareAndUploadFile } from '../../lib/uploadMedia';
 import { restoredRecordsForEmail } from '../../lib/googleAuthSession';
 import OutfitOptionCard from './OutfitOptionCard';
+import { wardrobeAudience } from '../../data/wardrobeCatalog';
 import './FashionDesk.css';
 
 function stripRoleplay(text: string) {
@@ -58,6 +59,7 @@ export default function FashionDesk({
   onSpeaking: (on: boolean) => void;
 }) {
   const { user, updateUser } = useContext(AuthContext);
+  const attire = wardrobeAudience((user as { gender?: string } | null)?.gender);
   const [showSelfie, setShowSelfie] = useState(false);
   const selfieDue = Boolean(user?.id) && !user?.photoVerifiedAt;
   const selfieLocked = Boolean(user?.photoLock?.locked) && selfieDue;
@@ -463,8 +465,8 @@ export default function FashionDesk({
 
       {tab === 'closet' && (
         <div className="fashion-pair">
-          <OutfitOptionCard label="A" seed={1} avatarUrl={faceUrl} personUrl={bodyUrl || faceUrl} />
-          <OutfitOptionCard label="B" seed={2} avatarUrl={faceUrl} personUrl={bodyUrl || faceUrl} />
+          <OutfitOptionCard label="A" seed={1} avatarUrl={faceUrl} personUrl={bodyUrl || faceUrl} audience={attire} />
+          <OutfitOptionCard label="B" seed={2} avatarUrl={faceUrl} personUrl={bodyUrl || faceUrl} audience={attire} />
         </div>
       )}
 
@@ -615,6 +617,7 @@ export default function FashionDesk({
               avatarUrl={faceUrl}
               personUrl={bodyUrl || faceUrl}
               winner={result?.critic.winner === 'A'}
+              audience={attire}
             />
             <OutfitOptionCard
               label="B"
@@ -622,6 +625,7 @@ export default function FashionDesk({
               avatarUrl={faceUrl}
               personUrl={bodyUrl || faceUrl}
               winner={result?.critic.winner === 'B'}
+              audience={attire}
             />
           </div>
           {result ? (

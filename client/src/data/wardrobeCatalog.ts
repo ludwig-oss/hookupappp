@@ -1,5 +1,35 @@
 export type WardrobeVibe = '90s-vintage' | 'modern-runway' | 'street-luxe';
 export type WardrobeSlot = 'tops' | 'bottoms' | 'dresses' | 'shoes';
+export type WardrobeAudience = 'men' | 'women';
+
+const MEN_IDS = new Set([
+  'rb-plaid-blazer',
+  'by-bomber',
+  'bru-shirt',
+  'pc-sweater',
+  'layo-blazer',
+  'rb-stealie',
+  'tc-denim',
+  'ma-loafer',
+  'toms-sneaker',
+  'sm-keller',
+]);
+
+const WOMEN_WORD = /\b(women|woman|womens|female|ladies|skirt|dress|heel|stiletto|corset|ballet)\b/i;
+const MEN_WORD = /\b(mens|men's|for men|male)\b/i;
+
+export function wardrobeAudience(gender: string | null | undefined): WardrobeAudience | null {
+  const g = String(gender || '').toLowerCase().trim();
+  if (g === 'female' || g === 'woman' || g === 'f' || g.startsWith('fem')) return 'women';
+  if (g === 'male' || g === 'man' || g === 'm' || g.startsWith('masc')) return 'men';
+  return null;
+}
+
+export function pieceMatchesAudience(text: string, audience: WardrobeAudience | null): boolean {
+  if (!audience) return true;
+  if (audience === 'men') return !WOMEN_WORD.test(text);
+  return !MEN_WORD.test(text);
+}
 
 export interface StoreMatch {
   store: string;
@@ -88,6 +118,17 @@ export const wardrobeCatalog: Record<WardrobeSlot, WardrobePiece[]> = {
     piece('toms-area', 'shoes', 'Black satin ballet flat', 'TOMS', '$145', 'toms.com', 'https://www.toms.com/products/womens-toms-x-area-alpargata-ballet-flat-dark-black-heavy-satin-rhinestone-10024145', 'https://cdn.shopify.com/s/files/1/0741/0529/1043/files/10024145-s.jpg?v=1792599323', '90s-vintage'),
   ],
 };
+
+export function catalogFor(audience: WardrobeAudience | null): Record<WardrobeSlot, WardrobePiece[]> {
+  if (!audience) return wardrobeCatalog;
+  const keep = (items: WardrobePiece[]) => items.filter((item) => (MEN_IDS.has(item.id) ? 'men' : 'women') === audience);
+  return {
+    tops: keep(wardrobeCatalog.tops),
+    bottoms: keep(wardrobeCatalog.bottoms),
+    dresses: audience === 'women' ? wardrobeCatalog.dresses : [],
+    shoes: keep(wardrobeCatalog.shoes),
+  };
+}
 
 export const wardrobePieceCount =
   wardrobeCatalog.tops.length +

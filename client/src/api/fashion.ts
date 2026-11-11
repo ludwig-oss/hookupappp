@@ -148,7 +148,7 @@ export const fashionAPI = {
     return response.data;
   },
   redCarpet: async (prompt?: string): Promise<RedCarpetRacks> => {
-    const response = await axios.post(`${API_URL}/red-carpet`, { prompt: prompt || 'red carpet' });
+    const response = await axios.post(`${API_URL}/red-carpet`, { prompt: prompt || 'red carpet' }, { timeout: 120000 });
     return response.data;
   },
   wardrobe: async (): Promise<{

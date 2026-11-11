@@ -52,7 +52,7 @@ const RECIPES: Recipe[] = [
 ];
 
 const BLOCKED =
-  /model|portrait|selfie|\bface\b|celebrity|oscar|gala|grammy|cannes|red carpet|sunglass|sunglasses|wearing|street style|on her|on him|runway look/i;
+  /model|portrait|selfie|\bface\b|celebrity|oscar|gala|grammy|cannes|red carpet|sunglass|sunglasses|wearing|street style|on her|on him|runway look|nude|nudis|hentai|porn|nsfw|onlyfans|\bxxx\b|erotic|wallpaper|freepik|dreamstime|vecteezy|shutterstock|getty|alamy|istock/i;
 
 const imageOkCache = new Map<string, boolean>();
 const TTL_MS = 10 * 60 * 1000;
@@ -187,8 +187,18 @@ function readText(url: string): Promise<string> {
 
 type WebHit = { imageUrl: string; title: string; page: string };
 
-async function webImages(query: string): Promise<WebHit[]> {
-  const url = `https://www.bing.com/images/async?q=${encodeURIComponent(query)}&first=1&count=12&adlt=strict`;
+function dayIndex(): number {
+  const now = new Date();
+  const start = Date.UTC(now.getUTCFullYear(), 0, 0);
+  return Math.floor((now.getTime() - start) / 86400000);
+}
+
+function dayStamp(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+async function webImages(query: string, first = 1): Promise<WebHit[]> {
+  const url = `https://www.bing.com/images/async?q=${encodeURIComponent(query)}&first=${first}&count=35&adlt=strict`;
   const body = await readText(url);
   const decoded = body.replace(/&quot;/g, '"').replace(/&amp;/g, '&');
   const hits: WebHit[] = [];
@@ -207,6 +217,95 @@ function shopScore(page: string): number {
   if (/\/products?\/|\/shop\/|cdn\/shop|\/dp\//i.test(page)) return 2;
   if (/pinterest\.|pinimg\./i.test(page)) return 1;
   return 0;
+}
+
+export type ShopAudience = 'men' | 'women';
+
+const WOMEN_WORD = /\b(women|woman|womens|female|ladies|skirt|dress|heel|stiletto|corset|ballet)\b/i;
+const MEN_WORD = /\b(mens|men's|for men|male)\b/i;
+
+export function shopAudience(gender: string | null | undefined): ShopAudience | null {
+  const g = String(gender || '').toLowerCase().trim();
+  if (g === 'female' || g === 'woman' || g === 'f' || g.startsWith('fem')) return 'women';
+  if (g === 'male' || g === 'man' || g === 'm' || g.startsWith('masc')) return 'men';
+  return null;
+}
+
+function dailyQueries(audience: ShopAudience): { slot: RackSlot; era: GarmentEra; q: string }[] {
+  const who = audience === 'men' ? "men's" : "women's";
+  const avoid = audience === 'men' ? '-women -woman -female -skirt -dress -heel' : '-mens -men';
+  const rows: { slot: RackSlot; era: GarmentEra; q: string }[] = [
+    { slot: 'top', era: 'modern', q: `${who} blazer product photo white background ${avoid}` },
+    { slot: 'top', era: 'vintage', q: `${who} sweater product photo ${avoid}` },
+    { slot: 'top', era: 'modern', q: `${who} shirt jacket product photo ${avoid}` },
+    { slot: 'bottom', era: 'modern', q: `${who} trousers product photo ${avoid}` },
+    { slot: 'bottom', era: 'modern', q: `${who} jeans product photo ${avoid}` },
+  ];
+  if (audience === 'women') {
+    rows.push(
+      { slot: 'bottom', era: 'vintage', q: "women's skirt product photo -mens -men" },
+      { slot: 'dress', era: 'vintage', q: "women's slip dress product photo -mens -men" },
+      { slot: 'dress', era: 'modern', q: "women's dress product photo white background -mens -men" },
+      { slot: 'shoes', era: 'modern', q: "women's heel shoe product photo -feet -mens" },
+      { slot: 'shoes', era: 'vintage', q: "women's ankle boot product photo -feet -mens" }
+    );
+  } else {
+    rows.push(
+      { slot: 'bottom', era: 'vintage', q: "men's chinos product photo -women -skirt" },
+      { slot: 'shoes', era: 'modern', q: "men's leather loafer product photo -women -heel -feet" },
+      { slot: 'shoes', era: 'modern', q: "men's sneaker product photo -women -feet" },
+      { slot: 'shoes', era: 'vintage', q: "men's oxford shoe product photo -women -heel" }
+    );
+  }
+  return rows;
+}
+
+function looksLikeShop(page: string, image: string): boolean {
+  return /\/products?\/|cdn\/shop|\/dp\/|shopify|scene7|demandware|\/product\/|\/files\//i.test(`${page} ${image}`);
+}
+
+function pieceFromHit(row: WebHit, slot: RackSlot, era: GarmentEra, audience: ShopAudience): RackPiece | null {
+  const hay = `${row.title} ${row.page} ${row.imageUrl}`;
+  if (!row.imageUrl.startsWith('https://') || !row.page.startsWith('https://')) return null;
+  if (BLOCKED.test(hay)) return null;
+  if (audience === 'men' ? WOMEN_WORD.test(hay) : MEN_WORD.test(hay)) return null;
+  if (/\b(feet|foot|toes|legs)\b/i.test(hay)) return null;
+  if (!looksLikeShop(row.page, row.imageUrl)) return null;
+  const title = row.title.split('|')[0].split(' - ')[0].replace(/\s+/g, ' ').trim().slice(0, 72);
+  if (title.length < 3) return null;
+  return {
+    id: `day-${slot}-${hash(row.imageUrl)}`,
+    slot,
+    title,
+    imageUrl: row.imageUrl,
+    sourceUrl: row.page,
+    era,
+    buyUrl: row.page,
+    store: storeHost(row.page),
+    price: '',
+  };
+}
+
+async function dailyPool(audience: ShopAudience): Promise<RackPiece[]> {
+  const day = dayIndex();
+  const first = 1 + (day % 5) * 12;
+  const queries = dailyQueries(audience);
+  const rotated = queries.map((_, index) => queries[(index + (day % queries.length)) % queries.length]);
+  const batches = await mapPool(rotated, 4, async (row) => {
+    const hits = await webImages(row.q, first).catch(() => [] as WebHit[]);
+    const pieces: RackPiece[] = [];
+    for (const hit of hits.sort((a, b) => shopScore(b.page) - shopScore(a.page))) {
+      const piece = pieceFromHit(hit, row.slot, row.era, audience);
+      if (!piece || pieces.some((item) => item.imageUrl === piece.imageUrl)) continue;
+      if (!(await imageOk(piece.imageUrl))) continue;
+      pieces.push(piece);
+      if (pieces.length >= 5) break;
+    }
+    return pieces;
+  });
+  const uniq = new Map<string, RackPiece>();
+  for (const piece of batches.flat()) uniq.set(piece.imageUrl, piece);
+  return [...uniq.values()];
 }
 
 async function searchWeb(recipe: Recipe): Promise<RackPiece | null> {
@@ -247,23 +346,25 @@ async function mapPool<T, R>(items: T[], limit: number, fn: (item: T) => Promise
   return out;
 }
 
-export async function fetchRedCarpetRacks(prompt: string): Promise<RedCarpetRacks> {
+export async function fetchRedCarpetRacks(prompt: string, audience: ShopAudience = 'men'): Promise<RedCarpetRacks> {
   const key = process.env.SERPAPI_API_KEY?.trim() || process.env.SERPAPI_KEY?.trim() || '';
-  const cacheKey = `${key ? 'flat' : 'web'}:${prompt.trim().toLowerCase()}`;
+  const cacheKey = `${key ? 'flat' : 'daily'}:${audience}:${dayStamp()}:${prompt.trim().toLowerCase()}`;
   const hit = cache.get(cacheKey);
-  if (hit && Date.now() - hit.at < TTL_MS) return hit.racks;
+  const ttl = key ? TTL_MS : 6 * 60 * 60 * 1000;
+  if (hit && Date.now() - hit.at < ttl) return hit.racks;
 
-  const found = key
-    ? await Promise.all(RECIPES.map((recipe) => searchRecipe(recipe, key).catch(() => null)))
-    : await mapPool(RECIPES, 4, (recipe) => searchWeb(recipe).catch(() => null));
-  const live = found.filter((piece): piece is RackPiece => Boolean(piece));
+  const live = key
+    ? (await Promise.all(RECIPES.map((recipe) => searchRecipe(recipe, key).catch(() => null)))).filter(
+        (piece): piece is RackPiece => Boolean(piece)
+      )
+    : await dailyPool(audience);
   const racks: RedCarpetRacks = {
     tops: live.filter((piece) => piece.slot === 'top'),
     bottoms: live.filter((piece) => piece.slot === 'bottom'),
-    dresses: [],
+    dresses: live.filter((piece) => piece.slot === 'dress'),
     shoes: live.filter((piece) => piece.slot === 'shoes'),
     source: live.length ? 'product' : 'studio',
-    detail: live.length ? '' : 'Could not load product photos.',
+    detail: live.length ? `Shops for ${dayStamp()}` : 'Could not load product photos.',
   };
   cache.set(cacheKey, { at: Date.now(), racks });
   return racks;

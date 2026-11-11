@@ -134,6 +134,7 @@ function usable(item: WardrobePiece | null) {
   if (/[a-z]1\.(?:jpg|jpeg|png|webp)(?:$|\?)/i.test(item.imageUrl)) return false;
   if (/[-_](?:2|3|back|rear)\.(?:jpg|jpeg|png|webp)(?:$|\?)/i.test(item.imageUrl)) return false;
   if (item.slot === 'shoes' && /\b(jackets?|coats?|jeans?|pants|trousers|shirts?|sweaters?|hoodies?)\b/i.test(text)) return false;
+  if (item.slot === 'bottoms' && /\b(worn|wearing|outfit|lookbook|ootd|on model|styled|person|feet|foot|sneakers?|trainers?|shoes)\b|full[- ]?length|on[- ]?body/i.test(text) && !/bootcut/i.test(item.title)) return false;
   return true;
 }
 
@@ -186,7 +187,7 @@ function fromShop(row: RackPiece): WardrobePiece | null {
   if (/(?:^|[_\-/.])(back|rear)(?:[_\-/.]|$)/i.test(shotName)) return null;
   if (/[-_](?:2|3|back|rear)\.(?:jpg|jpeg|png|webp)(?:$|\?)/i.test(row.imageUrl)) return null;
   if (/[a-z]1\.(?:jpg|jpeg|png|webp)(?:$|\?)/i.test(row.imageUrl)) return null;
-  if (slot === 'bottoms' && /\b(sneakers?|loafers?|boots|shoes|footwear|hanger|waistband|interior|side view|profile|back view)\b/i.test(row.title) && !/bootcut/i.test(row.title)) return null;
+  if (slot === 'bottoms' && /\b(sneakers?|loafers?|boots|shoes|footwear|hanger|waistband|interior|side view|profile|back view|worn|wearing|outfit|person|feet|foot)\b|full[- ]?length|on[- ]?body/i.test(`${row.title} ${row.imageUrl}`) && !/bootcut/i.test(row.title)) return null;
   if (slot === 'shoes' && /\b(jeans?|pants|trousers|jackets?|shorts|person|model|wearing|side view|profile|legs|outfit)\b/i.test(row.title)) return null;
   const buy = row.buyUrl || row.sourceUrl;
   const price = row.price || 'See store';

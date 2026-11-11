@@ -217,8 +217,8 @@ function shopScore(page: string): number {
 
 export type ShopAudience = 'men' | 'women';
 
-const WOMEN_WORD = /\b(women|woman|womens|female|ladies|skirt|dress|heel|stiletto|corset|ballet|frock|blouse)\b/i;
-const MEN_WORD = /\b(mens|men's|for men|male)\b/i;
+const WOMEN_WORD = /\b(women|woman|womens|womenswear|female|ladies|lady|girls?|feminine|skirt|dress|heels?|stiletto|corset|ballet|frock|blouse|bodysuit|camisole|bralette|crop top)\b|\/(?:women|womens|girls|female)(?:\/|-|_)/i;
+const MEN_WORD = /\b(men|mens|men's|male|for men)\b/i;
 
 export function shopAudience(gender: string | null | undefined): ShopAudience | null {
   const g = String(gender || '').toLowerCase().trim();
@@ -290,7 +290,7 @@ function queryAt(audience: ShopAudience, n: number, hue: string | null, only: Ra
   const color = colors[rest % colors.length];
   const depth = Math.floor(rest / (colors.length * ANGLES.length)) % DEPTHS;
   const who = audience === 'men' ? "men's" : "women's";
-  const avoid = audience === 'men' ? '-women -woman -female -skirt -dress -heel' : '-mens -"for men"';
+  const avoid = audience === 'men' ? '-women -woman -girl -girls -female -ladies -womenswear -blouse -dress -skirt -heel' : '-mens -"for men" -male';
   const mood = index % 2 === 0 ? 'diy street' : 'vintage punk';
   const kind = row.kind.replace(/ pair$/, '');
   const shot =
@@ -335,7 +335,7 @@ function pieceFromHit(row: WebHit, slot: RackSlot, era: GarmentEra, audience: Sh
   const hay = `${row.title} ${row.page} ${row.imageUrl}`;
   if (!row.imageUrl.startsWith('https://') || !row.page.startsWith('https://')) return null;
   if (BLOCKED.test(hay) || badShot(hay, slot)) return null;
-  if (audience === 'men' ? WOMEN_WORD.test(hay) : MEN_WORD.test(hay)) return null;
+  if (audience === 'men' ? WOMEN_WORD.test(hay) || !MEN_WORD.test(hay) : MEN_WORD.test(hay) || !WOMEN_WORD.test(hay)) return null;
   if (slot === 'top' && /\b(feet|foot|toes|legs)\b/i.test(hay)) return null;
   if (slot === 'bottom' && /\b(sneakers?|loafers?|oxfords?|derbys?|heels?|boots|shoes|footwear)\b/i.test(row.title) && !/bootcut|boot-cut/i.test(row.title)) return null;
   if (!looksLikeShop(row.page, row.imageUrl)) return null;

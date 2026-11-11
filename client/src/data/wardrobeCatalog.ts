@@ -15,8 +15,8 @@ const MEN_IDS = new Set([
   'sm-keller',
 ]);
 
-const WOMEN_WORD = /\b(women|woman|womens|female|ladies|skirt|dress|heel|stiletto|corset|ballet|frock|blouse)\b/i;
-const MEN_WORD = /\b(mens|men's|for men|male)\b/i;
+const WOMEN_WORD = /\b(women|woman|womens|womenswear|female|ladies|lady|girls?|feminine|skirt|dress|heels?|stiletto|corset|ballet|frock|blouse|bodysuit|camisole|bralette|crop top)\b|\/(?:women|womens|girls|female)(?:\/|-|_)/i;
+const MEN_WORD = /\b(men|mens|men's|male|for men)\b/i;
 
 export function wardrobeAudience(gender: string | null | undefined): WardrobeAudience | null {
   const g = String(gender || '').toLowerCase().trim();
@@ -27,8 +27,8 @@ export function wardrobeAudience(gender: string | null | undefined): WardrobeAud
 
 export function pieceMatchesAudience(text: string, audience: WardrobeAudience | null): boolean {
   if (!audience) return true;
-  if (audience === 'men') return !WOMEN_WORD.test(text);
-  return !MEN_WORD.test(text);
+  if (audience === 'men') return !WOMEN_WORD.test(text) && MEN_WORD.test(text);
+  return !MEN_WORD.test(text) && WOMEN_WORD.test(text);
 }
 
 export interface StoreMatch {

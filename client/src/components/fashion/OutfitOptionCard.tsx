@@ -126,6 +126,12 @@ function usable(item: WardrobePiece | null) {
   const text = `${item.title} ${item.imageUrl}`;
   if (/\b(discover|how to|must-haves|style guide|outfits that|and more)\b/i.test(item.title)) return false;
   if (/\b(tables?|chairs?|desks?|sofas?|couches?|lamps?|furniture|cabinets?|stools?|benches|nightstands?|ottomans?|dressers?|headboards?|mattress(?:es)?|rugs?|curtains?)\b/i.test(text)) return false;
+  if (/\b(chains?|necklaces?|bracelets?|pendants?|earrings?|anklets?|chokers?)\b/i.test(item.title)) return false;
+  if (/\blogos?\b/i.test(item.title) || /logo/i.test(item.imageUrl)) return false;
+  const shotName = text.replace(/background|backyard|backpack/gi, '');
+  if (/\b(back view|rear view|from behind|backside|back pockets?|waistbands?|seen from behind)\b/i.test(shotName)) return false;
+  if (/(?:^|[_\-/.])(back|rear)(?:[_\-/.]|$)/i.test(shotName)) return false;
+  if (/[a-z]1\.(?:jpg|jpeg|png|webp)(?:$|\?)/i.test(item.imageUrl)) return false;
   if (/[-_](?:2|3|back|rear)\.(?:jpg|jpeg|png|webp)(?:$|\?)/i.test(item.imageUrl)) return false;
   if (item.slot === 'shoes' && /\b(jackets?|coats?|jeans?|pants|trousers|shirts?|sweaters?|hoodies?)\b/i.test(text)) return false;
   return true;
@@ -172,7 +178,14 @@ function fromShop(row: RackPiece): WardrobePiece | null {
   if (!slot) return null;
   if (/\b(discover|how to|must-haves|style guide|outfits that|and more)\b/i.test(row.title)) return null;
   if (/\b(tables?|chairs?|desks?|sofas?|couches?|lamps?|furniture|cabinets?|stools?|benches|nightstands?|ottomans?|dressers?|headboards?|mattress(?:es)?|rugs?|curtains?)\b/i.test(`${row.title} ${row.imageUrl} ${row.sourceUrl || ''}`)) return null;
+  if (/\b(chains?|necklaces?|bracelets?|pendants?|earrings?|anklets?|chokers?)\b/i.test(row.title)) return null;
+  if (/\blogos?\b/i.test(row.title) || /logo/i.test(row.imageUrl)) return null;
+  if (/\b(chains?|necklaces?|bracelets?)\b/i.test(row.imageUrl) && !/\b(vests?|jackets?|shirts?|coats?|jeans?|pants)\b/i.test(row.imageUrl)) return null;
+  const shotName = `${row.title} ${row.imageUrl}`.replace(/background|backyard|backpack/gi, '');
+  if (/\b(back view|rear view|from behind|backside|back pockets?|waistbands?|seen from behind)\b/i.test(shotName)) return null;
+  if (/(?:^|[_\-/.])(back|rear)(?:[_\-/.]|$)/i.test(shotName)) return null;
   if (/[-_](?:2|3|back|rear)\.(?:jpg|jpeg|png|webp)(?:$|\?)/i.test(row.imageUrl)) return null;
+  if (/[a-z]1\.(?:jpg|jpeg|png|webp)(?:$|\?)/i.test(row.imageUrl)) return null;
   if (slot === 'bottoms' && /\b(sneakers?|loafers?|boots|shoes|footwear|hanger|waistband|interior|side view|profile|back view)\b/i.test(row.title) && !/bootcut/i.test(row.title)) return null;
   if (slot === 'shoes' && /\b(jeans?|pants|trousers|jackets?|shorts|person|model|wearing|side view|profile|legs|outfit)\b/i.test(row.title)) return null;
   const buy = row.buyUrl || row.sourceUrl;

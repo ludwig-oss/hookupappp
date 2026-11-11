@@ -236,9 +236,10 @@ const COLORS = [
 ];
 const ANGLES = ['front view', 'studio front', 'ghost mannequin front', 'flat lay front', 'product front on white'];
 const TOP_KINDS = [
+  'jeweled leather vest', 'pearl embellished vest', 'pearl studded jacket',
   'spiked leather jacket', 'studded biker jacket', 'painted denim jacket', 'patched bomber jacket',
   'hand painted leather jacket', 'bleached denim jacket', 'frayed denim jacket', 'safety pin jacket',
-  'graffiti coach jacket', 'chain detail jacket', 'shredded knit sweater', 'distressed leather jacket',
+  'graffiti coach jacket', 'shredded knit sweater', 'distressed leather jacket',
   'painted pyjama shirt', 'patched tracksuit jacket', 'graphic tracksuit hoodie',
 ];
 const BOTTOM_KINDS = [
@@ -294,7 +295,7 @@ function queryAt(audience: ShopAudience, n: number, hue: string | null, only: Ra
   const angleIndex = Math.floor(n / colorCount) % ANGLES.length;
   const depth = Math.floor(n / kindCount) % DEPTHS;
   const who = audience === 'men' ? "men's" : "women's";
-  const avoid = audience === 'men' ? '-women -woman -girl -girls -female -ladies -womenswear -blouse -dress -skirt -heel' : '-mens -"for men" -male';
+  const avoid = audience === 'men' ? '-women -woman -girl -girls -female -ladies -womenswear -blouse -dress -skirt -heel -back -rear' : '-mens -"for men" -male -back -rear';
   const mood = n % 2 === 0 ? 'diy street' : 'vintage punk';
   const kind = row.kind.replace(/ pair$/, '');
   const shot =
@@ -347,7 +348,14 @@ function pieceFromHit(row: WebHit, slot: RackSlot, era: GarmentEra, audience: Sh
   if (title.length < 3) return null;
   if (/\b(how to|must-haves|style guide|outfits that|and more|page \d+|discover)\b/i.test(title)) return null;
   if (/[-_](?:2|3|back|rear)\.(?:jpg|jpeg|png|webp)(?:$|\?)/i.test(row.imageUrl)) return null;
+  if (/[a-z]1\.(?:jpg|jpeg|png|webp)(?:$|\?)/i.test(row.imageUrl)) return null;
   if (/\b(tables?|chairs?|desks?|sofas?|couches?|lamps?|furniture|cabinets?|stools?|benches|nightstands?|ottomans?|dressers?|headboards?|mattress(?:es)?|rugs?|curtains?)\b/i.test(`${title} ${row.page} ${row.imageUrl}`)) return null;
+  if (/\b(chains?|necklaces?|bracelets?|pendants?|earrings?|anklets?|chokers?)\b/i.test(title)) return null;
+  if (/\blogos?\b/i.test(title) || /logo/i.test(row.imageUrl)) return null;
+  if (/\b(chains?|necklaces?|bracelets?)\b/i.test(row.imageUrl) && !/\b(vests?|jackets?|shirts?|coats?|jeans?|pants)\b/i.test(row.imageUrl)) return null;
+  const shotName = `${title} ${row.imageUrl}`.replace(/background|backyard|backpack/gi, '');
+  if (/\b(back view|rear view|from behind|backside|back pockets?|waistbands?|seen from behind)\b/i.test(shotName)) return null;
+  if (/(?:^|[_\-/.])(back|rear)(?:[_\-/.]|$)/i.test(shotName)) return null;
   let imageName = row.imageUrl;
   try {
     imageName = decodeURIComponent(row.imageUrl);
@@ -360,7 +368,7 @@ function pieceFromHit(row: WebHit, slot: RackSlot, era: GarmentEra, audience: Sh
   const shoeWord = /\b(shoes?|boots?|sneakers?|trainers?|loafers?|sandals?)\b/i.test(name);
   const oneWord = /\b(overalls?|dungarees?|jumpsuits?|boiler suits?|coveralls?|dresses?|playsuits?|rompers?)\b/i.test(name);
   const sleepSet = /\b(pyjamas?|pajamas?|tracksuits?)\b/i.test(name) && !topWord && !shoeWord;
-  const creative = /\b(spikes?|studs?|studded|painted|paint|splatter|graffiti|ripped|ragged|distressed|patched|bleached|frayed|chains?|safety pin|shredded|destroyed|acid wash|deconstructed|grommets?|slashed|handmade|hand painted|beat up|fringe|shorts|pyjamas?|pajamas?|tracksuits?|overalls?|dungarees?|jumpsuits?|joggers?)\b/i.test(name);
+  const creative = /\b(spikes?|studs?|studded|painted|paint|splatter|graffiti|ripped|ragged|distressed|patched|bleached|frayed|jewels?|jeweled|pearls?|safety pin|shredded|destroyed|acid wash|deconstructed|grommets?|slashed|handmade|hand painted|beat up|fringe|shorts|pyjamas?|pajamas?|tracksuits?|overalls?|dungarees?|jumpsuits?|joggers?)\b/i.test(name);
   const clearShoe = shoeWord && !topWord && !legWord && !oneWord;
   if (!creative && !clearShoe) return null;
   let keptSlot: RackSlot;

@@ -464,19 +464,18 @@ export default function FashionDesk({
         </div>
       )}
 
-      {selfieDue && (
-        <div className="fashion-selfie-later">
-          <p>You can add a live selfie anytime this week. Fashion help asks for it when you use it. After the week, chat, matching, and posts lock until it matches.</p>
-          <button type="button" onClick={() => setShowSelfie(true)}>Add selfie</button>
-        </div>
-      )}
-
       {tab === 'closet' && (
         <ClosetInterface faceUrl={faceUrl} bodyUrl={bodyUrl} gender={closetGender} />
       )}
 
       {tab !== 'closet' && (
       <>
+      {selfieDue && (
+        <div className="fashion-selfie-later">
+          <p>You can add a live selfie anytime this week. Fashion help asks for it when you use it.</p>
+          <button type="button" onClick={() => setShowSelfie(true)}>Add selfie</button>
+        </div>
+      )}
       <form
         className="fashion-ask"
         onSubmit={(e) => {

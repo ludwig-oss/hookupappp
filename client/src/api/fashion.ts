@@ -42,6 +42,7 @@ export interface RackPiece {
   imageUrl: string;
   sourceUrl: string;
   era?: GarmentEra;
+  family?: string;
 }
 
 export interface RedCarpetRacks {

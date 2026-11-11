@@ -131,6 +131,14 @@ function usable(item: WardrobePiece | null) {
   return true;
 }
 
+function pieceTotal(lists: { tops: WardrobePiece[]; bottoms: WardrobePiece[]; dresses: WardrobePiece[]; shoes: WardrobePiece[] }) {
+  return lists.tops.length + lists.bottoms.length + lists.dresses.length + lists.shoes.length;
+}
+
+function rackNote(total: number, supply: number) {
+  return `${total.toLocaleString()} pieces loaded from ${supply.toLocaleString()} shop photos. More keep coming, and a photo does not repeat.`;
+}
+
 function at(list: WardrobePiece[], index: number) {
   if (!list.length || index < 0) return null;
   return list[((index % list.length) + list.length) % list.length];
@@ -275,6 +283,7 @@ export default function OutfitOptionCard({
   const [fresh, setFresh] = useState(audience === 'women' ? "Pulling today's women's clothes..." : "Pulling today's men's clothes...");
   const [styleAim, setStyleAim] = useState<StyleAim>('mix');
   const pageRef = useRef(0);
+  const supplyRef = useRef(1_005_480);
   const moreRef = useRef(false);
   const pendingRef = useRef<{ color: string; slot: PieceSlot; family: string } | null>(null);
   const [hue, setHue] = useState('');
@@ -340,6 +349,7 @@ export default function OutfitOptionCard({
       const slotBit = pending ? ` slot:${pending.slot === 'tops' ? 'top' : pending.slot === 'bottoms' ? 'bottom' : 'shoes'}` : '';
       const racks = await fashionAPI.redCarpet(`daily ${day} ${audience === 'women' ? 'women' : 'men'} page ${nextPage}${hueBit}${slotBit}`);
       const found = readRacks(racks);
+      if (racks.supply && racks.supply >= 1_000_000) supplyRef.current = racks.supply;
       pageRef.current = nextPage;
       const added = found.tops.length + found.bottoms.length + found.dresses.length + found.shoes.length;
       if (!added) return;
@@ -390,7 +400,7 @@ export default function OutfitOptionCard({
         }
       }
       setLists(next);
-      setFresh(`${added} new ${who} pieces. The rack stays open — over a million front photos, and a photo does not repeat.`);
+      setFresh(rackNote(pieceTotal(next), supplyRef.current));
     } catch {
       /* The pieces already on the card stay. */
     } finally {
@@ -411,6 +421,7 @@ export default function OutfitOptionCard({
       .then((racks) => {
         if (cancel) return;
         const found = readRacks(racks);
+        if (racks.supply && racks.supply >= 1_000_000) supplyRef.current = racks.supply;
         const next = {
           tops: mergeSlot(found.tops, saved.tops),
           bottoms: mergeSlot(found.bottoms, saved.bottoms),
@@ -418,10 +429,10 @@ export default function OutfitOptionCard({
           shoes: mergeSlot(found.shoes, saved.shoes),
         };
         setLists(next);
-        setFresh(`${who[0].toUpperCase()}${who.slice(1)} pieces with spikes, paint, rips, and patches. Tap a piece, then a color.`);
+        setFresh(rackNote(pieceTotal(next), supplyRef.current));
         applyStyle(next, opening, seed + 11);
         void (async () => {
-          for (let i = 0; i < 10 && !cancel; i += 1) await loadMore();
+          for (let i = 0; i < 48 && !cancel; i += 1) await loadMore();
         })();
       })
       .catch(() => {
@@ -435,7 +446,7 @@ export default function OutfitOptionCard({
   const step = (setIndex: (value: number | ((current: number) => number)) => void, length: number, dir: number) => {
     setIndex((current) => {
       const next = current + dir;
-      if (dir > 0 && length > 0 && Math.abs(next) % length === length - 1) void loadMore();
+      if (dir > 0) void loadMore();
       return next;
     });
   };
@@ -459,13 +470,11 @@ export default function OutfitOptionCard({
     const freeIndex = (list: WardrobePiece[], index: number) => {
       if (list.length < 2) return index;
       const skip = new Set(['ma-loafer', 'sm-keller', 'toms-sneaker', 'tc-denim']);
-      const madeExists = list.some((row) => madePiece(row) && usable(row));
       for (let n = 0; n < list.length; n += 1) {
         const item = at(list, index + n);
         const owner = item ? taken[item.imageUrl] : '';
         if (!item || owner && owner !== label) continue;
         if (skip.has(item.id) || !usable(item)) continue;
-        if (madeExists && !madePiece(item)) continue;
         return index + n;
       }
       return -1;

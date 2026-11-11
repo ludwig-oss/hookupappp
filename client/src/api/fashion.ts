@@ -55,6 +55,7 @@ export interface RedCarpetRacks {
   shoes: RackPiece[];
   source: 'product' | 'studio' | 'pinterest' | 'catalog';
   detail: string;
+  supply?: number;
 }
 
 export interface FashionStyleResponse {

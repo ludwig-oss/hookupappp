@@ -24,6 +24,7 @@ export interface RedCarpetRacks {
   shoes: RackPiece[];
   source: 'product' | 'studio';
   detail: string;
+  supply: number;
 }
 
 type Recipe = { title: string; era: GarmentEra; slot: 'top' | 'bottom' | 'shoes'; fill: string; family: string; kind: string };
@@ -253,7 +254,7 @@ const SHOE_KINDS = [
 ];
 const OVERALL_KINDS = ['studded overalls', 'ripped dungarees', 'painted jumpsuit', 'distressed coveralls'];
 const DRESS_KINDS = ['painted slip dress', 'shredded knit dress', 'patched mini dress', 'deconstructed shirt dress', 'distressed column dress'];
-const DEPTHS = 40;
+const DEPTHS = 133;
 
 type RackQuery = { slot: RackSlot; era: GarmentEra; q: string; first: number };
 
@@ -286,16 +287,15 @@ export function rackSupply(audience: ShopAudience): number {
 function queryAt(audience: ShopAudience, n: number, hue: string | null, only: RackSlot | null = null): RackQuery {
   const kinds = kindsFor(audience).filter((row) => !only || row.slot === only);
   const colors = hue ? [hue] : COLORS;
-  const perKind = colors.length * ANGLES.length * DEPTHS;
-  const total = Math.max(1, kinds.length * perKind);
-  const index = ((n % total) + total) % total;
-  const row = kinds[index % kinds.length];
-  const rest = Math.floor(index / kinds.length);
-  const color = colors[rest % colors.length];
-  const depth = Math.floor(rest / (colors.length * ANGLES.length)) % DEPTHS;
+  const kindCount = Math.max(1, kinds.length);
+  const colorCount = Math.max(1, colors.length);
+  const row = kinds[n % kindCount];
+  const color = colors[n % colorCount];
+  const angleIndex = Math.floor(n / colorCount) % ANGLES.length;
+  const depth = Math.floor(n / kindCount) % DEPTHS;
   const who = audience === 'men' ? "men's" : "women's";
   const avoid = audience === 'men' ? '-women -woman -girl -girls -female -ladies -womenswear -blouse -dress -skirt -heel' : '-mens -"for men" -male';
-  const mood = index % 2 === 0 ? 'diy street' : 'vintage punk';
+  const mood = n % 2 === 0 ? 'diy street' : 'vintage punk';
   const kind = row.kind.replace(/ pair$/, '');
   const shot =
     row.slot === 'dress'
@@ -305,9 +305,9 @@ function queryAt(audience: ShopAudience, n: number, hue: string | null, only: Ra
         : 'front view product photo';
   return {
     slot: row.slot,
-    era: index % 3 === 0 ? 'vintage' : 'modern',
+    era: n % 3 === 0 ? 'vintage' : 'modern',
     q: `"${kind}" ${color} ${who} ${mood} ${shot} ${avoid}`,
-    first: 1 + depth * 35,
+    first: 1 + depth * 12 + angleIndex * 4,
   };
 }
 
@@ -465,6 +465,7 @@ export async function fetchRedCarpetRacks(prompt: string, audience: ShopAudience
     shoes: live.filter((piece) => piece.slot === 'shoes'),
     source: live.length ? 'product' : 'studio',
     detail: live.length ? `Shops for ${dayStamp()}` : 'Could not load product photos.',
+    supply: rackSupply(audience),
   };
   cache.set(cacheKey, { at: Date.now(), racks });
   return racks;

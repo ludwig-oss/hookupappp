@@ -381,9 +381,18 @@
   overflow: hidden;
 }
 
-.fashion-slot.is-dress {
-  flex: 2.2;
-  min-height: 250px;
+.fashion-slot.is-whole {
+  flex: 1;
+  min-height: 670px;
+}
+
+.fashion-slot.is-whole .fashion-slot-photo,
+.fashion-slot.is-whole .fashion-slot-arrow,
+.fashion-slot.is-whole .fashion-slot-photo img {
+  height: 100%;
+  min-height: 670px;
+  object-fit: contain;
+  object-position: center center;
 }
 
 .fashion-slot-arrow,
@@ -759,6 +768,13 @@
   .fashion-card-photo {
     min-height: 480px;
     max-height: none;
+  }
+
+  .fashion-slot.is-whole,
+  .fashion-slot.is-whole .fashion-slot-photo,
+  .fashion-slot.is-whole .fashion-slot-arrow,
+  .fashion-slot.is-whole .fashion-slot-photo img {
+    min-height: 480px;
   }
 
   .fashion-slot.is-top .fashion-slot-photo,

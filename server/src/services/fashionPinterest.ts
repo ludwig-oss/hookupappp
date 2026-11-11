@@ -238,17 +238,20 @@ const TOP_KINDS = [
   'spiked leather jacket', 'studded biker jacket', 'painted denim jacket', 'patched bomber jacket',
   'hand painted leather jacket', 'bleached denim jacket', 'frayed denim jacket', 'safety pin jacket',
   'graffiti coach jacket', 'chain detail jacket', 'shredded knit sweater', 'distressed leather jacket',
+  'painted pyjama shirt', 'patched tracksuit jacket', 'graphic tracksuit hoodie',
 ];
 const BOTTOM_KINDS = [
   'painted jeans', 'splatter paint jeans', 'ripped stacked jeans', 'ragged distressed jeans',
   'patched cargo pants', 'bleached black jeans', 'frayed hem trousers', 'graffiti denim pants',
   'shredded baggy jeans', 'paint splatter trousers',
+  'ripped shorts', 'painted shorts', 'pyjama pants', 'tracksuit pants', 'graphic sweat shorts',
 ];
 const SHOE_KINDS = [
   'painted high top sneakers pair', 'custom painted sneakers pair', 'studded leather boots pair',
   'distressed combat boots pair', 'spiked ankle boots pair', 'patched sneakers pair',
   'painted leather boots pair', 'beat up derby shoes pair',
 ];
+const OVERALL_KINDS = ['studded overalls', 'ripped dungarees', 'painted jumpsuit', 'distressed coveralls'];
 const DRESS_KINDS = ['painted slip dress', 'shredded knit dress', 'patched mini dress', 'deconstructed shirt dress', 'distressed column dress'];
 const DEPTHS = 40;
 
@@ -269,6 +272,7 @@ function kindsFor(audience: ShopAudience): { slot: RackSlot; kind: string }[] {
     ...TOP_KINDS.map((kind) => ({ slot: 'top' as const, kind })),
     ...BOTTOM_KINDS.map((kind) => ({ slot: 'bottom' as const, kind })),
     ...SHOE_KINDS.map((kind) => ({ slot: 'shoes' as const, kind })),
+    ...OVERALL_KINDS.map((kind) => ({ slot: 'dress' as const, kind })),
   ];
   if (audience === 'women') rows.push(...DRESS_KINDS.map((kind) => ({ slot: 'dress' as const, kind })));
   return rows;
@@ -294,8 +298,8 @@ function queryAt(audience: ShopAudience, n: number, hue: string | null, only: Ra
   const mood = index % 2 === 0 ? 'diy street' : 'vintage punk';
   const kind = row.kind.replace(/ pair$/, '');
   const shot =
-    row.slot === 'bottom'
-      ? 'front view product photo'
+    row.slot === 'dress'
+      ? 'full garment front view product photo'
       : row.slot === 'shoes'
         ? 'pair front view product photo'
         : 'front view product photo';
@@ -341,14 +345,34 @@ function pieceFromHit(row: WebHit, slot: RackSlot, era: GarmentEra, audience: Sh
   if (!looksLikeShop(row.page, row.imageUrl)) return null;
   const title = row.title.split('|')[0].split(' - ')[0].replace(/\s+/g, ' ').trim().slice(0, 72);
   if (title.length < 3) return null;
-  if (!/\b(spikes?|studs?|studded|painted|paint|splatter|graffiti|ripped|ragged|distressed|patched|bleached|frayed|chains?|safety pin|shredded|destroyed|acid wash|deconstructed|grommets?|slashed|handmade|hand painted|beat up|fringe)\b/i.test(title)) return null;
-  if (slot === 'top' && (/\b(jeans?|pants|trousers|boots?|sneakers?|chain)\b/i.test(title) || !/\b(jacket|shirt|sweater|tee|vest|hoodie|coat|bomber|knit|jersey)\b/i.test(title))) return null;
-  if (slot === 'bottom' && (/\b(jacket|shirt|sweater|boots?|sneakers?|hoodie|hanger|waistband|interior|side view|profile)\b/i.test(title) || !/\b(jeans?|pants|trousers|cargos?)\b/i.test(title))) return null;
-  if (slot === 'shoes' && /xiangqing|_[3-9]\.(?:jpg|jpeg|png|webp)|sole|bottom-view|side-view/i.test(row.imageUrl)) return null;
-  if (slot === 'shoes' && (/\b(jacket|jeans?|pants|trousers|shirt|sweater|person|model|wearing|legs|outfit|side view|profile)\b/i.test(title) || !/\b(shoes?|boots?|sneakers?|trainers?)\b/i.test(title))) return null;
+  if (/\b(how to|must-haves|style guide|outfits that|and more|page \d+|discover)\b/i.test(title)) return null;
+  if (/[-_](?:2|3|back|rear)\.(?:jpg|jpeg|png|webp)(?:$|\?)/i.test(row.imageUrl)) return null;
+  let imageName = row.imageUrl;
+  try {
+    imageName = decodeURIComponent(row.imageUrl);
+  } catch {
+    imageName = row.imageUrl;
+  }
+  const name = `${title} ${imageName}`.replace(/[-_+/]/g, ' ');
+  const topWord = /\b(jackets?|coats?|blazers?|hoodies?|sweaters?|sweatshirts?|shirts?|tees?|vests?|bombers?|cardigans?|jerseys?)\b/i.test(name);
+  const legWord = /\b(jeans?|pants|trousers|cargos?|shorts|joggers?|sweatpants|track pants|tracksuit pants|pyjama pants|pajama pants)\b/i.test(name);
+  const shoeWord = /\b(shoes?|boots?|sneakers?|trainers?|loafers?|sandals?)\b/i.test(name);
+  const oneWord = /\b(overalls?|dungarees?|jumpsuits?|boiler suits?|coveralls?|dresses?|playsuits?|rompers?)\b/i.test(name);
+  const sleepSet = /\b(pyjamas?|pajamas?|tracksuits?)\b/i.test(name) && !topWord && !shoeWord;
+  const creative = /\b(spikes?|studs?|studded|painted|paint|splatter|graffiti|ripped|ragged|distressed|patched|bleached|frayed|chains?|safety pin|shredded|destroyed|acid wash|deconstructed|grommets?|slashed|handmade|hand painted|beat up|fringe|shorts|pyjamas?|pajamas?|tracksuits?|overalls?|dungarees?|jumpsuits?|joggers?)\b/i.test(name);
+  const clearShoe = shoeWord && !topWord && !legWord && !oneWord;
+  if (!creative && !clearShoe) return null;
+  let keptSlot: RackSlot;
+  if (oneWord) keptSlot = 'dress';
+  else if ((topWord && legWord) || (topWord && shoeWord) || (legWord && shoeWord)) return null;
+  else if (topWord) keptSlot = 'top';
+  else if (legWord || sleepSet) keptSlot = 'bottom';
+  else if (shoeWord) keptSlot = 'shoes';
+  else return null;
+  if (keptSlot === 'shoes' && /xiangqing|_[3-9]\.(?:jpg|jpeg|png|webp)|sole|bottom-view|side-view/i.test(row.imageUrl)) return null;
   return {
-    id: `day-${slot}-${hash(row.imageUrl)}`,
-    slot,
+    id: `day-${keptSlot}-${hash(row.imageUrl)}`,
+    slot: keptSlot,
     title,
     imageUrl: row.imageUrl,
     sourceUrl: row.page,

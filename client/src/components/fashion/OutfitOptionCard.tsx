@@ -117,8 +117,15 @@ function styleIndices(
   const bottom = pickMade(lists.bottoms, salt + 3, (item) => (aim === 'blend' ? agrees(item) : item.vibe !== hero?.vibe || madePiece(item)));
   const shoe = pickMade(lists.shoes, salt + 7, (item) => (aim === 'blend' ? agrees(item) : madePiece(item) || item.vibe !== hero?.vibe));
   const dressIndex = indexWhere(lists.dresses, salt + 2, (item) => (aim === 'flashy' ? loudPiece(item) : true));
-  const useDress = allowDress && lists.dresses.length > 0 && (aim === 'flashy' || aim === 'unique') && salt % 3 === 0;
+  const useDress = lists.dresses.length > 0 && (allowDress ? salt % 2 === 0 : salt % 3 === 0);
   return { top, bottom, shoe, dressIndex, dress: useDress };
+}
+
+function usable(item: WardrobePiece | null) {
+  if (!item) return false;
+  if (/\b(discover|how to|must-haves|style guide|outfits that|and more)\b/i.test(item.title)) return false;
+  if (/[-_](?:2|3|back|rear)\.(?:jpg|jpeg|png|webp)(?:$|\?)/i.test(item.imageUrl)) return false;
+  return true;
 }
 
 function at(list: WardrobePiece[], index: number) {
@@ -128,9 +135,34 @@ function at(list: WardrobePiece[], index: number) {
 
 function fromShop(row: RackPiece): WardrobePiece | null {
   if (!row.imageUrl.startsWith('https://')) return null;
-  const slot = row.slot === 'top' ? 'tops' : row.slot === 'bottom' ? 'bottoms' : row.slot === 'dress' ? 'dresses' : 'shoes';
+  let imageName = row.imageUrl;
+  try {
+    imageName = decodeURIComponent(row.imageUrl);
+  } catch {
+    imageName = row.imageUrl;
+  }
+  const name = `${row.title} ${imageName}`.replace(/[-_+/]/g, ' ');
+  const topWord = /\b(jackets?|coats?|blazers?|hoodies?|sweaters?|sweatshirts?|shirts?|tees?|vests?|bombers?|cardigans?)\b/i.test(name);
+  const legWord = /\b(jeans?|pants|trousers|cargos?|shorts|joggers?|sweatpants|track pants|tracksuit pants|pyjama pants|pajama pants)\b/i.test(name);
+  const shoeWord = /\b(shoes?|boots?|sneakers?|trainers?|loafers?|sandals?)\b/i.test(name);
+  const one = /\b(overalls?|dungarees?|jumpsuits?|boiler suits?|coveralls?|dresses?|playsuits?|rompers?)\b/i.test(name);
+  const sleepSet = /\b(pyjamas?|pajamas?|tracksuits?)\b/i.test(name) && !topWord && !shoeWord;
+  const slot = one
+    ? 'dresses'
+    : (topWord && legWord) || (topWord && shoeWord) || (legWord && shoeWord)
+      ? null
+      : topWord
+        ? 'tops'
+        : legWord || sleepSet
+          ? 'bottoms'
+          : shoeWord
+            ? 'shoes'
+            : null;
+  if (!slot) return null;
+  if (/\b(discover|how to|must-haves|style guide|outfits that|and more)\b/i.test(row.title)) return null;
+  if (/[-_](?:2|3|back|rear)\.(?:jpg|jpeg|png|webp)(?:$|\?)/i.test(row.imageUrl)) return null;
   if (slot === 'bottoms' && /\b(sneakers?|loafers?|boots|shoes|footwear|hanger|waistband|interior|side view|profile|back view)\b/i.test(row.title) && !/bootcut/i.test(row.title)) return null;
-  if (slot === 'shoes' && /\b(jeans?|pants|trousers|person|model|wearing|side view|profile|legs|outfit)\b/i.test(row.title)) return null;
+  if (slot === 'shoes' && /\b(jeans?|pants|trousers|jackets?|shorts|person|model|wearing|side view|profile|legs|outfit)\b/i.test(row.title)) return null;
   const buy = row.buyUrl || row.sourceUrl;
   const price = row.price || 'See store';
   const query = encodeURIComponent(row.title);
@@ -189,6 +221,7 @@ async function asBlob(source: string | Blob): Promise<Blob> {
 function SlotRow({
   item,
   tall,
+  whole,
   picked,
   onPrev,
   onNext,
@@ -196,12 +229,13 @@ function SlotRow({
 }: {
   item: WardrobePiece;
   tall?: boolean;
+  whole?: boolean;
   picked?: boolean;
   onPrev: () => void;
   onNext: () => void;
   onPick: () => void;
 }) {
-  const frame = item.slot === 'tops' ? 'is-top' : item.slot === 'bottoms' ? 'is-bottom' : item.slot === 'shoes' ? 'is-shoes' : 'is-dress';
+  const frame = whole ? 'is-whole' : item.slot === 'tops' ? 'is-top' : item.slot === 'bottoms' ? 'is-bottom' : item.slot === 'shoes' ? 'is-shoes' : 'is-dress';
   return (
     <div className={`fashion-slot ${frame}${tall ? ' is-dress' : ''}${picked ? ' is-picked' : ''}`}>
       <button type="button" className="fashion-slot-arrow" onClick={onPrev} aria-label={`Previous ${item.slot}`}>
@@ -266,19 +300,19 @@ export default function OutfitOptionCard({
 
   const readRacks = useCallback(
     (racks: { tops?: RackPiece[]; bottoms?: RackPiece[]; dresses?: RackPiece[]; shoes?: RackPiece[] }) => {
-      const take = (rows: RackPiece[] | undefined) =>
-        (rows || [])
-          .map(fromShop)
-          .filter((item): item is WardrobePiece => Boolean(item))
-          .filter((item) => pieceMatchesAudience(`${item.title} ${item.buyUrl}`, audience));
+      const pieces = [racks.tops, racks.bottoms, racks.dresses, racks.shoes]
+        .flatMap((rows) => rows || [])
+        .map(fromShop)
+        .filter((item): item is WardrobePiece => Boolean(item))
+        .filter((item) => pieceMatchesAudience(`${item.title} ${item.buyUrl}`, audience));
       return {
-        tops: take(racks.tops),
-        bottoms: take(racks.bottoms),
-        dresses: allowDress ? take(racks.dresses) : [],
-        shoes: take(racks.shoes),
+        tops: pieces.filter((item) => item.slot === 'tops'),
+        bottoms: pieces.filter((item) => item.slot === 'bottoms'),
+        dresses: pieces.filter((item) => item.slot === 'dresses'),
+        shoes: pieces.filter((item) => item.slot === 'shoes'),
       };
     },
-    [allowDress, audience]
+    [audience]
   );
 
   const applyStyle = (next: typeof saved, aim: StyleAim, salt: number) => {
@@ -324,6 +358,10 @@ export default function OutfitOptionCard({
       wearMade(next.tops, topIndexRef.current, seed);
       wearMade(next.bottoms, bottomIndexRef.current, seed + 3);
       wearMade(next.shoes, shoeIndexRef.current, seed + 7);
+      if (!prev.dresses.length && next.dresses.length && styleIndices(next, 'mix', seed, allowDress).dress) {
+        setDressOn(true);
+        setDressIndex(styleIndices(next, 'mix', seed, allowDress).dressIndex);
+      }
       const waiting = pendingRef.current;
       if (waiting) {
         const list = next[waiting.slot];
@@ -417,12 +455,12 @@ export default function OutfitOptionCard({
     const freeIndex = (list: WardrobePiece[], index: number) => {
       if (list.length < 2) return index;
       const skip = new Set(['ma-loafer', 'sm-keller', 'toms-sneaker', 'tc-denim']);
-      const madeExists = list.some((row) => madePiece(row));
+      const madeExists = list.some((row) => madePiece(row) && usable(row));
       for (let n = 0; n < list.length; n += 1) {
         const item = at(list, index + n);
         const owner = item ? taken[item.imageUrl] : '';
         if (!item || owner && owner !== label) continue;
-        if (skip.has(item.id)) continue;
+        if (skip.has(item.id) || !usable(item)) continue;
         if (madeExists && !madePiece(item)) continue;
         return index + n;
       }
@@ -445,7 +483,7 @@ export default function OutfitOptionCard({
   }, [bottoms, bottomIndex, label, shoes, shoeIndex, tops, topIndex]);
 
   const worn = useMemo(() => {
-    const rows = dressOn && dress ? [dress, shoe] : [top, bottom, shoe];
+    const rows = dressOn && dress ? [dress] : [top, bottom, shoe];
     return rows.filter((item): item is WardrobePiece => Boolean(item));
   }, [bottom, dress, dressOn, shoe, top]);
 
@@ -554,7 +592,7 @@ export default function OutfitOptionCard({
             {dressOn && dress ? (
               <SlotRow
                 item={dress}
-                tall
+                whole
                 onPrev={() => step(setDressIndex, dresses.length, -1)}
                 onNext={() => step(setDressIndex, dresses.length, 1)}
                 onPick={() => setShop(dress)}
@@ -593,7 +631,7 @@ export default function OutfitOptionCard({
                 ) : null}
               </>
             )}
-            {shoe ? (
+            {shoe && !(dressOn && dress) ? (
               <SlotRow
                 item={shoe}
                 picked={focus === 'shoes'}
@@ -678,7 +716,7 @@ export default function OutfitOptionCard({
         </button>
         {lists.dresses.length ? (
           <button type="button" onClick={() => setDressOn((on) => !on)}>
-            {dressOn ? 'Separates' : 'Dress'}
+            {dressOn ? 'Separates' : allowDress ? 'Dress' : 'Overall'}
           </button>
         ) : null}
         <button type="button" onClick={() => void tryOn()} disabled={fitting}>

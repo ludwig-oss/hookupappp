@@ -455,6 +455,19 @@
   height: 200px;
 }
 
+.fashion-slot.is-bottom.is-crop-shoes .fashion-slot-photo {
+  height: 210px;
+  overflow: hidden;
+}
+
+.fashion-slot.is-bottom.is-crop-shoes .fashion-slot-photo img {
+  width: 100%;
+  height: 270px;
+  object-fit: contain;
+  object-position: center top;
+  transform: none;
+}
+
 .fashion-slot.is-shoes .fashion-slot-photo,
 .fashion-slot.is-shoes .fashion-slot-arrow {
   height: 120px;

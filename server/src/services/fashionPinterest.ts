@@ -385,7 +385,6 @@ function pieceFromHit(row: WebHit, slot: RackSlot, era: GarmentEra, audience: Sh
   else if (shoeWord) keptSlot = 'shoes';
   else return null;
   if (keptSlot === 'shoes' && /xiangqing|_[3-9]\.(?:jpg|jpeg|png|webp)|sole|bottom-view|side-view/i.test(row.imageUrl)) return null;
-  if (keptSlot === 'bottom' && /\b(worn|wearing|outfit|lookbook|ootd|on model|styled|person|feet|foot|sneakers?|trainers?|shoes)\b|full[- ]?length|on[- ]?body/i.test(`${title} ${row.imageUrl}`) && !/bootcut/i.test(title)) return null;
   return {
     id: `day-${keptSlot}-${hash(row.imageUrl)}`,
     slot: keptSlot,

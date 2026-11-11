@@ -134,7 +134,6 @@ function usable(item: WardrobePiece | null) {
   if (/[a-z]1\.(?:jpg|jpeg|png|webp)(?:$|\?)/i.test(item.imageUrl)) return false;
   if (/[-_](?:2|3|back|rear)\.(?:jpg|jpeg|png|webp)(?:$|\?)/i.test(item.imageUrl)) return false;
   if (item.slot === 'shoes' && /\b(jackets?|coats?|jeans?|pants|trousers|shirts?|sweaters?|hoodies?)\b/i.test(text)) return false;
-  if (item.slot === 'bottoms' && /\b(worn|wearing|outfit|lookbook|ootd|on model|styled|person|feet|foot|sneakers?|trainers?|shoes)\b|full[- ]?length|on[- ]?body/i.test(text) && !/bootcut/i.test(item.title)) return false;
   return true;
 }
 
@@ -187,7 +186,7 @@ function fromShop(row: RackPiece): WardrobePiece | null {
   if (/(?:^|[_\-/.])(back|rear)(?:[_\-/.]|$)/i.test(shotName)) return null;
   if (/[-_](?:2|3|back|rear)\.(?:jpg|jpeg|png|webp)(?:$|\?)/i.test(row.imageUrl)) return null;
   if (/[a-z]1\.(?:jpg|jpeg|png|webp)(?:$|\?)/i.test(row.imageUrl)) return null;
-  if (slot === 'bottoms' && /\b(sneakers?|loafers?|boots|shoes|footwear|hanger|waistband|interior|side view|profile|back view|worn|wearing|outfit|person|feet|foot)\b|full[- ]?length|on[- ]?body/i.test(`${row.title} ${row.imageUrl}`) && !/bootcut/i.test(row.title)) return null;
+  if (slot === 'bottoms' && /\b(sneakers?|loafers?|boots|shoes|footwear|hanger|waistband|interior|side view|profile|back view)\b/i.test(row.title) && !/bootcut/i.test(row.title)) return null;
   if (slot === 'shoes' && /\b(jeans?|pants|trousers|jackets?|shorts|person|model|wearing|side view|profile|legs|outfit)\b/i.test(row.title)) return null;
   const buy = row.buyUrl || row.sourceUrl;
   const price = row.price || 'See store';
@@ -214,14 +213,24 @@ function fromShop(row: RackPiece): WardrobePiece | null {
   };
 }
 
+function photoKey(url: string) {
+  return url.split('?')[0].toLowerCase().replace(/_(?:grande|large|medium|small|compact|progressive|master)\b/g, '');
+}
+
+function shoesInPhoto(item: WardrobePiece) {
+  if (item.slot !== 'bottoms' || /bootcut|boot-cut/i.test(item.title)) return false;
+  return /\b(worn|wearing|outfit|lookbook|ootd|styled|person|feet|foot|sneakers?|trainers?|shoes)\b|full[- ]?length|on[- ]?body/i.test(`${item.title} ${item.imageUrl}`);
+}
+
 function mergeSlot(online: WardrobePiece[], saved: WardrobePiece[]) {
   const seen = new Set<string>();
   const titles = new Set<string>();
   const out: WardrobePiece[] = [];
   for (const item of [...saved, ...online]) {
     const titleKey = `${item.slot}:${item.title.toLowerCase().replace(/[^a-z0-9]+/g, '')}`;
-    if (seen.has(item.imageUrl) || titles.has(titleKey)) continue;
-    seen.add(item.imageUrl);
+    const key = photoKey(item.imageUrl);
+    if (seen.has(key) || titles.has(titleKey)) continue;
+    seen.add(key);
     titles.add(titleKey);
     out.push(item);
   }
@@ -261,14 +270,29 @@ function SlotRow({
   onNext: () => void;
   onPick: () => void;
 }) {
+  const [crop, setCrop] = useState(() => shoesInPhoto(item));
+  const photoRef = useRef<HTMLImageElement>(null);
+  const applyCrop = (img: HTMLImageElement | null) => {
+    const portrait = Boolean(img && img.complete && img.naturalHeight > img.naturalWidth * 1.15);
+    setCrop(shoesInPhoto(item) || portrait);
+  };
+  useEffect(() => {
+    applyCrop(photoRef.current);
+  }, [item]);
   const frame = whole ? 'is-whole' : item.slot === 'tops' ? 'is-top' : item.slot === 'bottoms' ? 'is-bottom' : item.slot === 'shoes' ? 'is-shoes' : 'is-dress';
   return (
-    <div className={`fashion-slot ${frame}${tall ? ' is-dress' : ''}${picked ? ' is-picked' : ''}`}>
+    <div className={`fashion-slot ${frame}${tall ? ' is-dress' : ''}${picked ? ' is-picked' : ''}${crop ? ' is-crop-shoes' : ''}`}>
       <button type="button" className="fashion-slot-arrow" onClick={onPrev} aria-label={`Previous ${item.slot}`}>
         {'<'}
       </button>
       <button type="button" className="fashion-slot-photo" onClick={onPick}>
-        <img src={item.imageUrl} alt={item.title} referrerPolicy="no-referrer" />
+        <img
+          ref={photoRef}
+          src={item.imageUrl}
+          alt={item.title}
+          referrerPolicy="no-referrer"
+          onLoad={(event) => applyCrop(event.currentTarget)}
+        />
       </button>
       <button type="button" className="fashion-slot-arrow" onClick={onNext} aria-label={`Next ${item.slot}`}>
         {'>'}
@@ -314,6 +338,7 @@ export default function OutfitOptionCard({
   const [note, setNote] = useState('');
   const [localPerson, setLocalPerson] = useState<string | null>(null);
   const listsRef = useRef(lists);
+  const passedRef = useRef(new Set<string>());
   const topIndexRef = useRef(topIndex);
   const bottomIndexRef = useRef(bottomIndex);
   const shoeIndexRef = useRef(shoeIndex);
@@ -374,18 +399,6 @@ export default function OutfitOptionCard({
         dresses: mergeSlot(found.dresses, prev.dresses),
         shoes: mergeSlot(found.shoes, prev.shoes),
       };
-      const wearMade = (list: WardrobePiece[], current: number, salt: number) => {
-        if (madePiece(at(list, current))) return;
-        const hit = pickMade(list, salt, madePiece);
-        if (madePiece(at(list, hit))) {
-          if (list === next.tops) setTopIndex(hit);
-          else if (list === next.bottoms) setBottomIndex(hit);
-          else setShoeIndex(hit);
-        }
-      };
-      wearMade(next.tops, topIndexRef.current, seed);
-      wearMade(next.bottoms, bottomIndexRef.current, seed + 3);
-      wearMade(next.shoes, shoeIndexRef.current, seed + 7);
       if (!prev.dresses.length && next.dresses.length && styleIndices(next, 'mix', seed, allowDress).dress) {
         setDressOn(true);
         setDressIndex(styleIndices(next, 'mix', seed, allowDress).dressIndex);
@@ -425,6 +438,7 @@ export default function OutfitOptionCard({
   useEffect(() => {
     let cancel = false;
     pageRef.current = 0;
+    passedRef.current.clear();
     setLists(saved);
     setDressOn(false);
     setFresh(`Pulling today's ${who} clothes...`);
@@ -457,11 +471,22 @@ export default function OutfitOptionCard({
     };
   }, [audience, readRacks, saved, seed, who]);
 
-  const step = (setIndex: (value: number | ((current: number) => number)) => void, length: number, dir: number) => {
+  const step = (setIndex: (value: number | ((current: number) => number)) => void, list: WardrobePiece[], dir: number) => {
     setIndex((current) => {
-      const next = current + dir;
+      const toward = dir < 0 ? -1 : 1;
+      const here = list[current];
+      if (dir > 0 && here) passedRef.current.add(photoKey(here.imageUrl));
+      for (let n = current + toward; n >= 0 && n < list.length; n += toward) {
+        const item = list[n];
+        if (!usable(item)) continue;
+        const key = photoKey(item.imageUrl);
+        if (dir > 0 && passedRef.current.has(key)) continue;
+        if (dir < 0) passedRef.current.delete(key);
+        if (dir > 0) void loadMore();
+        return n;
+      }
       if (dir > 0) void loadMore();
-      return next;
+      return current;
     });
   };
 
@@ -469,9 +494,15 @@ export default function OutfitOptionCard({
   const bottoms = lists.bottoms;
   const shoes = lists.shoes;
   const dresses = lists.dresses;
-  const top = at(tops, topIndex) || tops.find((item) => usable(item)) || null;
-  const bottom = at(bottoms, bottomIndex) || bottoms.find((item) => usable(item)) || null;
-  const shoe = at(shoes, shoeIndex) || shoes.find((item) => usable(item)) || null;
+  const shown = (list: WardrobePiece[], index: number) => {
+    if (!list.length) return null;
+    const start = index < 0 ? 0 : Math.min(index, list.length - 1);
+    for (let n = start; n < list.length; n += 1) if (usable(list[n])) return list[n];
+    return null;
+  };
+  const top = shown(tops, topIndex);
+  const bottom = shown(bottoms, bottomIndex);
+  const shoe = shown(shoes, shoeIndex);
   const dress = at(dresses, dressIndex);
 
   useEffect(() => {
@@ -482,16 +513,16 @@ export default function OutfitOptionCard({
     const key = 'fashion-shown';
     const taken = JSON.parse(sessionStorage.getItem(key) || '{}') as Record<string, string>;
     const freeIndex = (list: WardrobePiece[], index: number) => {
-      if (list.length < 2) return index;
       const skip = new Set(['ma-loafer', 'sm-keller', 'toms-sneaker', 'tc-denim']);
-      for (let n = 0; n < list.length; n += 1) {
-        const item = at(list, index + n);
+      const start = index >= 0 ? index : 0;
+      for (let n = start; n < list.length; n += 1) {
+        const item = list[n];
         const owner = item ? taken[item.imageUrl] : '';
-        if (!item || owner && owner !== label) continue;
+        if (!item || (owner && owner !== label)) continue;
         if (skip.has(item.id) || !usable(item)) continue;
-        return index + n;
+        return n;
       }
-      return -1;
+      return start < list.length ? start : 0;
     };
     const nextTop = freeIndex(tops, topIndex);
     const nextBottom = freeIndex(bottoms, bottomIndex);
@@ -620,8 +651,8 @@ export default function OutfitOptionCard({
               <SlotRow
                 item={dress}
                 whole
-                onPrev={() => step(setDressIndex, dresses.length, -1)}
-                onNext={() => step(setDressIndex, dresses.length, 1)}
+                onPrev={() => step(setDressIndex, dresses, -1)}
+                onNext={() => step(setDressIndex, dresses, 1)}
                 onPick={() => setShop(dress)}
               />
             ) : (
@@ -632,11 +663,11 @@ export default function OutfitOptionCard({
                     picked={focus === 'tops'}
                     onPrev={() => {
                       setFocus('tops');
-                      step(setTopIndex, tops.length, -1);
+                      step(setTopIndex, tops, -1);
                     }}
                     onNext={() => {
                       setFocus('tops');
-                      step(setTopIndex, tops.length, 1);
+                      step(setTopIndex, tops, 1);
                     }}
                     onPick={() => setFocus('tops')}
                   />
@@ -647,11 +678,11 @@ export default function OutfitOptionCard({
                     picked={focus === 'bottoms'}
                     onPrev={() => {
                       setFocus('bottoms');
-                      step(setBottomIndex, bottoms.length, -1);
+                      step(setBottomIndex, bottoms, -1);
                     }}
                     onNext={() => {
                       setFocus('bottoms');
-                      step(setBottomIndex, bottoms.length, 1);
+                      step(setBottomIndex, bottoms, 1);
                     }}
                     onPick={() => setFocus('bottoms')}
                   />
@@ -666,11 +697,11 @@ export default function OutfitOptionCard({
                 picked={focus === 'shoes'}
                 onPrev={() => {
                   setFocus('shoes');
-                  step(setShoeIndex, shoes.length, -1);
+                  step(setShoeIndex, shoes, -1);
                 }}
                 onNext={() => {
                   setFocus('shoes');
-                  step(setShoeIndex, shoes.length, 1);
+                  step(setShoeIndex, shoes, 1);
                 }}
                 onPick={() => setFocus('shoes')}
               />

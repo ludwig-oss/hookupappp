@@ -112,9 +112,11 @@ function HairPreview({
     if (!canvas) return;
     canvas.width = 720;
     canvas.height = 960;
+    const families = ['short', 'medium', 'long', 'protective', 'slick'] as const;
+    const densities = ['tight', 'soft', 'voluminous'] as const;
     void paintHairTryOn(canvas, faceUrl, {
-      family: hair?.family,
-      density: hair?.density,
+      family: families.find((item) => item === hair?.family),
+      density: densities.find((item) => item === hair?.density),
       refHairUrl,
       color: '#241810',
     });

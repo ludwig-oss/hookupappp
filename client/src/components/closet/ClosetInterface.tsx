@@ -1,11 +1,11 @@
 import type { ClosetGender, EquippedCloset } from '../../data/closetCatalog';
-import CluelessClosetApp from './CluelessClosetApp';
+import OutfitStage from './OutfitStage';
 
 export default function ClosetInterface({
   faceUrl: _faceUrl,
   bodyUrl,
   skinTone: _skinTone,
-  gender: genderProp,
+  gender: _gender,
   outfitHint: _outfitHint,
   onEquipChange: _onEquipChange,
 }: {
@@ -16,6 +16,5 @@ export default function ClosetInterface({
   outfitHint?: { top?: string; bottom?: string; outer?: string; shoeColor?: string };
   onEquipChange?: (eq: EquippedCloset) => void;
 }) {
-  const gender: ClosetGender = genderProp === 'fem' ? 'fem' : 'masc';
-  return <CluelessClosetApp gender={gender} bodyUrl={bodyUrl} />;
+  return <OutfitStage userImage={bodyUrl} />;
 }

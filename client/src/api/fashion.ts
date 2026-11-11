@@ -43,6 +43,9 @@ export interface RackPiece {
   sourceUrl: string;
   era?: GarmentEra;
   family?: string;
+  buyUrl?: string;
+  store?: string;
+  price?: string;
 }
 
 export interface RedCarpetRacks {

@@ -560,7 +560,7 @@ const SettingsWidgetFull = () => {
             </div>
           </div>
 
-          <button onClick={handleSaveProfile} className="select-user-btn" disabled={loading} style={{ width: '100%' }}>
+          <button onClick={() => void handleSaveProfile()} className="select-user-btn" disabled={loading} style={{ width: '100%' }}>
             {loading ? 'Saving...' : 'Save Profile Changes'}
           </button>
         </div>

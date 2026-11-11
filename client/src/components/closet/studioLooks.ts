@@ -1,6 +1,6 @@
 import type { RackPiece, RedCarpetRacks } from '../../api/fashion';
 
-type Look = { title: string; era: 'vintage' | 'modern'; slot: 'top' | 'bottom'; fill: string; family: string; kind: string };
+type Look = { title: string; era: 'vintage' | 'modern'; slot: 'top' | 'bottom' | 'shoes'; fill: string; family: string; kind: string };
 
 const LOOKS: Look[] = [
   { title: 'Yellow plaid cropped blazer', era: 'vintage', slot: 'top', fill: '#e6b800', family: 'plaid', kind: 'blazer' },
@@ -11,6 +11,10 @@ const LOOKS: Look[] = [
   { title: 'Vintage column skirt', era: 'vintage', slot: 'bottom', fill: '#3d2914', family: 'evening', kind: 'column' },
   { title: 'Metallic silver pleated mini skirt', era: 'modern', slot: 'bottom', fill: '#c5ccd4', family: 'silver', kind: 'pleat' },
   { title: 'Black straight trouser', era: 'modern', slot: 'bottom', fill: '#161616', family: 'black', kind: 'trouser' },
+  { title: 'Yellow plaid heel', era: 'vintage', slot: 'shoes', fill: '#e6b800', family: 'plaid', kind: 'heel' },
+  { title: 'Black leather heel', era: 'modern', slot: 'shoes', fill: '#111111', family: 'black', kind: 'heel' },
+  { title: 'Ivory satin heel', era: 'vintage', slot: 'shoes', fill: '#f4efe6', family: 'ivory', kind: 'heel' },
+  { title: 'White leather sneaker', era: 'modern', slot: 'shoes', fill: '#f7f7f7', family: 'white', kind: 'sneaker' },
 ];
 
 function drawing(look: Look): string {
@@ -24,6 +28,8 @@ function drawing(look: Look): string {
     column: `<path d="M96 24 H144 L156 250 H84 Z" fill="${look.fill}" stroke="#111" stroke-width="3"/>`,
     pleat: `<path d="M80 24 H160 L200 250 H40 Z" fill="${look.fill}" stroke="#111" stroke-width="3"/>`,
     trouser: `<path d="M86 20 H154 L166 120 L150 250 H118 L120 120 L102 250 H70 L86 120 Z" fill="${look.fill}" stroke="#111" stroke-width="3"/>`,
+    heel: `<path d="M48 150 H150 L168 168 H188 L176 196 H150 L132 168 H70 L58 210 H36 Z" fill="${look.fill}" stroke="#111" stroke-width="3"/>`,
+    sneaker: `<path d="M40 150 H150 L176 172 H188 V196 H36 V176 Z" fill="${look.fill}" stroke="#111" stroke-width="3"/>`,
   };
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 270">${shapes[look.kind]}</svg>`;
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
@@ -38,6 +44,9 @@ function piece(look: Look, index: number): RackPiece {
     sourceUrl: '',
     era: look.era,
     family: look.family,
+    buyUrl: `https://www.google.com/search?tbm=shop&q=${encodeURIComponent(look.title)}`,
+    store: '',
+    price: '',
   };
 }
 
@@ -46,7 +55,7 @@ export function localStudioRacks(): RedCarpetRacks {
     tops: LOOKS.filter((look) => look.slot === 'top').map(piece),
     bottoms: LOOKS.filter((look) => look.slot === 'bottom').map(piece),
     dresses: [],
-    shoes: [],
+    shoes: LOOKS.filter((look) => look.slot === 'shoes').map(piece),
     source: 'studio',
     detail: '',
   };

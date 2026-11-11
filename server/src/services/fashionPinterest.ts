@@ -12,6 +12,9 @@ export interface RackPiece {
   sourceUrl: string;
   era: GarmentEra;
   family?: string;
+  buyUrl?: string;
+  store?: string;
+  price?: string;
 }
 
 export interface RedCarpetRacks {
@@ -23,7 +26,7 @@ export interface RedCarpetRacks {
   detail: string;
 }
 
-type Recipe = { title: string; era: GarmentEra; slot: 'top' | 'bottom'; fill: string; family: string; kind: string };
+type Recipe = { title: string; era: GarmentEra; slot: 'top' | 'bottom' | 'shoes'; fill: string; family: string; kind: string };
 
 /** Iconic award-show shapes, stored as garment descriptions only. Never shown as a credit. */
 const RECIPES: Recipe[] = [
@@ -39,6 +42,13 @@ const RECIPES: Recipe[] = [
   { title: 'Black straight trouser', era: 'modern', slot: 'bottom', fill: '#161616', family: 'black', kind: 'trouser' },
   { title: 'Indigo straight denim', era: 'modern', slot: 'bottom', fill: '#1d3d6e', family: 'denim', kind: 'denim' },
   { title: 'Cream slip skirt', era: 'vintage', slot: 'bottom', fill: '#efe6d6', family: 'ivory', kind: 'slip' },
+  { title: 'Yellow plaid heel', era: 'vintage', slot: 'shoes', fill: '#e6b800', family: 'plaid', kind: 'heel' },
+  { title: 'Black leather heel', era: 'modern', slot: 'shoes', fill: '#111111', family: 'black', kind: 'heel' },
+  { title: 'Ivory satin heel', era: 'vintage', slot: 'shoes', fill: '#f4efe6', family: 'ivory', kind: 'heel' },
+  { title: 'Silver strappy sandal', era: 'modern', slot: 'shoes', fill: '#c5ccd4', family: 'silver', kind: 'sandal' },
+  { title: 'Black ankle boot', era: 'modern', slot: 'shoes', fill: '#1a1a1a', family: 'evening', kind: 'boot' },
+  { title: 'White leather sneaker', era: 'modern', slot: 'shoes', fill: '#f7f7f7', family: 'white', kind: 'sneaker' },
+  { title: 'Indigo court shoe', era: 'modern', slot: 'shoes', fill: '#1d3d6e', family: 'denim', kind: 'court' },
 ];
 
 const BLOCKED =
@@ -99,6 +109,11 @@ function studioGarment(recipe: Recipe): string {
     trouser: `<path d="M86 20 H154 L166 120 L150 250 H118 L120 120 L102 250 H70 L86 120 Z" fill="${recipe.fill}" stroke="#111" stroke-width="3"/>`,
     denim: `<path d="M86 20 H154 L168 118 L152 250 H118 L120 118 L100 250 H68 L84 118 Z" fill="${recipe.fill}" stroke="#0c2244" stroke-width="3"/><path d="M92 48 H148" stroke="#d6c07a" stroke-width="4"/>`,
     slip: `<path d="M90 24 H150 L186 250 H54 Z" fill="${recipe.fill}" stroke="#111" stroke-width="3"/>`,
+    heel: `<path d="M48 150 H150 L168 168 H188 L176 196 H150 L132 168 H70 L58 210 H36 Z" fill="${recipe.fill}" stroke="#111" stroke-width="3"/>`,
+    sandal: `<path d="M46 156 H148 L170 172 H40 Z" fill="${recipe.fill}" stroke="#111" stroke-width="3"/><path d="M70 156 L86 120 H110 L124 156 M150 168 L168 196" fill="none" stroke="#111" stroke-width="3"/>`,
+    boot: `<path d="M78 40 H132 V168 H176 L164 210 H48 L60 168 H78 Z" fill="${recipe.fill}" stroke="#111" stroke-width="3"/>`,
+    sneaker: `<path d="M40 150 H150 L176 172 H188 V196 H36 V176 Z" fill="${recipe.fill}" stroke="#111" stroke-width="3"/><path d="M58 150 L70 118 H108 L120 150" fill="none" stroke="#111" stroke-width="3"/>`,
+    court: `<path d="M46 158 H146 L168 176 H186 L172 204 H150 L128 176 H64 L52 204 H34 Z" fill="${recipe.fill}" stroke="#111" stroke-width="3"/>`,
   };
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 270">${drawings[recipe.kind] || drawings.shirt}</svg>`;
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
@@ -113,46 +128,81 @@ function studioPiece(recipe: Recipe, index: number): RackPiece {
     sourceUrl: '',
     era: recipe.era,
     family: recipe.family,
+    buyUrl: `https://www.google.com/search?tbm=shop&q=${encodeURIComponent(recipe.title)}`,
+    store: '',
+    price: '',
   };
 }
 
 function studioRacks(): RedCarpetRacks {
   const tops = RECIPES.filter((r) => r.slot === 'top').map(studioPiece);
   const bottoms = RECIPES.filter((r) => r.slot === 'bottom').map(studioPiece);
-  return { tops, bottoms, dresses: [], shoes: [], source: 'studio', detail: '' };
+  const shoes = RECIPES.filter((r) => r.slot === 'shoes').map(studioPiece);
+  return { tops, bottoms, dresses: [], shoes, source: 'studio', detail: '' };
+}
+
+function storeHost(link: string): string {
+  try {
+    return new URL(link).hostname.replace(/^www\./, '');
+  } catch {
+    return '';
+  }
+}
+
+type ShopHit = { link?: string; product_link?: string; source?: string; price?: string };
+
+async function shopFor(name: string, key: string): Promise<{ buyUrl: string; store: string; price: string } | null> {
+  const url = new URL('https://serpapi.com/search.json');
+  url.searchParams.set('engine', 'google_shopping');
+  url.searchParams.set('q', name);
+  url.searchParams.set('api_key', key);
+  const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
+  if (!res.ok) return null;
+  const data = (await res.json()) as { shopping_results?: ShopHit[] };
+  const row = (data.shopping_results || []).find((item) => String(item.product_link || item.link || '').startsWith('https://'));
+  if (!row) return null;
+  const buyUrl = String(row.product_link || row.link || '').trim();
+  return { buyUrl, store: String(row.source || storeHost(buyUrl)), price: String(row.price || '') };
 }
 
 type ImageHit = { title?: string; original?: string; thumbnail?: string; link?: string };
 
-function productQuery(name: string): string {
-  return `${name} flat lay isolated white background -model -face -portrait -sunglasses -person`;
+function productQuery(recipe: Recipe): string {
+  const feet = recipe.slot === 'shoes' ? ' -feet -foot -legs -leg -ankle -toes' : '';
+  return `${recipe.title} flat lay isolated white background -model -face -portrait -sunglasses -person${feet}`;
 }
 
 async function searchRecipe(recipe: Recipe, key: string): Promise<RackPiece | null> {
   const url = new URL('https://serpapi.com/search.json');
   url.searchParams.set('engine', 'google_images');
-  url.searchParams.set('q', productQuery(recipe.title));
+  url.searchParams.set('q', productQuery(recipe));
   url.searchParams.set('ijn', '0');
   url.searchParams.set('safe', 'active');
   url.searchParams.set('api_key', key);
   const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
   if (!res.ok) return null;
   const data = (await res.json()) as { images_results?: ImageHit[] };
+  const shop = await shopFor(recipe.title, key).catch(() => null);
   for (const row of data.images_results || []) {
     const imageUrl = String(row.original || '').trim();
     const title = String(row.title || '');
     const hay = `${title} ${row.link || ''} ${imageUrl}`;
     if (!imageUrl.startsWith('https://')) continue;
     if (BLOCKED.test(hay)) continue;
+    if (recipe.slot === 'shoes' && /\b(feet|foot|legs|toes|wearing)\b/i.test(hay)) continue;
     if (!(await imageOk(imageUrl))) continue;
+    const page = String(row.link || '').startsWith('https://') ? String(row.link) : '';
     return {
       id: `flat-${recipe.slot}-${hash(imageUrl)}`,
       slot: recipe.slot,
       title: recipe.title,
       imageUrl,
-      sourceUrl: '',
+      sourceUrl: page,
       era: recipe.era,
       family: recipe.family,
+      buyUrl: shop?.buyUrl || page || `https://www.google.com/search?tbm=shop&q=${encodeURIComponent(recipe.title)}`,
+      store: shop?.store || storeHost(page),
+      price: shop?.price || '',
     };
   }
   return null;
@@ -174,11 +224,12 @@ export async function fetchRedCarpetRacks(prompt: string): Promise<RedCarpetRack
   const live = found.filter((piece): piece is RackPiece => Boolean(piece));
   const tops = live.filter((p) => p.slot === 'top');
   const bottoms = live.filter((p) => p.slot === 'bottom');
+  const shoes = live.filter((p) => p.slot === 'shoes');
   const racks: RedCarpetRacks = {
     tops: tops.length ? tops : studio.tops,
     bottoms: bottoms.length ? bottoms : studio.bottoms,
     dresses: [],
-    shoes: [],
+    shoes: shoes.length ? shoes : studio.shoes,
     source: live.length ? 'product' : 'studio',
     detail: '',
   };

@@ -15,7 +15,7 @@ import { checkFaceInPhoto } from '../../lib/fashionFaceCheck';
 import { prepareAndUploadFile } from '../../lib/uploadMedia';
 import { restoredRecordsForEmail } from '../../lib/googleAuthSession';
 import ClosetInterface from '../closet/ClosetInterface';
-import ChersWardrobe from '../closet/ChersWardrobe';
+import OutfitStage from '../closet/OutfitStage';
 import './FashionDesk.css';
 
 function stripRoleplay(text: string) {
@@ -607,7 +607,7 @@ export default function FashionDesk({
       </form>
 
       {tab === 'compare' && result && (
-        <ChersWardrobe
+        <OutfitStage
           racks={result.racks}
           prompt={result.prompt}
           userImage={bodyUrl}

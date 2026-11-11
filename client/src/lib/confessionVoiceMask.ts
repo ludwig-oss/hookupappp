@@ -61,14 +61,14 @@ function hashToUnit(seed: string): number {
   return ((h >>> 0) % 1000) / 1000;
 }
 
-function makeShaperCurve(): Float32Array {
+function makeShaperCurve(): Float32Array<ArrayBuffer> {
   const n = 1024;
   const curve = new Float32Array(n);
   for (let i = 0; i < n; i++) {
     const x = (i * 2) / n - 1;
     curve[i] = Math.tanh(x * 1.65) * 0.92;
   }
-  return curve;
+  return curve as Float32Array<ArrayBuffer>;
 }
 
 export interface VoiceVeilHandle {

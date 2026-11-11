@@ -5,6 +5,7 @@ const API_URL = API_BASE + '/api/safety/voice-recording';
 
 export interface VoiceRecordingSession {
   id: string;
+  userId?: string;
   mode: 'date_safety' | 'relationship_gathering';
   status: string;
   consentSteps: number;

@@ -890,7 +890,7 @@ export default function ConfessionBoothWidget() {
                 className="select-user-btn"
                 style={{ width: '100%', marginTop: 8 }}
                 disabled={loading || !message.trim()}
-                onClick={handleSend}
+                onClick={() => void handleSend()}
               >
                 {loading ? 'Sending…' : 'Send anonymously'}
               </button>

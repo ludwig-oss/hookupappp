@@ -40,7 +40,7 @@ export default function GarmentSlot({
     };
   }, [url, slot]);
 
-  if (src) return <img className="fancy-garment" src={src} alt={title} />;
+  if (src) return <img className="wardrobe-garment" src={src} alt={title} />;
   if (failed) return null;
-  return <div className="fancy-wait"> </div>;
+  return <div className="wardrobe-wait"> </div>;
 }

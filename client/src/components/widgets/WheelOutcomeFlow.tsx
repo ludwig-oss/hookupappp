@@ -20,7 +20,8 @@ async function sendInterestOpenChat(toUserId: string, onOpenChat?: (userId: stri
     openChatWithUser(chatId);
     onOpenChat?.(chatId);
   }
-  return { mutual, message: res.message || (mutual ? "It's a match!" : 'Interest sent') };
+  const message = (res as { message?: string }).message;
+  return { mutual, message: message || (mutual ? "It's a match!" : 'Interest sent') };
 }
 
 function interestResultMessage(mutual: boolean, message: string, targetName?: string): string {

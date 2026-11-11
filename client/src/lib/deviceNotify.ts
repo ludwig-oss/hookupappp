@@ -60,7 +60,7 @@ export function notifyDevice(title: string, body: string, kind: NotifyKind = 'ge
         silent: !playSound,
         tag: `hookup-${kind}-${Date.now()}`,
         renotify: true,
-      });
+      } as NotificationOptions);
     }
   } catch {
     /* ignore */

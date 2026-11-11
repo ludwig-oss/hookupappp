@@ -24,7 +24,7 @@ export function inspirationContextLine(
     return `Inspired by ${who || 'the runway'} look`;
   }
   if (/plaid|clueless/i.test(`${who} ${hint}`)) {
-    return "Inspired by Clueless's yellow plaid set";
+    return 'A yellow plaid set from the closet';
   }
   if (/shimmer|velvet|crop|street/i.test(hint)) {
     return "Inspired by Hailey Bieber's Streetwear";

@@ -12,7 +12,7 @@ function authHeaders(token?: string) {
 
 export async function registerPasskey(token?: string): Promise<string> {
   const optsRes = await axios.post(`${API_URL}/passkey/register/options`, {}, { headers: authHeaders(token) });
-  const attResp = await startRegistration({ optionsJSON: optsRes.data });
+  const attResp = await startRegistration({ optionsJSON: optsRes.data } as unknown as Parameters<typeof startRegistration>[0]);
   const verifyRes = await axios.post(`${API_URL}/passkey/register/verify`, attResp, { headers: authHeaders(token) });
   return verifyRes.data.message || 'Face ID registered';
 }
@@ -20,7 +20,7 @@ export async function registerPasskey(token?: string): Promise<string> {
 export async function loginWithPasskey(username: string): Promise<{ token: string; user: Record<string, unknown> }> {
   const optsRes = await axios.post(`${API_URL}/passkey/login/options`, { username: username.trim() });
   const { options, userId } = optsRes.data as { options: PublicKeyCredentialRequestOptions; userId: string };
-  const assertion = await startAuthentication({ optionsJSON: options });
+  const assertion = await startAuthentication({ optionsJSON: options } as unknown as Parameters<typeof startAuthentication>[0]);
   const verifyRes = await axios.post(`${API_URL}/passkey/login/verify`, { ...assertion, userId });
   return verifyRes.data;
 }

@@ -69,7 +69,13 @@ async function callFashn(person: string, garment: string, category: TryOnCategor
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
     body: JSON.stringify({
       model_name: 'tryon-v1.6',
-      inputs: { model_image: person, garment_image: garment, category: fashnCategory },
+      inputs: {
+        model_image: person,
+        garment_image: garment,
+        category: fashnCategory,
+        mode: 'quality',
+        garment_photo_type: 'flat-lay',
+      },
     }),
   });
   if (!run.ok) return null;
@@ -113,7 +119,7 @@ async function callIdmVton(
         garm_img: garment,
         garment_des: description.slice(0, 120) || 'outfit',
         category,
-        crop: true,
+        crop: false,
         steps: 30,
       },
     }),
@@ -150,7 +156,7 @@ export async function runVirtualTryOn(opts: {
       tryOnUrl: null,
       engine: 'preview',
       status: 'unavailable',
-      detail: 'Upload a full-body photo, then press DRESS ME.',
+      detail: 'Upload a full-body photo. Try on dresses that photo and keeps your face, hair, and proportions.',
     };
   }
   const category = opts.category || categoryForLook(opts.warp, opts.event, opts.title);

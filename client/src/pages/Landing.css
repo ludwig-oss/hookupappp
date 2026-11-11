@@ -124,6 +124,8 @@
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-shrink: 0;
+  white-space: nowrap;
   font-size: 24px;
   font-weight: 800;
   color: #fff;
@@ -136,7 +138,22 @@
 }
 
 .landing-logo-icon {
-  font-size: 28px;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  object-fit: cover;
+  display: block;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+}
+
+.landing-mark {
+  width: 112px;
+  height: 112px;
+  border-radius: 28px;
+  object-fit: cover;
+  display: block;
+  margin: 0 auto 22px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
 }
 
 .landing-nav-links {
@@ -261,6 +278,13 @@ button.landing-btn {
 @media (max-width: 768px) {
   .landing-nav-links {
     display: none;
+  }
+
+  .landing-mark {
+    width: 88px;
+    height: 88px;
+    border-radius: 22px;
+    margin-bottom: 16px;
   }
 
   .landing-tagline {

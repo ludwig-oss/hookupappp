@@ -55,8 +55,12 @@ export function LoginScreen() {
       <View style={[StyleSheet.absoluteFill, styles.shade]} />
       <View style={styles.glow} />
       <SafeAreaView style={styles.safe}>
-        <Text style={styles.logo}>Hook Up</Text>
+        <View style={styles.brand}>
+          <Image source={require('../../assets/icon.png')} style={styles.brandIcon} accessibilityLabel="Hook Up logo" />
+          <Text style={styles.logo}>Hook Up</Text>
+        </View>
         <View style={styles.hero}>
+          <Image source={require('../../assets/icon.png')} style={styles.heroMark} accessibilityLabel="Hook Up" />
           <Text style={styles.tagline}>Find Your Match</Text>
           <Text style={styles.sub}>Real connections. Real moments.</Text>
           <GoogleButton
@@ -144,12 +148,23 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
   },
   safe: { flex: 1, paddingHorizontal: 24, paddingBottom: 12 },
+  brand: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingTop: 8 },
+  brandIcon: { width: 36, height: 36, borderRadius: 10 },
+  heroMark: {
+    width: 96,
+    height: 96,
+    borderRadius: 24,
+    marginBottom: 4,
+    shadowColor: '#000',
+    shadowOpacity: 0.4,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
+  },
   logo: {
     color: '#fff',
     fontSize: 26,
     fontWeight: '800',
     letterSpacing: -0.4,
-    paddingTop: 8,
   },
   hero: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 16 },
   tagline: {

@@ -39,6 +39,7 @@ const Landing = () => {
 
       <nav className="landing-nav">
         <Link to="/" className="landing-logo">
+          <img src="/icon.png" alt="" className="landing-logo-icon" />
           Hook Up
         </Link>
         <div className="landing-nav-links">
@@ -66,6 +67,7 @@ const Landing = () => {
       </nav>
 
       <main className="landing-hero">
+        <img src="/icon.png" alt="Hook Up" className="landing-mark" />
         <h1 className="landing-tagline">Find Your Match</h1>
         <p className="landing-sub">Real connections. Real moments.</p>
         <Link to="/signup" className="landing-cta">

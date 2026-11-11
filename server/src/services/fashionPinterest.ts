@@ -235,23 +235,22 @@ const COLORS = [
 ];
 const ANGLES = ['front view', 'studio front', 'ghost mannequin front', 'flat lay front', 'product front on white'];
 const TOP_KINDS = [
-  'oxford shirt', 'crewneck sweater', 'polo shirt', 'blazer', 'bomber jacket', 'cardigan', 'overshirt',
-  'turtleneck', 'tee', 'denim jacket', 'linen shirt', 'flannel shirt', 'zip jacket', 'knit polo',
-  'coach jacket', 'shirt jacket', 'rugby shirt', 'chore coat', 'hoodie', 'vest',
-  'graphic tee', 'varsity jacket', 'track jacket', 'oversize tee',
+  'spiked leather jacket', 'studded biker jacket', 'painted denim jacket', 'patched bomber jacket',
+  'hand painted leather jacket', 'bleached denim jacket', 'frayed denim jacket', 'safety pin jacket',
+  'graffiti coach jacket', 'chain detail jacket', 'shredded knit sweater', 'distressed leather jacket',
 ];
 const BOTTOM_KINDS = [
-  'straight jeans', 'slim jeans', 'chinos', 'dress trousers', 'pleated trousers', 'wide trousers',
-  'corduroy pants', 'cargo pants', 'baggy jeans', 'carpenter pants',
+  'painted jeans', 'splatter paint jeans', 'ripped stacked jeans', 'ragged distressed jeans',
+  'patched cargo pants', 'bleached black jeans', 'frayed hem trousers', 'graffiti denim pants',
+  'shredded baggy jeans', 'paint splatter trousers',
 ];
 const SHOE_KINDS = [
-  'leather sneakers pair', 'canvas sneakers pair', 'loafers pair', 'chelsea boots pair',
-  'derby shoes pair', 'oxford shoes pair', 'desert boots pair', 'runner sneakers pair',
-  'skate sneakers pair', 'retro runners pair',
+  'painted high top sneakers pair', 'custom painted sneakers pair', 'studded leather boots pair',
+  'distressed combat boots pair', 'spiked ankle boots pair', 'patched sneakers pair',
+  'painted leather boots pair', 'beat up derby shoes pair',
 ];
-const DRESS_KINDS = ['slip dress', 'shirt dress', 'column dress', 'mini dress', 'knit dress'];
+const DRESS_KINDS = ['painted slip dress', 'shredded knit dress', 'patched mini dress', 'deconstructed shirt dress', 'distressed column dress'];
 const DEPTHS = 40;
-const SHOT = '-back -rear -behind -"back view" -sole -outsole -holding -hand -model -wearing -"full body" -"on model" -person -lookbook';
 
 type RackQuery = { slot: RackSlot; era: GarmentEra; q: string; first: number };
 
@@ -293,19 +292,12 @@ function queryAt(audience: ShopAudience, n: number, hue: string | null, only: Ra
   const depth = Math.floor(rest / (colors.length * ANGLES.length)) % DEPTHS;
   const who = audience === 'men' ? "men's" : "women's";
   const avoid = audience === 'men' ? '-women -woman -female -skirt -dress -heel' : '-mens -"for men"';
-  const mood = index % 3 === 0 ? '90s vintage' : index % 3 === 1 ? 'street style' : 'modern';
-  const framed =
-    row.slot === 'top'
-      ? 'from the neck to the waist full garment front -closeup -crop'
-      : row.slot === 'bottom'
-        ? 'full length front product photo from waist to ankle hem'
-        : row.slot === 'shoes'
-          ? 'a pair side by side front -sole -single'
-          : 'front';
+  const mood = index % 2 === 0 ? 'diy street' : 'vintage punk';
+  const kind = row.kind.replace(/ pair$/, '');
   return {
     slot: row.slot,
     era: index % 3 === 0 ? 'vintage' : 'modern',
-    q: `${color} ${who} ${mood} ${row.kind} ${angle} ${framed} product photo ${SHOT} ${avoid}`,
+    q: `"${kind}" ${color} ${who} ${mood} ${angle} -back -sole ${avoid}`,
     first: 1 + depth * 35,
   };
 }
@@ -343,6 +335,10 @@ function pieceFromHit(row: WebHit, slot: RackSlot, era: GarmentEra, audience: Sh
   if (!looksLikeShop(row.page, row.imageUrl)) return null;
   const title = row.title.split('|')[0].split(' - ')[0].replace(/\s+/g, ' ').trim().slice(0, 72);
   if (title.length < 3) return null;
+  if (!/\b(spikes?|studs?|studded|painted|paint|splatter|graffiti|ripped|ragged|distressed|patched|bleached|frayed|chains?|safety pin|shredded|destroyed|acid wash|deconstructed|grommets?|slashed|handmade|hand painted|beat up|fringe)\b/i.test(title)) return null;
+  if (slot === 'top' && /\b(jeans?|pants|trousers|boots?|sneakers?)\b/i.test(title)) return null;
+  if (slot === 'bottom' && (/\b(jacket|shirt|sweater|boots?|sneakers?|hoodie)\b/i.test(title) || !/\b(jeans?|pants|trousers|cargos?)\b/i.test(title))) return null;
+  if (slot === 'shoes' && (/\b(jacket|jeans?|pants|trousers|shirt|sweater)\b/i.test(title) || !/\b(shoes?|boots?|sneakers?|trainers?)\b/i.test(title))) return null;
   return {
     id: `day-${slot}-${hash(row.imageUrl)}`,
     slot,

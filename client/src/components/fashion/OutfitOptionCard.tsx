@@ -32,7 +32,7 @@ const STYLE_COPY: Record<StyleAim, string> = {
   flashy: 'Flashy — one piece is there to get attention',
   blend: 'Blended — the colors sit together',
   unique: 'Unique — a contrast that still holds',
-  mix: 'Creative — a past piece with a modern one, street mixed with tailoring',
+  mix: 'Creative — spikes, paint, rips, and patches on the top, the trousers, and the shoes',
 };
 
 const HUES: { id: string; label: string; hex: string }[] = [
@@ -65,11 +65,24 @@ function toneOf(title: string): string {
   return 'neutral';
 }
 
+const MADE = /\b(spikes?|studs?|studded|painted|paint splatter|splatter|graffiti|ripped|ragged|distressed|patched|bleached|frayed|chains?|safety pin|shredded|destroyed|acid wash|deconstructed|grommets?|slashed|handmade|hand painted|custom painted|beat up)\b/;
+
+function madePiece(item: WardrobePiece | null | undefined): boolean {
+  return Boolean(item && MADE.test(item.title.toLowerCase()));
+}
+
 function loudPiece(item: WardrobePiece): boolean {
-  return (
-    /leather|print|pattern|plaid|metallic|sequin|velvet|silk|gold|snake|jacquard|graphic|logo|bright|neon/.test(item.title.toLowerCase()) ||
-    toneOf(item.title) === 'color'
-  );
+  return madePiece(item) || toneOf(item.title) === 'color';
+}
+
+function pickMade(list: WardrobePiece[], salt: number, extra: (item: WardrobePiece) => boolean): number {
+  if (!list.length) return 0;
+  const rows = list.map((item, index) => ({ item, index })).filter(({ item }) => item.id !== 'tc-denim' || list.length === 1);
+  const made = rows.filter(({ item }) => madePiece(item));
+  const pool = made.length ? made : rows;
+  const liked = pool.filter(({ item }) => extra(item));
+  const use = liked.length ? liked : pool;
+  return use[Math.abs(salt) % use.length].index;
 }
 
 function indexWhere(list: WardrobePiece[], salt: number, prefer: (item: WardrobePiece) => boolean): number {
@@ -88,12 +101,10 @@ function styleIndices(
   salt: number,
   allowDress: boolean
 ) {
-  const top = indexWhere(lists.tops, salt, (item) => {
+  const top = pickMade(lists.tops, salt, (item) => {
     if (aim === 'flashy') return loudPiece(item);
     if (aim === 'blend') return toneOf(item.title) !== 'color';
-    if (aim === 'unique') return item.vibe === '90s-vintage' || loudPiece(item);
-    if (aim === 'mix') return item.vibe === '90s-vintage' || item.vibe === 'street-luxe';
-    return !loudPiece(item);
+    return item.vibe === '90s-vintage' || item.vibe === 'street-luxe' || madePiece(item);
   });
   const hero = lists.tops[top];
   const heroTone = hero ? toneOf(hero.title) : 'neutral';
@@ -101,24 +112,8 @@ function styleIndices(
     const tone = toneOf(item.title);
     return tone === heroTone || tone === 'neutral' || heroTone === 'neutral';
   };
-  const bottomPool = lists.bottoms
-    .map((item, index) => ({ item, index }))
-    .filter(({ item }) => lists.bottoms.length === 1 || item.id !== 'tc-denim');
-  const bottomLiked = bottomPool.filter(({ item }) => {
-    if (aim === 'mix') return item.vibe !== hero?.vibe;
-    if (aim === 'flashy') return !loudPiece(item) && agrees(item);
-    if (aim === 'blend') return agrees(item);
-    return agrees(item) && item.vibe !== hero?.vibe;
-  });
-  const bottomChoice = (bottomLiked.length ? bottomLiked : bottomPool)[Math.abs(salt + 3) % Math.max(bottomPool.length, 1)];
-  const bottom = bottomChoice ? bottomChoice.index : 0;
-  const shoe = indexWhere(lists.shoes, salt + 7, (item) => {
-    if (aim === 'mix') return item.vibe === 'street-luxe' || item.vibe !== hero?.vibe;
-    if (aim === 'flashy') return hero && loudPiece(hero) ? !loudPiece(item) && agrees(item) : loudPiece(item);
-    if (aim === 'blend') return agrees(item);
-    if (aim === 'unique') return item.vibe !== hero?.vibe;
-    return loudPiece(item);
-  });
+  const bottom = pickMade(lists.bottoms, salt + 3, (item) => (aim === 'blend' ? agrees(item) : item.vibe !== hero?.vibe || madePiece(item)));
+  const shoe = pickMade(lists.shoes, salt + 7, (item) => (aim === 'blend' ? agrees(item) : madePiece(item) || item.vibe !== hero?.vibe));
   const dressIndex = indexWhere(lists.dresses, salt + 2, (item) => (aim === 'flashy' ? loudPiece(item) : true));
   const useDress = allowDress && lists.dresses.length > 0 && (aim === 'flashy' || aim === 'unique') && salt % 3 === 0;
   return { top, bottom, shoe, dressIndex, dress: useDress };
@@ -262,9 +257,13 @@ export default function OutfitOptionCard({
   const [note, setNote] = useState('');
   const [localPerson, setLocalPerson] = useState<string | null>(null);
   const listsRef = useRef(lists);
+  const topIndexRef = useRef(topIndex);
   const bottomIndexRef = useRef(bottomIndex);
+  const shoeIndexRef = useRef(shoeIndex);
   listsRef.current = lists;
+  topIndexRef.current = topIndex;
   bottomIndexRef.current = bottomIndex;
+  shoeIndexRef.current = shoeIndex;
 
   const who = audience === 'women' ? "women's" : "men's";
   const allowDress = audience !== 'men';
@@ -311,20 +310,24 @@ export default function OutfitOptionCard({
       const added = found.tops.length + found.bottoms.length + found.dresses.length + found.shoes.length;
       if (!added) return;
       const prev = listsRef.current;
-      const nextBottoms = mergeSlot(found.bottoms, prev.bottoms);
-      if (found.bottoms.length) {
-        const showing = at(prev.bottoms, bottomIndexRef.current);
-        if (!showing || showing.id === 'tc-denim') {
-          const live = nextBottoms.findIndex((item) => item.id !== 'tc-denim');
-          if (live >= 0) setBottomIndex(live);
-        }
-      }
       const next = {
         tops: mergeSlot(found.tops, prev.tops),
-        bottoms: nextBottoms,
+        bottoms: mergeSlot(found.bottoms, prev.bottoms),
         dresses: mergeSlot(found.dresses, prev.dresses),
         shoes: mergeSlot(found.shoes, prev.shoes),
       };
+      const wearMade = (list: WardrobePiece[], current: number, salt: number) => {
+        if (madePiece(at(list, current))) return;
+        const hit = pickMade(list, salt, madePiece);
+        if (madePiece(at(list, hit))) {
+          if (list === next.tops) setTopIndex(hit);
+          else if (list === next.bottoms) setBottomIndex(hit);
+          else setShoeIndex(hit);
+        }
+      };
+      wearMade(next.tops, topIndexRef.current, seed);
+      wearMade(next.bottoms, bottomIndexRef.current, seed + 3);
+      wearMade(next.shoes, shoeIndexRef.current, seed + 7);
       const waiting = pendingRef.current;
       if (waiting) {
         const list = next[waiting.slot];
@@ -355,7 +358,7 @@ export default function OutfitOptionCard({
     } finally {
       moreRef.current = false;
     }
-  }, [audience, readRacks, who]);
+  }, [audience, readRacks, seed, who]);
 
   useEffect(() => {
     let cancel = false;
@@ -377,10 +380,10 @@ export default function OutfitOptionCard({
           shoes: mergeSlot(found.shoes, saved.shoes),
         };
         setLists(next);
-        setFresh(`${who[0].toUpperCase()}${who.slice(1)} clothes, street mixed with tailoring, a past piece beside a modern one. Tap a piece, then a color.`);
+        setFresh(`${who[0].toUpperCase()}${who.slice(1)} pieces with spikes, paint, rips, and patches. Tap a piece, then a color.`);
         applyStyle(next, opening, seed + 11);
         void (async () => {
-          for (let i = 0; i < 8 && !cancel; i += 1) await loadMore();
+          for (let i = 0; i < 10 && !cancel; i += 1) await loadMore();
         })();
       })
       .catch(() => {
@@ -425,7 +428,8 @@ export default function OutfitOptionCard({
         if (!item || !owner || owner === label) {
           if (!foundFree) fallback = index + n;
           foundFree = true;
-          if (item && item.id !== 'tc-denim') return index + n;
+          const madeExists = list.some((row) => madePiece(row));
+          if (item && item.id !== 'tc-denim' && (!madeExists || madePiece(item))) return index + n;
         }
       }
       return fallback;

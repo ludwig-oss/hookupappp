@@ -91,6 +91,14 @@ export default function AccountControls() {
       >
         Delete Account
       </button>
+      <button
+        type="button"
+        disabled={busy}
+        onClick={() => logout()}
+        style={{ width: '100%', marginTop: 12, padding: 12, borderRadius: 8, border: '2px solid #111', background: '#111', color: '#fff', fontWeight: 700, cursor: 'pointer' }}
+      >
+        Log out
+      </button>
 
       {pauseOpen ? (
         <Confirm

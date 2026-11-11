@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { prefetchOAuth, redirectToOAuth, type OAuthIntent } from '../lib/oauth';
+import { setStayLoggedInFlag } from '../lib/authStorage';
 import './Auth.css';
 
 type Props = { initialMode?: 'signup' | 'login' };
@@ -9,6 +10,7 @@ const AuthEntry = (_props: Props) => {
   const [searchParams] = useSearchParams();
   const [error, setError] = useState('');
   const [busy, setBusy] = useState<OAuthIntent | null>(null);
+  const [stayLoggedIn, setStayLoggedIn] = useState(true);
 
   useEffect(() => {
     prefetchOAuth('google', 'signup');
@@ -30,6 +32,7 @@ const AuthEntry = (_props: Props) => {
   const start = async (intent: OAuthIntent) => {
     setError('');
     setBusy(intent);
+    setStayLoggedInFlag(stayLoggedIn);
     try {
       await redirectToOAuth('google', intent);
     } catch (e: unknown) {
@@ -44,6 +47,18 @@ const AuthEntry = (_props: Props) => {
         <Link to="/" className="back-link">← Back</Link>
         {error && <div className="error-message">{error}</div>}
         <div className="auth-method-tabs">
+          <label className="stay-logged-in">
+            <input
+              type="checkbox"
+              checked={stayLoggedIn}
+              onChange={(event) => {
+                const on = event.target.checked;
+                setStayLoggedIn(on);
+                setStayLoggedInFlag(on);
+              }}
+            />
+            <span>Stay logged in on this device. Leave it off to sign out when you close the tab.</span>
+          </label>
           <button type="button" className="auth-button auth-tab" disabled={busy !== null} onClick={() => void start('signup')}>
             {busy === 'signup' ? 'Signing up…' : 'Sign up'}
           </button>

@@ -77,6 +77,9 @@ export function AccountControls() {
           trackColor={{ true: shell.cyan, false: '#333' }}
         />
       </View>
+      <Pressable disabled={busy} onPress={() => logout()} style={styles.logoutBtn}>
+        <Text style={styles.logoutLabel}>Log out</Text>
+      </Pressable>
       <Pressable disabled={busy} onPress={() => setDeleteOpen(true)} style={styles.deleteBtn}>
         <Text style={styles.deleteLabel}>Delete Account</Text>
       </Pressable>
@@ -152,6 +155,8 @@ const styles = StyleSheet.create({
   error: { color: '#ffb4c8', fontSize: 13, lineHeight: 18 },
   deleteBtn: { borderWidth: 1, borderColor: '#ff4d6d', borderRadius: 12, paddingVertical: 12, alignItems: 'center' },
   deleteLabel: { color: '#ff4d6d', fontWeight: '700' },
+  logoutBtn: { borderWidth: 1, borderColor: shell.cyan, borderRadius: 12, paddingVertical: 12, alignItems: 'center' },
+  logoutLabel: { color: shell.cyan, fontWeight: '700' },
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.62)', alignItems: 'center', justifyContent: 'center', padding: 24 },
   card: { width: '100%', maxWidth: 380, backgroundColor: '#16121c', borderRadius: 16, padding: 18, gap: 12 },
   body: { color: shell.text, fontSize: 15, lineHeight: 22 },

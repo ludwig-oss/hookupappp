@@ -10,6 +10,7 @@ import {
   endSession,
   getAuthToken,
   getAuthUserRaw,
+  getStayLoggedIn,
   hydrateAuth,
   isLoggedOutFlag,
   onSessionEnd,
@@ -90,7 +91,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           const session = toSessionUser(google.user);
           if (session) {
             clearLoggedOutFlag();
-            persistAuth(session, google.token, true);
+            persistAuth(session, google.token, getStayLoggedIn());
             axios.defaults.headers.common.Authorization = `Bearer ${google.token}`;
             setUser(session);
             finish();

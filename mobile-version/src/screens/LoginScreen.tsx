@@ -9,6 +9,7 @@ import {
   type OAuthIntent,
 } from '../lib/googleAuth';
 import { useAuth } from '../state/AuthContext';
+import { setStayLoggedIn } from '../session/authStorage';
 import { PrivacyPolicyCopy } from '../components/PrivacyPolicyCopy';
 
 WebBrowser.maybeCompleteAuthSession();
@@ -20,6 +21,7 @@ export function LoginScreen() {
   const [error, setError] = useState(entryError);
   const [busy, setBusy] = useState(false);
   const [privacyOpen, setPrivacyOpen] = useState(false);
+  const [stayLoggedIn, setStay] = useState(true);
 
   const isBrowser = Platform.OS === 'web' && typeof window !== 'undefined';
 
@@ -31,6 +33,7 @@ export function LoginScreen() {
     setError('');
     clearEntryError();
     rememberGoogleIntent(intent);
+    setStayLoggedIn(stayLoggedIn);
     setBusy(true);
     try {
       if (isBrowser) {
@@ -42,7 +45,7 @@ export function LoginScreen() {
         setBusy(false);
         return;
       }
-      login(session.user, session.token, { stayLoggedIn: true });
+      login(session.user, session.token, { stayLoggedIn });
     } catch (err) {
       setBusy(false);
       setError(err instanceof Error ? err.message : 'Could not start Google.');
@@ -74,6 +77,10 @@ export function LoginScreen() {
             disabled={busy}
             onPress={() => void start('login')}
           />
+          <Pressable style={styles.stayRow} onPress={() => setStay((on) => !on)} disabled={busy}>
+            <View style={[styles.stayBox, stayLoggedIn && styles.stayBoxOn]} />
+            <Text style={styles.caption}>Stay logged in on this device. Leave it off to sign out when you close the app.</Text>
+          </Pressable>
           <Text style={styles.caption}>Pick the Google email already on this phone. Hook Up never asks for a password.</Text>
           {error ? <Text style={styles.error}>{error}</Text> : null}
         </View>
@@ -223,6 +230,9 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     maxWidth: 340,
   },
+  stayRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, maxWidth: 340 },
+  stayBox: { width: 18, height: 18, marginTop: 2, borderRadius: 4, borderWidth: 2, borderColor: '#fff' },
+  stayBoxOn: { backgroundColor: '#00d4ff', borderColor: '#00d4ff' },
   error: { color: '#ffb4c8', fontSize: 14, textAlign: 'center', lineHeight: 20, maxWidth: 340 },
   pressed: { opacity: 0.9, transform: [{ scale: 0.99 }] },
   disabled: { opacity: 0.65 },

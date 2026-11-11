@@ -20,7 +20,23 @@ export function onSessionEnd(listener: () => void): () => void {
 }
 
 export function getStayLoggedIn(): boolean {
+  try {
+    const stored = sessionStorage.getItem(STAY_KEY);
+    if (stored === '1' || stored === '0') return stored === '1';
+  } catch {
+    /* native */
+  }
   return stayLoggedIn;
+}
+
+export function setStayLoggedIn(on: boolean): void {
+  stayLoggedIn = on;
+  try {
+    sessionStorage.setItem(STAY_KEY, on ? '1' : '0');
+  } catch {
+    /* native */
+  }
+  void AsyncStorage.setItem(STAY_KEY, on ? '1' : '0');
 }
 
 export function isLoggedOutFlag(): boolean {

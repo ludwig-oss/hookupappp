@@ -1,4 +1,5 @@
 import { useContext, useEffect, useRef, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
 import { profileAPI, type PhotoLockStatus } from '../api/profile';
 import { prepareAndUploadFile } from '../lib/uploadMedia';
@@ -29,6 +30,7 @@ function markReminded(userId: string): void {
 
 export default function PhotoVerificationGate() {
   const { user, updateUser } = useContext(AuthContext);
+  const location = useLocation();
   const [status, setStatus] = useState<PhotoLockStatus | null>(null);
   const [showRemind, setShowRemind] = useState(false);
   const [showScan, setShowScan] = useState(false);
@@ -92,6 +94,7 @@ export default function PhotoVerificationGate() {
 
   if (!user?.id || !status) return null;
   if (status.photoVerifiedAt) return null;
+  if (location.pathname.startsWith('/fashion-demo')) return null;
 
   const locked = status.locked;
   const pictureUrl = (user.profilePicture as string | null) || null;
@@ -199,7 +202,7 @@ export default function PhotoVerificationGate() {
           <h3 id="photo-remind-title">Safety reminder</h3>
           <p>{status.message}</p>
           <p>
-            Take a live selfie in the app. We compare it to your visible profile photo. You can keep using the app for these two days. After that, chat, matching, and posts lock until you prove it is you.
+            Take a live selfie in the app. We compare it to your visible profile photo. You can add it anytime this week, and again when you use fashion help. After the week, chat, matching, and posts lock until you prove it is you.
           </p>
           <button type="button" className="photo-lock-primary" onClick={() => setShowScan(true)}>
             Verify now

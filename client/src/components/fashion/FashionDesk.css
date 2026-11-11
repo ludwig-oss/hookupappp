@@ -557,6 +557,26 @@
   background: transparent;
 }
 
+.fashion-selfie-later {
+  margin: 0 0 14px;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.fashion-selfie-later p {
+  margin: 0 0 10px;
+}
+
+.fashion-selfie-later button {
+  border: 0;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
 .fashion-week-ask {
   margin: 0 0 14px;
   padding: 12px;

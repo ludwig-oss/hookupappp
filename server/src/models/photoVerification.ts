@@ -1,7 +1,7 @@
 import { getUserById, updateUserProfile } from './user.js';
 
 /** How long someone can use the app before a missing live selfie locks chat, matching, and posts. */
-export const PHOTO_VERIFY_GRACE_MS = 2 * 24 * 60 * 60 * 1000;
+export const PHOTO_VERIFY_GRACE_MS = 7 * 24 * 60 * 60 * 1000;
 
 export interface PhotoLockStatus {
   photoVerifiedAt: string | null;
@@ -70,21 +70,23 @@ export function photoLockStatusForUser(user: {
 export async function getPhotoLockStatus(userId: string): Promise<PhotoLockStatus | null> {
   let user = await getUserById(userId);
   if (!user) return null;
-  const patch: { createdAt?: string; photoLockNotBefore?: string } = {};
+  const patch: { createdAt?: string; photoLockNotBefore?: string; photoLockGrace?: 'week' } = {};
   if (!user.createdAt) {
     patch.createdAt = inferAccountCreatedAt(user).toISOString();
     user = { ...user, createdAt: patch.createdAt };
   }
-  // Accounts already older than two days would lock the moment this window starts.
-  // Give them the same two days, once, then the lock can turn on.
-  if (!user.photoVerifiedAt && !user.photoLockNotBefore) {
+  // One week from signup. Accounts already past that, including ones given the old
+  // two-day window, get this week once. After it ends, the lock can turn on.
+  if (!user.photoVerifiedAt && user.photoLockGrace !== 'week') {
     const fromSignup = inferAccountCreatedAt(user).getTime() + PHOTO_VERIFY_GRACE_MS;
     if (fromSignup <= Date.now()) {
       patch.photoLockNotBefore = new Date(Date.now() + PHOTO_VERIFY_GRACE_MS).toISOString();
       user = { ...user, photoLockNotBefore: patch.photoLockNotBefore };
     }
+    patch.photoLockGrace = 'week';
+    user = { ...user, photoLockGrace: 'week' };
   }
-  if (patch.createdAt || patch.photoLockNotBefore) {
+  if (patch.createdAt || patch.photoLockNotBefore || patch.photoLockGrace) {
     await updateUserProfile(userId, patch);
   }
   return photoLockStatusForUser(user);

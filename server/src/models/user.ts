@@ -141,13 +141,15 @@ export interface User {
   celebMessagesOnlyWhenOpened?: boolean;
   /** Anti-catfish: user verified their profile photo with a selfie (look left/center/right scan). Shown as green badge. */
   photoVerifiedAt?: string | null;
-  /** When the account was created — live-selfie verification locks chat, matching, and posts after 2 days. */
+  /** When the account was created — live-selfie verification locks chat, matching, and posts after a week. */
   createdAt?: string | Date | null;
   /**
-   * One-time later deadline for accounts that were already past the 2-day window
-   * when that window started. After this instant, a missing selfie locks the account.
+   * Later deadline for accounts that were already past the week when this window started.
+   * After this instant, a missing selfie locks chat, matching, and posts.
    */
   photoLockNotBefore?: string | null;
+  /** Set once the account has been given the one-week selfie window. */
+  photoLockGrace?: 'week' | null;
   /** OAuth provider ids (Google / Facebook). */
   googleId?: string | null;
   /** Other Google subjects for this mailbox (web, iPhone, and Android clients differ). */

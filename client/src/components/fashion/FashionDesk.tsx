@@ -1,5 +1,7 @@
 import { useContext, useEffect, useRef, useState } from 'react';
 import { AuthContext } from '../../context/AuthContext';
+import { profileAPI } from '../../api/profile';
+import PhotoVerificationModal from '../PhotoVerificationModal';
 import type { AiGuideCharacter } from '../../api/aiGuides';
 import {
   fashionAPI,
@@ -56,7 +58,10 @@ export default function FashionDesk({
   onClose: () => void;
   onSpeaking: (on: boolean) => void;
 }) {
-  const { user } = useContext(AuthContext);
+  const { user, updateUser } = useContext(AuthContext);
+  const [showSelfie, setShowSelfie] = useState(false);
+  const selfieDue = Boolean(user?.id) && !user?.photoVerifiedAt;
+  const selfieLocked = Boolean(user?.photoLock?.locked) && selfieDue;
   const first = guide.name.split(' ')[0];
   const opener =
     guide.charStyle?.actionCue && guide.charStyle.catchphrases[0]
@@ -173,6 +178,10 @@ export default function FashionDesk({
   ) => {
     const q = text.trim();
     if (q.length < 2) return;
+    if (selfieDue) {
+      setShowSelfie(true);
+      if (selfieLocked) return;
+    }
     setBusy(true);
     setError('');
     setChosenId(null);
@@ -452,6 +461,13 @@ export default function FashionDesk({
               <span>{g.name.split(' ')[0]}</span>
             </button>
           ))}
+        </div>
+      )}
+
+      {selfieDue && (
+        <div className="fashion-selfie-later">
+          <p>You can add a live selfie anytime this week. Fashion help asks for it when you use it. After the week, chat, matching, and posts lock until it matches.</p>
+          <button type="button" onClick={() => setShowSelfie(true)}>Add selfie</button>
         </div>
       )}
 
@@ -788,6 +804,23 @@ export default function FashionDesk({
         </div>
       )}
       </>
+      )}
+      {showSelfie && user?.id && (
+        <PhotoVerificationModal
+          blocking={selfieLocked}
+          profilePictureUrl={typeof user.profilePicture === 'string' ? user.profilePicture : null}
+          onClose={() => {
+            if (!selfieLocked) setShowSelfie(false);
+          }}
+          onVerified={() => {
+            updateUser({ photoVerifiedAt: new Date().toISOString() });
+            setShowSelfie(false);
+          }}
+          onSubmit={async (selfieImages, extras) => {
+            const res = await profileAPI.submitPhotoVerification(user.id, selfieImages, extras);
+            if (res.photoLock) updateUser({ photoVerifiedAt: res.photoVerifiedAt, photoLock: res.photoLock });
+          }}
+        />
       )}
     </div>
   );

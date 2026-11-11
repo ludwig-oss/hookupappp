@@ -134,6 +134,7 @@ function usable(item: WardrobePiece | null) {
   if (/[a-z]1\.(?:jpg|jpeg|png|webp)(?:$|\?)/i.test(item.imageUrl)) return false;
   if (/[-_](?:2|3|back|rear)\.(?:jpg|jpeg|png|webp)(?:$|\?)/i.test(item.imageUrl)) return false;
   if (item.slot === 'shoes' && /\b(jackets?|coats?|jeans?|pants|trousers|shirts?|sweaters?|hoodies?)\b/i.test(text)) return false;
+  if (item.slot === 'bottoms' && onBody(text)) return false;
   return true;
 }
 
@@ -148,6 +149,10 @@ function rackNote(total: number, supply: number) {
 function at(list: WardrobePiece[], index: number) {
   if (!list.length || index < 0) return null;
   return list[((index % list.length) + list.length) % list.length];
+}
+
+function onBody(text: string) {
+  return /\b(faces?|hands?|in (?:the |his |a )?pockets?|selfies?|portraits?|wearing|worn|on[- ]?model|on[- ]?body|ootd|fit check|person|models?|hangers?)\b|karousell|on carousell/i.test(text);
 }
 
 function fromShop(row: RackPiece): WardrobePiece | null {
@@ -186,7 +191,7 @@ function fromShop(row: RackPiece): WardrobePiece | null {
   if (/(?:^|[_\-/.])(back|rear)(?:[_\-/.]|$)/i.test(shotName)) return null;
   if (/[-_](?:2|3|back|rear)\.(?:jpg|jpeg|png|webp)(?:$|\?)/i.test(row.imageUrl)) return null;
   if (/[a-z]1\.(?:jpg|jpeg|png|webp)(?:$|\?)/i.test(row.imageUrl)) return null;
-  if (slot === 'bottoms' && /\b(sneakers?|loafers?|boots|shoes|footwear|hanger|waistband|interior|side view|profile|back view)\b/i.test(row.title) && !/bootcut/i.test(row.title)) return null;
+  if (slot === 'bottoms' && (onBody(`${row.title} ${row.imageUrl}`) || (/\b(sneakers?|loafers?|boots|shoes|footwear|hanger|waistband|interior|side view|profile|back view)\b/i.test(row.title) && !/bootcut/i.test(row.title)))) return null;
   if (slot === 'shoes' && /\b(jeans?|pants|trousers|jackets?|shorts|person|model|wearing|side view|profile|legs|outfit)\b/i.test(row.title)) return null;
   const buy = row.buyUrl || row.sourceUrl;
   const price = row.price || 'See store';
@@ -215,6 +220,25 @@ function fromShop(row: RackPiece): WardrobePiece | null {
 
 function photoKey(url: string) {
   return url.split('?')[0].toLowerCase().replace(/_(?:grande|large|medium|small|compact|progressive|master)\b/g, '');
+}
+
+function walk(list: WardrobePiece[], index: number, dir: number, passed: Set<string>) {
+  const toward = dir < 0 ? -1 : 1;
+  const here = list[index];
+  if (dir > 0 && here) passed.add(photoKey(here.imageUrl));
+  for (let n = index + toward; n >= 0 && n < list.length; n += toward) {
+    const item = list[n];
+    if (!usable(item)) continue;
+    const key = photoKey(item.imageUrl);
+    if (dir > 0 && passed.has(key)) continue;
+    if (dir < 0) passed.delete(key);
+    return n;
+  }
+  return index;
+}
+
+function seekToken(value: string) {
+  return value.trim().toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 40);
 }
 
 function shoesInPhoto(item: WardrobePiece) {
@@ -258,19 +282,24 @@ function SlotRow({
   tall,
   whole,
   picked,
+  seekLabel,
   onPrev,
   onNext,
   onPick,
+  onSeek,
 }: {
   item: WardrobePiece;
   tall?: boolean;
   whole?: boolean;
   picked?: boolean;
+  seekLabel?: string;
   onPrev: () => void;
   onNext: () => void;
   onPick: () => void;
+  onSeek?: (value: string) => void;
 }) {
   const [crop, setCrop] = useState(() => shoesInPhoto(item));
+  const [draft, setDraft] = useState('');
   const photoRef = useRef<HTMLImageElement>(null);
   const applyCrop = (img: HTMLImageElement | null) => {
     const portrait = Boolean(img && img.complete && img.naturalHeight > img.naturalWidth * 1.15);
@@ -297,6 +326,22 @@ function SlotRow({
       <button type="button" className="fashion-slot-arrow" onClick={onNext} aria-label={`Next ${item.slot}`}>
         {'>'}
       </button>
+      {onSeek && seekLabel ? (
+        <form
+          className="fashion-slot-seek"
+          onSubmit={(event) => {
+            event.preventDefault();
+            onSeek(draft);
+          }}
+        >
+          <input
+            value={draft}
+            placeholder={seekLabel}
+            aria-label={seekLabel}
+            onChange={(event) => setDraft(event.target.value)}
+          />
+        </form>
+      ) : null}
     </div>
   );
 }
@@ -342,10 +387,18 @@ export default function OutfitOptionCard({
   const topIndexRef = useRef(topIndex);
   const bottomIndexRef = useRef(bottomIndex);
   const shoeIndexRef = useRef(shoeIndex);
+  const dressIndexRef = useRef(dressIndex);
+  const aheadRef = useRef(0);
+  const genRef = useRef(0);
+  const seekRef = useRef<{ tops: string; bottoms: string; shoes: string }>({ tops: '', bottoms: '', shoes: '' });
+  const seekPageRef = useRef<{ tops: number; bottoms: number; shoes: number }>({ tops: 0, bottoms: 0, shoes: 0 });
+  const seekOweRef = useRef<{ tops: number; bottoms: number; shoes: number }>({ tops: 0, bottoms: 0, shoes: 0 });
+  const holdRef = useRef<{ tops: boolean; bottoms: boolean; shoes: boolean }>({ tops: false, bottoms: false, shoes: false });
   listsRef.current = lists;
   topIndexRef.current = topIndex;
   bottomIndexRef.current = bottomIndex;
   shoeIndexRef.current = shoeIndex;
+  dressIndexRef.current = dressIndex;
 
   const who = audience === 'women' ? "women's" : "men's";
   const allowDress = audience !== 'men';
@@ -377,68 +430,142 @@ export default function OutfitOptionCard({
     setDressIndex(pick.dressIndex);
   };
 
-  const loadMore = useCallback(async () => {
+  const place = (name: 'tops' | 'bottoms' | 'shoes' | 'dresses', index: number) => {
+    if (name === 'tops') {
+      topIndexRef.current = index;
+      setTopIndex(index);
+    } else if (name === 'bottoms') {
+      bottomIndexRef.current = index;
+      setBottomIndex(index);
+    } else if (name === 'shoes') {
+      shoeIndexRef.current = index;
+      setShoeIndex(index);
+    } else {
+      dressIndexRef.current = index;
+      setDressIndex(index);
+    }
+  };
+
+  const indexOf = (name: 'tops' | 'bottoms' | 'shoes' | 'dresses') =>
+    name === 'tops' ? topIndexRef.current : name === 'bottoms' ? bottomIndexRef.current : name === 'shoes' ? shoeIndexRef.current : dressIndexRef.current;
+
+  const releaseHolds = (next: typeof lists) => {
+    (['tops', 'bottoms', 'shoes'] as const).forEach((name) => {
+      if (!holdRef.current[name]) return;
+      const hit = walk(next[name], indexOf(name), 1, passedRef.current);
+      if (hit !== indexOf(name)) {
+        holdRef.current[name] = false;
+        place(name, hit);
+        setNote('');
+      }
+    });
+  };
+
+  const pump = useCallback(async (gen: number) => {
     if (moreRef.current) return;
     moreRef.current = true;
-    const nextPage = pageRef.current + 1;
-    const day = new Date().toISOString().slice(0, 10);
     try {
-      const pending = pendingRef.current;
-      const hueBit = pending ? ` hue:${pending.color}` : '';
-      const slotBit = pending ? ` slot:${pending.slot === 'tops' ? 'top' : pending.slot === 'bottoms' ? 'bottom' : 'shoes'}` : '';
-      const racks = await fashionAPI.redCarpet(`daily ${day} ${audience === 'women' ? 'women' : 'men'} page ${nextPage}${hueBit}${slotBit}`);
-      const found = readRacks(racks);
-      if (racks.supply && racks.supply >= 1_000_000) supplyRef.current = racks.supply;
-      pageRef.current = nextPage;
-      const added = found.tops.length + found.bottoms.length + found.dresses.length + found.shoes.length;
-      if (!added) return;
-      const prev = listsRef.current;
-      const next = {
-        tops: mergeSlot(found.tops, prev.tops),
-        bottoms: mergeSlot(found.bottoms, prev.bottoms),
-        dresses: mergeSlot(found.dresses, prev.dresses),
-        shoes: mergeSlot(found.shoes, prev.shoes),
-      };
-      if (!prev.dresses.length && next.dresses.length && styleIndices(next, 'mix', seed, allowDress).dress) {
-        setDressOn(true);
-        setDressIndex(styleIndices(next, 'mix', seed, allowDress).dressIndex);
-      }
-      const waiting = pendingRef.current;
-      if (waiting) {
-        const list = next[waiting.slot];
-        const hit = list.findIndex((item) => {
-          const title = item.title.toLowerCase();
-          return hasColor(title, waiting.color) && (!waiting.family || title.includes(waiting.family));
-        });
-        if (hit >= 0) {
-          pendingRef.current = null;
-          if (waiting.slot === 'tops') setTopIndex(hit);
-          else if (waiting.slot === 'bottoms') setBottomIndex(hit);
-          else setShoeIndex(hit);
-          setNote('');
-        } else {
-          const shoeHit = next.shoes.findIndex((item) => hasColor(item.title, waiting.color));
-          if (shoeHit >= 0) {
+      while (genRef.current === gen && (aheadRef.current > 0 || (['tops', 'bottoms', 'shoes'] as const).some((name) => seekOweRef.current[name] > 0))) {
+        const seekName = (['tops', 'bottoms', 'shoes'] as const).find((name) => seekRef.current[name] && seekOweRef.current[name] > 0);
+        if (seekName) seekOweRef.current[seekName] -= 1;
+        else if (aheadRef.current > 0) aheadRef.current -= 1;
+        else break;
+        const day = new Date().toISOString().slice(0, 10);
+        const whoBit = audience === 'women' ? 'women' : 'men';
+        if (seekName) {
+          const term = seekRef.current[seekName].replace(/ /g, '_');
+          const serverSlot = seekName === 'tops' ? 'top' : seekName === 'bottoms' ? 'bottom' : 'shoes';
+          const seekPage = seekPageRef.current[seekName];
+          const racks = await fashionAPI.redCarpet(`daily ${day} ${whoBit} page ${seekPage} slot:${serverSlot} find:${term}`);
+          if (genRef.current !== gen) return;
+          seekPageRef.current[seekName] = seekPage + 1;
+          if (racks.supply && racks.supply >= 1_000_000) supplyRef.current = racks.supply;
+          const found = readRacks(racks)[seekName];
+          const prev = listsRef.current;
+          const words = seekRef.current[seekName].split(' ');
+          const base = seekPage === 0 ? prev[seekName].filter((item) => words.every((word) => item.title.toLowerCase().includes(word))) : prev[seekName];
+          const merged = mergeSlot(found, base);
+          if (!merged.length) continue;
+          const next = { ...prev, [seekName]: merged };
+          listsRef.current = next;
+          setLists(next);
+          if (seekPage === 0) {
+            const start = Math.max(0, merged.findIndex((item) => usable(item)));
+            place(seekName, start);
+            holdRef.current[seekName] = false;
+            setNote('');
+          } else releaseHolds(next);
+          setFresh(rackNote(pieceTotal(next), supplyRef.current));
+          continue;
+        }
+        const pending = pendingRef.current;
+        const hueBit = pending ? ` hue:${pending.color}` : '';
+        const slotBit = pending ? ` slot:${pending.slot === 'tops' ? 'top' : pending.slot === 'bottoms' ? 'bottom' : 'shoes'}` : '';
+        const nextPage = pageRef.current + 1;
+        const racks = await fashionAPI.redCarpet(`daily ${day} ${whoBit} page ${nextPage}${hueBit}${slotBit}`);
+        if (genRef.current !== gen) return;
+        pageRef.current = nextPage;
+        if (racks.supply && racks.supply >= 1_000_000) supplyRef.current = racks.supply;
+        const found = readRacks(racks);
+        const prev = listsRef.current;
+        const next = {
+          tops: mergeSlot(found.tops, prev.tops),
+          bottoms: mergeSlot(found.bottoms, prev.bottoms),
+          dresses: mergeSlot(found.dresses, prev.dresses),
+          shoes: mergeSlot(found.shoes, prev.shoes),
+        };
+        if (!prev.dresses.length && next.dresses.length && styleIndices(next, 'mix', seed, allowDress).dress) {
+          setDressOn(true);
+          setDressIndex(styleIndices(next, 'mix', seed, allowDress).dressIndex);
+        }
+        const waiting = pendingRef.current;
+        if (waiting) {
+          const list = next[waiting.slot];
+          const hit = list.findIndex((item) => {
+            const title = item.title.toLowerCase();
+            return hasColor(title, waiting.color) && (!waiting.family || title.includes(waiting.family));
+          });
+          if (hit >= 0) {
             pendingRef.current = null;
-            setShoeIndex(shoeHit);
-            setFocus('shoes');
-            setNote(`No ${waiting.color} of that piece. This ${waiting.color} shoe sits better with the outfit.`);
+            place(waiting.slot, hit);
+            setNote('');
+          } else {
+            const shoeHit = next.shoes.findIndex((item) => hasColor(item.title, waiting.color));
+            if (shoeHit >= 0) {
+              pendingRef.current = null;
+              place('shoes', shoeHit);
+              setFocus('shoes');
+              setNote(`No ${waiting.color} of that piece. This ${waiting.color} shoe sits better with the outfit.`);
+            }
           }
         }
+        listsRef.current = next;
+        setLists(next);
+        releaseHolds(next);
+        setFresh(rackNote(pieceTotal(next), supplyRef.current));
       }
-      setLists(next);
-      setFresh(rackNote(pieceTotal(next), supplyRef.current));
     } catch {
       /* The pieces already on the card stay. */
     } finally {
       moreRef.current = false;
+      const pendingWork = aheadRef.current > 0 || (['tops', 'bottoms', 'shoes'] as const).some((name) => seekOweRef.current[name] > 0);
+      if (pendingWork && genRef.current === gen) void pump(gen);
     }
-  }, [audience, readRacks, seed, who]);
+  }, [audience, readRacks, seed, allowDress]);
+
+  const loadMore = useCallback(() => {
+    aheadRef.current += 1;
+    void pump(genRef.current);
+  }, [pump]);
 
   useEffect(() => {
-    let cancel = false;
+    const gen = ++genRef.current;
     pageRef.current = 0;
     passedRef.current.clear();
+    seekRef.current = { tops: '', bottoms: '', shoes: '' };
+    seekPageRef.current = { tops: 0, bottoms: 0, shoes: 0 };
+    seekOweRef.current = { tops: 0, bottoms: 0, shoes: 0 };
+    holdRef.current = { tops: false, bottoms: false, shoes: false };
     setLists(saved);
     setDressOn(false);
     setFresh(`Pulling today's ${who} clothes...`);
@@ -447,7 +574,7 @@ export default function OutfitOptionCard({
     fashionAPI
       .redCarpet(`daily ${day} ${audience === 'women' ? 'women' : 'men'} page 0`)
       .then((racks) => {
-        if (cancel) return;
+        if (genRef.current !== gen) return;
         const found = readRacks(racks);
         if (racks.supply && racks.supply >= 1_000_000) supplyRef.current = racks.supply;
         const next = {
@@ -456,38 +583,70 @@ export default function OutfitOptionCard({
           dresses: mergeSlot(found.dresses, saved.dresses),
           shoes: mergeSlot(found.shoes, saved.shoes),
         };
+        listsRef.current = next;
         setLists(next);
         setFresh(rackNote(pieceTotal(next), supplyRef.current));
         applyStyle(next, opening, seed + 11);
-        void (async () => {
-          for (let i = 0; i < 48 && !cancel; i += 1) await loadMore();
-        })();
+        aheadRef.current = 48;
+        void pump(gen);
       })
       .catch(() => {
-        if (!cancel) setFresh(`Shops were slow, so the saved ${who} closet is still here.`);
+        if (genRef.current === gen) setFresh(`Shops were slow, so the saved ${who} closet is still here.`);
       });
     return () => {
-      cancel = true;
+      genRef.current += 1;
+      aheadRef.current = 0;
     };
-  }, [audience, readRacks, saved, seed, who]);
+  }, [audience, pump, readRacks, saved, seed, who]);
 
-  const step = (setIndex: (value: number | ((current: number) => number)) => void, list: WardrobePiece[], dir: number) => {
-    setIndex((current) => {
-      const toward = dir < 0 ? -1 : 1;
-      const here = list[current];
-      if (dir > 0 && here) passedRef.current.add(photoKey(here.imageUrl));
-      for (let n = current + toward; n >= 0 && n < list.length; n += toward) {
-        const item = list[n];
-        if (!usable(item)) continue;
-        const key = photoKey(item.imageUrl);
-        if (dir > 0 && passedRef.current.has(key)) continue;
-        if (dir < 0) passedRef.current.delete(key);
-        if (dir > 0) void loadMore();
-        return n;
-      }
-      if (dir > 0) void loadMore();
-      return current;
-    });
+  const step = (name: 'tops' | 'bottoms' | 'shoes' | 'dresses', dir: number) => {
+    const list = listsRef.current[name];
+    const hit = walk(list, indexOf(name), dir, passedRef.current);
+    if (hit === indexOf(name) && dir > 0) {
+      if (name !== 'dresses') {
+        holdRef.current[name] = true;
+        if (seekRef.current[name]) seekOweRef.current[name] += 8;
+        else aheadRef.current += 8;
+      } else aheadRef.current += 8;
+      setNote('Pulling the next piece...');
+      void pump(genRef.current);
+      return;
+    }
+    if (name !== 'dresses') holdRef.current[name] = false;
+    place(name, hit);
+    if (dir > 0) {
+      aheadRef.current += 1;
+      void pump(genRef.current);
+    }
+  };
+
+  const runSeek = (name: 'tops' | 'bottoms' | 'shoes', raw: string) => {
+    const term = seekToken(raw);
+    setFocus(name);
+    if (!term) {
+      seekRef.current[name] = '';
+      seekOweRef.current[name] = 0;
+      setNote('');
+      return;
+    }
+    for (const item of listsRef.current[name]) passedRef.current.delete(photoKey(item.imageUrl));
+    const words = term.split(' ');
+    const matched = listsRef.current[name].filter((item) => usable(item) && words.every((word) => item.title.toLowerCase().includes(word)));
+    seekRef.current[name] = term;
+    seekPageRef.current[name] = 0;
+    seekOweRef.current[name] += 6;
+    if (matched.length) {
+      const next = { ...listsRef.current, [name]: matched };
+      listsRef.current = next;
+      setLists(next);
+      place(name, 0);
+      holdRef.current[name] = false;
+      setNote('');
+    } else {
+      holdRef.current[name] = true;
+      setNote(`Looking for ${term}...`);
+    }
+    void pump(genRef.current);
   };
 
   const tops = lists.tops;
@@ -651,8 +810,8 @@ export default function OutfitOptionCard({
               <SlotRow
                 item={dress}
                 whole
-                onPrev={() => step(setDressIndex, dresses, -1)}
-                onNext={() => step(setDressIndex, dresses, 1)}
+                onPrev={() => step('dresses', -1)}
+                onNext={() => step('dresses', 1)}
                 onPick={() => setShop(dress)}
               />
             ) : (
@@ -661,13 +820,15 @@ export default function OutfitOptionCard({
                   <SlotRow
                     item={top}
                     picked={focus === 'tops'}
+                    seekLabel="Search tops"
+                    onSeek={(value) => runSeek('tops', value)}
                     onPrev={() => {
                       setFocus('tops');
-                      step(setTopIndex, tops, -1);
+                      step('tops', -1);
                     }}
                     onNext={() => {
                       setFocus('tops');
-                      step(setTopIndex, tops, 1);
+                      step('tops', 1);
                     }}
                     onPick={() => setFocus('tops')}
                   />
@@ -676,18 +837,25 @@ export default function OutfitOptionCard({
                   <SlotRow
                     item={bottom}
                     picked={focus === 'bottoms'}
+                    seekLabel="Search trousers"
+                    onSeek={(value) => runSeek('bottoms', value)}
                     onPrev={() => {
                       setFocus('bottoms');
-                      step(setBottomIndex, bottoms, -1);
+                      step('bottoms', -1);
                     }}
                     onNext={() => {
                       setFocus('bottoms');
-                      step(setBottomIndex, bottoms, 1);
+                      step('bottoms', 1);
                     }}
                     onPick={() => setFocus('bottoms')}
                   />
                 ) : (
-                  <div className="fashion-slot is-bottom"><p className="fashion-slot-wait">Trousers</p></div>
+                  <div className="fashion-slot is-bottom">
+                    <p className="fashion-slot-wait">Trousers</p>
+                    <form className="fashion-slot-seek" onSubmit={(event) => { event.preventDefault(); runSeek('bottoms', (event.currentTarget.elements.namedItem('q') as HTMLInputElement).value); }}>
+                      <input name="q" placeholder="Search trousers" aria-label="Search trousers" />
+                    </form>
+                  </div>
                 )}
               </>
             )}
@@ -695,18 +863,25 @@ export default function OutfitOptionCard({
               <SlotRow
                 item={shoe}
                 picked={focus === 'shoes'}
+                seekLabel="Search shoes"
+                onSeek={(value) => runSeek('shoes', value)}
                 onPrev={() => {
                   setFocus('shoes');
-                  step(setShoeIndex, shoes, -1);
+                  step('shoes', -1);
                 }}
                 onNext={() => {
                   setFocus('shoes');
-                  step(setShoeIndex, shoes, 1);
+                  step('shoes', 1);
                 }}
                 onPick={() => setFocus('shoes')}
               />
             ) : dressOn && dress ? null : (
-              <div className="fashion-slot is-shoes"><p className="fashion-slot-wait">Shoes</p></div>
+              <div className="fashion-slot is-shoes">
+                <p className="fashion-slot-wait">Shoes</p>
+                <form className="fashion-slot-seek" onSubmit={(event) => { event.preventDefault(); runSeek('shoes', (event.currentTarget.elements.namedItem('q') as HTMLInputElement).value); }}>
+                  <input name="q" placeholder="Search shoes" aria-label="Search shoes" />
+                </form>
+              </div>
             )}
           </div>
         )}

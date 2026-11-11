@@ -267,6 +267,14 @@ function slotOf(prompt: string): RackSlot | null {
   return found === 'top' || found === 'bottom' || found === 'shoes' || found === 'dress' ? found : null;
 }
 
+function findOf(prompt: string): string | null {
+  const raw = prompt.match(/\bfind:([a-z0-9_]{2,40})\b/i)?.[1] || '';
+  const text = raw.replace(/_/g, ' ').trim().toLowerCase();
+  return text || null;
+}
+
+const ON_BODY = /\b(faces?|hands?|in (?:the |his |a )?pockets?|selfies?|portraits?|wearing|worn|on[- ]?model|on[- ]?body|ootd|fit check|person|models?|hangers?)\b|karousell|on carousell/i;
+
 function kindsFor(audience: ShopAudience): { slot: RackSlot; kind: string }[] {
   const tops = TOP_KINDS.map((kind) => ({ slot: 'top' as const, kind }));
   const bottoms = BOTTOM_KINDS.map((kind) => ({ slot: 'bottom' as const, kind }));
@@ -288,7 +296,7 @@ export function rackSupply(audience: ShopAudience): number {
   return kindsFor(audience).length * COLORS.length * ANGLES.length * DEPTHS;
 }
 
-function queryAt(audience: ShopAudience, n: number, hue: string | null, only: RackSlot | null = null): RackQuery {
+function queryAt(audience: ShopAudience, n: number, hue: string | null, only: RackSlot | null = null, find: string | null = null): RackQuery {
   const kinds = kindsFor(audience).filter((row) => !only || row.slot === only);
   const colors = hue ? [hue] : COLORS;
   const kindCount = Math.max(1, kinds.length);
@@ -300,7 +308,8 @@ function queryAt(audience: ShopAudience, n: number, hue: string | null, only: Ra
   const who = audience === 'men' ? "men's" : "women's";
   const avoid = audience === 'men' ? '-women -woman -girl -girls -female -ladies -womenswear -blouse -dress -skirt -heel -back -rear' : '-mens -"for men" -male -back -rear';
   const mood = n % 2 === 0 ? 'diy street' : 'vintage punk';
-  const kind = row.kind.replace(/ pair$/, '');
+  const noun = row.slot === 'bottom' ? 'pants' : row.slot === 'shoes' ? 'shoes' : row.slot === 'dress' ? 'dress' : '';
+  const kind = find ? `${find} ${noun}`.trim() : row.kind.replace(/ pair$/, '');
   const shot =
     row.slot === 'dress'
       ? 'full garment front view product photo'
@@ -317,9 +326,9 @@ function queryAt(audience: ShopAudience, n: number, hue: string | null, only: Ra
   };
 }
 
-function dailyQueries(audience: ShopAudience, page = 0, hue: string | null = null, only: RackSlot | null = null): RackQuery[] {
+function dailyQueries(audience: ShopAudience, page = 0, hue: string | null = null, only: RackSlot | null = null, find: string | null = null): RackQuery[] {
   const size = 6;
-  return Array.from({ length: size }, (_, index) => queryAt(audience, page * size + index, hue, only));
+  return Array.from({ length: size }, (_, index) => queryAt(audience, page * size + index, hue, only, find));
 }
 
 function looksLikeShop(page: string, image: string): boolean {
@@ -385,6 +394,7 @@ function pieceFromHit(row: WebHit, slot: RackSlot, era: GarmentEra, audience: Sh
   else if (shoeWord) keptSlot = 'shoes';
   else return null;
   if (keptSlot === 'shoes' && /xiangqing|_[3-9]\.(?:jpg|jpeg|png|webp)|sole|bottom-view|side-view/i.test(row.imageUrl)) return null;
+  if (keptSlot === 'bottom' && ON_BODY.test(`${title} ${row.imageUrl}`)) return null;
   return {
     id: `day-${keptSlot}-${hash(row.imageUrl)}`,
     slot: keptSlot,
@@ -401,7 +411,8 @@ function pieceFromHit(row: WebHit, slot: RackSlot, era: GarmentEra, audience: Sh
 async function dailyPool(audience: ShopAudience, page = 0, prompt = ''): Promise<RackPiece[]> {
   const hue = hueOf(prompt);
   const only = slotOf(prompt);
-  const slice = dailyQueries(audience, page, hue, only);
+  const find = findOf(prompt);
+  const slice = dailyQueries(audience, page, hue, only, find);
   const batches = await mapPool(slice, 4, async (row) => {
     const hits = await webImages(row.q, row.first).catch(() => [] as WebHit[]);
     const pieces: RackPiece[] = [];

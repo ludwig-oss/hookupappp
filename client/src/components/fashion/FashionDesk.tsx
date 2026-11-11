@@ -466,7 +466,7 @@ export default function FashionDesk({
       {tab === 'closet' && (
         <div className="fashion-pair">
           <OutfitOptionCard label="A" seed={1} avatarUrl={faceUrl} personUrl={bodyUrl || faceUrl} audience={attire} />
-          <OutfitOptionCard label="B" seed={2} avatarUrl={faceUrl} personUrl={bodyUrl || faceUrl} audience={attire} />
+          <OutfitOptionCard label="B" seed={419} avatarUrl={faceUrl} personUrl={bodyUrl || faceUrl} audience={attire} />
         </div>
       )}
 
@@ -621,7 +621,7 @@ export default function FashionDesk({
             />
             <OutfitOptionCard
               label="B"
-              seed={8}
+              seed={311}
               avatarUrl={faceUrl}
               personUrl={bodyUrl || faceUrl}
               winner={result?.critic.winner === 'B'}

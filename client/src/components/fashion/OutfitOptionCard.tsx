@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
 import { API_BASE } from '../../api/config';
 import { fashionAPI, type RackPiece } from '../../api/fashion';
@@ -6,6 +6,76 @@ import { catalogFor, pieceMatchesAudience, type WardrobeAudience, type WardrobeP
 import { freeVirtualTryOn } from '../../lib/freeTryOn';
 
 type Mode = 'clothes' | 'body';
+type StyleAim = 'flashy' | 'blend' | 'unique' | 'mix';
+
+const STYLE_ORDER: StyleAim[] = ['flashy', 'blend', 'unique', 'mix'];
+const STYLE_COPY: Record<StyleAim, string> = {
+  flashy: 'Flashy — one piece is there to get attention',
+  blend: 'Blended — the colors sit together',
+  unique: 'Unique — a contrast that still holds',
+  mix: 'Mixed — a statement piece with quiet clothes',
+};
+
+function toneOf(title: string): string {
+  const text = title.toLowerCase();
+  if (/\bblack\b/.test(text)) return 'black';
+  if (/white|ivory|cream/.test(text)) return 'light';
+  if (/navy|indigo|\bblue\b|denim/.test(text)) return 'blue';
+  if (/brown|tan|camel|beige|khaki|olive|sand/.test(text)) return 'earth';
+  if (/red|yellow|green|pink|purple|orange|gold/.test(text)) return 'color';
+  return 'neutral';
+}
+
+function loudPiece(item: WardrobePiece): boolean {
+  return (
+    /leather|print|pattern|plaid|metallic|sequin|velvet|silk|gold|snake|jacquard|graphic|logo|bright|neon/.test(item.title.toLowerCase()) ||
+    toneOf(item.title) === 'color'
+  );
+}
+
+function indexWhere(list: WardrobePiece[], salt: number, prefer: (item: WardrobePiece) => boolean): number {
+  if (!list.length) return 0;
+  const liked: number[] = [];
+  list.forEach((item, index) => {
+    if (prefer(item)) liked.push(index);
+  });
+  const pool = liked.length ? liked : list.map((_, index) => index);
+  return pool[Math.abs(salt) % pool.length];
+}
+
+function styleIndices(
+  lists: { tops: WardrobePiece[]; bottoms: WardrobePiece[]; dresses: WardrobePiece[]; shoes: WardrobePiece[] },
+  aim: StyleAim,
+  salt: number,
+  allowDress: boolean
+) {
+  const top = indexWhere(lists.tops, salt, (item) => {
+    if (aim === 'flashy') return loudPiece(item);
+    if (aim === 'blend') return toneOf(item.title) !== 'color';
+    if (aim === 'unique') return item.vibe === '90s-vintage' || loudPiece(item);
+    return !loudPiece(item);
+  });
+  const hero = lists.tops[top];
+  const heroTone = hero ? toneOf(hero.title) : 'neutral';
+  const agrees = (item: WardrobePiece) => {
+    const tone = toneOf(item.title);
+    return tone === heroTone || tone === 'neutral' || heroTone === 'neutral';
+  };
+  const bottom = indexWhere(lists.bottoms, salt + 3, (item) => {
+    if (aim === 'flashy' || aim === 'mix') return !loudPiece(item) && agrees(item);
+    if (aim === 'blend') return agrees(item);
+    return agrees(item) && item.vibe !== hero?.vibe;
+  });
+  const shoe = indexWhere(lists.shoes, salt + 7, (item) => {
+    if (aim === 'flashy') return hero && loudPiece(hero) ? !loudPiece(item) && agrees(item) : loudPiece(item);
+    if (aim === 'blend') return agrees(item);
+    if (aim === 'unique') return item.vibe !== hero?.vibe;
+    return loudPiece(item);
+  });
+  const dressIndex = indexWhere(lists.dresses, salt + 2, (item) => (aim === 'flashy' ? loudPiece(item) : true));
+  const useDress = allowDress && lists.dresses.length > 0 && (aim === 'flashy' || aim === 'unique') && salt % 3 === 0;
+  return { top, bottom, shoe, dressIndex, dress: useDress };
+}
 
 function at(list: WardrobePiece[], index: number) {
   if (!list.length) return null;
@@ -27,7 +97,11 @@ function fromShop(row: RackPiece): WardrobePiece | null {
     store: row.store || 'Online',
     buyUrl: buy.startsWith('https://') ? buy : `https://www.google.com/search?tbm=shop&q=${query}`,
     imageUrl: row.imageUrl,
-    vibe: row.era === 'vintage' ? '90s-vintage' : 'street-luxe',
+    vibe: /vintage|retro|90s|plaid|corduroy/.test(row.title.toLowerCase())
+      ? '90s-vintage'
+      : /leather|sneaker|hoodie|bomber|denim/.test(row.title.toLowerCase())
+        ? 'street-luxe'
+        : 'modern-runway',
     similar: [
       { store: 'Nordstrom', price, buyUrl: `https://www.nordstrom.com/sr?keyword=${query}` },
       { store: 'SSENSE', price, buyUrl: `https://www.ssense.com/en-us/search?q=${query}` },
@@ -44,12 +118,6 @@ function mergeSlot(online: WardrobePiece[], saved: WardrobePiece[]) {
     out.push(item);
   }
   return out;
-}
-
-function mixIndex(list: WardrobePiece[], avoid: string | undefined, salt: number) {
-  const other = list.filter((item) => item.vibe !== avoid);
-  const pool = other.length ? other : list;
-  return list.indexOf(pool[salt % pool.length]);
 }
 
 async function asBlob(source: string | Blob): Promise<Blob> {
@@ -114,6 +182,9 @@ export default function OutfitOptionCard({
   const saved = useMemo(() => catalogFor(audience), [audience]);
   const [lists, setLists] = useState(saved);
   const [fresh, setFresh] = useState(audience === 'women' ? "Pulling today's women's clothes..." : "Pulling today's men's clothes...");
+  const [styleAim, setStyleAim] = useState<StyleAim>(seed % 2 === 0 ? 'flashy' : 'blend');
+  const pageRef = useRef(0);
+  const moreRef = useRef(false);
   const [topIndex, setTopIndex] = useState(seed % Math.max(saved.tops.length, 1));
   const [bottomIndex, setBottomIndex] = useState((seed + 3) % Math.max(saved.bottoms.length, 1));
   const [shoeIndex, setShoeIndex] = useState((seed + 5) % Math.max(saved.shoes.length, 1));
@@ -126,39 +197,84 @@ export default function OutfitOptionCard({
   const [note, setNote] = useState('');
   const [localPerson, setLocalPerson] = useState<string | null>(null);
 
+  const who = audience === 'women' ? "women's" : "men's";
+  const allowDress = audience !== 'men';
+
+  const readRacks = useCallback(
+    (racks: { tops?: RackPiece[]; bottoms?: RackPiece[]; dresses?: RackPiece[]; shoes?: RackPiece[] }) => {
+      const take = (rows: RackPiece[] | undefined) =>
+        (rows || [])
+          .map(fromShop)
+          .filter((item): item is WardrobePiece => Boolean(item))
+          .filter((item) => pieceMatchesAudience(`${item.title} ${item.buyUrl}`, audience));
+      return {
+        tops: take(racks.tops),
+        bottoms: take(racks.bottoms),
+        dresses: allowDress ? take(racks.dresses) : [],
+        shoes: take(racks.shoes),
+      };
+    },
+    [allowDress, audience]
+  );
+
+  const applyStyle = (next: typeof saved, aim: StyleAim, salt: number) => {
+    const pick = styleIndices(next, aim, salt, allowDress);
+    setStyleAim(aim);
+    setDressOn(pick.dress);
+    setTopIndex(pick.top);
+    setBottomIndex(pick.bottom);
+    setShoeIndex(pick.shoe);
+    setDressIndex(pick.dressIndex);
+  };
+
+  const loadMore = useCallback(async () => {
+    if (moreRef.current || pageRef.current >= 12) return;
+    moreRef.current = true;
+    const nextPage = pageRef.current + 1;
+    const day = new Date().toISOString().slice(0, 10);
+    try {
+      const racks = await fashionAPI.redCarpet(`daily ${day} ${audience === 'women' ? 'women' : 'men'} page ${nextPage}`);
+      const found = readRacks(racks);
+      const added = found.tops.length + found.bottoms.length + found.dresses.length + found.shoes.length;
+      if (!added) return;
+      pageRef.current = nextPage;
+      setLists((prev) => ({
+        tops: mergeSlot(found.tops, prev.tops),
+        bottoms: mergeSlot(found.bottoms, prev.bottoms),
+        dresses: mergeSlot(found.dresses, prev.dresses),
+        shoes: mergeSlot(found.shoes, prev.shoes),
+      }));
+      setFresh(`More ${who} clothes just landed. Keep going.`);
+    } catch {
+      /* The pieces already on the card stay. */
+    } finally {
+      moreRef.current = false;
+    }
+  }, [audience, readRacks, who]);
+
   useEffect(() => {
     let cancel = false;
+    pageRef.current = 0;
     setLists(saved);
     setDressOn(false);
-    const who = audience === 'women' ? "women's" : "men's";
     setFresh(`Pulling today's ${who} clothes...`);
     const day = new Date().toISOString().slice(0, 10);
+    const opening: StyleAim = seed % 2 === 0 ? 'flashy' : 'blend';
     fashionAPI
-      .redCarpet(`daily ${day} ${audience === 'women' ? 'women' : 'men'}`)
+      .redCarpet(`daily ${day} ${audience === 'women' ? 'women' : 'men'} page 0`)
       .then((racks) => {
         if (cancel) return;
-        const take = (rows: RackPiece[]) =>
-          rows
-            .map(fromShop)
-            .filter((item): item is WardrobePiece => Boolean(item))
-            .filter((item) => pieceMatchesAudience(`${item.title} ${item.buyUrl}`, audience));
-        const tops = take(racks.tops || []);
-        const bottoms = take(racks.bottoms || []);
-        const dresses = audience === 'men' ? [] : take(racks.dresses || []);
-        const shoes = take(racks.shoes || []);
+        const found = readRacks(racks);
         const next = {
-          tops: mergeSlot(tops, saved.tops),
-          bottoms: mergeSlot(bottoms, saved.bottoms),
-          dresses: mergeSlot(dresses, saved.dresses),
-          shoes: mergeSlot(shoes, saved.shoes),
+          tops: mergeSlot(found.tops, saved.tops),
+          bottoms: mergeSlot(found.bottoms, saved.bottoms),
+          dresses: mergeSlot(found.dresses, saved.dresses),
+          shoes: mergeSlot(found.shoes, saved.shoes),
         };
         setLists(next);
-        const found = tops.length + bottoms.length + dresses.length + shoes.length;
-        setFresh(found ? `Today's ${who} clothes · ${found} new pieces` : `Showing the saved ${who} closet.`);
-        setTopIndex(seed % Math.max(next.tops.length, 1));
-        setBottomIndex((seed + 3) % Math.max(next.bottoms.length, 1));
-        setShoeIndex((seed + 5) % Math.max(next.shoes.length, 1));
-        setDressIndex(seed % Math.max(next.dresses.length, 1));
+        const count = next.tops.length + next.bottoms.length + next.dresses.length + next.shoes.length;
+        setFresh(count ? `${who[0].toUpperCase()}${who.slice(1)} clothes · ${count} pieces, and more when you arrow through` : `Showing the saved ${who} closet.`);
+        applyStyle(next, opening, seed + 11);
       })
       .catch(() => {
         if (!cancel) setFresh(`Shops were slow, so the saved ${who} closet is still here.`);
@@ -166,7 +282,15 @@ export default function OutfitOptionCard({
     return () => {
       cancel = true;
     };
-  }, [audience, saved, seed]);
+  }, [audience, readRacks, saved, seed, who]);
+
+  const step = (setIndex: (value: number | ((current: number) => number)) => void, length: number, dir: number) => {
+    setIndex((current) => {
+      const next = current + dir;
+      if (dir > 0 && length > 0 && Math.abs(next) % length === length - 1) void loadMore();
+      return next;
+    });
+  };
 
   const top = at(lists.tops, topIndex);
   const bottom = at(lists.bottoms, bottomIndex);
@@ -178,17 +302,13 @@ export default function OutfitOptionCard({
   }, [bottom, dress, dressOn, shoe, top]);
 
   const shuffle = () => {
-    const salt = Math.floor(Math.random() * 97) + 1;
-    const useDress = Math.random() < 0.34;
-    setDressOn(useDress);
-    setTopIndex(mixIndex(lists.tops, undefined, salt));
-    const topVibe = lists.tops[mixIndex(lists.tops, undefined, salt)]?.vibe;
-    setBottomIndex(mixIndex(lists.bottoms, topVibe, salt + 4));
-    setShoeIndex(mixIndex(lists.shoes, topVibe, salt + 9));
-    setDressIndex(mixIndex(lists.dresses, topVibe, salt + 2));
+    const salt = Math.floor(Math.random() * 997) + 1;
+    const aim = STYLE_ORDER[(STYLE_ORDER.indexOf(styleAim) + 1) % STYLE_ORDER.length];
+    applyStyle(lists, aim, salt);
     setMode('clothes');
     setTryOnUrl(null);
     setNote('');
+    void loadMore();
   };
 
   const tryOn = async () => {
@@ -246,27 +366,37 @@ export default function OutfitOptionCard({
               <SlotRow
                 item={dress}
                 tall
-                onPrev={() => setDressIndex((n) => n - 1)}
-                onNext={() => setDressIndex((n) => n + 1)}
+                onPrev={() => step(setDressIndex, lists.dresses.length, -1)}
+                onNext={() => step(setDressIndex, lists.dresses.length, 1)}
                 onOpen={setShop}
               />
             ) : (
               <>
                 {top ? (
-                  <SlotRow item={top} onPrev={() => setTopIndex((n) => n - 1)} onNext={() => setTopIndex((n) => n + 1)} onOpen={setShop} />
+                  <SlotRow
+                    item={top}
+                    onPrev={() => step(setTopIndex, lists.tops.length, -1)}
+                    onNext={() => step(setTopIndex, lists.tops.length, 1)}
+                    onOpen={setShop}
+                  />
                 ) : null}
                 {bottom ? (
                   <SlotRow
                     item={bottom}
-                    onPrev={() => setBottomIndex((n) => n - 1)}
-                    onNext={() => setBottomIndex((n) => n + 1)}
+                    onPrev={() => step(setBottomIndex, lists.bottoms.length, -1)}
+                    onNext={() => step(setBottomIndex, lists.bottoms.length, 1)}
                     onOpen={setShop}
                   />
                 ) : null}
               </>
             )}
             {shoe ? (
-              <SlotRow item={shoe} onPrev={() => setShoeIndex((n) => n - 1)} onNext={() => setShoeIndex((n) => n + 1)} onOpen={setShop} />
+              <SlotRow
+                item={shoe}
+                onPrev={() => step(setShoeIndex, lists.shoes.length, -1)}
+                onNext={() => step(setShoeIndex, lists.shoes.length, 1)}
+                onOpen={setShop}
+              />
             ) : null}
           </div>
         )}
@@ -274,6 +404,7 @@ export default function OutfitOptionCard({
       <div className="fashion-card-copy">
         <div className="fashion-opt">Option {label}</div>
         <p className="fashion-fresh">{fresh}</p>
+        <p className="fashion-fresh">{STYLE_COPY[styleAim]}</p>
         <h3>{worn.map((item) => item.title).join(' + ')}</h3>
         <ul>
           {worn.map((item) => (

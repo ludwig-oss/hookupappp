@@ -235,26 +235,33 @@ function dailyQueries(audience: ShopAudience): { slot: RackSlot; era: GarmentEra
   const who = audience === 'men' ? "men's" : "women's";
   const avoid = audience === 'men' ? '-women -woman -female -skirt -dress -heel' : '-mens -men';
   const rows: { slot: RackSlot; era: GarmentEra; q: string }[] = [
-    { slot: 'top', era: 'modern', q: `${who} blazer product photo white background ${avoid}` },
-    { slot: 'top', era: 'vintage', q: `${who} sweater product photo ${avoid}` },
-    { slot: 'top', era: 'modern', q: `${who} shirt jacket product photo ${avoid}` },
-    { slot: 'bottom', era: 'modern', q: `${who} trousers product photo ${avoid}` },
+    { slot: 'top', era: 'modern', q: `${who} blazer product photo ${avoid}` },
+    { slot: 'top', era: 'vintage', q: `${who} knit sweater product photo ${avoid}` },
+    { slot: 'top', era: 'modern', q: `${who} overshirt product photo ${avoid}` },
+    { slot: 'top', era: 'modern', q: `${who} leather jacket product photo ${avoid}` },
+    { slot: 'top', era: 'modern', q: `${who} coat product photo ${avoid}` },
+    { slot: 'top', era: 'vintage', q: `${who} cardigan product photo ${avoid}` },
+    { slot: 'top', era: 'modern', q: `${who} hoodie product photo ${avoid}` },
+    { slot: 'top', era: 'modern', q: `${who} polo shirt product photo ${avoid}` },
+    { slot: 'bottom', era: 'modern', q: `${who} tailored trousers product photo ${avoid}` },
     { slot: 'bottom', era: 'modern', q: `${who} jeans product photo ${avoid}` },
+    { slot: 'bottom', era: 'vintage', q: `${who} chinos product photo ${avoid}` },
+    { slot: 'bottom', era: 'modern', q: `${who} wide leg trousers product photo ${avoid}` },
+    { slot: 'shoes', era: 'modern', q: `${who} leather loafer product photo -feet ${avoid}` },
+    { slot: 'shoes', era: 'modern', q: `${who} sneaker product photo -feet ${avoid}` },
+    { slot: 'shoes', era: 'vintage', q: `${who} boot product photo -feet ${avoid}` },
+    { slot: 'shoes', era: 'modern', q: `${who} derby shoe product photo -feet ${avoid}` },
   ];
   if (audience === 'women') {
     rows.push(
-      { slot: 'bottom', era: 'vintage', q: "women's skirt product photo -mens -men" },
-      { slot: 'dress', era: 'vintage', q: "women's slip dress product photo -mens -men" },
-      { slot: 'dress', era: 'modern', q: "women's dress product photo white background -mens -men" },
-      { slot: 'shoes', era: 'modern', q: "women's heel shoe product photo -feet -mens" },
+      { slot: 'top', era: 'vintage', q: "women's blouse product photo -mens" },
+      { slot: 'bottom', era: 'vintage', q: "women's skirt product photo -mens" },
+      { slot: 'bottom', era: 'modern', q: "women's midi skirt product photo -mens" },
+      { slot: 'dress', era: 'vintage', q: "women's slip dress product photo -mens" },
+      { slot: 'dress', era: 'modern', q: "women's column dress product photo -mens" },
+      { slot: 'dress', era: 'modern', q: "women's mini dress product photo -mens" },
+      { slot: 'shoes', era: 'modern', q: "women's heel product photo -feet -mens" },
       { slot: 'shoes', era: 'vintage', q: "women's ankle boot product photo -feet -mens" }
-    );
-  } else {
-    rows.push(
-      { slot: 'bottom', era: 'vintage', q: "men's chinos product photo -women -skirt" },
-      { slot: 'shoes', era: 'modern', q: "men's leather loafer product photo -women -heel -feet" },
-      { slot: 'shoes', era: 'modern', q: "men's sneaker product photo -women -feet" },
-      { slot: 'shoes', era: 'vintage', q: "men's oxford shoe product photo -women -heel" }
     );
   }
   return rows;
@@ -286,12 +293,14 @@ function pieceFromHit(row: WebHit, slot: RackSlot, era: GarmentEra, audience: Sh
   };
 }
 
-async function dailyPool(audience: ShopAudience): Promise<RackPiece[]> {
+async function dailyPool(audience: ShopAudience, page = 0): Promise<RackPiece[]> {
   const day = dayIndex();
-  const first = 1 + (day % 5) * 12;
   const queries = dailyQueries(audience);
-  const rotated = queries.map((_, index) => queries[(index + (day % queries.length)) % queries.length]);
-  const batches = await mapPool(rotated, 4, async (row) => {
+  const size = 6;
+  const start = (page * size) % queries.length;
+  const slice = Array.from({ length: size }, (_, index) => queries[(start + index) % queries.length]);
+  const first = 1 + page * 28 + (day % 4) * 6;
+  const batches = await mapPool(slice, 4, async (row) => {
     const hits = await webImages(row.q, first).catch(() => [] as WebHit[]);
     const pieces: RackPiece[] = [];
     for (const hit of hits.sort((a, b) => shopScore(b.page) - shopScore(a.page))) {
@@ -299,7 +308,7 @@ async function dailyPool(audience: ShopAudience): Promise<RackPiece[]> {
       if (!piece || pieces.some((item) => item.imageUrl === piece.imageUrl)) continue;
       if (!(await imageOk(piece.imageUrl))) continue;
       pieces.push(piece);
-      if (pieces.length >= 5) break;
+      if (pieces.length >= 12) break;
     }
     return pieces;
   });
@@ -346,9 +355,9 @@ async function mapPool<T, R>(items: T[], limit: number, fn: (item: T) => Promise
   return out;
 }
 
-export async function fetchRedCarpetRacks(prompt: string, audience: ShopAudience = 'men'): Promise<RedCarpetRacks> {
+export async function fetchRedCarpetRacks(prompt: string, audience: ShopAudience = 'men', page = 0): Promise<RedCarpetRacks> {
   const key = process.env.SERPAPI_API_KEY?.trim() || process.env.SERPAPI_KEY?.trim() || '';
-  const cacheKey = `${key ? 'flat' : 'daily'}:${audience}:${dayStamp()}:${prompt.trim().toLowerCase()}`;
+  const cacheKey = `${key ? 'flat' : 'daily'}:${audience}:p${page}:${dayStamp()}:${prompt.trim().toLowerCase()}`;
   const hit = cache.get(cacheKey);
   const ttl = key ? TTL_MS : 6 * 60 * 60 * 1000;
   if (hit && Date.now() - hit.at < ttl) return hit.racks;
@@ -357,7 +366,7 @@ export async function fetchRedCarpetRacks(prompt: string, audience: ShopAudience
     ? (await Promise.all(RECIPES.map((recipe) => searchRecipe(recipe, key).catch(() => null)))).filter(
         (piece): piece is RackPiece => Boolean(piece)
       )
-    : await dailyPool(audience);
+    : await dailyPool(audience, page);
   const racks: RedCarpetRacks = {
     tops: live.filter((piece) => piece.slot === 'top'),
     bottoms: live.filter((piece) => piece.slot === 'bottom'),

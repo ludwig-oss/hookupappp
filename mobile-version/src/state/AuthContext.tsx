@@ -62,11 +62,8 @@ function toSessionUser(raw: Record<string, unknown>): SessionUser | null {
   return session;
 }
 
-function persistShortName(session: SessionUser, previousName: string | undefined): void {
-  const short = session.name || '';
-  if (!short || short === previousName) return;
-  if (!getAuthToken()) return;
-  void profileAPI.updateProfile({ name: short }).catch(() => undefined);
+function persistShortName(_session: SessionUser, _previousName: string | undefined): void {
+  // Display name only. Do not write a shortened name back over the account.
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -129,7 +126,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               return;
             }
           }
-          clearAuth();
+          finish();
+          return;
         }
         if (token) {
           try {
@@ -146,7 +144,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }
         }
       } catch {
-        clearAuth();
+        /* A reload or a restart must not wipe the phone session. */
       }
       finish();
     })();

@@ -158,6 +158,14 @@ export function DatingBattlePanel({
   }, []);
 
   useEffect(() => {
+    if (!data?.battle) return;
+    const id = setInterval(() => {
+      datingBattleAPI.getState().then((state) => applyRef.current(state, false)).catch(() => undefined);
+    }, 2000);
+    return () => clearInterval(id);
+  }, [data?.battle?.id, data?.battle?.status]);
+
+  useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 250);
     return () => clearInterval(id);
   }, []);
@@ -435,8 +443,8 @@ export function DatingBattlePanel({
       {!battle && data.outcome?.status === 'ejected' ? (
         <Text style={styles.empty}>
           {data.outcome.youWereRejected
-            ? `They ejected the date.${data.outcome.ejectReason ? ` Reason: ${data.outcome.ejectReason}` : ''}`
-            : 'You ejected this date. Start another round when you are ready.'}
+            ? `They didn't choose you.${data.outcome.ejectReason ? ` ${data.outcome.ejectReason}` : ''}`
+            : 'You moved on. Start another round when you are ready.'}
         </Text>
       ) : null}
       {!battle && data.outcome?.status === 'matched' ? (
@@ -518,30 +526,21 @@ export function DatingBattlePanel({
           )}
           {reasonOpen ? (
             <View>
+              <Text style={styles.lead}>They see this on their live. Tap one. No typing.</Text>
               {REASONS.map((preset) => (
-                <Pressable key={preset} style={styles.chip} onPress={() => setReason(preset)}>
+                <Pressable
+                  key={preset}
+                  disabled={busy}
+                  style={styles.chip}
+                  onPress={() => {
+                    void run(() => datingBattleAPI.eject(battle.id, preset));
+                    setReason('');
+                    setReasonOpen(false);
+                  }}
+                >
                   <Text style={styles.chipText}>{preset}</Text>
                 </Pressable>
               ))}
-              <TextInput
-                value={reason}
-                onChangeText={setReason}
-                placeholder="Why are you ejecting? Required."
-                placeholderTextColor={shell.faint}
-                style={[styles.input, { minHeight: 72 }]}
-                multiline
-              />
-              <Pressable
-                disabled={busy || reason.trim().length < 2}
-                style={[styles.eject, { backgroundColor: '#dc2626' }]}
-                onPress={() => {
-                  void run(() => datingBattleAPI.eject(battle.id, reason.trim()));
-                  setReason('');
-                  setReasonOpen(false);
-                }}
-              >
-                <Text style={styles.primaryText}>Confirm eject</Text>
-              </Pressable>
             </View>
           ) : null}
         </>

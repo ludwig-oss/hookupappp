@@ -71,7 +71,7 @@ function SignedOut() {
 
 function SignedIn() {
   const { user } = useAuth();
-  if (!user?.profileSetupComplete) {
+  if (user?.profileSetupComplete === false) {
     return (
       <AppStack.Navigator screenOptions={screenOptions}>
         <AppStack.Screen name="MainTabs" component={ProfileSetupScreen} options={{ title: 'Profile setup' }} />

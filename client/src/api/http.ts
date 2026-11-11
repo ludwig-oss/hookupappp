@@ -43,7 +43,9 @@ axios.interceptors.response.use(
     const sentAuth = String(cfg?.headers?.Authorization || cfg?.headers?.authorization || '');
     const hadAuth = sentAuth.length > 0;
     const authAttempt = /\/api\/auth\//.test(url);
-    if (status === 401 && hadAuth && !authAttempt) {
+    const authError = String(err?.response?.data?.error || '');
+    const tokenRejected = /invalid or expired token|invalid token/i.test(authError);
+    if (status === 401 && hadAuth && !authAttempt && tokenRejected) {
       const current = getAuthToken() || '';
       const sent = sentAuth.replace(/^Bearer\s+/i, '');
       const stale = Boolean(current) && current !== sent;

@@ -223,6 +223,8 @@ export interface User {
 }
 
 const DB_PATH = join(__dirname, '..', 'data', 'users.json');
+/** Last file that parsed. A torn read during a save must not look like zero accounts. */
+let lastGoodUsers: User[] | null = null;
 
 function parseUsersJson(data: string): User[] {
   const parsed = JSON.parse(data);
@@ -324,10 +326,21 @@ async function readUsers(): Promise<User[]> {
       dateLookingFor: Array.isArray((user as any).dateLookingFor) ? (user as any).dateLookingFor : [],
     }));
     const { mergeUsersWithSimulator } = await import('../simulator/runtime.js');
+    lastGoodUsers = mapped as User[];
     return mergeUsersWithSimulator(mapped as User[]);
   } catch (error) {
-    const { mergeUsersWithSimulator } = await import('../simulator/runtime.js');
-    return mergeUsersWithSimulator([]);
+    const code = (error as NodeJS.ErrnoException)?.code;
+    if (code === 'ENOENT') {
+      const { mergeUsersWithSimulator } = await import('../simulator/runtime.js');
+      return mergeUsersWithSimulator([]);
+    }
+    if (lastGoodUsers) {
+      console.warn('users.json could not be read; keeping the accounts already loaded');
+      const { mergeUsersWithSimulator } = await import('../simulator/runtime.js');
+      return mergeUsersWithSimulator(lastGoodUsers);
+    }
+    console.error('users.json could not be read; refusing to treat that as an empty app', error);
+    throw error;
   }
 }
 

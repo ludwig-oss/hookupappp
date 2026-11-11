@@ -13,7 +13,7 @@ export function userForStorage(user: Record<string, unknown>): Record<string, un
     name: user.name,
     username: user.username,
     profilePicture: profilePictureForStorage(user.profilePicture as string | null | undefined),
-    profileSetupComplete: Boolean(user.profileSetupComplete),
+    ...(typeof user.profileSetupComplete === 'boolean' ? { profileSetupComplete: user.profileSetupComplete } : {}),
     emailVerified: user.emailVerified !== false,
     improvementCategories: Array.isArray(user.improvementCategories)
       ? user.improvementCategories.filter((c): c is string => typeof c === 'string')

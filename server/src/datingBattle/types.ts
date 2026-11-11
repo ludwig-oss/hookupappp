@@ -77,6 +77,9 @@ export interface BattleState {
   emptyReason: string | null;
   /** True once Start Live Battle has put this user in the open pool. */
   searching: boolean;
+  /** How this round picks the other person: age band, a high-interest date, or anyone. */
+  pairMode?: 'age' | 'hot' | 'random';
+  searchingSince?: string | null;
 }
 
 export interface SpotlightCard {

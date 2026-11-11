@@ -11,6 +11,7 @@ import {
   postResolve,
   postSpotlight,
   postStart,
+  postShuffle,
   putProfile,
 } from '../controllers/datingBattleController.js';
 
@@ -20,6 +21,7 @@ router.use(authenticateToken);
 router.get('/state', getState);
 router.put('/profile', putProfile);
 router.post('/start', postStart);
+router.post('/shuffle', postShuffle);
 router.post('/spotlight', postSpotlight);
 router.post('/coach/complete', postCoach);
 router.post('/checkout', postCheckout);

@@ -113,6 +113,7 @@ interface StoredBattle {
 interface QueuedLive {
   userId: string;
   joinedAt: string;
+  mode?: 'age' | 'hot' | 'random';
 }
 
 interface Db {
@@ -409,7 +410,19 @@ function dropQueued(db: Db, ...ids: string[]) {
   db.queue = db.queue.filter((entry) => !gone.has(entry.userId));
 }
 
-async function allocate(db: Db, viewer: PublicUser, restrictTo?: Set<string>): Promise<Allocation> {
+function listedInterests(user: PublicUser): number {
+  return Array.isArray(user.interests) ? user.interests.length : 0;
+}
+
+function pairModeOf(value: unknown): 'age' | 'hot' | 'random' {
+  return value === 'hot' || value === 'random' || value === 'age' ? value : 'age';
+}
+
+function queueMode(db: Db, userId: string): 'age' | 'hot' | 'random' {
+  return pairModeOf(db.queue.find((entry) => entry.userId === userId)?.mode);
+}
+
+async function allocate(db: Db, viewer: PublicUser, restrictTo?: Set<string>, mode: 'age' | 'hot' | 'random' = 'age'): Promise<Allocation> {
   const side = datingSide(viewer.gender);
   const age = Number(viewer.age);
   if (!side || !Number.isFinite(age)) {
@@ -449,7 +462,7 @@ async function allocate(db: Db, viewer: PublicUser, restrictTo?: Set<string>): P
     if (blockedPair(viewer, candidate)) continue;
     const boyAge = side === 'male' ? age : otherAge;
     const girlAge = side === 'male' ? otherAge : age;
-    if (!agesAlign(boyAge, girlAge)) continue;
+    if (mode === 'age' && !agesAlign(boyAge, girlAge)) continue;
     ageHits += 1;
     const candidateProfile = db.profiles.find((item) => item.userId === candidate.id) || defaultProfile(candidate.id);
     if (!matchesSearch(profile.searchText, candidate, candidateProfile)) continue;
@@ -474,7 +487,7 @@ async function allocate(db: Db, viewer: PublicUser, restrictTo?: Set<string>): P
       const girlWallet = peekWallet(db, girlUser.id);
       girlRare = isRarelyRejected(girlWallet.roundsJoined, girlWallet.rejectionCount);
     }
-    if (!pairAllowed({
+    if (mode === 'age' && !pairAllowed({
       boyAge,
       girlAge,
       boyWorkingOnSelf: boyWorking,
@@ -482,7 +495,7 @@ async function allocate(db: Db, viewer: PublicUser, restrictTo?: Set<string>): P
       girlRarelyRejected: girlRare,
     })) continue;
 
-    let score = 0;
+    let score = listedInterests(candidate);
     if (distance != null) score += Math.max(0, 30 - distance);
     const mine = new Set((viewer.interests || []).map((item) => String(item).toLowerCase()));
     for (const interest of candidate.interests || []) {
@@ -498,20 +511,30 @@ async function allocate(db: Db, viewer: PublicUser, restrictTo?: Set<string>): P
     const lifeStageNote = side === 'female' && (viewerTop || viewerRare)
       ? 'Your profile rarely gets rejected, so people who are still working on themselves stay out of this round.'
       : 'The people in range are top-tier or rarely rejected. This chapter is paired with grounded profiles, and none are free right now.';
-    const emptyReason = ageHits === 0
+    const emptyReason = mode === 'age' && ageHits === 0
       ? 'Nobody in your age band is available right now.'
       : poolHits === 0
-        ? 'Nobody in your age band is inside this distance and search. Widen the radius or clear the search.'
+        ? 'Nobody in range is inside this distance and search. Widen the radius or clear the search.'
         : lifeStageNote;
     return { user: null, note: null, emptyReason };
   }
 
-  candidates.sort((a, b) => b.score - a.score || a.user.id.localeCompare(b.user.id));
-  const fresh = candidates.find((item) => !wallet.recentPartnerIds.includes(item.user.id));
-  const pick = fresh || candidates[0];
+  const freshFirst = candidates.filter((item) => !wallet.recentPartnerIds.includes(item.user.id));
+  const pool = freshFirst.length ? freshFirst : candidates;
+  if (mode === 'random') {
+    const pick = pool[Math.floor(Math.random() * pool.length)];
+    return { user: pick.user, note: 'This round is a random person.', emptyReason: null };
+  }
+  if (mode === 'hot') {
+    pool.sort((a, b) => listedInterests(b.user) - listedInterests(a.user) || b.score - a.score);
+    return { user: pool[0].user, note: 'This round is a date with someone who draws a lot of interest.', emptyReason: null };
+  }
+  const average = pool.reduce((sum, item) => sum + listedInterests(item.user), 0) / pool.length;
+  pool.sort((a, b) => Math.abs(listedInterests(a.user) - average) - Math.abs(listedInterests(b.user) - average) || b.score - a.score);
+  const pick = pool[0];
   const note = viewerWorking
-    ? 'You are still building. This match is a grounded profile — not a 10 who rarely gets told no.'
-    : null;
+    ? 'You are still building. This match stays in your age band, close to the average interest people here get.'
+    : 'Age match, close to the average interest this pool gets.';
   return { user: pick.user, note, emptyReason: null };
 }
 
@@ -643,13 +666,15 @@ async function buildState(db: Db, userId: string, withPreview: boolean): Promise
       base.outcome = await toView(db, latest, userId);
     }
   }
-  const queued = db.queue.some((entry) => entry.userId === userId);
-  if (queued) {
+  const queuedEntry = db.queue.find((entry) => entry.userId === userId);
+  if (queuedEntry) {
     base.searching = true;
+    base.searchingSince = queuedEntry.joinedAt;
+    base.pairMode = pairModeOf(queuedEntry.mode);
     base.emptyReason = null;
   }
   if (!withPreview || blocked || wallet.coachLocked) return base;
-  const allocation = await allocate(db, publicViewer);
+  const allocation = await allocate(db, publicViewer, undefined, queueMode(db, userId));
   base.allocationNote = allocation.note;
   base.emptyReason = allocation.emptyReason;
   if (allocation.user) {
@@ -715,7 +740,7 @@ async function openQueuedBattle(db: Db, userId: string, viewer: PublicUser): Pro
     db.queue.filter((entry) => entry.userId !== userId).map((entry) => entry.userId)
   );
   if (!waiting.size) return false;
-  const allocation = await allocate(db, viewer, waiting);
+  const allocation = await allocate(db, viewer, waiting, queueMode(db, userId));
   if (!allocation.user) return false;
   const wallet = ensureWallet(db, userId);
   const partnerWallet = ensureWallet(db, allocation.user.id);
@@ -745,7 +770,7 @@ async function openQueuedBattle(db: Db, userId: string, viewer: PublicUser): Pro
   return true;
 }
 
-export async function startBattle(userId: string): Promise<BattleState> {
+export async function startBattle(userId: string, requestedMode?: string): Promise<BattleState> {
   return withLock(async () => {
     const db = await readDb();
     await settle(db);
@@ -777,7 +802,11 @@ export async function startBattle(userId: string): Promise<BattleState> {
       if (wallet.freeRemaining > 0) wallet.freeRemaining -= 1;
       else wallet.paidRemaining -= 1;
       wallet.roundsStarted += 1;
-      db.queue.push({ userId, joinedAt: new Date().toISOString() });
+      db.queue.push({
+        userId,
+        joinedAt: new Date().toISOString(),
+        mode: requestedMode ? pairModeOf(requestedMode) : (['age', 'hot', 'random'] as const)[wallet.roundsStarted % 3],
+      });
     }
     await openQueuedBattle(db, userId, viewer as PublicUser);
     await writeDb(db);
@@ -821,6 +850,40 @@ export async function ejectBattle(userId: string, battleId: string, reason: stri
     }
     await writeDb(db);
     return buildState(db, userId, true);
+  });
+}
+
+export async function shuffleBattle(userId: string, reason: string, requestedMode?: string): Promise<BattleState> {
+  return withLock(async () => {
+    const db = await readDb();
+    await settle(db);
+    const cleanReason = clip(reason, 280);
+    if (cleanReason.length < 2) throw new BattleError(400, 'Tell us why before the next person.');
+    const live = liveFor(db, userId);
+    const queued = db.queue.some((entry) => entry.userId === userId);
+    if (live) {
+      const elapsed = Date.now() - new Date(live.startedAt).getTime();
+      if (elapsed < WINGMAN_MS) throw new BattleError(400, 'The next person opens when the 5 minutes are up.');
+      live.status = 'ejected';
+      live.ejectedBy = userId;
+      live.ejectReason = cleanReason;
+      live.resolvedAt = new Date().toISOString();
+      const otherId = live.user1Id === userId ? live.user2Id : live.user1Id;
+      recordRejection(ensureWallet(db, otherId), live.id);
+    } else if (!queued) {
+      throw new BattleError(400, 'Start a live round before shuffling.');
+    }
+    dropQueued(db, userId);
+    const viewer = await getUserById(userId);
+    if (!viewer) throw new BattleError(401, 'Unauthorized');
+    db.queue.push({
+      userId,
+      joinedAt: new Date().toISOString(),
+      mode: pairModeOf(requestedMode),
+    });
+    await openQueuedBattle(db, userId, viewer as PublicUser);
+    await writeDb(db);
+    return buildState(db, userId, !liveFor(db, userId));
   });
 }
 

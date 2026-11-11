@@ -8,6 +8,25 @@ import { formatAxiosError } from '../lib/apiError';
 import LifeQuizModal from './LifeQuizModal';
 import './WalkingPartnerPopup.css';
 
+const LIFE_QUIZ_LATER_KEY = 'hookup:lifeQuizLaterUntil';
+
+function quizSnoozed() {
+  const until = Number(localStorage.getItem(LIFE_QUIZ_LATER_KEY) || 0);
+  return Number.isFinite(until) && until > Date.now();
+}
+
+function snoozeLifeQuiz() {
+  const now = new Date();
+  const later = new Date(now.getTime() + 4 * 60 * 60 * 1000);
+  if (now.getHours() >= 17) {
+    later.setDate(now.getDate() + 1);
+    later.setHours(10, 0, 0, 0);
+  } else if (later.getHours() < 17 && later.getDate() === now.getDate()) {
+    later.setHours(17, 0, 0, 0);
+  }
+  localStorage.setItem(LIFE_QUIZ_LATER_KEY, String(later.getTime()));
+}
+
 type Props = {
   onOpenChat: (userId: string) => void;
 };
@@ -59,7 +78,7 @@ export default function WalkingPartnerPopup({ onOpenChat }: Props) {
       }
 
       if (data.needsLifeQuiz) {
-        setShowQuiz(true);
+        if (!quizSnoozed()) setShowQuiz(true);
         return;
       }
 
@@ -185,7 +204,10 @@ export default function WalkingPartnerPopup({ onOpenChat }: Props) {
   if (showQuiz) {
     return (
       <LifeQuizModal
-        onClose={() => setShowQuiz(false)}
+        onClose={() => {
+          snoozeLifeQuiz();
+          setShowQuiz(false);
+        }}
         onComplete={() => {
           setShowQuiz(false);
           updateUser({ lifeQuizCompleted: true });

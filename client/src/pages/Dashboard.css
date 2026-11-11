@@ -5501,6 +5501,53 @@ html.theme-day .chat-boundaries-q {
   overflow: visible;
 }
 
+.profile-embedded .avatar-circle,
+.profile-match-widget .avatar-circle {
+  width: 180px;
+  height: 240px;
+  margin-left: auto;
+  margin-right: auto;
+  overflow: hidden;
+  animation: none;
+  transform: none;
+}
+
+.profile-embedded .avatar-circle::before,
+.profile-embedded .avatar-circle::after,
+.profile-embedded .avatar-image,
+.profile-embedded .avatar-image-wrapper::before,
+.profile-embedded .avatar-image-wrapper::after,
+.profile-embedded .holographic-panel::before,
+.profile-match-widget .avatar-circle::before,
+.profile-match-widget .avatar-circle::after,
+.profile-match-widget .avatar-image,
+.profile-match-widget .avatar-image-wrapper::before,
+.profile-match-widget .avatar-image-wrapper::after {
+  animation: none;
+}
+
+.profile-embedded .holographic-panel::before {
+  display: none;
+}
+
+.profile-embedded .profile-match-widget,
+.profile-match-widget {
+  min-height: 0;
+}
+
+@media (max-width: 860px) {
+  .profile-embedded.dashboard-container,
+  .app-stage {
+    overflow-x: hidden;
+  }
+
+  .profile-embedded .left-panel,
+  .profile-embedded .holographic-panel {
+    max-height: none;
+    overflow: visible;
+  }
+}
+
 .app-side-icon {
   width: 1.4em;
 }

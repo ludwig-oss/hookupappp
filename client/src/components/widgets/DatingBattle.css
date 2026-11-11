@@ -231,6 +231,53 @@
   letter-spacing: 0.08em;
 }
 
+.dbattle-stage.is-live,
+.dbattle.is-searching .dbattle-stage {
+  min-height: min(78vh, 720px);
+}
+
+.dbattle-mid {
+  position: absolute;
+  z-index: 4;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(220px, 72%);
+  margin: 0;
+  padding: 14px 18px;
+  border: 0;
+  border-radius: 999px;
+  background: #2563eb;
+  color: #fff;
+  font-weight: 700;
+  box-shadow: 0 0 22px rgba(37, 99, 235, 0.9);
+}
+
+.dbattle-mid.is-inline {
+  position: static;
+  transform: none;
+  width: 100%;
+}
+
+.dbattle-reason.is-center {
+  position: absolute;
+  z-index: 5;
+  left: 12px;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  margin: 0;
+  padding: 12px;
+  border-radius: 14px;
+  background: rgba(8, 8, 16, 0.94);
+}
+
+.dbattle-reason textarea {
+  min-height: 72px;
+  border-radius: 10px;
+  padding: 10px;
+}
+
 .dbattle-vs {
   position: absolute;
   z-index: 2;

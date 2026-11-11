@@ -7,7 +7,7 @@ import {
   stripeFrontendBase,
 } from '../lib/stripeClient.js';
 import { PACK_PRICE_EUR } from '../datingBattle/constants.js';
-import { BattleError, completeCoach, confirmBattle, ejectBattle, getBattleState, grantDatingBattlePack, advancePrompt, resolveBattle, saveBattleProfile, spotlightCards, startBattle } from '../datingBattle/service.js';
+import { BattleError, completeCoach, confirmBattle, ejectBattle, getBattleState, grantDatingBattlePack, advancePrompt, resolveBattle, saveBattleProfile, shuffleBattle, spotlightCards, startBattle } from '../datingBattle/service.js';
 import type { ProfileInput } from '../datingBattle/types.js';
 
 function userIdOf(req: Request): string | null {
@@ -49,7 +49,17 @@ export async function postStart(req: Request, res: Response) {
   try {
     const userId = userIdOf(req);
     if (!userId) return res.status(401).json({ error: 'Unauthorized' });
-    res.json(await startBattle(userId));
+    res.json(await startBattle(userId, typeof req.body?.mode === 'string' ? req.body.mode : undefined));
+  } catch (error) {
+    sendError(res, error);
+  }
+}
+
+export async function postShuffle(req: Request, res: Response) {
+  try {
+    const userId = userIdOf(req);
+    if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+    res.json(await shuffleBattle(userId, String(req.body?.reason || ''), typeof req.body?.mode === 'string' ? req.body.mode : undefined));
   } catch (error) {
     sendError(res, error);
   }

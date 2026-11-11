@@ -10,6 +10,22 @@ import { openChatWithUser } from '../../lib/openChat';
 import { FeatureCoach } from './FeatureCoach';
 import './DatingBattle.css';
 
+const MODES = ['age', 'hot', 'random'] as const;
+type PairMode = (typeof MODES)[number];
+
+function nextMode(mode: PairMode): PairMode {
+  if (mode === 'age') return 'hot';
+  if (mode === 'hot') return 'random';
+  return 'age';
+}
+
+function modeLine(mode?: string) {
+  if (mode === 'hot') return 'Date round — someone with a lot of interest.';
+  if (mode === 'random') return 'Random person this round.';
+  if (mode === 'age') return 'Age match, close to the average interest.';
+  return '';
+}
+
 const REASONS = [
   'No chemistry',
   'Different life stage',
@@ -96,7 +112,7 @@ export default function DatingBattle() {
   const [workingOnSelf, setWorkingOnSelf] = useState(false);
   const [formReady, setFormReady] = useState(false);
   const [hideTips, setHideTips] = useState(() => localStorage.getItem(TIPS_KEY) === '1');
-  const [showTutorial, setShowTutorial] = useState(() => localStorage.getItem(TUTORIAL_KEY) !== 'true');
+  const [pairMode, setPairMode] = useState<PairMode>(() => MODES[Math.floor(Math.random() * MODES.length)]);
   const [tutorialStep, setTutorialStep] = useState(0);
   const [coachTarget, setCoachTarget] = useState<HTMLElement | null>(null);
   const rootRef = useRef<HTMLElement>(null);
@@ -142,6 +158,12 @@ export default function DatingBattle() {
       window.removeEventListener('dating-battle:refresh', onRefresh);
     };
   }, []);
+
+  useEffect(() => {
+    if (data?.pairMode === 'age' || data?.pairMode === 'hot' || data?.pairMode === 'random') {
+      setPairMode(data.pairMode);
+    }
+  }, [data?.pairMode]);
 
   useEffect(() => {
     const id = window.setInterval(() => setNow(Date.now()), 250);
@@ -278,7 +300,7 @@ export default function DatingBattle() {
       {error ? <div className="dbattle-error">{error}</div> : null}
       {data.blocked ? <div className="dbattle-empty">{data.blocked.message}</div> : null}
 
-      {!battle && !data.blocked ? (
+      {!battle && !data.searching && !data.blocked ? (
         <>
           <div ref={filtersRef}>
           <label className="dbattle-field">
@@ -396,7 +418,7 @@ export default function DatingBattle() {
         </div>
       ) : null}
 
-      {!battle && data.preview && !data.coachLocked && !data.blocked ? (
+      {!battle && !data.searching && data.preview && !data.coachLocked && !data.blocked ? (
         <article className="dbattle-card">
           <div className="dbattle-kicker">NEXT CONTESTANT</div>
           <strong>{data.preview.username ? `@${data.preview.username}` : data.preview.name}</strong>
@@ -406,7 +428,7 @@ export default function DatingBattle() {
         </article>
       ) : null}
       {!battle ? (
-        <div ref={cardsRef} className="dbattle-stage" aria-label="AI fighter cards">
+        <div ref={cardsRef} className={`dbattle-stage${data.searching ? ' is-live' : ''}`} aria-label="AI fighter cards">
           <div className="dbattle-side is-me">
             <div className="dbattle-shade" />
             <div className="dbattle-copy">
@@ -424,9 +446,29 @@ export default function DatingBattle() {
               <p className="dbattle-plan">{data.preview?.polishedFuture || 'The polished plan lands on this card.'}</p>
             </div>
           </div>
+          {data.searching ? <div className="dbattle-clock">{clock(Math.max(0, new Date(data.searchingSince || Date.now()).getTime() + 5 * 60 * 1000 - (now + skewRef.current)))}</div> : null}
+          {data.searching && !reasonOpen && now + skewRef.current >= new Date(data.searchingSince || 0).getTime() + 5 * 60 * 1000 ? (
+            <button type="button" className="dbattle-mid" onClick={() => setReasonOpen(true)}>Next person</button>
+          ) : data.searching ? <div className="dbattle-vs">VS</div> : null}
+          {data.searching && reasonOpen ? (
+            <ReasonSheet
+              reason={reason}
+              busy={busy}
+              onPick={setReason}
+              onChange={setReason}
+              onConfirm={() => void run(async () => {
+                const following = nextMode(data.pairMode || pairMode);
+                const next = await datingBattleAPI.shuffle(reason.trim(), following);
+                setPairMode(following);
+                setReason('');
+                setReasonOpen(false);
+                return next;
+              })}
+            />
+          ) : null}
         </div>
       ) : null}
-      {data.allocationNote && !battle ? <p className="dbattle-note">{data.allocationNote}</p> : null}
+      {data.allocationNote && !battle ? <p className="dbattle-note">{modeLine(data.pairMode) || data.allocationNote}</p> : null}
       {!battle && data.emptyReason && !data.blocked && !data.coachLocked ? <p className="dbattle-empty">{data.emptyReason}</p> : null}
       {!battle && data.outcome?.status === 'matched' ? (
         <div className="dbattle-note">
@@ -460,7 +502,7 @@ export default function DatingBattle() {
         <p className="dbattle-note">You’re live. The pool is open — a match starts the moment someone compatible joins.</p>
       ) : null}
       {!battle && !paywall && !data.coachLocked && !data.blocked ? (
-        <button type="button" className="dbattle-start" disabled={busy || Boolean(data.searching)} onClick={() => void run(() => datingBattleAPI.start())}>
+        <button type="button" className="dbattle-start" disabled={busy || Boolean(data.searching)} onClick={() => void run(() => datingBattleAPI.start(pairMode))}>
           {data.searching ? 'Live — finding a match' : 'Start Live Battle'}
         </button>
       ) : null}
@@ -481,13 +523,33 @@ export default function DatingBattle() {
 
       {battle ? (
         <>
-          <div ref={cardsRef} className="dbattle-stage" aria-label="Dating battle">
+          <div ref={cardsRef} className={`dbattle-stage${battle.status === 'live' ? ' is-live' : ''}`} aria-label="Dating battle">
             <Side card={battle.me} kicker="YOU" mine />
             <Side card={battle.partner} kicker="THEM" />
-            <div className="dbattle-vs">VS</div>
+            {battle.status === 'live' && timing.phase === 'ejection' && !reasonOpen ? (
+              <button ref={ejectRef} type="button" className="dbattle-mid" disabled={busy} onClick={() => setReasonOpen(true)}>
+                Next person
+              </button>
+            ) : battle.status === 'live' && !reasonOpen ? <div className="dbattle-vs">VS</div> : null}
             <div className="dbattle-clock" aria-live="polite">
               {battle.status === 'live' ? clock(timing.ms) : battle.status === 'matched' ? 'MATCH' : 'OUT'}
             </div>
+            {battle.status === 'live' && reasonOpen ? (
+              <ReasonSheet
+                reason={reason}
+                busy={busy}
+                onPick={setReason}
+                onChange={setReason}
+                onConfirm={() => void run(async () => {
+                  const following = nextMode(data.pairMode || pairMode);
+                  const next = await datingBattleAPI.shuffle(reason.trim(), following);
+                  setPairMode(following);
+                  setReason('');
+                  setReasonOpen(false);
+                  return next;
+                })}
+              />
+            ) : null}
           </div>
           {battle.status === 'live' ? (
             <>
@@ -512,40 +574,8 @@ export default function DatingBattle() {
                   <small>{battle.myConfirmed ? 'You locked in. Waiting on them.' : battle.partnerConfirmed ? 'They already locked in.' : 'Both locks make a match before the clock ends.'}</small>
                 </button>
               ) : (
-                <>
-                  <button ref={ejectRef} type="button" className="dbattle-eject" disabled={busy} onClick={() => setReasonOpen(true)}>
-                    Eject
-                  </button>
-                  <p className="dbattle-lead">Blue, then red. Press it to eliminate this date, or let the window close and move to Communications.</p>
-                </>
+                <p className="dbattle-lead">Five minutes are up. The blue button in the middle asks why, then brings another person.</p>
               )}
-              {reasonOpen ? (
-                <div className="dbattle-reason">
-                  <div className="dbattle-chips">
-                    {REASONS.map((preset) => (
-                      <button key={preset} type="button" onClick={() => setReason(preset)}>{preset}</button>
-                    ))}
-                  </div>
-                  <textarea
-                    value={reason}
-                    placeholder="Why are you ejecting? Required."
-                    onChange={(event) => setReason(event.target.value)}
-                    style={{ minHeight: 72, borderRadius: 10, padding: 10 }}
-                  />
-                  <button
-                    type="button"
-                    className="dbattle-eject"
-                    style={{ animation: 'none', background: '#dc2626' }}
-                    disabled={busy || reason.trim().length < 2}
-                    onClick={() => void run(() => datingBattleAPI.eject(battle.id, reason.trim())).then(() => {
-                      setReason('');
-                      setReasonOpen(false);
-                    })}
-                  >
-                    Confirm eject
-                  </button>
-                </div>
-              ) : null}
             </>
           ) : null}
           {battle.status === 'matched' ? (
@@ -581,6 +611,39 @@ export default function DatingBattle() {
       />
       ) : null}
     </section>
+  );
+}
+
+function ReasonSheet({
+  reason,
+  busy,
+  onPick,
+  onChange,
+  onConfirm,
+}: {
+  reason: string;
+  busy: boolean;
+  onPick: (value: string) => void;
+  onChange: (value: string) => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <div className="dbattle-reason is-center">
+      <strong>Why this one?</strong>
+      <div className="dbattle-chips">
+        {REASONS.map((preset) => (
+          <button key={preset} type="button" onClick={() => onPick(preset)}>{preset}</button>
+        ))}
+      </div>
+      <textarea
+        value={reason}
+        placeholder="Why are you moving on? Required."
+        onChange={(event) => onChange(event.target.value)}
+      />
+      <button type="button" className="dbattle-mid is-inline" disabled={busy || reason.trim().length < 2} onClick={onConfirm}>
+        Shuffle
+      </button>
+    </div>
   );
 }
 

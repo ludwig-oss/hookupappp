@@ -71,6 +71,8 @@ export interface BattleState {
   blocked: { code: 'underage' | 'need_gender' | 'need_age'; message: string } | null;
   emptyReason: string | null;
   searching?: boolean;
+  pairMode?: 'age' | 'hot' | 'random';
+  searchingSince?: string | null;
 }
 
 export interface SpotlightCard {
@@ -90,8 +92,12 @@ export const datingBattleAPI = {
     const res = await axios.put(`${API_URL}/profile`, profile);
     return res.data;
   },
-  start: async (): Promise<BattleState> => {
-    const res = await axios.post(`${API_URL}/start`);
+  start: async (mode?: 'age' | 'hot' | 'random'): Promise<BattleState> => {
+    const res = await axios.post(`${API_URL}/start`, mode ? { mode } : {});
+    return res.data;
+  },
+  shuffle: async (reason: string, mode: 'age' | 'hot' | 'random'): Promise<BattleState> => {
+    const res = await axios.post(`${API_URL}/shuffle`, { reason, mode });
     return res.data;
   },
   confirm: async (battleId: string): Promise<BattleState> => {

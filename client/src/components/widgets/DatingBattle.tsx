@@ -99,6 +99,7 @@ export default function DatingBattle() {
   const [showTutorial, setShowTutorial] = useState(() => localStorage.getItem(TUTORIAL_KEY) !== 'true');
   const [tutorialStep, setTutorialStep] = useState(0);
   const [coachTarget, setCoachTarget] = useState<HTMLElement | null>(null);
+  const rootRef = useRef<HTMLElement>(null);
   const filtersRef = useRef<HTMLDivElement>(null);
   const cardsRef = useRef<HTMLDivElement>(null);
   const wingmanRef = useRef<HTMLButtonElement>(null);
@@ -214,13 +215,15 @@ export default function DatingBattle() {
     }
   };
 
+  const tutorialStepRef = useRef(0);
   const nextTutorialStep = () => {
-    if (tutorialStep < TUTORIAL_STEPS.length - 1) {
-      setTutorialStep((step) => step + 1);
+    if (tutorialStepRef.current >= TUTORIAL_STEPS.length - 1) {
+      localStorage.setItem(TUTORIAL_KEY, 'true');
+      setShowTutorial(false);
       return;
     }
-    localStorage.setItem(TUTORIAL_KEY, 'true');
-    setShowTutorial(false);
+    tutorialStepRef.current += 1;
+    setTutorialStep(tutorialStepRef.current);
   };
 
   useEffect(() => {
@@ -252,7 +255,7 @@ export default function DatingBattle() {
   };
 
   if (!data) {
-    return <section className="dbattle"><p className="dbattle-lead">{error || 'Loading Connection…'}</p></section>;
+    return <section ref={rootRef} className="dbattle"><p className="dbattle-lead">{error || 'Loading Connection…'}</p></section>;
   }
 
   const timing = liveClock(data, now, skewRef.current);
@@ -266,7 +269,7 @@ export default function DatingBattle() {
       : 'Free rounds left: 0 / 5';
 
   return (
-    <section className="dbattle">
+    <section ref={rootRef} className="dbattle">
       <h3>CONNECTION</h3>
       <p className="dbattle-lead">
         Search, set a distance, then take a 5-minute split-screen battle. No ejection means you land in Communications.
@@ -564,6 +567,7 @@ export default function DatingBattle() {
           ) : null}
         </>
       ) : null}
+      {showTutorial && coachStep ? (
       <FeatureCoach
         active={showTutorial}
         stepIndex={tutorialStep}
@@ -572,8 +576,10 @@ export default function DatingBattle() {
         body={coachStep.description}
         cta={tutorialStep === TUTORIAL_STEPS.length - 1 ? 'LOSLEGEN 🚀' : 'WEITER →'}
         target={coachTarget}
+        rootRef={rootRef}
         onNext={nextTutorialStep}
       />
+      ) : null}
     </section>
   );
 }

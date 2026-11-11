@@ -67,7 +67,7 @@ const PLACE_TYPES = [
 
 const ConnectionsWidget = () => {
   const { user } = useContext(AuthContext);
-  const [view, setView] = useState<'main' | 'nearby' | 'venues' | 'buzzes' | 'search_places'>(() => takeConnectionsStartView() || 'main');
+  const [view, setView] = useState<'main' | 'nearby' | 'venues' | 'buzzes' | 'search_places' | 'battle'>(() => takeConnectionsStartView() || 'main');
   const [venues, setVenues] = useState<VenueCount[]>([]);
   const [nearbyUsers, setNearbyUsers] = useState<NearbyUser[]>([]);
   const [buzzes, setBuzzes] = useState<{ received: Buzz[]; sent: Buzz[] }>({ received: [], sent: [] });
@@ -90,7 +90,6 @@ const ConnectionsWidget = () => {
   const [searchPlaceLocationName, setSearchPlaceLocationName] = useState<string | null>(null);
   const [searchPlaceMostConcentrated, setSearchPlaceMostConcentrated] = useState<PlaceCountOnly | null>(null);
   const [searchPlacesLoading, setSearchPlacesLoading] = useState(false);
-  const [showPreferenceRankList, setShowPreferenceRankList] = useState(false);
   const [locationDeclined, setLocationDeclined] = useState(false);
   const [requestingLocation, setRequestingLocation] = useState(false);
   const [handledRev, setHandledRev] = useState(0);
@@ -383,7 +382,7 @@ const ConnectionsWidget = () => {
         userId: user.id,
       });
       setVenues(response.venues);
-      setView('venues');
+      setView('search_places');
     } catch (err: any) {
       setError(err.response?.data?.error || 'Failed to load venues');
     } finally {
@@ -837,7 +836,22 @@ const ConnectionsWidget = () => {
           <p style={{ marginBottom: '14px', color: '#9ca3af', fontFamily: 'Orbitron, monospace', fontSize: '12px' }}>
             Nearby people update automatically. Show interest once — they only Accept or Decline (no need to send interest back).
           </p>
-          <DatingBattle />
+          <button
+            type="button"
+            onClick={() => setView('battle')}
+            className="select-user-btn"
+            style={{
+              width: '100%',
+              marginBottom: 14,
+              background: 'rgba(255, 0, 255, 0.12)',
+              border: '2px solid #ff00ff',
+              color: '#ff7af8',
+              fontFamily: 'Orbitron, monospace',
+              fontWeight: 'bold',
+            }}
+          >
+            Connection — open the live battle
+          </button>
           {renderLocationPrompt()}
           {buzzes.received.some((b) => b.status === 'pending') && (
             <div
@@ -886,37 +900,6 @@ const ConnectionsWidget = () => {
           </button>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            <div>
-              <label style={{ fontSize: '10px', color: '#9ca3af', fontFamily: 'Orbitron, monospace', display: 'block', marginBottom: '4px' }}>Venues radius</label>
-              <select
-                value={venueRadius}
-                onChange={(e) => setVenueRadius(Number(e.target.value))}
-                style={{
-                  width: '100%',
-                  padding: '8px',
-                  background: 'rgba(0,0,0,0.5)',
-                  border: '2px solid rgba(0, 212, 255, 0.5)',
-                  borderRadius: '6px',
-                  color: '#00d4ff',
-                  fontFamily: 'Orbitron, monospace',
-                  fontSize: '12px',
-                }}
-              >
-                {VENUE_RADIUS_OPTIONS.map((o) => (
-                  <option key={o.value} value={o.value}>{o.label}</option>
-                ))}
-              </select>
-            </div>
-            <button onClick={loadVenues} className="select-user-btn" disabled={loading || !location} style={{
-              background: 'rgba(0, 0, 0, 0.4)',
-              border: '2px solid #00d4ff',
-              color: '#00d4ff',
-              fontFamily: 'Orbitron, monospace',
-              fontWeight: 'bold',
-              boxShadow: '0 0 15px rgba(0, 212, 255, 0.3)',
-            }}>
-              {loading ? 'Loading...' : `📍 Real venues (${venueRadius >= 1000 ? venueRadius / 1000 + ' km' : venueRadius + ' m'})`}
-            </button>
             <button onClick={() => setView('search_places')} className="select-user-btn" style={{
               background: 'rgba(0, 0, 0, 0.4)',
               border: '2px solid #00d4ff',
@@ -925,7 +908,7 @@ const ConnectionsWidget = () => {
               fontWeight: 'bold',
               boxShadow: '0 0 15px rgba(0, 212, 255, 0.3)',
             }}>
-              🔍 Search places (see count of your preferences)
+              🔍 Search places
             </button>
             <button onClick={() => { setView('buzzes'); loadBuzzes(); }} className="select-user-btn" style={{
               background: 'rgba(0, 0, 0, 0.4)',
@@ -941,18 +924,83 @@ const ConnectionsWidget = () => {
         </div>
       )}
 
+      {view === 'battle' && (
+        <div className="improvement-content">
+          <button type="button" onClick={() => setView('main')} className="back-btn" style={{
+            marginBottom: 12,
+            background: 'rgba(0, 0, 0, 0.4)', border: '2px solid #ff00ff', color: '#ff7af8',
+            fontFamily: 'Orbitron, monospace', padding: '8px 16px', borderRadius: '6px',
+          }}>← Back</button>
+          <DatingBattle />
+        </div>
+      )}
+
       {view === 'search_places' && (
         <div className="improvement-content">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-            <button onClick={() => { setView('main'); setSearchPlaceResults([]); setSearchPlaceMostConcentrated(null); setError(''); }} className="back-btn" style={{
+            <button onClick={() => { setView('main'); setSearchPlaceResults([]); setSearchPlaceMostConcentrated(null); setVenues([]); setError(''); }} className="back-btn" style={{
               background: 'rgba(0, 0, 0, 0.4)', border: '2px solid #00d4ff', color: '#00d4ff',
               fontFamily: 'Orbitron, monospace', padding: '8px 16px', borderRadius: '6px',
             }}>← Back</button>
-            <h3 style={{ margin: 0, fontSize: '16px', color: '#00d4ff', fontFamily: 'Orbitron, monospace' }}>Search real places</h3>
+            <h3 style={{ margin: 0, fontSize: '16px', color: '#00d4ff', fontFamily: 'Orbitron, monospace' }}>Search places</h3>
           </div>
           <p style={{ marginBottom: '12px', color: '#9ca3af', fontSize: '12px', fontFamily: 'Orbitron, monospace' }}>
-            Type any place, park, shop, or city. Leave type on None to search everything (live map). Or pick a type to filter.
+            Search the place you want. This page shows where your preferences are — nothing else from Connections.
           </p>
+          <label style={{ fontSize: '10px', color: '#9ca3af', fontFamily: 'Orbitron, monospace', display: 'block', marginBottom: '4px' }}>Venues radius</label>
+          <select
+            value={venueRadius}
+            onChange={(e) => setVenueRadius(Number(e.target.value))}
+            style={{
+              width: '100%',
+              padding: '8px',
+              marginBottom: '12px',
+              background: 'rgba(0,0,0,0.5)',
+              border: '2px solid rgba(0, 212, 255, 0.5)',
+              borderRadius: '6px',
+              color: '#00d4ff',
+              fontFamily: 'Orbitron, monospace',
+              fontSize: '12px',
+            }}
+          >
+            {VENUE_RADIUS_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+          <button onClick={loadVenues} className="select-user-btn" disabled={loading || !location} style={{
+            width: '100%',
+            marginBottom: 12,
+            background: 'rgba(0, 0, 0, 0.4)',
+            border: '2px solid #00d4ff',
+            color: '#00d4ff',
+            fontFamily: 'Orbitron, monospace',
+            fontWeight: 'bold',
+          }}>
+            {loading ? 'Loading...' : `Real venues (${venueRadius >= 1000 ? venueRadius / 1000 + ' km' : venueRadius + ' m'})`}
+          </button>
+          {venues.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: 16 }}>
+              {venues.map((venue, idx) => (
+                <div
+                  key={`${venue.venue}-${idx}`}
+                  style={{
+                    padding: '14px',
+                    border: '2px solid rgba(0, 212, 255, 0.3)',
+                    borderRadius: '12px',
+                    background: 'rgba(0, 0, 0, 0.4)',
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+                    <span style={{ fontSize: '14px', color: '#fff', fontFamily: 'Orbitron, monospace' }}>{venue.venue}</span>
+                    <span style={{ fontSize: '18px', fontWeight: 'bold', color: '#ff00ff' }}>{venue.count}</span>
+                  </div>
+                  <p style={{ margin: '6px 0 0', fontSize: '12px', color: '#9ca3af', fontFamily: 'Orbitron, monospace' }}>
+                    {venue.venueType} · {venue.count} {venue.count === 1 ? 'person' : 'people'} from the app
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
           <input
             type="text"
             placeholder="Search a place…"
@@ -1013,63 +1061,15 @@ const ConnectionsWidget = () => {
             </div>
           )}
           {searchPlaceResults.length > 0 && (
-            <>
-              <button
-                type="button"
-                onClick={() => setShowPreferenceRankList((v) => !v)}
-                className="select-user-btn"
-                style={{
-                  width: '100%',
-                  marginBottom: 10,
-                  border: '2px solid #00d4ff',
-                  color: '#00d4ff',
-                  background: 'rgba(0,0,0,0.35)',
-                  fontFamily: 'Orbitron, monospace',
-                }}
-              >
-                {showPreferenceRankList ? 'Hide preference ranking' : 'Open preference ranking (high → low)'}
-              </button>
-              {showPreferenceRankList && (
-                <div style={{
-                  marginBottom: 12,
-                  padding: 12,
-                  borderRadius: 10,
-                  border: '1px solid rgba(0,212,255,0.35)',
-                  background: 'rgba(0,0,0,0.45)',
-                  maxHeight: 280,
-                  overflowY: 'auto',
-                }}>
-                  <p style={{ margin: '0 0 8px', fontSize: 12, color: '#00d4ff', fontFamily: 'Orbitron, monospace' }}>
-                    Where your preferences rank highest
-                  </p>
-                  {[...searchPlaceResults]
-                    .sort((a, b) => (b.preferenceHits ?? b.count) - (a.preferenceHits ?? a.count) || b.count - a.count)
-                    .map((place, idx) => (
-                      <div
-                        key={`rank-${place.venue}-${idx}`}
-                        style={{
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          gap: 8,
-                          padding: '8px 0',
-                          borderBottom: '1px solid rgba(255,255,255,0.08)',
-                          fontFamily: 'Orbitron, monospace',
-                          fontSize: 12,
-                          color: '#e5e7eb',
-                        }}
-                      >
-                        <span>#{idx + 1} {place.venue}</span>
-                        <span style={{ color: '#ff00ff', fontWeight: 700, whiteSpace: 'nowrap' }}>
-                          {place.preferenceHits ?? place.count} prefs · {place.count} people
-                        </span>
-                      </div>
-                    ))}
-                </div>
-              )}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '360px', overflowY: 'auto' }}>
-                {searchPlaceResults.map((place, idx) => (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <p style={{ margin: '0 0 4px', fontSize: 12, color: '#00d4ff', fontFamily: 'Orbitron, monospace' }}>
+                Your preferences, highest first
+              </p>
+              {[...searchPlaceResults]
+                .sort((a, b) => (b.preferenceHits ?? b.count) - (a.preferenceHits ?? a.count) || b.count - a.count)
+                .map((place, idx) => (
                   <div
-                    key={idx}
+                    key={`${place.venue}-${idx}`}
                     style={{
                       display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                       padding: '14px', border: '2px solid rgba(0, 212, 255, 0.3)', borderRadius: '10px',
@@ -1077,7 +1077,7 @@ const ConnectionsWidget = () => {
                     }}
                   >
                     <span style={{ fontSize: '14px', color: '#fff', fontFamily: 'Orbitron, monospace' }}>
-                      {place.venue}
+                      #{idx + 1} {place.venue}
                       {place.venueType ? (
                         <span style={{ display: 'block', fontSize: '11px', color: '#9ca3af', marginTop: 2 }}>{place.venueType}</span>
                       ) : null}
@@ -1091,8 +1091,7 @@ const ConnectionsWidget = () => {
                     </div>
                   </div>
                 ))}
-              </div>
-            </>
+            </div>
           )}
           {searchPlaceResults.length === 0 && searchPlaceLocationName && !searchPlacesLoading && (
             <p style={{ color: '#9ca3af', fontSize: '12px', fontFamily: 'Orbitron, monospace' }}>

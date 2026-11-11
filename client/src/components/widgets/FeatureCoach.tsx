@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type RefObject } from 'react';
 
 type Hole = { x: number; y: number; width: number; height: number };
 
@@ -10,6 +10,7 @@ export function FeatureCoach({
   body,
   cta,
   target,
+  rootRef,
   onNext,
 }: {
   active: boolean;
@@ -19,10 +20,11 @@ export function FeatureCoach({
   body: string;
   cta: string;
   target: HTMLElement | null;
+  rootRef: RefObject<HTMLElement | null>;
   onNext: () => void;
 }) {
   const [hole, setHole] = useState<Hole | null>(null);
-  const [size, setSize] = useState(() => ({ w: window.innerWidth, h: window.innerHeight }));
+  const [size, setSize] = useState({ w: 0, h: 0 });
 
   useEffect(() => {
     if (!active || !target) return;
@@ -32,16 +34,19 @@ export function FeatureCoach({
   useEffect(() => {
     if (!active) return;
     const read = () => {
-      setSize({ w: window.innerWidth, h: window.innerHeight });
+      const root = rootRef.current;
+      if (!root) return;
+      setSize({ w: root.clientWidth, h: root.clientHeight });
       if (!target) {
         setHole(null);
         return;
       }
+      const base = root.getBoundingClientRect();
       const rect = target.getBoundingClientRect();
       const pad = 6;
       setHole({
-        x: rect.left - pad,
-        y: rect.top - pad,
+        x: rect.left - base.left - pad,
+        y: rect.top - base.top - pad,
         width: rect.width + pad * 2,
         height: rect.height + pad * 2,
       });
@@ -55,7 +60,7 @@ export function FeatureCoach({
       window.removeEventListener('resize', read);
       window.removeEventListener('scroll', read, true);
     };
-  }, [active, target, stepIndex]);
+  }, [active, target, stepIndex, rootRef]);
 
   if (!active) return null;
 

@@ -52,7 +52,7 @@ const RECIPES: Recipe[] = [
 ];
 
 const BLOCKED =
-  /pinterest|model|portrait|selfie|\bface\b|celebrity|oscar|gala|grammy|cannes|red carpet|sunglass|sunglasses|wearing|street style|on her|on him|runway look/i;
+  /model|portrait|selfie|\bface\b|celebrity|oscar|gala|grammy|cannes|red carpet|sunglass|sunglasses|wearing|street style|on her|on him|runway look/i;
 
 const imageOkCache = new Map<string, boolean>();
 const TTL_MS = 10 * 60 * 1000;
@@ -91,54 +91,6 @@ function imageOk(url: string): Promise<boolean> {
       finish(false);
     });
   });
-}
-
-/** Flat clothing drawing. No person, no face, no sunglasses. */
-function studioGarment(recipe: Recipe): string {
-  const plaid = `<pattern id="plaid" width="16" height="16" patternUnits="userSpaceOnUse"><rect width="16" height="16" fill="${recipe.fill}"/><path d="M0 0H16M0 8H16M0 0V16M8 0V16" stroke="#111" stroke-width="2"/><path d="M0 4H16M4 0V16" stroke="#111" stroke-width="1"/></pattern>`;
-  const drawings: Record<string, string> = {
-    blazer: `${plaid}<path d="M78 52 L120 28 L162 52 L198 96 L172 110 L154 72 V214 H86 V72 L68 110 L42 96 Z" fill="url(#plaid)" stroke="#111" stroke-width="3"/><path d="M120 28 L102 86 L120 100 L138 86 Z" fill="#111"/><circle cx="120" cy="128" r="3.5" fill="#111"/><circle cx="120" cy="156" r="3.5" fill="#111"/>`,
-    corset: `<path d="M92 36 H148 L160 230 H80 Z" fill="${recipe.fill}" stroke="#111" stroke-width="3"/><path d="M104 40 V226 M120 36 V230 M136 40 V226" stroke="#f3d2dc" stroke-width="2" fill="none"/>`,
-    blouse: `<path d="M74 58 L120 34 L166 58 L196 108 L168 118 L150 78 V200 H90 V78 L72 118 L44 108 Z" fill="${recipe.fill}" stroke="#111" stroke-width="3"/><path d="M104 58 Q120 92 136 58" fill="none" stroke="#111" stroke-width="3"/>`,
-    bomber: `<path d="M70 62 L120 36 L170 62 L206 112 L176 128 L156 84 V196 H84 V84 L64 128 L34 112 Z" fill="${recipe.fill}" stroke="#111" stroke-width="3"/><path d="M84 184 H156 V208 H84 Z" fill="#2a2a2a"/><path d="M48 108 H78 V128 H48 Z M162 108 H192 V128 H162 Z" fill="#2a2a2a"/>`,
-    knit: `<path d="M78 50 L120 32 L162 50 L190 100 L166 112 L150 70 V214 H90 V70 L74 112 L50 100 Z" fill="${recipe.fill}" stroke="#111" stroke-width="3"/>`,
-    shirt: `<path d="M76 54 L120 30 L164 54 L198 104 L170 116 L152 72 V220 H88 V72 L70 116 L42 104 Z" fill="${recipe.fill}" stroke="#111" stroke-width="3"/><path d="M104 54 L120 96 L136 54" fill="#fff" stroke="#111" stroke-width="3"/><circle cx="120" cy="120" r="3" fill="#111"/><circle cx="120" cy="148" r="3" fill="#111"/><circle cx="120" cy="176" r="3" fill="#111"/>`,
-    skirt: `${plaid}<path d="M86 24 H154 L196 250 H44 Z" fill="url(#plaid)" stroke="#111" stroke-width="3"/><path d="M100 24 L78 250 M120 24 V250 M140 24 L162 250" stroke="#111" stroke-width="1.6" fill="none"/>`,
-    column: `<path d="M96 24 H144 L156 250 H84 Z" fill="${recipe.fill}" stroke="#111" stroke-width="3"/>`,
-    pleat: `<path d="M80 24 H160 L200 250 H40 Z" fill="${recipe.fill}" stroke="#111" stroke-width="3"/><path d="M92 24 L70 250 M108 24 L96 250 M120 24 V250 M132 24 L144 250 M148 24 L170 250" stroke="#6d7580" stroke-width="1.4" fill="none"/>`,
-    trouser: `<path d="M86 20 H154 L166 120 L150 250 H118 L120 120 L102 250 H70 L86 120 Z" fill="${recipe.fill}" stroke="#111" stroke-width="3"/>`,
-    denim: `<path d="M86 20 H154 L168 118 L152 250 H118 L120 118 L100 250 H68 L84 118 Z" fill="${recipe.fill}" stroke="#0c2244" stroke-width="3"/><path d="M92 48 H148" stroke="#d6c07a" stroke-width="4"/>`,
-    slip: `<path d="M90 24 H150 L186 250 H54 Z" fill="${recipe.fill}" stroke="#111" stroke-width="3"/>`,
-    heel: `<path d="M48 150 H150 L168 168 H188 L176 196 H150 L132 168 H70 L58 210 H36 Z" fill="${recipe.fill}" stroke="#111" stroke-width="3"/>`,
-    sandal: `<path d="M46 156 H148 L170 172 H40 Z" fill="${recipe.fill}" stroke="#111" stroke-width="3"/><path d="M70 156 L86 120 H110 L124 156 M150 168 L168 196" fill="none" stroke="#111" stroke-width="3"/>`,
-    boot: `<path d="M78 40 H132 V168 H176 L164 210 H48 L60 168 H78 Z" fill="${recipe.fill}" stroke="#111" stroke-width="3"/>`,
-    sneaker: `<path d="M40 150 H150 L176 172 H188 V196 H36 V176 Z" fill="${recipe.fill}" stroke="#111" stroke-width="3"/><path d="M58 150 L70 118 H108 L120 150" fill="none" stroke="#111" stroke-width="3"/>`,
-    court: `<path d="M46 158 H146 L168 176 H186 L172 204 H150 L128 176 H64 L52 204 H34 Z" fill="${recipe.fill}" stroke="#111" stroke-width="3"/>`,
-  };
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 270">${drawings[recipe.kind] || drawings.shirt}</svg>`;
-  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
-}
-
-function studioPiece(recipe: Recipe, index: number): RackPiece {
-  return {
-    id: `studio-${recipe.slot}-${index}`,
-    slot: recipe.slot,
-    title: recipe.title,
-    imageUrl: studioGarment(recipe),
-    sourceUrl: '',
-    era: recipe.era,
-    family: recipe.family,
-    buyUrl: `https://www.google.com/search?tbm=shop&q=${encodeURIComponent(recipe.title)}`,
-    store: '',
-    price: '',
-  };
-}
-
-function studioRacks(): RedCarpetRacks {
-  const tops = RECIPES.filter((r) => r.slot === 'top').map(studioPiece);
-  const bottoms = RECIPES.filter((r) => r.slot === 'bottom').map(studioPiece);
-  const shoes = RECIPES.filter((r) => r.slot === 'shoes').map(studioPiece);
-  return { tops, bottoms, dresses: [], shoes, source: 'studio', detail: '' };
 }
 
 function storeHost(link: string): string {
@@ -208,30 +160,110 @@ async function searchRecipe(recipe: Recipe, key: string): Promise<RackPiece | nu
   return null;
 }
 
+function readText(url: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const req = https.get(
+      url,
+      {
+        ca: systemCa(),
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+          Accept: 'text/html',
+        },
+      },
+      (res) => {
+        const chunks: Buffer[] = [];
+        res.on('data', (chunk: Buffer) => chunks.push(chunk));
+        res.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
+      }
+    );
+    req.on('error', reject);
+    req.setTimeout(12000, () => {
+      req.destroy();
+      reject(new Error('timeout'));
+    });
+  });
+}
+
+type WebHit = { imageUrl: string; title: string; page: string };
+
+async function webImages(query: string): Promise<WebHit[]> {
+  const url = `https://www.bing.com/images/async?q=${encodeURIComponent(query)}&first=1&count=12&adlt=strict`;
+  const body = await readText(url);
+  const decoded = body.replace(/&quot;/g, '"').replace(/&amp;/g, '&');
+  const hits: WebHit[] = [];
+  const re = /"purl":"(https:[^"]+)"[\s\S]{0,2000}?"murl":"(https:[^"]+)"[\s\S]{0,600}?"t":"([^"]*)"/g;
+  for (const match of decoded.matchAll(re)) {
+    hits.push({
+      page: match[1],
+      imageUrl: match[2],
+      title: match[3].replace(/[\uE000-\uE002]/g, ''),
+    });
+  }
+  return hits;
+}
+
+function shopScore(page: string): number {
+  if (/\/products?\/|\/shop\/|cdn\/shop|\/dp\//i.test(page)) return 2;
+  if (/pinterest\.|pinimg\./i.test(page)) return 1;
+  return 0;
+}
+
+async function searchWeb(recipe: Recipe): Promise<RackPiece | null> {
+  const hits = (await webImages(productQuery(recipe))).sort((a, b) => shopScore(b.page) - shopScore(a.page));
+  for (const row of hits) {
+    const hay = `${row.title} ${row.page} ${row.imageUrl}`;
+    if (!row.imageUrl.startsWith('https://')) continue;
+    if (BLOCKED.test(hay)) continue;
+    if (recipe.slot === 'shoes' && /\b(feet|foot|legs|toes|wearing)\b/i.test(hay)) continue;
+    if (!(await imageOk(row.imageUrl))) continue;
+    return {
+      id: `web-${recipe.slot}-${hash(row.imageUrl)}`,
+      slot: recipe.slot,
+      title: recipe.title,
+      imageUrl: row.imageUrl,
+      sourceUrl: row.page,
+      era: recipe.era,
+      family: recipe.family,
+      buyUrl: row.page,
+      store: storeHost(row.page),
+      price: '',
+    };
+  }
+  return null;
+}
+
+async function mapPool<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const out: R[] = new Array(items.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) {
+      const index = next;
+      next += 1;
+      out[index] = await fn(items[index]);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, () => worker()));
+  return out;
+}
+
 export async function fetchRedCarpetRacks(prompt: string): Promise<RedCarpetRacks> {
   const key = process.env.SERPAPI_API_KEY?.trim() || process.env.SERPAPI_KEY?.trim() || '';
-  const cacheKey = `${key ? 'flat' : 'studio'}:${prompt.trim().toLowerCase()}`;
+  const cacheKey = `${key ? 'flat' : 'web'}:${prompt.trim().toLowerCase()}`;
   const hit = cache.get(cacheKey);
   if (hit && Date.now() - hit.at < TTL_MS) return hit.racks;
 
-  const studio = studioRacks();
-  if (!key) {
-    cache.set(cacheKey, { at: Date.now(), racks: studio });
-    return studio;
-  }
-
-  const found = await Promise.all(RECIPES.map((recipe) => searchRecipe(recipe, key).catch(() => null)));
+  const found = key
+    ? await Promise.all(RECIPES.map((recipe) => searchRecipe(recipe, key).catch(() => null)))
+    : await mapPool(RECIPES, 4, (recipe) => searchWeb(recipe).catch(() => null));
   const live = found.filter((piece): piece is RackPiece => Boolean(piece));
-  const tops = live.filter((p) => p.slot === 'top');
-  const bottoms = live.filter((p) => p.slot === 'bottom');
-  const shoes = live.filter((p) => p.slot === 'shoes');
   const racks: RedCarpetRacks = {
-    tops: tops.length ? tops : studio.tops,
-    bottoms: bottoms.length ? bottoms : studio.bottoms,
+    tops: live.filter((piece) => piece.slot === 'top'),
+    bottoms: live.filter((piece) => piece.slot === 'bottom'),
     dresses: [],
-    shoes: shoes.length ? shoes : studio.shoes,
+    shoes: live.filter((piece) => piece.slot === 'shoes'),
     source: live.length ? 'product' : 'studio',
-    detail: '',
+    detail: live.length ? '' : 'Could not load product photos.',
   };
   cache.set(cacheKey, { at: Date.now(), racks });
   return racks;

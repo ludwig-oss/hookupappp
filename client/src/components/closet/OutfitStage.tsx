@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { fashionAPI, type FashionLookCard, type RackPiece, type RedCarpetRacks } from '../../api/fashion';
 import GarmentSlot from './GarmentSlot';
-import { localStudioRacks } from './studioLooks';
 import './OutfitStage.css';
 
 const EMPTY: RedCarpetRacks = {
@@ -88,10 +87,16 @@ export default function OutfitStage({
     fashionAPI
       .redCarpet(prompt)
       .then((next) => {
-        if (!cancel) setLoaded(next.tops.length ? next : localStudioRacks());
+        if (cancel) return;
+        const photos = (list: RackPiece[]) => list.filter((piece) => piece.imageUrl.startsWith('https://'));
+        const real = { ...next, tops: photos(next.tops), bottoms: photos(next.bottoms), shoes: photos(next.shoes) };
+        setLoaded(real);
+        if (!real.tops.length && !real.bottoms.length && !real.shoes.length) {
+          setNote(next.detail || 'Could not load product photos.');
+        }
       })
       .catch(() => {
-        if (!cancel) setLoaded(localStudioRacks());
+        if (!cancel) setNote('Could not load product photos.');
       });
     return () => {
       cancel = true;
@@ -136,9 +141,9 @@ export default function OutfitStage({
       setNote('Upload a full-body photo. Try on dresses that photo and keeps your face, hair, and proportions.');
       return;
     }
-    if (top.imageUrl.startsWith('data:')) {
+    if (!top.imageUrl.startsWith('https://')) {
       setTryOnUrl(null);
-      setNote('Product photos need SERPAPI_API_KEY. The photo try-on needs FASHN_API_KEY or REPLICATE_API_TOKEN.');
+      setNote('Try on uses a real product photo. This piece did not load.');
       return;
     }
     setBusy(true);

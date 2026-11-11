@@ -235,27 +235,25 @@ const COLORS = [
   'chocolate', 'stone', 'ink', 'pearl', 'copper', 'sage',
 ];
 const ANGLES = ['front view', 'studio front', 'ghost mannequin front', 'flat lay front', 'product front on white'];
+const DEPTHS = 160;
 const TOP_KINDS = [
-  'jeweled leather vest', 'pearl embellished vest', 'pearl studded jacket',
-  'spiked leather jacket', 'studded biker jacket', 'painted denim jacket', 'patched bomber jacket',
-  'hand painted leather jacket', 'bleached denim jacket', 'frayed denim jacket', 'safety pin jacket',
-  'graffiti coach jacket', 'shredded knit sweater', 'distressed leather jacket',
-  'painted pyjama shirt', 'patched tracksuit jacket', 'graphic tracksuit hoodie',
+  'Nike hoodie', 'Adidas track jacket', 'Balenciaga hoodie',
+  'streetwear graphic tee', 'oversized hoodie', 'varsity jacket',
+  'denim trucker jacket', 'bomber jacket', 'jeweled leather vest',
+  'spiked leather jacket', 'studded biker jacket', 'tracksuit jacket',
 ];
 const BOTTOM_KINDS = [
-  'painted jeans', 'splatter paint jeans', 'ripped stacked jeans', 'ragged distressed jeans',
-  'patched cargo pants', 'bleached black jeans', 'frayed hem trousers', 'graffiti denim pants',
-  'shredded baggy jeans', 'paint splatter trousers',
-  'ripped shorts', 'painted shorts', 'pyjama pants', 'tracksuit pants', 'graphic sweat shorts',
+  'Nike tech fleece pants', 'Adidas track pants', 'Balenciaga cargo pants',
+  'baggy jeans', 'straight jeans', 'cargo pants', 'ripped jeans',
+  'denim shorts', 'tracksuit pants', 'pyjama pants',
 ];
 const SHOE_KINDS = [
-  'painted high top sneakers pair', 'custom painted sneakers pair', 'studded leather boots pair',
-  'distressed combat boots pair', 'spiked ankle boots pair', 'patched sneakers pair',
-  'painted leather boots pair', 'beat up derby shoes pair',
+  'Nike Air Force 1', 'Nike Dunk', 'Adidas Samba', 'Adidas Gazelle',
+  'Balenciaga Track sneaker', 'Balenciaga Triple S', 'Jordan 1',
+  'Nike sneakers', 'Adidas sneakers', 'studded leather boots',
 ];
 const OVERALL_KINDS = ['studded overalls', 'ripped dungarees', 'painted jumpsuit', 'distressed coveralls'];
 const DRESS_KINDS = ['painted slip dress', 'shredded knit dress', 'patched mini dress', 'deconstructed shirt dress', 'distressed column dress'];
-const DEPTHS = 133;
 
 type RackQuery = { slot: RackSlot; era: GarmentEra; q: string; first: number };
 
@@ -270,12 +268,17 @@ function slotOf(prompt: string): RackSlot | null {
 }
 
 function kindsFor(audience: ShopAudience): { slot: RackSlot; kind: string }[] {
-  const rows = [
-    ...TOP_KINDS.map((kind) => ({ slot: 'top' as const, kind })),
-    ...BOTTOM_KINDS.map((kind) => ({ slot: 'bottom' as const, kind })),
-    ...SHOE_KINDS.map((kind) => ({ slot: 'shoes' as const, kind })),
-    ...OVERALL_KINDS.map((kind) => ({ slot: 'dress' as const, kind })),
-  ];
+  const tops = TOP_KINDS.map((kind) => ({ slot: 'top' as const, kind }));
+  const bottoms = BOTTOM_KINDS.map((kind) => ({ slot: 'bottom' as const, kind }));
+  const shoes = SHOE_KINDS.map((kind) => ({ slot: 'shoes' as const, kind }));
+  const rows: { slot: RackSlot; kind: string }[] = [];
+  const span = Math.max(tops.length, bottoms.length, shoes.length);
+  for (let i = 0; i < span; i += 1) {
+    if (tops[i]) rows.push(tops[i]);
+    if (bottoms[i]) rows.push(bottoms[i]);
+    if (shoes[i]) rows.push(shoes[i]);
+  }
+  rows.push(...OVERALL_KINDS.map((kind) => ({ slot: 'dress' as const, kind })));
   if (audience === 'women') rows.push(...DRESS_KINDS.map((kind) => ({ slot: 'dress' as const, kind })));
   return rows;
 }
@@ -318,7 +321,7 @@ function dailyQueries(audience: ShopAudience, page = 0, hue: string | null = nul
 }
 
 function looksLikeShop(page: string, image: string): boolean {
-  return /\/products?\/|cdn\/shop|\/dp\/|shopify|scene7|demandware|\/product\/|\/files\//i.test(`${page} ${image}`);
+  return /\/products?\/|cdn\/shop|\/dp\/|shopify|scene7|demandware|\/product\/|\/files\/|nike\.com|adidas\.com|balenciaga\.com|stockx|goat\.com|flightclub|jdsports|footlocker|finishline|sneakers/i.test(`${page} ${image}`);
 }
 
 const BAD_SHOE = /\b(sole|outsole|underside|bottom view|shoe bottom|single shoe|one shoe|in hand|holding)\b/i;
@@ -365,12 +368,13 @@ function pieceFromHit(row: WebHit, slot: RackSlot, era: GarmentEra, audience: Sh
   const name = `${title} ${imageName}`.replace(/[-_+/]/g, ' ');
   const topWord = /\b(jackets?|coats?|blazers?|hoodies?|sweaters?|sweatshirts?|shirts?|tees?|vests?|bombers?|cardigans?|jerseys?)\b/i.test(name);
   const legWord = /\b(jeans?|pants|trousers|cargos?|shorts|joggers?|sweatpants|track pants|tracksuit pants|pyjama pants|pajama pants)\b/i.test(name);
-  const shoeWord = /\b(shoes?|boots?|sneakers?|trainers?|loafers?|sandals?)\b/i.test(name);
+  const shoeWord = /\b(shoes?|boots?|sneakers?|trainers?|loafers?|sandals?|dunks?|sambas?|gazelles?|jordans?|air force|triple s|runners?)\b/i.test(name);
   const oneWord = /\b(overalls?|dungarees?|jumpsuits?|boiler suits?|coveralls?|dresses?|playsuits?|rompers?)\b/i.test(name);
   const sleepSet = /\b(pyjamas?|pajamas?|tracksuits?)\b/i.test(name) && !topWord && !shoeWord;
-  const creative = /\b(spikes?|studs?|studded|painted|paint|splatter|graffiti|ripped|ragged|distressed|patched|bleached|frayed|jewels?|jeweled|pearls?|safety pin|shredded|destroyed|acid wash|deconstructed|grommets?|slashed|handmade|hand painted|beat up|fringe|shorts|pyjamas?|pajamas?|tracksuits?|overalls?|dungarees?|jumpsuits?|joggers?)\b/i.test(name);
+  const clearTop = topWord && !shoeWord && !legWord && !oneWord;
+  const clearBottom = (legWord || sleepSet) && !topWord && !shoeWord && !oneWord;
   const clearShoe = shoeWord && !topWord && !legWord && !oneWord;
-  if (!creative && !clearShoe) return null;
+  if (!oneWord && !clearTop && !clearBottom && !clearShoe) return null;
   let keptSlot: RackSlot;
   if (oneWord) keptSlot = 'dress';
   else if ((topWord && legWord) || (topWord && shoeWord) || (legWord && shoeWord)) return null;

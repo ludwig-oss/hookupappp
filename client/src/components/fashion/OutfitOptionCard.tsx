@@ -32,7 +32,7 @@ const STYLE_COPY: Record<StyleAim, string> = {
   flashy: 'Flashy — one piece is there to get attention',
   blend: 'Blended — the colors sit together',
   unique: 'Unique — a contrast that still holds',
-  mix: 'Creative — spikes, paint, rips, and patches on the top, the trousers, and the shoes',
+  mix: 'Streetwear — Nike, Adidas, Balenciaga, and the rest of the rack. Spikes were one example. Arrow through the top, the trousers, and the shoes.',
 };
 
 const HUES: { id: string; label: string; hex: string }[] = [
@@ -161,7 +161,7 @@ function fromShop(row: RackPiece): WardrobePiece | null {
   const name = `${row.title} ${imageName}`.replace(/[-_+/]/g, ' ');
   const topWord = /\b(jackets?|coats?|blazers?|hoodies?|sweaters?|sweatshirts?|shirts?|tees?|vests?|bombers?|cardigans?)\b/i.test(name);
   const legWord = /\b(jeans?|pants|trousers|cargos?|shorts|joggers?|sweatpants|track pants|tracksuit pants|pyjama pants|pajama pants)\b/i.test(name);
-  const shoeWord = /\b(shoes?|boots?|sneakers?|trainers?|loafers?|sandals?)\b/i.test(name);
+  const shoeWord = /\b(shoes?|boots?|sneakers?|trainers?|loafers?|sandals?|dunks?|sambas?|gazelles?|jordans?|air force|triple s|runners?)\b/i.test(name);
   const one = /\b(overalls?|dungarees?|jumpsuits?|boiler suits?|coveralls?|dresses?|playsuits?|rompers?)\b/i.test(name);
   const sleepSet = /\b(pyjamas?|pajamas?|tracksuits?)\b/i.test(name) && !topWord && !shoeWord;
   const slot = one
@@ -296,7 +296,7 @@ export default function OutfitOptionCard({
   const [fresh, setFresh] = useState(audience === 'women' ? "Pulling today's women's clothes..." : "Pulling today's men's clothes...");
   const [styleAim, setStyleAim] = useState<StyleAim>('mix');
   const pageRef = useRef(0);
-  const supplyRef = useRef(1_005_480);
+  const supplyRef = useRef(1_036_800);
   const moreRef = useRef(false);
   const pendingRef = useRef<{ color: string; slot: PieceSlot; family: string } | null>(null);
   const [hue, setHue] = useState('');
@@ -468,9 +468,9 @@ export default function OutfitOptionCard({
   const bottoms = lists.bottoms;
   const shoes = lists.shoes;
   const dresses = lists.dresses;
-  const top = at(tops, topIndex);
-  const bottom = at(bottoms, bottomIndex);
-  const shoe = at(shoes, shoeIndex);
+  const top = at(tops, topIndex) || tops.find((item) => usable(item)) || null;
+  const bottom = at(bottoms, bottomIndex) || bottoms.find((item) => usable(item)) || null;
+  const shoe = at(shoes, shoeIndex) || shoes.find((item) => usable(item)) || null;
   const dress = at(dresses, dressIndex);
 
   useEffect(() => {
@@ -654,7 +654,9 @@ export default function OutfitOptionCard({
                     }}
                     onPick={() => setFocus('bottoms')}
                   />
-                ) : null}
+                ) : (
+                  <div className="fashion-slot is-bottom"><p className="fashion-slot-wait">Trousers</p></div>
+                )}
               </>
             )}
             {shoe && !(dressOn && dress) ? (
@@ -671,7 +673,9 @@ export default function OutfitOptionCard({
                 }}
                 onPick={() => setFocus('shoes')}
               />
-            ) : null}
+            ) : dressOn && dress ? null : (
+              <div className="fashion-slot is-shoes"><p className="fashion-slot-wait">Shoes</p></div>
+            )}
           </div>
         )}
       </div>

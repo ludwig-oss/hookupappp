@@ -309,7 +309,7 @@
 .fashion-card-photo {
   flex-direction: column;
   align-items: stretch;
-  min-height: 520px;
+  min-height: 0;
   max-height: none;
   aspect-ratio: auto;
 }
@@ -419,6 +419,15 @@
   display: block;
 }
 
+.fashion-slot-wait {
+  grid-column: 1 / -1;
+  margin: 0;
+  align-self: center;
+  text-align: center;
+  color: #666;
+  font-size: 13px;
+}
+
 .fashion-slot.is-picked {
   outline: 2px solid #f59e0b;
   outline-offset: -2px;
@@ -426,35 +435,35 @@
 
 .fashion-slot.is-top .fashion-slot-photo,
 .fashion-slot.is-top .fashion-slot-arrow {
-  height: 240px;
+  height: 180px;
 }
 
 .fashion-slot.is-top .fashion-slot-photo img {
   object-fit: contain;
   object-position: center center;
-  height: 240px;
+  height: 180px;
 }
 
 .fashion-slot.is-bottom .fashion-slot-photo,
 .fashion-slot.is-bottom .fashion-slot-arrow {
-  height: 280px;
+  height: 200px;
 }
 
 .fashion-slot.is-bottom .fashion-slot-photo img {
   object-fit: contain;
   object-position: center center;
-  height: 280px;
+  height: 200px;
 }
 
 .fashion-slot.is-shoes .fashion-slot-photo,
 .fashion-slot.is-shoes .fashion-slot-arrow {
-  height: 150px;
+  height: 120px;
 }
 
 .fashion-slot.is-shoes .fashion-slot-photo img {
   object-fit: contain;
   object-position: center center;
-  height: 150px;
+  height: 120px;
 }
 
 .fashion-hues {

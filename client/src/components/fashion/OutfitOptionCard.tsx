@@ -77,7 +77,9 @@ function loudPiece(item: WardrobePiece): boolean {
 
 function pickMade(list: WardrobePiece[], salt: number, extra: (item: WardrobePiece) => boolean): number {
   if (!list.length) return 0;
-  const rows = list.map((item, index) => ({ item, index })).filter(({ item }) => item.id !== 'tc-denim' || list.length === 1);
+  const sideCatalog = new Set(['ma-loafer', 'sm-keller', 'toms-sneaker', 'tc-denim']);
+  const rows = list.map((item, index) => ({ item, index })).filter(({ item }) => !sideCatalog.has(item.id));
+  if (!rows.length) return -1;
   const made = rows.filter(({ item }) => madePiece(item));
   const pool = made.length ? made : rows;
   const liked = pool.filter(({ item }) => extra(item));
@@ -120,14 +122,15 @@ function styleIndices(
 }
 
 function at(list: WardrobePiece[], index: number) {
-  if (!list.length) return null;
+  if (!list.length || index < 0) return null;
   return list[((index % list.length) + list.length) % list.length];
 }
 
 function fromShop(row: RackPiece): WardrobePiece | null {
   if (!row.imageUrl.startsWith('https://')) return null;
   const slot = row.slot === 'top' ? 'tops' : row.slot === 'bottom' ? 'bottoms' : row.slot === 'dress' ? 'dresses' : 'shoes';
-  if (slot === 'bottoms' && /\b(sneakers?|loafers?|boots|shoes|footwear)\b/i.test(row.title) && !/bootcut/i.test(row.title)) return null;
+  if (slot === 'bottoms' && /\b(sneakers?|loafers?|boots|shoes|footwear|hanger|waistband|interior|side view|profile|back view)\b/i.test(row.title) && !/bootcut/i.test(row.title)) return null;
+  if (slot === 'shoes' && /\b(jeans?|pants|trousers|person|model|wearing|side view|profile|legs|outfit)\b/i.test(row.title)) return null;
   const buy = row.buyUrl || row.sourceUrl;
   const price = row.price || 'See store';
   const query = encodeURIComponent(row.title);
@@ -205,14 +208,7 @@ function SlotRow({
         {'<'}
       </button>
       <button type="button" className="fashion-slot-photo" onClick={onPick}>
-        {item.slot === 'shoes' ? (
-          <span className="fashion-pair-shoes">
-            <img src={item.imageUrl} alt="" referrerPolicy="no-referrer" />
-            <img className="is-mirror" src={item.imageUrl} alt={item.title} referrerPolicy="no-referrer" />
-          </span>
-        ) : (
-          <img src={item.imageUrl} alt={item.title} referrerPolicy="no-referrer" />
-        )}
+        <img src={item.imageUrl} alt={item.title} referrerPolicy="no-referrer" />
       </button>
       <button type="button" className="fashion-slot-arrow" onClick={onNext} aria-label={`Next ${item.slot}`}>
         {'>'}
@@ -420,19 +416,17 @@ export default function OutfitOptionCard({
     const taken = JSON.parse(sessionStorage.getItem(key) || '{}') as Record<string, string>;
     const freeIndex = (list: WardrobePiece[], index: number) => {
       if (list.length < 2) return index;
-      let fallback = index;
-      let foundFree = false;
+      const skip = new Set(['ma-loafer', 'sm-keller', 'toms-sneaker', 'tc-denim']);
+      const madeExists = list.some((row) => madePiece(row));
       for (let n = 0; n < list.length; n += 1) {
         const item = at(list, index + n);
         const owner = item ? taken[item.imageUrl] : '';
-        if (!item || !owner || owner === label) {
-          if (!foundFree) fallback = index + n;
-          foundFree = true;
-          const madeExists = list.some((row) => madePiece(row));
-          if (item && item.id !== 'tc-denim' && (!madeExists || madePiece(item))) return index + n;
-        }
+        if (!item || owner && owner !== label) continue;
+        if (skip.has(item.id)) continue;
+        if (madeExists && !madePiece(item)) continue;
+        return index + n;
       }
-      return fallback;
+      return -1;
     };
     const nextTop = freeIndex(tops, topIndex);
     const nextBottom = freeIndex(bottoms, bottomIndex);

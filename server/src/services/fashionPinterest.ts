@@ -288,16 +288,21 @@ function queryAt(audience: ShopAudience, n: number, hue: string | null, only: Ra
   const row = kinds[index % kinds.length];
   const rest = Math.floor(index / kinds.length);
   const color = colors[rest % colors.length];
-  const angle = ANGLES[Math.floor(rest / colors.length) % ANGLES.length];
   const depth = Math.floor(rest / (colors.length * ANGLES.length)) % DEPTHS;
   const who = audience === 'men' ? "men's" : "women's";
   const avoid = audience === 'men' ? '-women -woman -female -skirt -dress -heel' : '-mens -"for men"';
   const mood = index % 2 === 0 ? 'diy street' : 'vintage punk';
   const kind = row.kind.replace(/ pair$/, '');
+  const shot =
+    row.slot === 'bottom'
+      ? 'front view product photo'
+      : row.slot === 'shoes'
+        ? 'pair front view product photo'
+        : 'front view product photo';
   return {
     slot: row.slot,
     era: index % 3 === 0 ? 'vintage' : 'modern',
-    q: `"${kind}" ${color} ${who} ${mood} ${angle} -back -sole ${avoid}`,
+    q: `"${kind}" ${color} ${who} ${mood} ${shot} ${avoid}`,
     first: 1 + depth * 35,
   };
 }
@@ -315,12 +320,13 @@ const BAD_SHOE = /\b(sole|outsole|underside|bottom view|shoe bottom|single shoe|
 
 function badShot(hay: string, slot: RackSlot): boolean {
   const text = hay.toLowerCase();
-  if (/\b(back view|rear view|from behind|backside|seen from behind|full body|full-length|head to toe|on model|worn by|lookbook|holding|in hand|handheld|hand holding|mirror|selfie)\b/.test(text)) {
+  if (/\b(back view|rear view|from behind|backside|seen from behind|on model|worn by|lookbook|holding|in hand|handheld|hand holding|mirror|selfie)\b/.test(text)) {
     return true;
   }
   const stripped = text.replace(/background|backyard|backpack/g, '');
   if (/(?:^|[_\-/.])(back|rear)(?:[_\-/.]|$)/.test(stripped)) return true;
   if (slot === 'shoes' && BAD_SHOE.test(text)) return true;
+  if (slot !== 'bottom' && /\b(full body|full-length|head to toe)\b/.test(text)) return true;
   if (slot !== 'shoes' && /\b(sole|outsole)\b/.test(text)) return true;
   return false;
 }
@@ -330,15 +336,16 @@ function pieceFromHit(row: WebHit, slot: RackSlot, era: GarmentEra, audience: Sh
   if (!row.imageUrl.startsWith('https://') || !row.page.startsWith('https://')) return null;
   if (BLOCKED.test(hay) || badShot(hay, slot)) return null;
   if (audience === 'men' ? WOMEN_WORD.test(hay) : MEN_WORD.test(hay)) return null;
-  if (slot !== 'bottom' && /\b(feet|foot|toes|legs)\b/i.test(hay)) return null;
+  if (slot === 'top' && /\b(feet|foot|toes|legs)\b/i.test(hay)) return null;
   if (slot === 'bottom' && /\b(sneakers?|loafers?|oxfords?|derbys?|heels?|boots|shoes|footwear)\b/i.test(row.title) && !/bootcut|boot-cut/i.test(row.title)) return null;
   if (!looksLikeShop(row.page, row.imageUrl)) return null;
   const title = row.title.split('|')[0].split(' - ')[0].replace(/\s+/g, ' ').trim().slice(0, 72);
   if (title.length < 3) return null;
   if (!/\b(spikes?|studs?|studded|painted|paint|splatter|graffiti|ripped|ragged|distressed|patched|bleached|frayed|chains?|safety pin|shredded|destroyed|acid wash|deconstructed|grommets?|slashed|handmade|hand painted|beat up|fringe)\b/i.test(title)) return null;
-  if (slot === 'top' && /\b(jeans?|pants|trousers|boots?|sneakers?)\b/i.test(title)) return null;
-  if (slot === 'bottom' && (/\b(jacket|shirt|sweater|boots?|sneakers?|hoodie)\b/i.test(title) || !/\b(jeans?|pants|trousers|cargos?)\b/i.test(title))) return null;
-  if (slot === 'shoes' && (/\b(jacket|jeans?|pants|trousers|shirt|sweater)\b/i.test(title) || !/\b(shoes?|boots?|sneakers?|trainers?)\b/i.test(title))) return null;
+  if (slot === 'top' && (/\b(jeans?|pants|trousers|boots?|sneakers?|chain)\b/i.test(title) || !/\b(jacket|shirt|sweater|tee|vest|hoodie|coat|bomber|knit|jersey)\b/i.test(title))) return null;
+  if (slot === 'bottom' && (/\b(jacket|shirt|sweater|boots?|sneakers?|hoodie|hanger|waistband|interior|side view|profile)\b/i.test(title) || !/\b(jeans?|pants|trousers|cargos?)\b/i.test(title))) return null;
+  if (slot === 'shoes' && /xiangqing|_[3-9]\.(?:jpg|jpeg|png|webp)|sole|bottom-view|side-view/i.test(row.imageUrl)) return null;
+  if (slot === 'shoes' && (/\b(jacket|jeans?|pants|trousers|shirt|sweater|person|model|wearing|legs|outfit|side view|profile)\b/i.test(title) || !/\b(shoes?|boots?|sneakers?|trainers?)\b/i.test(title))) return null;
   return {
     id: `day-${slot}-${hash(row.imageUrl)}`,
     slot,

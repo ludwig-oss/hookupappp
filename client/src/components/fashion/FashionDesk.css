@@ -431,19 +431,21 @@
   height: 280px;
 }
 
-.fashion-slot.is-bottom .fashion-slot-photo {
-  overflow: hidden;
-}
-
 .fashion-slot.is-bottom .fashion-slot-photo img {
   object-fit: contain;
-  object-position: center top;
-  height: 370px;
+  object-position: center center;
+  height: 280px;
+}
+
+.fashion-slot.is-shoes .fashion-slot-photo,
+.fashion-slot.is-shoes .fashion-slot-arrow {
+  height: 150px;
 }
 
 .fashion-slot.is-shoes .fashion-slot-photo img {
   object-fit: contain;
-  object-position: center;
+  object-position: center center;
+  height: 150px;
 }
 
 .fashion-pair-shoes {
@@ -766,12 +768,9 @@
   }
 
   .fashion-slot.is-bottom .fashion-slot-photo,
-  .fashion-slot.is-bottom .fashion-slot-arrow {
-    height: 230px;
-  }
-
+  .fashion-slot.is-bottom .fashion-slot-arrow,
   .fashion-slot.is-bottom .fashion-slot-photo img {
-    height: 290px;
+    height: 230px;
   }
 
   .fashion-card-copy {

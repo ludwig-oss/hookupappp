@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Animated, Easing, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { ActivityIndicator, Animated, Easing, Image, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 import * as Location from 'expo-location';
 import { adviceAPI, type AdviceQuestion } from '../../api/advice';
 import { aiGuidesAPI, type AiGuideCharacter } from '../../api/aiGuides';
@@ -14,6 +14,7 @@ import { Field, Hint, NeonButton, Notice, PanelTitle, PersonRow, StageFrame, she
 import { AccountControls } from '../AccountControls';
 import { PrivacyPolicyLink } from '../UgcSafetyActions';
 import type { WidgetId } from './types';
+import { guidePortraitUri } from './AiGuideStudio';
 
 const HELP_LINKS: Array<{ id: WidgetId | 'profile'; icon: string; label: string; hint: string }> = [
   { id: 'profile', icon: '👤', label: 'Profile', hint: 'Photo, city, reviews, health' },
@@ -107,11 +108,14 @@ export function ActivityPanel({
   );
 }
 
-export function CompatibilityPanel({ onAsk }: { onAsk?: (guide: AiGuideCharacter) => void }) {
+export function CompatibilityPanel({
+  onOpenCrew,
+  onPickGuide,
+}: {
+  onOpenCrew: () => void;
+  onPickGuide: (guide: AiGuideCharacter) => void;
+}) {
   const [guides, setGuides] = useState<AiGuideCharacter[]>([]);
-  const [active, setActive] = useState<AiGuideCharacter | null>(null);
-  const [draft, setDraft] = useState('');
-  const [reply, setReply] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
 
@@ -121,9 +125,7 @@ export function CompatibilityPanel({ onAsk }: { onAsk?: (guide: AiGuideCharacter
       .list()
       .then((res) => {
         if (cancelled) return;
-        const list = res.guides || [];
-        setGuides(list);
-        setActive((current) => current || list[0] || null);
+        setGuides(res.guides || []);
       })
       .catch((err) => {
         if (!cancelled) setError(formatAxiosError(err, 'Could not load guides.'));
@@ -136,45 +138,40 @@ export function CompatibilityPanel({ onAsk }: { onAsk?: (guide: AiGuideCharacter
     };
   }, []);
 
-  const send = async () => {
-    if (!active || !draft.trim()) return;
-    const message = draft.trim();
-    setDraft('');
-    setError('');
-    try {
-      const res = await aiGuidesAPI.chat(active.id, message);
-      setReply(res.reply);
-      onAsk?.(active);
-    } catch (err) {
-      setError(formatAxiosError(err, 'Could not reach that guide.'));
-    }
-  };
-
   return (
     <StageFrame>
       <Text style={styles.kicker}>IMPROVE YOURSELF — EXPERT HELPERS</Text>
-      <View style={styles.goldCard}>
+      <Pressable
+        onPress={onOpenCrew}
+        style={({ pressed }) => [styles.goldCard, pressed && styles.goldCardPressed]}
+        accessibilityRole="button"
+        accessibilityLabel="Open AI guides"
+      >
         <Text style={styles.goldTitle}>AI Crew — pick your guide</Text>
-        <Text style={styles.goldBody}>Choose one to coach texting, dates, and how you show up.</Text>
-      </View>
+        <Text style={styles.goldBody}>Choose one to coach texting, dates, and how you show up. Tap to open the crew.</Text>
+      </Pressable>
       {loading ? <ActivityIndicator color={shell.cyan} /> : null}
       {error ? <Notice tone="danger">{error}</Notice> : null}
-      <ScrollView style={styles.guideList} nestedScrollEnabled keyboardShouldPersistTaps="handled">
-        {guides.map((guide) => (
-          <Pressable key={guide.id} onPress={() => setActive(guide)} style={[styles.guide, active?.id === guide.id && styles.guideOn]}>
-            <Text style={styles.personName}>{guide.name}</Text>
-            <Text style={styles.meta} numberOfLines={1}>{guide.tagline || guide.specialty}</Text>
+      <Hint>Tap a guide to start the same chat as on the website. The crew button opens everyone.</Hint>
+      {guides.slice(0, 8).map((guide) => {
+        const portrait = guidePortraitUri(guide.portrait);
+        return (
+          <Pressable
+            key={guide.id}
+            onPress={() => onPickGuide(guide)}
+            style={({ pressed }) => [styles.guide, pressed && styles.guideOn]}
+            accessibilityRole="button"
+            accessibilityLabel={`Talk to ${guide.name}`}
+          >
+            {portrait ? <Image source={{ uri: portrait }} style={styles.guideFace} /> : <View style={styles.guideFace} />}
+            <View style={styles.guideCopy}>
+              <Text style={styles.personName}>{guide.name}</Text>
+              <Text style={styles.meta} numberOfLines={1}>{guide.tagline || guide.specialty}</Text>
+            </View>
+            <Text style={styles.guideChoose}>Chat</Text>
           </Pressable>
-        ))}
-      </ScrollView>
-      {active ? (
-        <>
-          <Hint>{`Ask ${active.name.split(' ')[0]}`}</Hint>
-          <Field placeholder="What do you want help with?" value={draft} onChangeText={setDraft} />
-          <NeonButton label="Ask" tone="gold" onPress={() => void send()} disabled={!draft.trim()} />
-          {reply ? <Notice tone="gold">{reply}</Notice> : null}
-        </>
-      ) : null}
+        );
+      })}
     </StageFrame>
   );
 }
@@ -672,13 +669,19 @@ const styles = StyleSheet.create({
   },
   goldTitle: { color: shell.goldText, fontSize: 14, fontWeight: '700' },
   goldBody: { color: '#e7c9a0', fontSize: 12, lineHeight: 18 },
-  guideList: { maxHeight: 280 },
+  goldCardPressed: { opacity: 0.82 },
   guide: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
     paddingVertical: 10,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: 'rgba(255,255,255,0.08)',
   },
   guideOn: { backgroundColor: shell.active, borderRadius: 8, paddingHorizontal: 8 },
+  guideFace: { width: 44, height: 44, borderRadius: 10, backgroundColor: '#222' },
+  guideCopy: { flex: 1, minWidth: 0 },
+  guideChoose: { color: shell.goldText, fontWeight: '800', fontSize: 13 },
   personName: { color: shell.white, fontSize: 15, fontWeight: '700' },
   meta: { color: shell.faint, fontSize: 12, marginTop: 2 },
   card: { gap: 4, paddingVertical: 8 },

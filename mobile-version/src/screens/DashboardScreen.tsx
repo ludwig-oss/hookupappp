@@ -25,6 +25,7 @@ import { FeedPanel } from '../components/dashboard/FeedPanel';
 import { NearbyInterestPopup } from '../components/dashboard/NearbyInterestPopup';
 import { ProfilePanel } from '../components/dashboard/ProfilePanel';
 import { ScoutPanel } from '../components/dashboard/ScoutPanel';
+import { AiGuideStudio, guidePortraitUri } from '../components/dashboard/AiGuideStudio';
 import { shell } from '../components/dashboard/chrome';
 import { RELATIONSHIP_LOCKED, tabForWidget, tabHomeWidget, type MainTab, type WidgetId } from '../components/dashboard/types';
 
@@ -76,6 +77,7 @@ export function DashboardScreen() {
   const [inRelationship, setInRelationship] = useState(false);
   const [blowingUp, setBlowingUp] = useState(0);
   const [guide, setGuide] = useState<AiGuideCharacter | null>(null);
+  const [studio, setStudio] = useState<{ guideId?: string; chat: boolean; assign: boolean } | null>(null);
   const [chatUserId, setChatUserId] = useState<string | null>(null);
   const [nearbyPulse, setNearbyPulse] = useState(0);
   const [liveNote, setLiveNote] = useState('');
@@ -154,6 +156,12 @@ export function DashboardScreen() {
     [inRelationship]
   );
 
+  const openCrew = useCallback(() => setStudio({ chat: false, assign: false }), []);
+  const openGuideChat = useCallback((next: AiGuideCharacter, assign: boolean) => {
+    setGuide(next);
+    setStudio({ guideId: next.id, chat: true, assign });
+  }, []);
+
   const openFeature = useCallback(
     (id: WidgetId) => {
       if (locked(id)) return;
@@ -223,14 +231,16 @@ export function DashboardScreen() {
       return <ChatPanel userId={user.id} openUserId={chatUserId} onOpened={clearChatTarget} />;
     }
     if (openWidget === 'activity') return <ActivityPanel defaultCity={user.city} onOpenChat={openChat} />;
-    if (openWidget === 'compatibility') return <CompatibilityPanel />;
+    if (openWidget === 'compatibility') {
+      return <CompatibilityPanel onOpenCrew={openCrew} onPickGuide={(next) => openGuideChat(next, true)} />;
+    }
     if (openWidget === 'highlights') return <HighlightsPanel />;
     if (openWidget === 'advice') return <AdvicePanel />;
     if (openWidget === 'confession') return <ConfessionPanel />;
     if (openWidget === 'events') return <EventsPanel city={user.city} country={user.country} />;
     if (openWidget === 'help') return <HelpPanel onOpen={openFromHelp} />;
     if (openWidget === 'safety') return <SafetyPanel />;
-    if (openWidget === 'datematch') return <DateArenaPanel onOpenGuides={() => openFeature('compatibility')} />;
+    if (openWidget === 'datematch') return <DateArenaPanel onOpenGuides={openCrew} />;
     if (openWidget === 'scout') return <ScoutPanel onOpenChat={openChat} />;
     if (openWidget === 'settings') return <SettingsPanel />;
     if (activeTab === 'Profile') {
@@ -249,7 +259,7 @@ export function DashboardScreen() {
         </Text>
       </View>
     );
-  }, [user?.id, user?.city, user?.country, openWidget, nearbyPulse, chatUserId, activeTab, inRelationship, clearChatTarget, openFeature, logout]);
+  }, [user?.id, user?.city, user?.country, openWidget, nearbyPulse, chatUserId, activeTab, inRelationship, clearChatTarget, openFeature, openCrew, openGuideChat, logout]);
 
   return (
     <View style={styles.shell}>
@@ -346,12 +356,18 @@ export function DashboardScreen() {
           </ScrollView>
         </Animated.View>
 
-        {guide ? (
-          <Pressable style={styles.fab} onPress={() => openFeature('compatibility')}>
-            {guide.portrait ? <Image source={{ uri: guide.portrait }} style={styles.fabImage} /> : <View style={styles.fabImage} />}
-            <Text style={styles.fabText}>Ask {guide.name.split(' ')[0]}</Text>
-          </Pressable>
-        ) : null}
+        <Pressable
+          style={styles.fab}
+          onPress={() => (guide ? openGuideChat(guide, false) : openCrew())}
+          accessibilityLabel={guide ? `Ask ${guide.name}` : 'Open AI guides'}
+        >
+          {guidePortraitUri(guide?.portrait) ? (
+            <Image source={{ uri: guidePortraitUri(guide?.portrait)! }} style={styles.fabImage} />
+          ) : (
+            <View style={styles.fabImage} />
+          )}
+          <Text style={styles.fabText}>{guide ? `Ask ${guide.name.split(' ')[0]}` : 'AI guides'}</Text>
+        </Pressable>
       </View>
 
       <View style={[styles.dock, { paddingBottom: insets.bottom, height: 65 + insets.bottom }]}>
@@ -375,6 +391,14 @@ export function DashboardScreen() {
       {user?.id && !inRelationship ? (
         <NearbyInterestPopup userId={user.id} onOpenChat={openChat} />
       ) : null}
+      <AiGuideStudio
+        visible={studio != null}
+        startInChat={Boolean(studio?.chat)}
+        assignOnOpen={Boolean(studio?.assign)}
+        initialGuideId={studio?.guideId}
+        onClose={() => setStudio(null)}
+        onAssigned={setGuide}
+      />
     </View>
   );
 }

@@ -32,6 +32,7 @@ export type SessionUser = {
   city?: string;
   bio?: string;
   dateLookingFor?: string[];
+  aiGuideId?: string | null;
   hasBackupPassword?: boolean;
   hasGoogleAuth?: boolean;
   isPaused?: boolean;

@@ -347,6 +347,7 @@ function pieceFromHit(row: WebHit, slot: RackSlot, era: GarmentEra, audience: Sh
   if (title.length < 3) return null;
   if (/\b(how to|must-haves|style guide|outfits that|and more|page \d+|discover)\b/i.test(title)) return null;
   if (/[-_](?:2|3|back|rear)\.(?:jpg|jpeg|png|webp)(?:$|\?)/i.test(row.imageUrl)) return null;
+  if (/\b(tables?|chairs?|desks?|sofas?|couches?|lamps?|furniture|cabinets?|stools?|benches|nightstands?|ottomans?|dressers?|headboards?|mattress(?:es)?|rugs?|curtains?)\b/i.test(`${title} ${row.page} ${row.imageUrl}`)) return null;
   let imageName = row.imageUrl;
   try {
     imageName = decodeURIComponent(row.imageUrl);

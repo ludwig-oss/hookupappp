@@ -457,23 +457,6 @@
   height: 150px;
 }
 
-.fashion-pair-shoes {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  height: 128px;
-}
-
-.fashion-pair-shoes img {
-  width: 46%;
-  height: 110px;
-}
-
-.fashion-pair-shoes img.is-mirror {
-  transform: scaleX(-1);
-}
-
 .fashion-hues {
   display: flex;
   flex-wrap: wrap;

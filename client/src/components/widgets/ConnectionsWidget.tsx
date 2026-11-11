@@ -8,6 +8,10 @@ import { formatAxiosError } from '../../lib/apiError';
 import { UgcSafetyActions } from '../UgcSafetyActions';
 import { markLocationGranted, clearLocationGranted, isLocationGranted, readStoredCoords, nearbyPeopleRadiusMeters, resolveWorkingCoords, requestGpsFromUserTap, startGpsWatch } from '../../lib/locationSession';
 import { askNotifyPermission, notifyDevice } from '../../lib/deviceNotify';
+import SeeTranslation, { LocationSentence } from '../SeeTranslation';
+import { isRtlLanguage } from '../../i18n/countryLanguage';
+import { ensureInterestLocale, LOCATION_UPDATED_EVENT, useInterestLocale } from '../../i18n/useInterestLocale';
+import { localizeLine } from '../../lib/localizeCopy';
 import { hasHandledNearbyPerson, markProximityBannerShown, NEARBY_HANDLED_EVENT, takeConnectionsStartView } from '../../lib/proximitySession';
 import './Widget.css';
 
@@ -67,6 +71,8 @@ const PLACE_TYPES = [
 
 const ConnectionsWidget = () => {
   const { user } = useContext(AuthContext);
+  const { lang, copy } = useInterestLocale(user?.country);
+  const [comfortLang, setComfortLang] = useState(lang);
   const [view, setView] = useState<'main' | 'nearby' | 'venues' | 'buzzes' | 'search_places' | 'battle'>(() => takeConnectionsStartView() || 'main');
   const [venues, setVenues] = useState<VenueCount[]>([]);
   const [nearbyUsers, setNearbyUsers] = useState<NearbyUser[]>([]);
@@ -121,10 +127,22 @@ const ConnectionsWidget = () => {
 
   const fetchPlaceLabel = async (lat: number, lon: number) => {
     try {
-      const { city, country, displayName } = await connectionsAPI.reverseGeocode(lat, lon);
+      const { city, country, countryCode, displayName } = await connectionsAPI.reverseGeocode(lat, lon);
       if (city && country) setPlaceLabel(`${city}, ${country}`);
       else if (displayName) setPlaceLabel(displayName);
       else setPlaceLabel(null);
+      const stored = readStoredCoords();
+      if (stored && (country || countryCode)) {
+        markLocationGranted({
+          ...stored,
+          lat,
+          lon,
+          city: city || stored.city,
+          country: country || stored.country,
+          countryCode: countryCode || stored.countryCode,
+        });
+        window.dispatchEvent(new Event(LOCATION_UPDATED_EVENT));
+      }
       if ((city || country) && user?.id) {
         connectionsAPI.updateLocation({
           lat,
@@ -231,9 +249,11 @@ const ConnectionsWidget = () => {
       if (buzzInitializedRef.current) {
         const newBuzzes = pending.filter((b) => !knownBuzzIdsRef.current.has(b.id));
         if (newBuzzes.length > 0) {
-          setComfortingMessage('Someone nearby showed interest — respond below.');
+          const locale = await ensureInterestLocale(user?.country);
+          setComfortLang(locale.lang);
+          setComfortingMessage(locale.copy.comfortSomeoneNearby);
           setTimeout(() => setComfortingMessage(null), 6000);
-          notifyDevice('Hook Up', 'Someone nearby wants to connect!', 'interest');
+          notifyDevice(locale.copy.hookUp, locale.copy.notifyInterestOne, 'interest');
         }
       } else {
         buzzInitializedRef.current = true;
@@ -242,7 +262,7 @@ const ConnectionsWidget = () => {
     } catch (err) {
       console.error('Failed to load buzzes:', err);
     }
-  }, [user?.id]);
+  }, [user?.id, user?.country]);
 
   const refreshNearby = useCallback(async (coords?: { lat: number; lon: number; accuracy?: number }, opts?: { silent?: boolean }) => {
     if (!user?.id) return;
@@ -431,19 +451,23 @@ const ConnectionsWidget = () => {
       markProximityBannerShown('nearby-match', toUserId);
       await loadBuzzes();
       await refreshNearby();
+      const locale = await ensureInterestLocale(user?.country);
       if ((result as { needsResponse?: boolean }).needsResponse) {
-        setComfortingMessage('They already showed interest. Accept or decline.');
+        setComfortLang(locale.lang);
+        setComfortingMessage(locale.copy.comfortAlready);
         setTimeout(() => setComfortingMessage(null), 4000);
         return;
       }
       const chatId = (result as { chatUserId?: string }).chatUserId;
       if (chatId) {
-        notifyDevice('Hook Up', "It's a match — they're in Communications.", 'matches');
+        notifyDevice(locale.copy.hookUp, locale.copy.notifyMatch, 'matches');
         openChatWithUser(chatId);
-        setComfortingMessage("It's a match! They're in your Communications — start chatting.");
+        setComfortLang(locale.lang);
+        setComfortingMessage(locale.copy.comfortMatch);
       } else {
-        notifyDevice('Hook Up', 'Interest sent. You join Communications only if they show interest too.', 'interest');
-        setComfortingMessage('Interest sent. You both join Communications only if they show interest too.');
+        notifyDevice(locale.copy.hookUp, locale.copy.notifyInterestSent, 'interest');
+        setComfortLang(locale.lang);
+        setComfortingMessage(locale.copy.comfortInterestSent);
       }
       setTimeout(() => setComfortingMessage(null), 4000);
     } catch (err: any) {
@@ -469,22 +493,29 @@ const ConnectionsWidget = () => {
         markProximityBannerShown('buzz-incoming', otherId);
         markProximityBannerShown('nearby-match', otherId);
       }
+      const locale = await ensureInterestLocale(user?.country);
       if (response === 'rejected' && result.comfortingMessage) {
-        setComfortingMessage(result.comfortingMessage);
+        try {
+          const line = await localizeLine(result.comfortingMessage, locale.lang, 'en');
+          setComfortLang(locale.lang);
+          setComfortingMessage(line);
+        } catch {
+          setComfortLang('en');
+          setComfortingMessage(result.comfortingMessage);
+        }
         setTimeout(() => setComfortingMessage(null), 8000);
       }
       if (response === 'accepted' || response === 'talk_later') {
         const chatId = (result as any).chatUserId;
-        notifyDevice('Hook Up', "They're in Communications. You can talk now.", 'matches');
-        setComfortingMessage(response === 'talk_later'
-          ? "They're in your Communications. Chat when you're both ready!"
-          : "They're in your Communications. You can start chatting now!");
+        notifyDevice(locale.copy.hookUp, locale.copy.notifyAcceptedTalk, 'matches');
+        setComfortLang(locale.lang);
+        setComfortingMessage(response === 'talk_later' ? locale.copy.comfortTalkLater : locale.copy.comfortAccepted);
         setTimeout(() => setComfortingMessage(null), 5000);
         if (chatId) {
           openChatWithUser(chatId);
         }
       } else {
-        notifyDevice('Hook Up', 'Declined. They were not added to chat.', 'interest');
+        notifyDevice(locale.copy.hookUp, locale.copy.notifyDeclined, 'interest');
       }
       await loadBuzzes();
       await refreshNearby();
@@ -534,21 +565,21 @@ const ConnectionsWidget = () => {
     if (buzz) {
       return (
         <div className="nearby-person-actions">
-          <button type="button" onClick={() => handleRespondBuzz(buzz.id, 'accepted')} className="send-btn" disabled={loading} style={{ background: 'rgba(16, 185, 129, 0.2)', border: '2px solid #10b981', color: '#10b981', fontSize: '11px', padding: '6px 10px', fontFamily: 'Orbitron, monospace', fontWeight: 'bold' }}>Accept</button>
-          <button type="button" onClick={() => handleRespondBuzz(buzz.id, 'rejected')} className="send-btn" disabled={loading} style={{ background: 'rgba(239, 68, 68, 0.2)', border: '2px solid #ef4444', color: '#ef4444', fontSize: '11px', padding: '6px 10px', fontFamily: 'Orbitron, monospace', fontWeight: 'bold' }}>No</button>
+          <button type="button" onClick={() => handleRespondBuzz(buzz.id, 'accepted')} className="send-btn" disabled={loading} style={{ background: 'rgba(16, 185, 129, 0.2)', border: '2px solid #10b981', color: '#10b981', fontSize: '11px', padding: '6px 10px', fontFamily: 'Orbitron, monospace', fontWeight: 'bold' }}>{copy.accept}</button>
+          <button type="button" onClick={() => handleRespondBuzz(buzz.id, 'rejected')} className="send-btn" disabled={loading} style={{ background: 'rgba(239, 68, 68, 0.2)', border: '2px solid #ef4444', color: '#ef4444', fontSize: '11px', padding: '6px 10px', fontFamily: 'Orbitron, monospace', fontWeight: 'bold' }}>{copy.no}</button>
         </div>
       );
     }
     if (alreadyBuzzed) {
-      return <span style={{ fontSize: '12px', color: '#9ca3af', fontFamily: 'Orbitron, monospace' }}>Interest sent</span>;
+      return <span style={{ fontSize: '12px', color: '#9ca3af', fontFamily: 'Orbitron, monospace' }}>{copy.interestSentLabel}</span>;
     }
     return (
       <div className="nearby-person-actions">
         <button type="button" onClick={() => handleSendBuzz(personId)} className="send-btn" disabled={loading} style={{ background: 'rgba(0, 0, 0, 0.4)', border: '2px solid #ff00ff', color: '#ff00ff', fontSize: '12px', padding: '8px 14px', fontFamily: 'Orbitron, monospace', fontWeight: 'bold', boxShadow: '0 0 10px rgba(255, 0, 255, 0.3)' }}>
-          Show interest
+          {copy.showInterest}
         </button>
         <button type="button" onClick={() => handlePassNearby(personId)} className="send-btn" disabled={loading} style={{ background: 'rgba(239, 68, 68, 0.15)', border: '2px solid #ef4444', color: '#ef4444', fontSize: '11px', padding: '8px 12px', fontFamily: 'Orbitron, monospace', fontWeight: 'bold' }}>
-          Pass
+          {copy.pass}
         </button>
       </div>
     );
@@ -822,7 +853,8 @@ const ConnectionsWidget = () => {
           fontFamily: 'Orbitron, monospace',
           boxShadow: '0 0 15px rgba(255, 0, 255, 0.3)',
         }}>
-          {comfortingMessage}
+          <div dir={isRtlLanguage(comfortLang) ? 'rtl' : 'ltr'}>{comfortingMessage}</div>
+          <SeeTranslation texts={[comfortingMessage]} sourceLang={comfortLang} labels={copy} />
         </div>
       )}
 
@@ -1210,9 +1242,9 @@ const ConnectionsWidget = () => {
                       </div>
                       {buzz.status === 'pending' ? (
                       <div className="nearby-person-actions">
-                        <button onClick={() => handleRespondBuzz(buzz.id, 'accepted')} className="send-btn" disabled={loading} style={{ background: 'rgba(16, 185, 129, 0.2)', border: '2px solid #10b981', color: '#10b981', fontSize: '11px', padding: '6px 10px', fontFamily: 'Orbitron, monospace', fontWeight: 'bold' }}>Yes</button>
-                        <button onClick={() => handleRespondBuzz(buzz.id, 'rejected')} className="send-btn" disabled={loading} style={{ background: 'rgba(239, 68, 68, 0.2)', border: '2px solid #ef4444', color: '#ef4444', fontSize: '11px', padding: '6px 10px', fontFamily: 'Orbitron, monospace', fontWeight: 'bold' }}>No</button>
-                        <button onClick={() => handleRespondBuzz(buzz.id, 'talk_later')} className="send-btn" disabled={loading} style={{ background: 'rgba(245, 158, 11, 0.2)', border: '2px solid #f59e0b', color: '#f59e0b', fontSize: '11px', padding: '6px 10px', fontFamily: 'Orbitron, monospace', fontWeight: 'bold' }}>Talk later</button>
+                        <button onClick={() => handleRespondBuzz(buzz.id, 'accepted')} className="send-btn" disabled={loading} style={{ background: 'rgba(16, 185, 129, 0.2)', border: '2px solid #10b981', color: '#10b981', fontSize: '11px', padding: '6px 10px', fontFamily: 'Orbitron, monospace', fontWeight: 'bold' }}>{copy.yes}</button>
+                        <button onClick={() => handleRespondBuzz(buzz.id, 'rejected')} className="send-btn" disabled={loading} style={{ background: 'rgba(239, 68, 68, 0.2)', border: '2px solid #ef4444', color: '#ef4444', fontSize: '11px', padding: '6px 10px', fontFamily: 'Orbitron, monospace', fontWeight: 'bold' }}>{copy.no}</button>
+                        <button onClick={() => handleRespondBuzz(buzz.id, 'talk_later')} className="send-btn" disabled={loading} style={{ background: 'rgba(245, 158, 11, 0.2)', border: '2px solid #f59e0b', color: '#f59e0b', fontSize: '11px', padding: '6px 10px', fontFamily: 'Orbitron, monospace', fontWeight: 'bold' }}>{copy.talkLater}</button>
                       </div>
                       ) : null}
                     </div>
@@ -1249,15 +1281,15 @@ const ConnectionsWidget = () => {
                   {buzzes.sent.map((buzz) => (
                     <div key={buzz.id} style={{ padding: '12px', border: '2px solid rgba(255, 0, 255, 0.3)', borderRadius: '8px', background: 'rgba(0, 0, 0, 0.4)', boxShadow: '0 0 15px rgba(255, 0, 255, 0.2)' }}>
                       <p style={{ margin: 0, fontSize: '12px', color: '#fff', fontFamily: 'Orbitron, monospace' }}>
-                        Status: <span style={{
+                        {copy.statusLabel}: <span style={{
                           color: buzz.status === 'accepted' || buzz.status === 'talk_later' ? '#10b981' : buzz.status === 'rejected' ? '#ef4444' : '#ff00ff',
                           textShadow: buzz.status === 'accepted' || buzz.status === 'talk_later' ? '0 0 10px rgba(16, 185, 129, 0.6)' : buzz.status === 'rejected' ? '0 0 10px rgba(239, 68, 68, 0.6)' : '0 0 10px rgba(255, 0, 255, 0.6)',
                         }}>
-                          {buzz.status === 'talk_later' ? 'Talk later' : buzz.status}
+                          {buzz.status === 'talk_later' ? copy.talkLater : buzz.status === 'accepted' ? copy.statusAccepted : buzz.status === 'rejected' ? copy.statusRejected : buzz.status === 'pending' ? copy.statusPending : buzz.status}
                         </span>
                       </p>
                       {buzz.status === 'rejected' && buzz.comfortingMessageForSender && (
-                        <p style={{ margin: '8px 0 0', fontSize: '12px', color: '#ff00ff', fontFamily: 'Orbitron, monospace', fontStyle: 'italic' }}>{buzz.comfortingMessageForSender}</p>
+                        <LocationSentence text={buzz.comfortingMessageForSender} profileCountry={user?.country} />
                       )}
                     </div>
                   ))}

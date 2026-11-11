@@ -1,0 +1,82 @@
+.see-translation {
+  margin-top: 8px;
+}
+
+.see-translation-link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: #c4b5fd;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.see-translation-link:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+
+.see-translation-result p {
+  margin: 0 0 6px;
+  color: #e9d5ff;
+  font-size: 13px;
+  line-height: 1.4;
+  font-style: italic;
+}
+
+.see-translation-error,
+.see-translation-empty {
+  margin: 6px 0 0;
+  color: #fca5a5;
+  font-size: 12px;
+}
+
+.see-translation-picker {
+  margin-top: 8px;
+}
+
+.see-translation-picker input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(196, 181, 253, 0.45);
+  background: rgba(0, 0, 0, 0.35);
+  color: #fff;
+  font-size: 13px;
+}
+
+.see-translation-list {
+  max-height: 180px;
+  overflow: auto;
+  margin-top: 6px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.see-translation-list button {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  text-align: start;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  color: #fff;
+  padding: 8px 10px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.see-translation-list button:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.see-translation-code {
+  color: #a78bfa;
+  font-size: 11px;
+}

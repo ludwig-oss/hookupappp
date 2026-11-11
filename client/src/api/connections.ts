@@ -131,6 +131,7 @@ export const connectionsAPI = {
     accuracy?: number;
     city?: string;
     country?: string;
+    countryCode?: string;
   }> => {
     const response = await axios.get(`${API_URL}/ip-place`, { timeout: 12_000 });
     return response.data;
@@ -172,7 +173,7 @@ export const connectionsAPI = {
     return response.data;
   },
 
-  reverseGeocode: async (lat: number, lon: number): Promise<{ city: string; country: string; displayName: string }> => {
+  reverseGeocode: async (lat: number, lon: number): Promise<{ city: string; country: string; countryCode?: string; displayName: string }> => {
     const response = await axios.get(`${API_URL}/reverse-geocode`, { params: { lat, lon } });
     return response.data;
   },

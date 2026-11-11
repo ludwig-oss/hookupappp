@@ -6,6 +6,9 @@ import { markProximityBannerShown, shouldShowProximityBanner } from '../lib/prox
 import { readStoredCoords, resolveWorkingCoords } from '../lib/locationSession';
 import { formatAxiosError } from '../lib/apiError';
 import LifeQuizModal from './LifeQuizModal';
+import SeeTranslation, { LocationSentence } from './SeeTranslation';
+import { isRtlLanguage } from '../i18n/countryLanguage';
+import { ensureInterestLocale, useInterestLocale } from '../i18n/useInterestLocale';
 import './WalkingPartnerPopup.css';
 
 const LIFE_QUIZ_LATER_KEY = 'hookup:lifeQuizLaterUntil';
@@ -33,6 +36,7 @@ type Props = {
 
 export default function WalkingPartnerPopup({ onOpenChat }: Props) {
   const { user, updateUser } = useContext(AuthContext);
+  const { lang, copy } = useInterestLocale(user?.country);
   const [suggestion, setSuggestion] = useState<WalkSuggestion | null>(null);
   const [incoming, setIncoming] = useState<WalkIncomingInterest | null>(null);
   const [showQuiz, setShowQuiz] = useState(false);
@@ -143,15 +147,12 @@ export default function WalkingPartnerPopup({ onOpenChat }: Props) {
       const res = await walkMatchAPI.sendInterest(targetId);
       hidePerson('walk-suggest', targetId);
       setSuggestion(null);
+      const { copy: placeCopy } = await ensureInterestLocale(user?.country);
       if (res.mutual && res.chatUserId) {
         onOpenChat(res.chatUserId);
-        window.alert(
-          "It's a match — you're both in Communications! Reply within 24 hours after each message or the match ends."
-        );
+        window.alert(placeCopy.walkMatch);
       } else {
-        window.alert(
-          'Interest sent! When they say yes too, you\'ll both land in Communications. Reply within 24 hours once you match.'
-        );
+        window.alert(placeCopy.walkInterestSent);
       }
     } catch (err: unknown) {
       setActionError(formatAxiosError(err, 'Could not connect — try again'));
@@ -185,9 +186,8 @@ export default function WalkingPartnerPopup({ onOpenChat }: Props) {
         setIncoming(null);
         if (res.chatUserId) onOpenChat(res.chatUserId);
         if (res.mutual) {
-          window.alert(
-            "It's a match — you're both in Communications! Reply within 24 hours after each message or the match ends."
-          );
+          const { copy: placeCopy } = await ensureInterestLocale(user?.country);
+          window.alert(placeCopy.walkMatch);
         }
       } else {
         await walkMatchAPI.respondInterest(incoming.id, false);
@@ -220,10 +220,11 @@ export default function WalkingPartnerPopup({ onOpenChat }: Props) {
   if (incoming) {
     return (
       <div className="walk-popup-overlay" role="dialog" aria-modal="true">
-          <div className="walk-popup-card">
-            <p className="walk-popup-badge">Someone is near</p>
-            <h2>Someone nearby is interested</h2>
-            <p className="walk-popup-sub">Profile only — name hidden until you both match.</p>
+          <div className="walk-popup-card" dir={isRtlLanguage(lang) ? 'rtl' : 'ltr'}>
+            <p className="walk-popup-badge">{copy.walkIncomingBadge}</p>
+            <h2>{copy.walkIncomingTitle}</h2>
+            <p className="walk-popup-sub">{copy.walkIncomingSub}</p>
+            <SeeTranslation texts={[copy.walkIncomingTitle, copy.walkIncomingSub]} sourceLang={lang} labels={copy} />
             {incoming.fromUser?.profilePicture ? (
               <img src={incoming.fromUser.profilePicture} alt="" className="walk-popup-avatar" />
             ) : (
@@ -232,10 +233,10 @@ export default function WalkingPartnerPopup({ onOpenChat }: Props) {
             {actionError && <p className="walk-popup-error">{actionError}</p>}
             <div className="walk-popup-actions">
               <button type="button" className="walk-btn-secondary" disabled={loading} onClick={() => handleIncoming(false)}>
-                Dismiss
+                {copy.dismiss}
               </button>
               <button type="button" className="walk-btn-primary" disabled={loading} onClick={() => handleIncoming(true)}>
-                Yes — let&apos;s chat
+                {copy.yesChat}
               </button>
             </div>
         </div>
@@ -249,8 +250,8 @@ export default function WalkingPartnerPopup({ onOpenChat }: Props) {
 
   return (
     <div className="walk-popup-overlay" role="dialog" aria-modal="true">
-        <div className="walk-popup-card">
-          <p className="walk-popup-badge">Someone is near · your type</p>
+        <div className="walk-popup-card" dir={isRtlLanguage(lang) ? 'rtl' : 'ltr'}>
+          <p className="walk-popup-badge">{copy.walkSuggestBadge}</p>
           <div className="walk-popup-profile">
             {suggestion.profilePicture ? (
               <img src={suggestion.profilePicture} alt="" className="walk-popup-avatar" />
@@ -258,21 +259,23 @@ export default function WalkingPartnerPopup({ onOpenChat }: Props) {
               <div className="walk-popup-avatar walk-popup-avatar-placeholder">?</div>
             )}
             <div>
-              <h2>Someone nearby{suggestion.age ? ` · ${suggestion.age}` : ''}</h2>
+              <h2>{copy.nearbyTitle}{suggestion.age ? ` · ${suggestion.age}` : ''}</h2>
               <p className="walk-popup-meta">
                 {suggestion.distance}m away
                 {suggestion.isOnline ? ' · online now' : ''}
               </p>
             </div>
           </div>
-          <p className="walk-popup-reason">{suggestion.matchReason}</p>
+          <div className="walk-popup-reason">
+            <LocationSentence text={suggestion.matchReason} profileCountry={user?.country} />
+          </div>
           {actionError && <p className="walk-popup-error">{actionError}</p>}
           <div className="walk-popup-actions">
             <button type="button" className="walk-btn-secondary" disabled={loading} onClick={() => handleDismiss(suggestion.id)}>
-              Dismiss
+              {copy.dismiss}
             </button>
             <button type="button" className="walk-btn-primary" disabled={loading} onClick={() => handleInterest(suggestion.id)}>
-              {loading ? '…' : "I'm interested"}
+              {loading ? '…' : copy.imInterested}
             </button>
           </div>
         </div>

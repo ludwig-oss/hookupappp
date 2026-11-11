@@ -183,7 +183,41 @@ export const LANGUAGES: { code: string; name: string }[] = [
   { code: 'wo', name: 'Wolof' },
   { code: 'yi', name: 'Yiddish' },
   { code: 'za', name: 'Zhuang' },
+  { code: 'dz', name: 'Dzongkha' },
 ];
+
+/** Names in the language itself, so the translate search finds “Español” as well as “Spanish”. */
+export const LANGUAGE_NATIVE: Record<string, string> = {
+  en: 'English', es: 'Español', fr: 'Français', de: 'Deutsch', it: 'Italiano', pt: 'Português',
+  zh: '中文', ja: '日本語', ko: '한국어', ar: 'العربية', hi: 'हिन्दी', ru: 'Русский',
+  nl: 'Nederlands', pl: 'Polski', tr: 'Türkçe', vi: 'Tiếng Việt', th: 'ไทย', id: 'Bahasa Indonesia',
+  ms: 'Bahasa Melayu', sv: 'Svenska', da: 'Dansk', fi: 'Suomi', no: 'Norsk', el: 'Ελληνικά',
+  he: 'עברית', ro: 'Română', hu: 'Magyar', cs: 'Čeština', bg: 'Български', uk: 'Українська',
+  hr: 'Hrvatski', sk: 'Slovenčina', sl: 'Slovenščina', sr: 'Српски', lt: 'Lietuvių', lv: 'Latviešu',
+  et: 'Eesti', bn: 'বাংলা', ta: 'தமிழ்', te: 'తెలుగు', mr: 'मराठी', gu: 'ગુજરાતી', kn: 'ಕನ್ನಡ',
+  ml: 'മലയാളം', pa: 'ਪੰਜਾਬੀ', ur: 'اردو', fa: 'فارسی', sw: 'Kiswahili', am: 'አማርኛ', ha: 'Hausa',
+  yo: 'Yorùbá', ig: 'Igbo', zu: 'isiZulu', af: 'Afrikaans', sq: 'Shqip', hy: 'Հայերեն', az: 'Azərbaycan',
+  eu: 'Euskara', be: 'Беларуская', bs: 'Bosanski', ca: 'Català', ka: 'ქართული', is: 'Íslenska',
+  ga: 'Gaeilge', mk: 'Македонски', mt: 'Malti', ne: 'नेपाली', nb: 'Norsk bokmål', nn: 'Norsk nynorsk',
+  ps: 'پښتو', sd: 'سنڌي', si: 'සිංහල', tg: 'Тоҷикӣ', tk: 'Türkmen', uz: 'Oʻzbek', cy: 'Cymraeg',
+  xh: 'isiXhosa', dz: 'རྫོང་ཁ',
+};
+
+export function filterLanguages(query: string): { code: string; name: string; native: string }[] {
+  const q = query.trim().toLowerCase();
+  return LANGUAGES.map((lang) => ({
+    code: lang.code,
+    name: lang.name,
+    native: LANGUAGE_NATIVE[lang.code] || lang.name,
+  })).filter((lang) => {
+    if (!q) return true;
+    return (
+      lang.name.toLowerCase().includes(q) ||
+      lang.native.toLowerCase().includes(q) ||
+      lang.code.toLowerCase().includes(q)
+    );
+  });
+}
 
 export function getLanguageName(code: string): string {
   return LANGUAGES.find((l) => l.code === code)?.name ?? code;

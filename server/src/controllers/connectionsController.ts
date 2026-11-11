@@ -18,6 +18,7 @@ import { fetchVenuesByType, fetchAnyNamedVenues, fetchVenuesByName, OsmVenue } f
 import { sanitizeBuzzLocation } from '../utils/sanitize.js';
 import { runWithSystem } from '../db/context.js';
 import { sendPushToUser } from '../realtime/push.js';
+import { textForUser } from '../utils/localizeForUser.js';
 
 export const sendBuzz = async (req: Request, res: Response) => {
   try {
@@ -58,11 +59,15 @@ export const sendBuzz = async (req: Request, res: Response) => {
       });
     }
 
-    sendPushToUser(toUserId, {
-      title: 'Someone nearby is interested',
-      body: 'Accept to talk, or decline. You are added to chat only if you accept.',
-      data: { type: 'buzz_incoming', vibrate: '1' },
-    }, 'interest').catch(() => {});
+    void (async () => {
+      const title = await textForUser(toUserId, 'Someone nearby is interested');
+      const body = await textForUser(toUserId, 'Accept to talk, or decline. You are added to chat only if you accept.');
+      await sendPushToUser(toUserId, {
+        title,
+        body,
+        data: { type: 'buzz_incoming', vibrate: '1' },
+      }, 'interest');
+    })().catch(() => {});
 
     res.json({ message: 'Interest sent. They can accept or decline.', buzz });
   } catch (error: any) {
@@ -128,11 +133,15 @@ export const respondBuzz = async (req: Request, res: Response) => {
         // Accept must still succeed even if the opener message fails (common with mocks / racey JSON writes)
         console.error('ensureMatchConversation after buzz accept:', chatErr);
       }
-      sendPushToUser(otherId, {
-        title: 'They accepted your interest',
-        body: 'You can talk in Communications now.',
-        data: { type: 'buzz_accepted', vibrate: '1' },
-      }, 'matches').catch(() => {});
+      void (async () => {
+        const title = await textForUser(otherId, 'They accepted your interest');
+        const body = await textForUser(otherId, 'You can talk in Communications now.');
+        await sendPushToUser(otherId, {
+          title,
+          body,
+          data: { type: 'buzz_accepted', vibrate: '1' },
+        }, 'matches');
+      })().catch(() => {});
       return res.json({
         buzz: {
           ...buzz,
@@ -146,11 +155,15 @@ export const respondBuzz = async (req: Request, res: Response) => {
       });
     }
     if (response === 'rejected' && otherId) {
-      sendPushToUser(otherId, {
-        title: 'Not interested',
-        body: 'They declined. They were not added to chat.',
-        data: { type: 'buzz_rejected', vibrate: '1' },
-      }).catch(() => {});
+      void (async () => {
+        const title = await textForUser(otherId, 'Not interested');
+        const body = await textForUser(otherId, 'They declined. They were not added to chat.');
+        await sendPushToUser(otherId, {
+          title,
+          body,
+          data: { type: 'buzz_rejected', vibrate: '1' },
+        }, 'interest');
+      })().catch(() => {});
     }
     res.json({
       buzz: {
@@ -267,6 +280,7 @@ export const locateByIp = async (req: Request, res: Response) => {
         accuracy: 8000,
         city: typeof who?.city === 'string' ? who.city : '',
         country: typeof who?.country === 'string' ? who.country : '',
+        countryCode: typeof who?.country_code === 'string' ? who.country_code.toUpperCase() : '',
         source: 'ip',
       });
     }
@@ -281,6 +295,7 @@ export const locateByIp = async (req: Request, res: Response) => {
         accuracy: 8000,
         city: typeof api?.city === 'string' ? api.city : '',
         country: typeof api?.country_name === 'string' ? api.country_name : '',
+        countryCode: typeof api?.country_code === 'string' ? String(api.country_code).toUpperCase() : '',
         source: 'ip',
       });
     }
@@ -586,7 +601,7 @@ export const reverseGeocode = async (req: Request, res: Response) => {
     if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
       return res.status(400).json({ error: 'lat and lon required' });
     }
-    const url = `${NOMINATIM_REVERSE}?lat=${lat}&lon=${lon}&format=json&addressdetails=1`;
+    const url = `${NOMINATIM_REVERSE}?lat=${lat}&lon=${lon}&format=json&addressdetails=1&accept-language=en`;
     const response = await fetch(url, {
       headers: { 'User-Agent': USER_AGENT },
     });
@@ -597,8 +612,9 @@ export const reverseGeocode = async (req: Request, res: Response) => {
     const addr = data.address || {};
     const city = addr.city || addr.town || addr.village || addr.municipality || addr.county || '';
     const country = addr.country || '';
+    const countryCode = (addr.country_code || '').toUpperCase();
     const displayName = data.display_name || [city, country].filter(Boolean).join(', ') || 'Unknown';
-    res.json({ city, country, displayName });
+    res.json({ city, country, countryCode, displayName });
   } catch (error) {
     console.error('Reverse geocode error:', error);
     res.status(500).json({ error: 'Internal server error' });

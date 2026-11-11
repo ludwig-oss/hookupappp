@@ -3,6 +3,9 @@ import { AuthContext } from '../context/AuthContext';
 import { connectionsAPI, Buzz } from '../api/connections';
 import { openChatWithUser } from '../lib/openChat';
 import { notifyDevice } from '../lib/deviceNotify';
+import SeeTranslation from './SeeTranslation';
+import { isRtlLanguage } from '../i18n/countryLanguage';
+import { ensureInterestLocale, useInterestLocale } from '../i18n/useInterestLocale';
 import './WalkingPartnerPopup.css';
 
 const SEEN_KEY = 'hookup:buzz-outcome-seen';
@@ -28,11 +31,13 @@ function writeSeen(ids: Set<string>): void {
 /** Sender sees accept / decline after the other person responds. */
 export default function BuzzResultPopup() {
   const { user } = useContext(AuthContext);
+  const { lang, copy } = useInterestLocale(user?.country);
   const [outcome, setOutcome] = useState<Buzz | null>(null);
   const seenRef = useRef<Set<string>>(readSeen());
 
   const poll = useCallback(async () => {
     if (!user?.id) return;
+    const { copy: placeCopy } = await ensureInterestLocale(user?.country);
     try {
       const { sent } = await connectionsAPI.getMyBuzzes(user.id);
       const now = Date.now();
@@ -54,17 +59,15 @@ export default function BuzzResultPopup() {
         writeSeen(seenRef.current);
         setOutcome(next);
         notifyDevice(
-          'Hook Up',
-          next.status === 'rejected'
-            ? 'They declined. They were not added to chat.'
-            : 'They accepted — you can talk in Communications.',
+          placeCopy.hookUp,
+          next.status === 'rejected' ? placeCopy.notifyDeclined : placeCopy.notifyAccepted,
           next.status === 'rejected' ? 'interest' : 'matches'
         );
       }
     } catch {
       /* offline */
     }
-  }, [user?.id]);
+  }, [user?.id, user?.country]);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -79,17 +82,18 @@ export default function BuzzResultPopup() {
 
   return (
     <div className="walk-popup-overlay" role="dialog" aria-modal="true">
-      <div className="walk-popup-card">
-        <p className="walk-popup-badge">{accepted ? 'Accepted' : 'Declined'}</p>
-        <h2>{accepted ? 'They accepted your request' : 'They declined your request'}</h2>
-        <p className="walk-popup-sub">
-          {accepted
-            ? 'You can talk in Communications now.'
-            : 'They will not be added to Communications.'}
-        </p>
+      <div className="walk-popup-card" dir={isRtlLanguage(lang) ? 'rtl' : 'ltr'}>
+        <p className="walk-popup-badge">{accepted ? copy.badgeAccepted : copy.badgeDeclined}</p>
+        <h2>{accepted ? copy.titleAccepted : copy.titleDeclined}</h2>
+        <p className="walk-popup-sub">{accepted ? copy.bodyAccepted : copy.bodyDeclined}</p>
+        <SeeTranslation
+          texts={[accepted ? copy.titleAccepted : copy.titleDeclined, accepted ? copy.bodyAccepted : copy.bodyDeclined]}
+          sourceLang={lang}
+          labels={copy}
+        />
         <div className="walk-popup-actions">
           <button type="button" className="walk-btn-secondary" onClick={() => setOutcome(null)}>
-            OK
+            {copy.ok}
           </button>
           {accepted && (
             <button
@@ -100,7 +104,7 @@ export default function BuzzResultPopup() {
                 setOutcome(null);
               }}
             >
-              Open chat
+              {copy.openChat}
             </button>
           )}
         </div>

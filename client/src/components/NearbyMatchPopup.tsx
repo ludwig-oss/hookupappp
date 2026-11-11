@@ -12,6 +12,10 @@ import { nearbyPeopleRadiusMeters, readStoredCoords, resolveWorkingCoords } from
 import { formatAxiosError } from '../lib/apiError';
 import { openChatWithUser } from '../lib/openChat';
 import { notifyDevice } from '../lib/deviceNotify';
+import SeeTranslation from './SeeTranslation';
+import { isRtlLanguage } from '../i18n/countryLanguage';
+import { fillInterest } from '../i18n/interestCopy';
+import { ensureInterestLocale, useInterestLocale } from '../i18n/useInterestLocale';
 import './WalkingPartnerPopup.css';
 
 type Props = {
@@ -29,6 +33,7 @@ const locationApi = {
 /** Proactive popup when someone matching your orientation is within ~50 m. */
 export default function NearbyMatchPopup({ onOpenConnections }: Props) {
   const { user } = useContext(AuthContext);
+  const { lang, copy } = useInterestLocale(user?.country);
   const [queue, setQueue] = useState<NearbyUser[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -40,6 +45,7 @@ export default function NearbyMatchPopup({ onOpenConnections }: Props) {
 
   const poll = useCallback(async (opts?: { force?: boolean }) => {
     if (!user?.id) return;
+    const { copy: placeCopy } = await ensureInterestLocale(user?.country);
     const cached = readStoredCoords();
     const refreshGps = !cached || cached.source !== 'gps' || Date.now() - lastGpsAt.current > 45_000;
     const coords = await resolveWorkingCoords(
@@ -48,7 +54,7 @@ export default function NearbyMatchPopup({ onOpenConnections }: Props) {
     );
     if (coords?.source === 'gps') lastGpsAt.current = Date.now();
     if (!coords) {
-      if (opts?.force) setEmptyHint('Turn location on to see people next to you.');
+      if (opts?.force) setEmptyHint(placeCopy.emptyLocation);
       return;
     }
     try {
@@ -78,11 +84,7 @@ export default function NearbyMatchPopup({ onOpenConnections }: Props) {
       );
       if (!fresh.length) {
         if (opts?.force && queue.length === 0) {
-          setEmptyHint(
-            users.length
-              ? 'People nearby are already in your list — open it if the popup did not appear.'
-              : 'Nobody matching your orientation within 50 meters right now.'
-          );
+          setEmptyHint(users.length ? placeCopy.emptyAlready : placeCopy.emptyNobody);
         }
         return;
       }
@@ -95,14 +97,14 @@ export default function NearbyMatchPopup({ onOpenConnections }: Props) {
       });
       markNearbyPopupVisible();
       notifyDevice(
-        'Hook Up — nearby',
+        placeCopy.notifyNearbyTitle,
         fresh.length > 1
-          ? `${fresh.length} people matching your orientation are within 50 meters.`
-          : 'Someone matching your orientation is within 50 meters. Show interest if you want.',
+          ? fillInterest(placeCopy.notifyNearbyMany, { n: fresh.length })
+          : placeCopy.notifyNearbyOne,
         'interest'
       );
     } catch {
-      if (opts?.force) setEmptyHint('Could not check nearby people. Open the list to try again.');
+      if (opts?.force) setEmptyHint(placeCopy.emptyFail);
     }
   }, [user?.id, user?.city, user?.country, queue.length]);
 
@@ -171,7 +173,7 @@ export default function NearbyMatchPopup({ onOpenConnections }: Props) {
       locationApi
     );
     if (!coords) {
-      setError('Allow location, then try again.');
+      setError(copy.errLocation);
       return;
     }
     setLoading(true);
@@ -185,10 +187,10 @@ export default function NearbyMatchPopup({ onOpenConnections }: Props) {
       const chatId = result.chatUserId;
       dropCurrent(true);
       if (chatId) {
-        notifyDevice('Hook Up', "It's a match — they're in Communications.", 'matches');
+        notifyDevice(copy.hookUp, copy.notifyMatch, 'matches');
         openChatWithUser(chatId);
       } else {
-        notifyDevice('Hook Up', 'Interest sent. You join Communications only if they show interest too.', 'interest');
+        notifyDevice(copy.hookUp, copy.notifyInterestSent, 'interest');
       }
     } catch (err: unknown) {
       setError(formatAxiosError(err, 'Could not send interest'));
@@ -208,16 +210,17 @@ export default function NearbyMatchPopup({ onOpenConnections }: Props) {
   if (!match && emptyHint) {
     return (
       <div className="walk-popup-overlay" role="dialog" aria-modal="true">
-        <div className="walk-popup-card">
-          <p className="walk-popup-badge">Nearby · 50 m · your type</p>
-          <h2>Nearby check</h2>
+        <div className="walk-popup-card" dir={isRtlLanguage(lang) ? 'rtl' : 'ltr'}>
+          <p className="walk-popup-badge">{copy.nearbyBadge}</p>
+          <h2>{copy.nearbyTitle}</h2>
           <p className="walk-popup-sub">{emptyHint}</p>
+          <SeeTranslation texts={[emptyHint]} sourceLang={lang} labels={copy} />
           <div className="walk-popup-actions">
             <button type="button" className="walk-btn-secondary" onClick={() => setEmptyHint('')}>
-              Close
+              {copy.close}
             </button>
             <button type="button" className="walk-btn-primary" onClick={openList}>
-              Open list
+              {copy.openList}
             </button>
           </div>
         </div>
@@ -229,17 +232,24 @@ export default function NearbyMatchPopup({ onOpenConnections }: Props) {
 
   return (
     <div className="walk-popup-overlay" role="dialog" aria-modal="true">
-      <div className="walk-popup-card">
-        <p className="walk-popup-badge">Nearby · 50 m · your type</p>
-        <h2>Someone matching you is nearby</h2>
-        <p className="walk-popup-sub">
-          Show interest if you want. You both land in Communications only if they show interest too.
-        </p>
+      <div className="walk-popup-card" dir={isRtlLanguage(lang) ? 'rtl' : 'ltr'}>
+        <p className="walk-popup-badge">{copy.nearbyBadge}</p>
+        <h2>{copy.nearbyTitle}</h2>
+        <p className="walk-popup-sub">{copy.nearbyBody}</p>
         {moreCount > 0 && (
           <p className="walk-popup-sub" style={{ color: '#00d4ff' }}>
-            {moreCount} more nearby. The list shows 10 at a time — respond and the next person fills in, or open the list for Next page / search.
+            {fillInterest(copy.nearbyMore, { n: moreCount })}
           </p>
         )}
+        <SeeTranslation
+          texts={[
+            copy.nearbyTitle,
+            copy.nearbyBody,
+            moreCount > 0 ? fillInterest(copy.nearbyMore, { n: moreCount }) : '',
+          ]}
+          sourceLang={lang}
+          labels={copy}
+        />
         <div
           className="walk-popup-avatar"
           style={{ overflow: 'hidden', padding: 0, border: '3px solid rgba(0, 212, 255, 0.6)' }}
@@ -253,13 +263,13 @@ export default function NearbyMatchPopup({ onOpenConnections }: Props) {
         {error && <p className="walk-popup-error">{error}</p>}
         <div className="walk-popup-actions">
           <button type="button" className="walk-btn-secondary" disabled={loading} onClick={openList}>
-            Open list
+            {copy.openList}
           </button>
           <button type="button" className="walk-btn-secondary" disabled={loading} onClick={() => dropCurrent(true)}>
-            Later
+            {copy.later}
           </button>
           <button type="button" className="walk-btn-primary" disabled={loading} onClick={sendInterest}>
-            {loading ? '…' : 'Show interest'}
+            {loading ? '…' : copy.showInterest}
           </button>
         </div>
       </div>

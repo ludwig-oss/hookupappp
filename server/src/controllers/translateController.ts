@@ -6,8 +6,9 @@ export async function translateHandler(req: Request, res: Response) {
   try {
     const text = sanitizeMessageContent(req.body?.text, LIMITS.COMMENT);
     const targetLang = typeof req.body?.targetLang === 'string' ? req.body.targetLang : 'en';
+    const sourceLang = typeof req.body?.sourceLang === 'string' ? req.body.sourceLang : 'en';
     if (!text) return res.status(400).json({ error: 'Text required' });
-    const translated = await translateText(text, targetLang);
+    const translated = await translateText(text, targetLang, sourceLang);
     res.json({ translated, targetLang });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'Translation failed';

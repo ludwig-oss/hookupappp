@@ -99,8 +99,8 @@ export async function translateText(
   const trimmed = (text || '').trim();
   if (!trimmed) return '';
   const target = normalizeTranslateLang(targetLang);
-  const source = sourceLang === 'auto' ? 'auto' : normalizeTranslateLang(sourceLang);
-  if (target === 'en' && (source === 'en' || source === 'auto')) return trimmed;
+  const source = sourceLang === 'auto' ? 'en' : normalizeTranslateLang(sourceLang);
+  if (target === source) return trimmed;
   const chunks = chunkText(trimmed);
   const out: string[] = [];
   for (const chunk of chunks) {

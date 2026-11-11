@@ -5,6 +5,10 @@ import { openChatWithUser } from '../lib/openChat';
 import { markProximityBannerShown, setConnectionsStartView, shouldShowProximityBanner } from '../lib/proximitySession';
 import { formatAxiosError } from '../lib/apiError';
 import { notifyDevice } from '../lib/deviceNotify';
+import SeeTranslation from './SeeTranslation';
+import { isRtlLanguage } from '../i18n/countryLanguage';
+import { fillInterest } from '../i18n/interestCopy';
+import { ensureInterestLocale, useInterestLocale } from '../i18n/useInterestLocale';
 import './WalkingPartnerPopup.css';
 
 type Props = {
@@ -13,6 +17,7 @@ type Props = {
 
 export default function ConnectionsBuzzPopup({ onOpenConnections }: Props) {
   const { user } = useContext(AuthContext);
+  const { lang, copy } = useInterestLocale(user?.country);
   const [queue, setQueue] = useState<Buzz[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -20,6 +25,7 @@ export default function ConnectionsBuzzPopup({ onOpenConnections }: Props) {
 
   const poll = useCallback(async () => {
     if (!user?.id) return;
+    const { copy: placeCopy } = await ensureInterestLocale(user?.country);
     try {
       const { received } = await connectionsAPI.getMyBuzzes(user.id);
       const pending = received.filter(
@@ -34,10 +40,10 @@ export default function ConnectionsBuzzPopup({ onOpenConnections }: Props) {
         return add.length ? [...prev, ...add] : prev;
       });
       notifyDevice(
-        'Hook Up — interest',
+        placeCopy.notifyInterestTitle,
         fresh.length > 1
-          ? `${fresh.length} people nearby showed interest. Accept or decline each one.`
-          : 'Someone nearby showed interest. Accept to talk, or decline.',
+          ? fillInterest(placeCopy.notifyInterestMany, { n: fresh.length })
+          : placeCopy.notifyInterestOne,
         'interest'
       );
       fresh.forEach((b) => {
@@ -46,7 +52,7 @@ export default function ConnectionsBuzzPopup({ onOpenConnections }: Props) {
     } catch {
       /* offline */
     }
-  }, [user?.id]);
+  }, [user?.id, user?.country]);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -75,7 +81,7 @@ export default function ConnectionsBuzzPopup({ onOpenConnections }: Props) {
       const chatId = result.chatUserId || incoming.fromUserId;
       if (chatId) openChatWithUser(chatId);
     } catch (err: unknown) {
-      setError(formatAxiosError(err, 'Could not accept'));
+      setError(formatAxiosError(err, copy.accept));
     } finally {
       setLoading(false);
     }
@@ -89,7 +95,7 @@ export default function ConnectionsBuzzPopup({ onOpenConnections }: Props) {
       await connectionsAPI.respondBuzz({ buzzId: incoming.id, response: 'rejected' });
       dropCurrent(true);
     } catch (err: unknown) {
-      setError(formatAxiosError(err, 'Could not respond'));
+      setError(formatAxiosError(err, copy.notInterested));
     } finally {
       setLoading(false);
     }
@@ -99,17 +105,24 @@ export default function ConnectionsBuzzPopup({ onOpenConnections }: Props) {
 
   return (
     <div className="walk-popup-overlay" role="dialog" aria-modal="true">
-      <div className="walk-popup-card">
-        <p className="walk-popup-badge">Nearby · your type</p>
-        <h2>They showed interest</h2>
-        <p className="walk-popup-sub">
-          Accept to talk in Communications, or decline. They get one notice either way.
-        </p>
+      <div className="walk-popup-card" dir={isRtlLanguage(lang) ? 'rtl' : 'ltr'}>
+        <p className="walk-popup-badge">{copy.badgeNearby}</p>
+        <h2>{copy.titleShowedInterest}</h2>
+        <p className="walk-popup-sub">{copy.bodyShowedInterest}</p>
         {moreCount > 0 && (
           <p className="walk-popup-sub" style={{ color: '#00d4ff' }}>
-            {moreCount} more waiting. The list shows 10 at a time — respond and the next fills in, or open the list to search / Next page.
+            {fillInterest(copy.moreWaiting, { n: moreCount })}
           </p>
         )}
+        <SeeTranslation
+          texts={[
+            copy.titleShowedInterest,
+            copy.bodyShowedInterest,
+            moreCount > 0 ? fillInterest(copy.moreWaiting, { n: moreCount }) : '',
+          ]}
+          sourceLang={lang}
+          labels={copy}
+        />
         <div className="walk-popup-avatar" style={{ overflow: 'hidden', padding: 0, border: '3px solid rgba(255, 0, 255, 0.6)' }}>
           {incoming.fromUserProfilePicture ? (
             <img src={incoming.fromUserProfilePicture} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
@@ -129,13 +142,13 @@ export default function ConnectionsBuzzPopup({ onOpenConnections }: Props) {
               onOpenConnections?.();
             }}
           >
-            Open list
+            {copy.openList}
           </button>
           <button type="button" className="walk-btn-secondary" disabled={loading} onClick={decline}>
-            Not interested
+            {copy.notInterested}
           </button>
           <button type="button" className="walk-btn-primary" disabled={loading} onClick={accept}>
-            {loading ? '…' : 'Accept'}
+            {loading ? '…' : copy.accept}
           </button>
         </div>
       </div>

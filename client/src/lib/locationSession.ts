@@ -5,6 +5,7 @@ export type StoredCoords = {
   source?: 'gps' | 'storage' | 'server' | 'profile' | 'ip';
   city?: string;
   country?: string;
+  countryCode?: string;
 };
 
 const GRANTED_KEY = 'hookup:locationGranted';
@@ -269,6 +270,7 @@ type LocationApi = {
     accuracy?: number;
     city?: string;
     country?: string;
+    countryCode?: string;
   }>;
 };
 
@@ -345,6 +347,7 @@ export async function resolveWorkingCoords(
           source: 'ip',
           city: ip.city || options.city,
           country: ip.country || options.country,
+          countryCode: ip.countryCode,
         };
         markLocationGranted(coords);
         await api.updateLocation({

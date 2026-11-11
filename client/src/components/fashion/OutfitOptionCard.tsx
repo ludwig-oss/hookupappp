@@ -228,23 +228,23 @@ export default function OutfitOptionCard({
   };
 
   const loadMore = useCallback(async () => {
-    if (moreRef.current || pageRef.current >= 12) return;
+    if (moreRef.current) return;
     moreRef.current = true;
     const nextPage = pageRef.current + 1;
     const day = new Date().toISOString().slice(0, 10);
     try {
       const racks = await fashionAPI.redCarpet(`daily ${day} ${audience === 'women' ? 'women' : 'men'} page ${nextPage}`);
       const found = readRacks(racks);
+      pageRef.current = nextPage;
       const added = found.tops.length + found.bottoms.length + found.dresses.length + found.shoes.length;
       if (!added) return;
-      pageRef.current = nextPage;
       setLists((prev) => ({
         tops: mergeSlot(found.tops, prev.tops),
         bottoms: mergeSlot(found.bottoms, prev.bottoms),
         dresses: mergeSlot(found.dresses, prev.dresses),
         shoes: mergeSlot(found.shoes, prev.shoes),
       }));
-      setFresh(`More ${who} clothes just landed. Keep going.`);
+      setFresh(`${who[0].toUpperCase()}${who.slice(1)} clothes. Keep arrowing — more keep coming in.`);
     } catch {
       /* The pieces already on the card stay. */
     } finally {
@@ -272,9 +272,11 @@ export default function OutfitOptionCard({
           shoes: mergeSlot(found.shoes, saved.shoes),
         };
         setLists(next);
-        const count = next.tops.length + next.bottoms.length + next.dresses.length + next.shoes.length;
-        setFresh(count ? `${who[0].toUpperCase()}${who.slice(1)} clothes · ${count} pieces, and more when you arrow through` : `Showing the saved ${who} closet.`);
+        setFresh(`${who[0].toUpperCase()}${who.slice(1)} clothes. Keep arrowing — more keep coming in.`);
         applyStyle(next, opening, seed + 11);
+        void (async () => {
+          for (let i = 0; i < 6 && !cancel; i += 1) await loadMore();
+        })();
       })
       .catch(() => {
         if (!cancel) setFresh(`Shops were slow, so the saved ${who} closet is still here.`);

@@ -220,7 +220,7 @@ export const redCarpetHandler = async (req: Request, res: Response) => {
     const user = await getUserById(userId);
     const fromProfile = shopAudience(user?.gender);
     const fromPrompt = /\bwomen\b/.test(prompt) ? 'women' : /\bmen\b/.test(prompt) ? 'men' : null;
-    const page = Math.min(20, Math.max(0, Number(prompt.match(/\bpage\s+(\d+)/)?.[1] || 0)));
+    const page = Math.max(0, Number(prompt.match(/\bpage\s+(\d+)/)?.[1] || 0));
     const racks = await fetchRedCarpetRacks(prompt, fromProfile || fromPrompt || 'men', page);
     res.json(racks);
   } catch (error) {

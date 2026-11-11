@@ -1,17 +1,22 @@
-import { useEffect, useState } from 'react';
-import { segmentGarment, type GarmentSlot as Slot } from '../../lib/segmentGarment';
+import { useEffect, useRef, useState } from 'react';
+import { GarmentRejected, segmentGarment, type GarmentSlot as Slot } from '../../lib/segmentGarment';
 
 export default function GarmentSlot({
   url,
   slot,
   title,
+  onReject,
 }: {
   url: string;
   slot: Slot;
   title: string;
+  onReject?: () => void;
 }) {
   const [src, setSrc] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
+
+  const rejectRef = useRef(onReject);
+  rejectRef.current = onReject;
 
   useEffect(() => {
     let cancel = false;
@@ -25,19 +30,17 @@ export default function GarmentSlot({
       .then((next) => {
         if (!cancel) setSrc(next);
       })
-      .catch(() => {
-        if (!cancel) setFailed(true);
+      .catch((err: unknown) => {
+        if (cancel) return;
+        setFailed(true);
+        if (err instanceof GarmentRejected) rejectRef.current?.();
       });
     return () => {
       cancel = true;
     };
   }, [url, slot]);
 
-  if (src) return <img className="chers-garment" src={src} alt={title} />;
-  if (failed) return <div className="chers-missing">{title}</div>;
-  return (
-    <div className="chers-cutting" role="status">
-      CUTTING CLOTH…
-    </div>
-  );
+  if (src) return <img className="fancy-garment" src={src} alt={title} />;
+  if (failed) return null;
+  return <div className="fancy-wait"> </div>;
 }

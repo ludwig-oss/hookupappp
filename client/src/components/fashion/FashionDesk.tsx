@@ -596,10 +596,8 @@ export default function FashionDesk({
           racks={result.racks}
           prompt={result.prompt}
           userImage={bodyUrl}
-          guideLine={result.guideLine || result.critic.line}
           onSave={(look) => void saveLook(look, 'look', true)}
           onDraft={(look) => void saveLook(look, 'draft')}
-          onShuffle={() => void dislikeAndShuffle()}
         />
       )}
 

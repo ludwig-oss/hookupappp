@@ -1,8 +1,8 @@
 import https from 'https';
 import tls from 'tls';
-import { FASHION_CATALOG } from '../data/fashionCatalog.js';
 
 export type RackSlot = 'top' | 'bottom' | 'dress' | 'shoes';
+export type GarmentEra = 'vintage' | 'modern';
 
 export interface RackPiece {
   id: string;
@@ -10,6 +10,7 @@ export interface RackPiece {
   title: string;
   imageUrl: string;
   sourceUrl: string;
+  era: GarmentEra;
 }
 
 export interface RedCarpetRacks {
@@ -17,42 +18,32 @@ export interface RedCarpetRacks {
   bottoms: RackPiece[];
   dresses: RackPiece[];
   shoes: RackPiece[];
-  source: 'pinterest' | 'catalog';
+  source: 'product' | 'studio';
   detail: string;
 }
 
-const QUERIES: Record<RackSlot, string> = {
-  top: 'celebrity red carpet blazer jacket met gala oscars grammys fashion week',
-  bottom: 'celebrity red carpet skirt trousers pants cannes grammys award show',
-  dress: 'celebrity met gala oscars cannes grammys red carpet gown full look',
-  shoes: 'celebrity red carpet heels shoes oscars cannes award show',
-};
+type Recipe = { title: string; era: GarmentEra; slot: 'top' | 'bottom'; fill: string };
+
+/** Iconic award-show shapes, stored as garment descriptions only. Never shown as a credit. */
+const RECIPES: Recipe[] = [
+  { title: 'Yellow plaid cropped blazer', era: 'vintage', slot: 'top', fill: '#f2c14e' },
+  { title: 'Vintage velvet corset', era: 'vintage', slot: 'top', fill: '#6b1d36' },
+  { title: 'Ivory silk blouse', era: 'vintage', slot: 'top', fill: '#f7f1e3' },
+  { title: 'Modern oversized leather bomber', era: 'modern', slot: 'top', fill: '#1c1c1c' },
+  { title: 'Black fine knit', era: 'modern', slot: 'top', fill: '#111111' },
+  { title: 'White structured shirt', era: 'modern', slot: 'top', fill: '#f4f4f4' },
+  { title: '90s plaid mini skirt', era: 'vintage', slot: 'bottom', fill: '#e2b93b' },
+  { title: 'Vintage column skirt', era: 'vintage', slot: 'bottom', fill: '#3d2914' },
+  { title: 'Metallic silver pleated mini skirt', era: 'modern', slot: 'bottom', fill: '#c0c6ce' },
+  { title: 'Black straight trouser', era: 'modern', slot: 'bottom', fill: '#161616' },
+  { title: 'Indigo straight denim', era: 'modern', slot: 'bottom', fill: '#1d3d6e' },
+  { title: 'Cream slip skirt', era: 'vintage', slot: 'bottom', fill: '#efe6d6' },
+];
+
+const BLOCKED =
+  /pinterest|model|portrait|selfie|\bface\b|celebrity|oscar|gala|grammy|cannes|red carpet|sunglass|sunglasses|wearing|street style|on her|on him|runway look/i;
 
 const imageOkCache = new Map<string, boolean>();
-
-function imageOk(url: string): Promise<boolean> {
-  const cached = imageOkCache.get(url);
-  if (cached != null) return Promise.resolve(cached);
-  const ca = (tls as typeof tls & { getCACertificates?: (scope?: string) => string[] }).getCACertificates?.('system');
-  return new Promise((resolve) => {
-    const req = https.get(url, { ca, headers: { Accept: 'image/*' } }, (res) => {
-      const ok = (res.statusCode || 0) >= 200 && (res.statusCode || 0) < 300;
-      res.resume();
-      imageOkCache.set(url, ok);
-      resolve(ok);
-    });
-    req.on('error', () => {
-      imageOkCache.set(url, false);
-      resolve(false);
-    });
-    req.setTimeout(8000, () => req.destroy());
-  });
-}
-
-async function keepLive(list: RackPiece[]): Promise<RackPiece[]> {
-  const flags = await Promise.all(list.map((piece) => imageOk(piece.imageUrl)));
-  return list.filter((_, index) => flags[index]);
-}
 const TTL_MS = 10 * 60 * 1000;
 const cache = new Map<string, { at: number; racks: RedCarpetRacks }>();
 
@@ -62,126 +53,120 @@ function hash(value: string): string {
   return h.toString(36);
 }
 
-function slotOfPiece(name: string): RackSlot | null {
-  if (/shoe|sneaker|heel|boot|flat|derby|loafer|sandal/i.test(name)) return 'shoes';
-  if (/gown|dress|sundress|\bslip\b|\bmidi\b/i.test(name) && !/trouser|pant|jean|skirt/i.test(name)) return 'dress';
-  if (/skirt|pant|trouser|jean|denim|short|\bbottom\b/i.test(name)) return 'bottom';
-  if (/blazer|jacket|knit|shirt|tee|top|cami|oxford|overshirt|coat|hoodie/i.test(name)) return 'top';
-  return null;
+function systemCa(): string[] | undefined {
+  return (tls as typeof tls & { getCACertificates?: (scope?: string) => string[] }).getCACertificates?.('system');
 }
 
-function cleanTitle(title: string, slot: RackSlot): string {
-  const cleaned = title
-    .replace(/\s*[|\-–—]\s*pinterest\b.*$/i, '')
-    .replace(/pinterest/gi, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-  const clipped = cleaned.slice(0, 80);
-  if (clipped.length >= 3) return clipped;
-  if (slot === 'dress') return 'Red carpet gown';
-  if (slot === 'shoes') return 'Red carpet shoes';
-  if (slot === 'bottom') return 'Red carpet bottom';
-  return 'Red carpet jacket';
-}
-
-function catalogRacks(): RedCarpetRacks {
-  const buckets: Record<RackSlot, RackPiece[]> = { top: [], bottom: [], dress: [], shoes: [] };
-  for (const look of FASHION_CATALOG) {
-    look.pieces.forEach((piece, index) => {
-      const slot = slotOfPiece(piece);
-      if (!slot || buckets[slot].length >= 8) return;
-      buckets[slot].push({
-        id: `${look.id}-${index}`,
-        slot,
-        title: piece,
-        imageUrl: look.imageUrl,
-        sourceUrl: '',
-      });
+function imageOk(url: string): Promise<boolean> {
+  if (url.startsWith('data:')) return Promise.resolve(true);
+  const cached = imageOkCache.get(url);
+  if (cached != null) return Promise.resolve(cached);
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (ok: boolean) => {
+      if (settled) return;
+      settled = true;
+      imageOkCache.set(url, ok);
+      resolve(ok);
+    };
+    const req = https.get(url, { ca: systemCa(), headers: { Accept: 'image/*' } }, (res) => {
+      const ok = (res.statusCode || 0) >= 200 && (res.statusCode || 0) < 300;
+      res.resume();
+      finish(ok);
     });
-  }
+    req.on('error', () => finish(false));
+    req.setTimeout(8000, () => {
+      req.destroy();
+      finish(false);
+    });
+  });
+}
+
+/** Flat clothing drawing. No person, no face, no sunglasses. */
+function studioGarment(recipe: Recipe): string {
+  const top =
+    recipe.slot === 'top'
+      ? `<path d="M78 46 L100 30 L122 46 L146 78 L128 86 L116 62 V156 H84 V62 L72 86 L54 78 Z" fill="${recipe.fill}" stroke="#111" stroke-width="4"/>`
+      : `<path d="M78 28 H122 L146 196 H54 Z" fill="${recipe.fill}" stroke="#111" stroke-width="4"/>`;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 220">${top}</svg>`;
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+}
+
+function studioPiece(recipe: Recipe, index: number): RackPiece {
   return {
-    tops: buckets.top,
-    bottoms: buckets.bottom,
-    dresses: buckets.dress,
-    shoes: buckets.shoes,
-    source: 'catalog',
-    detail: 'Add SERPAPI_API_KEY to pull live Met Gala, Oscars, Grammys, and Cannes looks from Pinterest.',
+    id: `studio-${recipe.slot}-${index}`,
+    slot: recipe.slot,
+    title: recipe.title,
+    imageUrl: studioGarment(recipe),
+    sourceUrl: '',
+    era: recipe.era,
   };
 }
 
-type ImageHit = {
-  title?: string;
-  original?: string;
-  thumbnail?: string;
-  link?: string;
-  source?: string;
-};
+function studioRacks(): RedCarpetRacks {
+  const tops = RECIPES.filter((r) => r.slot === 'top').map(studioPiece);
+  const bottoms = RECIPES.filter((r) => r.slot === 'bottom').map(studioPiece);
+  return { tops, bottoms, dresses: [], shoes: [], source: 'studio', detail: '' };
+}
 
-async function searchSlot(slot: RackSlot, prompt: string, key: string): Promise<RackPiece[]> {
-  const q = `site:pinterest.com ${QUERIES[slot]} ${prompt}`.replace(/\s+/g, ' ').trim().slice(0, 200);
+type ImageHit = { title?: string; original?: string; thumbnail?: string; link?: string };
+
+function productQuery(name: string): string {
+  return `${name} flat lay isolated white background -model -face -portrait -sunglasses -person`;
+}
+
+async function searchRecipe(recipe: Recipe, key: string): Promise<RackPiece | null> {
   const url = new URL('https://serpapi.com/search.json');
   url.searchParams.set('engine', 'google_images');
-  url.searchParams.set('q', q);
+  url.searchParams.set('q', productQuery(recipe.title));
   url.searchParams.set('ijn', '0');
   url.searchParams.set('safe', 'active');
   url.searchParams.set('api_key', key);
   const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
-  if (!res.ok) return [];
+  if (!res.ok) return null;
   const data = (await res.json()) as { images_results?: ImageHit[] };
-  const out: RackPiece[] = [];
-  const seen = new Set<string>();
   for (const row of data.images_results || []) {
-    const imageUrl = String(row.original || row.thumbnail || '').trim();
-    if (!imageUrl.startsWith('https://') || seen.has(imageUrl)) continue;
-    const hay = `${row.link || ''} ${imageUrl} ${row.source || ''}`;
-    if (!/pinterest\.|pinimg\.com/i.test(hay)) continue;
-    seen.add(imageUrl);
-    out.push({
-      id: `pin-${slot}-${hash(imageUrl)}`,
-      slot,
-      title: cleanTitle(String(row.title || ''), slot),
+    const imageUrl = String(row.original || '').trim();
+    const title = String(row.title || '');
+    const hay = `${title} ${row.link || ''} ${imageUrl}`;
+    if (!imageUrl.startsWith('https://')) continue;
+    if (BLOCKED.test(hay)) continue;
+    if (!(await imageOk(imageUrl))) continue;
+    return {
+      id: `flat-${recipe.slot}-${hash(imageUrl)}`,
+      slot: recipe.slot,
+      title: recipe.title,
       imageUrl,
-      sourceUrl: String(row.link || ''),
-    });
-    if (out.length >= 8) break;
+      sourceUrl: '',
+      era: recipe.era,
+    };
   }
-  return out;
+  return null;
 }
 
 export async function fetchRedCarpetRacks(prompt: string): Promise<RedCarpetRacks> {
   const key = process.env.SERPAPI_API_KEY?.trim() || process.env.SERPAPI_KEY?.trim() || '';
-  const cacheKey = `${key ? 'live' : 'catalog'}:${prompt.trim().toLowerCase()}`;
+  const cacheKey = `${key ? 'flat' : 'studio'}:${prompt.trim().toLowerCase()}`;
   const hit = cache.get(cacheKey);
   if (hit && Date.now() - hit.at < TTL_MS) return hit.racks;
 
-  const fallback = catalogRacks();
+  const studio = studioRacks();
   if (!key) {
-    const racks: RedCarpetRacks = {
-      ...fallback,
-      tops: await keepLive(fallback.tops),
-      bottoms: await keepLive(fallback.bottoms),
-      dresses: await keepLive(fallback.dresses),
-      shoes: await keepLive(fallback.shoes),
-    };
-    cache.set(cacheKey, { at: Date.now(), racks });
-    return racks;
+    cache.set(cacheKey, { at: Date.now(), racks: studio });
+    return studio;
   }
 
-  const slots: RackSlot[] = ['top', 'bottom', 'dress', 'shoes'];
-  const found = await Promise.all(
-    slots.map((slot) => searchSlot(slot, prompt, key).catch(() => [] as RackPiece[]))
-  );
-  const [tops, bottoms, dresses, shoes] = found;
-  const live = tops.length + bottoms.length + dresses.length + shoes.length > 0;
+  const found = await Promise.all(RECIPES.map((recipe) => searchRecipe(recipe, key).catch(() => null)));
+  const live = found.filter((piece): piece is RackPiece => Boolean(piece));
+  const tops = live.filter((p) => p.slot === 'top');
+  const bottoms = live.filter((p) => p.slot === 'bottom');
   const racks: RedCarpetRacks = {
-    tops: await keepLive(tops.length ? tops : fallback.tops),
-    bottoms: await keepLive(bottoms.length ? bottoms : fallback.bottoms),
-    dresses: await keepLive(dresses.length ? dresses : fallback.dresses),
-    shoes: await keepLive(shoes.length ? shoes : fallback.shoes),
-    source: live ? 'pinterest' : 'catalog',
-    detail: live
-      ? 'Labels match the Pinterest image titles from red carpets and award shows.'
-      : fallback.detail,
+    tops: tops.length ? tops : studio.tops,
+    bottoms: bottoms.length ? bottoms : studio.bottoms,
+    dresses: [],
+    shoes: [],
+    source: live.length ? 'product' : 'studio',
+    detail: '',
   };
   cache.set(cacheKey, { at: Date.now(), racks });
   return racks;

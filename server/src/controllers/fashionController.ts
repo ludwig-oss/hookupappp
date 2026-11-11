@@ -207,7 +207,7 @@ export const garmentImageHandler = async (req: Request, res: Response) => {
     res.setHeader('Cache-Control', 'private, max-age=3600');
     res.send(upstream.body);
   } catch (error) {
-    console.error('Garment image proxy error:', error);
+    console.error('Garment image proxy error:', error instanceof Error ? error.message : 'fetch failed');
     res.status(502).json({ error: 'Could not fetch that garment photo' });
   }
 };

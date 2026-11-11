@@ -1,10 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import {
-  fashionAPI,
-  type FashionLookCard,
-  type RackPiece,
-  type RedCarpetRacks,
-} from '../../api/fashion';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { fashionAPI, type FashionLookCard, type RackPiece, type RedCarpetRacks } from '../../api/fashion';
 import GarmentSlot from './GarmentSlot';
 import './ChersWardrobe.css';
 
@@ -13,7 +8,7 @@ const EMPTY: RedCarpetRacks = {
   bottoms: [],
   dresses: [],
   shoes: [],
-  source: 'catalog',
+  source: 'studio',
   detail: '',
 };
 
@@ -27,58 +22,18 @@ function at(list: RackPiece[], index: number) {
   return list[index % list.length];
 }
 
-const CASUAL = /sneaker|denim|jean|tee\b|hoodie|street|trainer/i;
-const FORMAL = /gown|gala|oscar|heel|silk|tuxedo|blazer|satin|cannes|grammy|carpet/i;
-
-function verdict(labels: string[]) {
-  const text = labels.filter(Boolean).join(' ');
-  if (CASUAL.test(text) && FORMAL.test(text)) return 'MISMATCH!' as const;
-  return 'TOTALLY!' as const;
-}
-
-function Row({
-  label,
-  pieces,
-  index,
-  onPrev,
-  onNext,
-}: {
-  label: string;
-  pieces: RackPiece[];
-  index: number;
-  onPrev: () => void;
-  onNext: () => void;
-}) {
-  const piece = at(pieces, index);
-  return (
-    <div className="chers-row">
-      <p className="chers-row-label">{label}</p>
-      <button type="button" className="chers-arrow" onClick={onPrev} aria-label={`Previous ${label}`}>
-        ◀
-      </button>
-      <div className="chers-window">
-        {piece ? (
-          <GarmentSlot url={piece.imageUrl} slot={piece.slot} title={piece.title} />
-        ) : (
-          <div className="chers-empty">NO PIECES IN THIS ROW</div>
-        )}
-        <p className="chers-name">{piece?.title || '—'}</p>
-      </div>
-      <button type="button" className="chers-arrow" onClick={onNext} aria-label={`Next ${label}`}>
-        ▶
-      </button>
-    </div>
-  );
+function garmentName(title: string) {
+  return title
+    .replace(/pinterest|met gala|oscars?|grammys?|cannes|red carpet/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 export default function ChersWardrobe({
   racks,
   prompt,
   userImage,
-  guideLine,
   onSave,
-  onDraft,
-  onShuffle,
 }: {
   racks?: RedCarpetRacks | null;
   prompt?: string;
@@ -88,18 +43,17 @@ export default function ChersWardrobe({
   onDraft?: (look: FashionLookCard) => void;
   onShuffle?: () => void;
 }) {
-  const [loaded, setLoaded] = useState<RedCarpetRacks | null>(racks || null);
-  const [dressMode, setDressMode] = useState(false);
+  const [loaded, setLoaded] = useState<RedCarpetRacks | null>(racks && racks.tops.length ? racks : null);
+  const [banned, setBanned] = useState<string[]>([]);
   const [topIndex, setTopIndex] = useState(0);
   const [bottomIndex, setBottomIndex] = useState(0);
-  const [shoeIndex, setShoeIndex] = useState(0);
-  const [dressIndex, setDressIndex] = useState(0);
   const [busy, setBusy] = useState(false);
+  const [spinning, setSpinning] = useState(false);
   const [tryOnUrl, setTryOnUrl] = useState<string | null>(null);
   const [note, setNote] = useState('');
 
   useEffect(() => {
-    if (racks && (racks.tops.length || racks.bottoms.length || racks.dresses.length || racks.shoes.length)) {
+    if (racks && (racks.tops.length || racks.bottoms.length)) {
       setLoaded(racks);
       return;
     }
@@ -118,43 +72,37 @@ export default function ChersWardrobe({
   }, [racks, prompt]);
 
   const data = loaded || EMPTY;
-  const top = at(data.tops, topIndex);
-  const bottom = at(data.bottoms, bottomIndex);
-  const shoe = at(data.shoes, shoeIndex);
-  const dress = at(data.dresses, dressIndex);
-  const labels = dressMode
-    ? [top?.title || '', dress?.title || '', shoe?.title || '']
-    : [top?.title || '', bottom?.title || '', shoe?.title || ''];
-  const alert = verdict(labels);
+  const tops = data.tops.filter((piece) => !banned.includes(piece.id));
+  const bottoms = data.bottoms.filter((piece) => !banned.includes(piece.id));
+  const top = at(tops, topIndex);
+  const bottom = at(bottoms, bottomIndex);
   const person = userImage && /^https?:\/\//i.test(userImage) ? userImage : null;
 
   const composed = useMemo<FashionLookCard | null>(() => {
-    const lead = dressMode ? dress : top;
+    if (!top && !bottom) return null;
+    const pieces = [top?.title, bottom?.title].filter(Boolean) as string[];
+    const lead = top || bottom;
     if (!lead) return null;
-    const pieces = (
-      dressMode ? [dress?.title, shoe?.title] : [top?.title, bottom?.title, shoe?.title]
-    ).filter(Boolean) as string[];
     return {
-      id: pieces.join('|').slice(0, 80) || lead.id,
+      id: pieces.join('|').slice(0, 80),
       title: pieces.join(' + '),
-      event: 'first-date',
-      vibe: alert === 'TOTALLY!' ? 'totally' : 'mismatch',
-      formality: alert === 'TOTALLY!' ? 'high' : 'low',
+      event: 'casual',
+      vibe: 'mixed',
+      formality: 'mid',
       palette: [],
       pieces,
       imageUrl: lead.imageUrl,
-      fallback: '#1D4ED8',
-      warp: dressMode ? 'drape' : 'tailored',
-      shopUrl: lead.sourceUrl || `https://www.google.com/search?tbm=isch&q=${encodeURIComponent(lead.title)}`,
-      trendNotes: data.detail,
+      fallback: '#ffffff',
+      warp: 'tailored',
+      shopUrl: '',
+      trendNotes: '',
     };
-  }, [alert, bottom, data.detail, dress, dressMode, shoe, top]);
+  }, [bottom, top]);
 
-  const dressMe = async () => {
-    const lead = dressMode ? dress : top;
-    if (!lead) return;
+  const tryOn = async () => {
+    if (!top) return;
     if (!person) {
-      setNote('Upload a full-body photo first. DRESS ME puts these clothes on that photo.');
+      setNote('Upload a full-body photo first. TRY ON puts these clothes on that photo.');
       setTryOnUrl(null);
       return;
     }
@@ -164,105 +112,120 @@ export default function ChersWardrobe({
     try {
       const result = await fashionAPI.dress({
         userImage: person,
-        garmentImage: lead.imageUrl,
-        bottomImage: dressMode ? null : bottom?.imageUrl,
-        category: dressMode ? 'dresses' : 'upper_body',
-        title: composed?.title || lead.title,
-        pieces: composed?.pieces || [lead.title],
+        garmentImage: top.imageUrl.startsWith('data:') ? top.imageUrl : top.imageUrl,
+        bottomImage: bottom && !bottom.imageUrl.startsWith('data:') ? bottom.imageUrl : null,
+        category: 'upper_body',
+        title: composed?.title || top.title,
+        pieces: composed?.pieces || [top.title],
       });
       if (result.tryOnUrl) {
         setTryOnUrl(result.tryOnUrl);
-        setNote(`Dressed with ${result.engine}.`);
+        setNote('');
+        if (composed) onSave?.(composed);
       } else {
-        setNote(result.detail || 'Try-on needs FASHN_API_KEY or REPLICATE_API_TOKEN.');
+        setNote(result.detail || 'Add FASHN_API_KEY or REPLICATE_API_TOKEN in server/.env.');
       }
     } catch {
-      setNote('The try-on service did not answer. Check FASHN_API_KEY or REPLICATE_API_TOKEN.');
+      setNote('Try-on did not answer. Add FASHN_API_KEY or REPLICATE_API_TOKEN.');
     } finally {
       setBusy(false);
     }
   };
 
-  const shuffleLocal = () => {
-    if (data.tops.length) setTopIndex(Math.floor(Math.random() * data.tops.length));
-    if (data.bottoms.length) setBottomIndex(Math.floor(Math.random() * data.bottoms.length));
-    if (data.shoes.length) setShoeIndex(Math.floor(Math.random() * data.shoes.length));
-    if (data.dresses.length) setDressIndex(Math.floor(Math.random() * data.dresses.length));
-    onShuffle?.();
+  const spinRef = useRef<number | null>(null);
+
+  const shuffle = () => {
+    if (spinning || !tops.length || !bottoms.length) return;
+    setSpinning(true);
+    setTryOnUrl(null);
+    if (spinRef.current) window.clearInterval(spinRef.current);
+    let ticks = 0;
+    spinRef.current = window.setInterval(() => {
+      ticks += 1;
+      setTopIndex((index) => cycle(tops.length, index, 1));
+      setBottomIndex((index) => cycle(bottoms.length, index, 1));
+      if (ticks < 12) return;
+      if (spinRef.current) window.clearInterval(spinRef.current);
+      spinRef.current = null;
+      const vintageTops = tops.map((piece, index) => (piece.era === 'vintage' ? index : -1)).filter((index) => index >= 0);
+      const modernBottoms = bottoms
+        .map((piece, index) => (piece.era === 'modern' ? index : -1))
+        .filter((index) => index >= 0);
+      const pick = (pool: number[], length: number) =>
+        pool.length ? pool[Math.floor(Math.random() * pool.length)] : Math.floor(Math.random() * length);
+      setTopIndex(pick(vintageTops, tops.length));
+      setBottomIndex(pick(modernBottoms, bottoms.length));
+      setSpinning(false);
+    }, 70);
+  };
+
+  const reject = (id: string) => {
+    setBanned((prev) => (prev.includes(id) ? prev : [...prev, id]));
   };
 
   return (
-    <section className="chers" data-closet-tour="carousel">
-      <header className="chers-titlebar">
-        <h2>CHER&apos;S WARDROBE / VIRTUAL CLOSET</h2>
-        <div className="chers-title-actions">
-          <button type="button" data-closet-tour="shuffle" onClick={shuffleLocal}>
+    <section className="fancy" data-closet-tour="carousel">
+      <div className="fancy-side" aria-hidden />
+      <div className="fancy-stage">
+        <div className="fancy-row">
+          <button type="button" className="fancy-arrow" onClick={() => setTopIndex((n) => cycle(tops.length, n, -1))} aria-label="Previous top">
+            {'<'}
+          </button>
+          <div className="fancy-window">
+            {top ? (
+              <GarmentSlot url={top.imageUrl} slot="top" title={garmentName(top.title)} onReject={() => reject(top.id)} />
+            ) : null}
+            <p className="fancy-name">{top ? garmentName(top.title) : ''}</p>
+          </div>
+          <button type="button" className="fancy-arrow" onClick={() => setTopIndex((n) => cycle(tops.length, n, 1))} aria-label="Next top">
+            {'>'}
+          </button>
+        </div>
+        <div className="fancy-row">
+          <button
+            type="button"
+            className="fancy-arrow"
+            onClick={() => setBottomIndex((n) => cycle(bottoms.length, n, -1))}
+            aria-label="Previous bottom"
+          >
+            {'<'}
+          </button>
+          <div className="fancy-window">
+            {bottom ? (
+              <GarmentSlot
+                url={bottom.imageUrl}
+                slot="bottom"
+                title={garmentName(bottom.title)}
+                onReject={() => reject(bottom.id)}
+              />
+            ) : null}
+            <p className="fancy-name">{bottom ? garmentName(bottom.title) : ''}</p>
+          </div>
+          <button
+            type="button"
+            className="fancy-arrow"
+            onClick={() => setBottomIndex((n) => cycle(bottoms.length, n, 1))}
+            aria-label="Next bottom"
+          >
+            {'>'}
+          </button>
+        </div>
+        <div className="fancy-actions">
+          <button type="button" data-closet-tour="shuffle" onClick={shuffle} disabled={spinning}>
             SHUFFLE
           </button>
-          <button type="button" className={dressMode ? 'is-on' : ''} onClick={() => setDressMode((v) => !v)}>
-            {dressMode ? 'SEPARATES' : 'FULL RED CARPET DRESS'}
+          <button type="button" data-closet-tour="tryon" onClick={() => void tryOn()} disabled={busy}>
+            {busy ? 'TRY ON' : 'TRY ON'}
           </button>
         </div>
-      </header>
-      <p className="chers-marquee">{guideLine || data.detail || 'Cycle each row. The label is the garment in that photo.'}</p>
-      <div className="chers-stage">
-        <Row
-          label="ROW 1 · TOPS / JACKETS"
-          pieces={data.tops}
-          index={topIndex}
-          onPrev={() => setTopIndex((n) => cycle(data.tops.length, n, -1))}
-          onNext={() => setTopIndex((n) => cycle(data.tops.length, n, 1))}
-        />
-        {dressMode ? (
-          <Row
-            label="ROW 2 · FULL RED CARPET DRESS"
-            pieces={data.dresses}
-            index={dressIndex}
-            onPrev={() => setDressIndex((n) => cycle(data.dresses.length, n, -1))}
-            onNext={() => setDressIndex((n) => cycle(data.dresses.length, n, 1))}
-          />
-        ) : (
-          <Row
-            label="ROW 2 · BOTTOMS / SKIRTS / PANTS"
-            pieces={data.bottoms}
-            index={bottomIndex}
-            onPrev={() => setBottomIndex((n) => cycle(data.bottoms.length, n, -1))}
-            onNext={() => setBottomIndex((n) => cycle(data.bottoms.length, n, 1))}
-          />
+        {tryOnUrl && (
+          <div className="fancy-result">
+            <img src={tryOnUrl} alt="Clothes fitted on your photo" />
+          </div>
         )}
-        <Row
-          label="ROW 3 · SHOES & ACCESSORIES"
-          pieces={data.shoes}
-          index={shoeIndex}
-          onPrev={() => setShoeIndex((n) => cycle(data.shoes.length, n, -1))}
-          onNext={() => setShoeIndex((n) => cycle(data.shoes.length, n, 1))}
-        />
+        {note && <p className="fancy-note">{note}</p>}
       </div>
-      <div className="chers-status">
-        <button type="button" className="chers-dressme" data-closet-tour="tryon" disabled={busy} onClick={() => void dressMe()}>
-          {busy ? 'DRESSING…' : 'DRESS ME'}
-        </button>
-        <div className={`chers-alert ${alert === 'TOTALLY!' ? 'is-good' : 'is-bad'}`} role="status">
-          {alert}
-        </div>
-        {composed && onSave && (
-          <button type="button" className="chers-mini" onClick={() => onSave(composed)}>
-            SAVE
-          </button>
-        )}
-        {composed && onDraft && (
-          <button type="button" className="chers-mini" onClick={() => onDraft(composed)}>
-            DRAFT
-          </button>
-        )}
-      </div>
-      {tryOnUrl && (
-        <div className="chers-result">
-          <p>ON YOU</p>
-          <img src={tryOnUrl} alt="Virtual try-on of your photo" />
-        </div>
-      )}
-      {note && <p className="chers-note">{note}</p>}
+      <div className="fancy-side" aria-hidden />
     </section>
   );
 }

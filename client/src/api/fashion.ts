@@ -33,12 +33,15 @@ export interface FashionCritic {
 
 export type RackSlot = 'top' | 'bottom' | 'dress' | 'shoes';
 
+export type GarmentEra = 'vintage' | 'modern';
+
 export interface RackPiece {
   id: string;
   slot: RackSlot;
   title: string;
   imageUrl: string;
   sourceUrl: string;
+  era?: GarmentEra;
 }
 
 export interface RedCarpetRacks {
@@ -46,7 +49,7 @@ export interface RedCarpetRacks {
   bottoms: RackPiece[];
   dresses: RackPiece[];
   shoes: RackPiece[];
-  source: 'pinterest' | 'catalog';
+  source: 'product' | 'studio' | 'pinterest' | 'catalog';
   detail: string;
 }
 

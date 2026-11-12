@@ -8,7 +8,6 @@ import AuthCallback from './pages/AuthCallback';
 import OAuthReturn from './pages/OAuthReturn';
 import SignupWithImprovement from './pages/SignupWithImprovement';
 import Landing from './pages/Landing';
-import FashionDemo from './pages/FashionDemo';
 import TermsOfService from './pages/TermsOfService';
 import PrivacyPolicy from './pages/PrivacyPolicy';
 import ForgotPassword from './pages/ForgotPassword';
@@ -312,7 +311,6 @@ function App() {
           <Route path="/checkout" element={<RequireAuth><Checkout /></RequireAuth>} />
           <Route path="/admin/safety" element={<RequireAuth><AdminSafetyReview /></RequireAuth>} />
           <Route path="/admin/coaches" element={<RequireAuth><AdminCoachReview /></RequireAuth>} />
-          <Route path="/fashion-demo" element={<FashionDemo />} />
           <Route path="/" element={<Landing />} />
         </Routes>
         <AppearanceSafetyPrompt />

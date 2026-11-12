@@ -34,7 +34,17 @@ type GoogleSession = { user: Record<string, unknown>; token: string };
 
 function origin(): string {
   if (typeof window === 'undefined') return '';
-  return window.location.origin;
+  const current = window.location.origin;
+  try {
+    const url = new URL(current);
+    // Google only allows the localhost redirect on port 5173.
+    if (url.hostname === 'localhost' || url.hostname === '127.0.0.1') {
+      return 'http://localhost:5173';
+    }
+  } catch {
+    return current;
+  }
+  return current;
 }
 
 function clearAddress(): void {
